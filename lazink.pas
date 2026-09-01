@@ -8,7 +8,7 @@ unit LazInk;
 interface
 
 uses
-  jvclHTMLUtils, InkLabel, InkEdit, InkMemo, InkListBox, LazInkReg, 
+  InkHtml, InkLabel, InkEdit, InkMemo, InkListBox, LazInkReg, 
   LazarusPackageIntf;
 
 implementation

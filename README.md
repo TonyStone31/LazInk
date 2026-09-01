@@ -73,5 +73,5 @@ then add `LazInk` to your project's required packages.
 
 ## License
 
-Component code: MIT. The renderer unit `jvclhtmlutils.pas` derives from the
+Component code: MIT. The renderer unit `inkhtml.pas` derives from the
 JVCL project's `JvHtControls` (MPL 1.1) — see that unit's header.

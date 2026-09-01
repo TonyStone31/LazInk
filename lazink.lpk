@@ -16,12 +16,12 @@
       </Parsing>
     </CompilerOptions>
     <Description Value="LazInk — lightweight HTML-formatted text controls drawn entirely with TCanvas: TInkLabel, TInkEdit (per-character colored edit box), TInkMemo and TInkListBox. Renders a simple HTML subset (bold, italic, underline, font color/size, sub/sup, links) identically on every LCL widgetset including gtk3."/>
-    <License Value="Component code: MIT. Renderer unit jvclHTMLUtils derives from the JVCL project (MPL 1.1) — see its header."/>
+    <License Value="Component code: MIT. Renderer unit InkHtml derives from the JVCL project (MPL 1.1) — see its header."/>
     <Version Minor="9"/>
     <Files>
       <Item>
-        <Filename Value="jvclhtmlutils.pas"/>
-        <UnitName Value="jvclHTMLUtils"/>
+        <Filename Value="inkhtml.pas"/>
+        <UnitName Value="InkHtml"/>
       </Item>
       <Item>
         <Filename Value="inklabel.pas"/>
