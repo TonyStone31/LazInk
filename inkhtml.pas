@@ -1,4 +1,4 @@
-{ jvclHTMLUtils — inline HTML canvas rendering for the LazInk controls.
+{ InkHtml — inline HTML canvas rendering for the LazInk controls.
 
   ATTRIBUTION: this unit is derived from the JVCL project's JvHtControls
   (JvHTMLParser / HTML drawing routines), originally by Maciej Kaczkowski
@@ -12,7 +12,7 @@
 
   Modifications for LazInk: standalone unit, LCL types, UTF-8 handling.
   Keep this notice intact in any redistribution. }
-unit jvclHTMLUtils;
+unit InkHtml;
 
 {$mode ObjFPC}{$H+}
 

@@ -14,7 +14,7 @@
   owner drawing, which supplies scrolling, invalidation, and keyboard
   navigation without a native text widget ever seeing the markup.
 
-  License: component code MIT; the renderer unit jvclHTMLUtils is derived
+  License: component code MIT; the renderer unit InkHtml is derived
   from the JVCL project (MPL 1.1) — see that unit's header.
 }
 unit InkMemo;
@@ -104,7 +104,7 @@ type
 implementation
 
 uses
-  jvclHTMLUtils;
+  InkHtml;
 
 { TInkMemo }
 

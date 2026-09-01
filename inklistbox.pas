@@ -131,7 +131,7 @@ type
 implementation
 
 uses
-  jvclHTMLUtils;
+  InkHtml;
 
 { TInkListBox }
 
