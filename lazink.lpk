@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <Package Version="5">
+    <Name Value="LazInk"/>
+    <Type Value="RunAndDesignTime"/>
+    <Author Value="TonyStone"/>
+    <CompilerOptions>
+      <Version Value="11"/>
+      <SearchPaths>
+        <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
+      </SearchPaths>
+      <Parsing>
+        <SyntaxOptions>
+          <SyntaxMode Value="ObjFPC"/>
+        </SyntaxOptions>
+      </Parsing>
+    </CompilerOptions>
+    <Description Value="LazInk — lightweight HTML-formatted text controls drawn entirely with TCanvas: TInkLabel, TInkEdit (per-character colored edit box), TInkMemo and TInkListBox. Renders a simple HTML subset (bold, italic, underline, font color/size, sub/sup, links) identically on every LCL widgetset including gtk3."/>
+    <License Value="Component code: MIT. Renderer unit jvclHTMLUtils derives from the JVCL project (MPL 1.1) — see its header."/>
+    <Version Minor="9"/>
+    <Files>
+      <Item>
+        <Filename Value="jvclhtmlutils.pas"/>
+        <UnitName Value="jvclHTMLUtils"/>
+      </Item>
+      <Item>
+        <Filename Value="inklabel.pas"/>
+        <UnitName Value="InkLabel"/>
+      </Item>
+      <Item>
+        <Filename Value="inkedit.pas"/>
+        <UnitName Value="InkEdit"/>
+      </Item>
+      <Item>
+        <Filename Value="inkmemo.pas"/>
+        <UnitName Value="InkMemo"/>
+      </Item>
+      <Item>
+        <Filename Value="inklistbox.pas"/>
+        <UnitName Value="InkListBox"/>
+      </Item>
+      <Item>
+        <Filename Value="lazinkreg.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="LazInkReg"/>
+      </Item>
+    </Files>
+    <RequiredPkgs>
+      <Item>
+        <PackageName Value="LazUtils"/>
+      </Item>
+      <Item>
+        <PackageName Value="LCL"/>
+      </Item>
+      <Item>
+        <PackageName Value="FCL"/>
+      </Item>
+    </RequiredPkgs>
+    <UsageOptions>
+      <UnitPath Value="$(PkgOutDir)"/>
+    </UsageOptions>
+    <PublishOptions>
+      <Version Value="2"/>
+      <UseFileFilters Value="True"/>
+    </PublishOptions>
+  </Package>
+</CONFIG>
