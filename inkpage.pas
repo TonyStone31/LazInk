@@ -36,6 +36,12 @@ type
     FContentHeight: Integer;
     FOnLinkClick: TInkPageLinkEvent;
     FOnResource: TInkPageResourceEvent;
+    { dragging the page, which is how a finger scrolls: on Windows a touch
+      screen delivers a finger as a mouse press, moves and a release, and a
+      page with only a wheel and a scrollbar cannot be moved by one }
+    FDragScroll, FGrab, FDragged: Boolean;
+    FGrabY, FGrabAt: Integer;
+    function GetScrollY: Integer;
     procedure ClearBlocks;
     procedure Parse;
     procedure Layout;
@@ -51,6 +57,7 @@ type
     procedure Paint; override;
     procedure Resize; override;
     procedure FontChanged(Sender: TObject); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X,Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer); override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
@@ -72,11 +79,16 @@ type
     property Location: string read FLocation;
     property DocumentTitle: string read FTitle;
     property ContentHeight: Integer read FContentHeight;
+    { how far down the page is scrolled, in pixels }
+    property ScrollY: Integer read GetScrollY;
   published
     property Source: string read FSource write SetSource;
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     property OnLinkClick: TInkPageLinkEvent read FOnLinkClick write FOnLinkClick;
     property OnResource: TInkPageResourceEvent read FOnResource write FOnResource;
+    { drag the page with the left button - or a finger - to scroll it; a
+      press that moves less than a few pixels is still a click }
+    property DragScroll: Boolean read FDragScroll write FDragScroll default True;
     property Align; property Anchors; property Color; property Font;
     property ParentFont; property TabStop; property TabOrder; property Visible;
   end;
@@ -160,6 +172,7 @@ begin
   FScroll.Kind := sbVertical; FScroll.Align := alRight; FScroll.Width := 18;
   FScroll.OnChange := @ScrollChanged; FLayoutDirty := True;
   FTimer := TTimer.Create(Self); FTimer.Interval := 20; FTimer.OnTimer := @Animate;
+  FDragScroll := True;
   Color := clWindow; Font.Color := clWindowText; Font.Size := 11;
 end;
 destructor TInkPage.Destroy;
@@ -520,19 +533,51 @@ begin
     if Hit.OnLink then Exit(ResolveURL(HTMLUnescape(Hit.LinkName)));
   end;
 end;
-procedure TInkPage.MouseMove(Shift: TShiftState; X,Y: Integer);
+function TInkPage.GetScrollY: Integer;
 begin
-  inherited; FHoverLink := HitLink(X,Y);
+  Result := FScroll.Position;
+end;
+
+procedure TInkPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
+begin
+  inherited;
+  if (Button<>mbLeft) or not FDragScroll then Exit;
+  FGrab := True; FDragged := False; FGrabY := Y; FGrabAt := FScroll.Position;
+end;
+
+procedure TInkPage.MouseMove(Shift: TShiftState; X,Y: Integer);
+const
+  { A press that wanders less than this is still a click.  Wider than a
+    mouse needs, because a fingertip rolls a little as it taps, and a tap on
+    a link that scrolled the page by three pixels instead would read as the
+    link being dead. }
+  SLOP = 8;
+begin
+  inherited;
+  if FGrab and (FDragged or (Abs(Y-FGrabY)>SLOP)) then
+  begin
+    { the page follows the finger: drag down and the words come down }
+    FDragged := True;
+    FScroll.Position := EnsureRange(FGrabAt-(Y-FGrabY),0,Max(0,FContentHeight-ClientHeight));
+    Exit;
+  end;
+  FHoverLink := HitLink(X,Y);
   if FHoverLink<>'' then Cursor := crHandPoint else Cursor := crDefault;
 end;
+
 procedure TInkPage.MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
-var URL: string;
+var URL: string; WasDrag: Boolean;
 begin
   inherited;
   if Button<>mbLeft then Exit;
-  SetFocus; URL := HitLink(X,Y); if URL='' then Exit;
+  WasDrag := FDragged; FGrab := False; FDragged := False;
+  SetFocus;
+  { a drag that happened to end over a link was a scroll, not a click }
+  if WasDrag then Exit;
+  URL := HitLink(X,Y); if URL='' then Exit;
   if Assigned(FOnLinkClick) then FOnLinkClick(Self,URL) else LoadFromURL(URL);
 end;
+
 function TInkPage.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
 begin
   FScroll.Position := EnsureRange(FScroll.Position-WheelDelta div 3,0,Max(0,FContentHeight-ClientHeight));

@@ -98,6 +98,12 @@ CSS grid cards become a vertical list. No browser engine is added.
 InkPage1.LoadFromFile('/path/to/help/index.html');
 ```
 
+**Touch screens:** drag the page with a finger (or the left mouse button) to
+scroll it - on Windows a finger arrives as a mouse press, moves and a release,
+and a touch screen has no wheel.  A tap that wobbles a few pixels is still a
+click, and a drag that ends on a link does not follow it.  `DragScroll := False`
+turns it off.  `ScrollY` reads where the page is.
+
 Try the demo's **HTML help pages** tab, or pass an HTML filename on its command
 line. Keep the help folder's relative image and stylesheet paths intact.
 Remote content can be supplied through `OnResource`; HTTP transport is not
