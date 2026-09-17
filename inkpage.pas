@@ -72,6 +72,12 @@ type
     { a table's own margins, which may be negative: cards spaced apart line
       up with the text when the table reaches out by the spacing }
     MarginLeft, MarginRight: Integer;
+    { A flex or grid container: its items as table cells, laid out in rows
+      of however many fit each time the width changes. }
+    Flex, FlexWrap: Boolean;
+    FlexCells: array of string;
+    FlexBasis, FlexGap, FlexMaxCols, FlexCols: Integer;
+    FlexAttrs: string;
     { the block, and the part of it the words are drawn in; page coordinates }
     Bounds, TextBounds: TRect;
     Indent, PointSize, Padding, GapBefore, GapAfter, MarkerWidth: Integer;
@@ -114,6 +120,8 @@ type
     FClickedLink: TInkLinkInfo;
     FOnLinkActivate: TInkLinkActivateEvent;
     FImageFit: TInkImageFit;
+    { which of the page's @media width queries held when it was read }
+    FMediaState: string;
     FHistory: TStringList;
     FHistoryIndex: Integer;
     FTextFormat: TInkTextFormat;
@@ -497,6 +505,38 @@ end;
 function IsHeadingTag(const Tag: string): Boolean;
 begin
   Result := (Length(Tag)=2) and (Tag[1]='h') and (Tag[2] in ['1'..'6']);
+end;
+{ elements with no closing tag }
+function IsVoidElement(const E: string): Boolean;
+begin
+  Result := (E='br') or (E='img') or (E='hr') or (E='input') or (E='meta') or
+    (E='link') or (E='wbr') or (E='col') or (E='source') or (E='area') or
+    (E='base') or (E='embed') or (E='param') or (E='track');
+end;
+{ the items of a flex container as a table, Cols to a row }
+function FlexTable(B: TInkPageBlock; Cols: Integer): string;
+var I, N: Integer;
+begin
+  N := Length(B.FlexCells);
+  Cols := Max(1,Cols);
+  if B.FlexWrap or (B.FlexMaxCols>0) then
+    Result := '<table width="100%" layout="fixed" cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>'
+  else
+    { a row that does not wrap: items as wide as their content }
+    Result := '<table cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>';
+  for I := 0 to N-1 do
+  begin
+    if I mod Cols=0 then Result := Result+'<tr>';
+    Result := Result+B.FlexCells[I];
+    if I mod Cols=Cols-1 then Result := Result+'</tr>';
+  end;
+  if N mod Cols<>0 then
+  begin
+    { the last row keeps the columns of the others }
+    for I := N mod Cols to Cols-1 do Result := Result+'<td border="none" bgcolor="none"></td>';
+    Result := Result+'</tr>';
+  end;
+  Result := Result+'</table>';
 end;
 { the elements that start a block of their own; everything else is inline }
 function IsBlockElement(const E: string): Boolean;
@@ -905,6 +945,20 @@ var
   { the table being read: its classes as a CSS context }
   TableCtx: string;
   Margins: TRect;
+  { a table whose cells are display: block - one to a row }
+  CellsAsBlocks: Boolean;
+  TableSpacing: Integer;
+  { an element hidden by display: none, and how deep inside it we are }
+  HideDepth: Integer;
+  { a flex or grid container being read, its items so far, and how deep
+    inside the current item we are }
+  FlexDepth, ItemDepth: Integer;
+  FlexEl, FlexCls, FlexCtx, ItemCtx, ItemTag, Display, FlexText: string;
+  FlexItems: TStringList;
+  FlexBasis, FlexGap, FlexMaxCols: Integer;
+  FlexWrap, ItemIsLink: Boolean;
+  FirstItemTag, FirstItemCls: string;
+  FlexPad: TRect;
   function DotClasses(const AClasses: string): string;
   begin
     Result := Trim(AClasses);
@@ -913,7 +967,14 @@ var
   { where the text being read sits, for CSS }
   function Context: string;
   begin
-    if TableDepth>0 then Result := TableCtx+' td'
+    if FlexDepth>0 then
+    begin
+      if ItemCtx<>'' then Result := ItemCtx else Result := FlexCtx;
+    end
+    else if TableDepth>0 then
+    begin
+      if ItemCtx<>'' then Result := ItemCtx else Result := TableCtx+' td';
+    end
     else Result := BlockTag+DotClasses(BlockClass);
   end;
   procedure Flush;
@@ -948,6 +1009,11 @@ var
     begin
       Margins := FStyles.Box('table',BlockClass,'margin',Rect(0,0,0,0));
       B.MarginLeft := Margins.Left; B.MarginRight := Margins.Right;
+      { cards stacked one to a row reach the edges, as blocks do }
+      if CellsAsBlocks then
+      begin
+        Dec(B.MarginLeft,TableSpacing); Dec(B.MarginRight,TableSpacing);
+      end;
     end;
     { an item's marker goes on its first words, not on an anchor before them }
     if Text<>'' then begin B.Marker := PendingMarker; PendingMarker := '' end;
@@ -1011,14 +1077,27 @@ var
   var Pad: TRect; K: Integer; V: string;
   begin
     Result := '';
-    if FStyles.Value('table',Cls,'width','')='100%' then Result := Result+' width="100%"';
-    V := FStyles.Value('td','','width','',TableCtx);
-    if (LowerCase(FStyles.Value('table',Cls,'table-layout',''))='fixed') or
-      ((V<>'') and (V[Length(V)]='%')) then Result := Result+' layout="fixed"';
-    if LowerCase(FStyles.Value('table',Cls,'border-collapse',''))<>'collapse' then
+    CellsAsBlocks := LowerCase(FStyles.Value('td','','display','',TableCtx))='block';
+    TableSpacing := 0;
+    if CellsAsBlocks then
     begin
-      K := FStyles.Pixels('table',Cls,'border-spacing',0);
-      if K>0 then Result := Result+' cellspacing="'+IntToStr(K)+'"';
+      { cells that are blocks: one to a row, the whole width, apart by
+        their bottom margin }
+      Result := Result+' width="100%" layout="fixed"';
+      TableSpacing := Max(0,FStyles.Box('td','','margin',Rect(0,0,0,0),TableCtx).Bottom);
+      if TableSpacing>0 then Result := Result+' cellspacing="'+IntToStr(TableSpacing)+'"';
+    end
+    else
+    begin
+      if FStyles.Value('table',Cls,'width','')='100%' then Result := Result+' width="100%"';
+      V := FStyles.Value('td','','width','',TableCtx);
+      if (LowerCase(FStyles.Value('table',Cls,'table-layout',''))='fixed') or
+        ((V<>'') and (V[Length(V)]='%')) then Result := Result+' layout="fixed"';
+      if LowerCase(FStyles.Value('table',Cls,'border-collapse',''))<>'collapse' then
+      begin
+        K := FStyles.Pixels('table',Cls,'border-spacing',0);
+        if K>0 then Result := Result+' cellspacing="'+IntToStr(K)+'"';
+      end;
     end;
     Pad := FStyles.Box('td','','padding',Rect(-1,-1,-1,-1),TableCtx);
     if (Pad.Left>=0) or (Pad.Top>=0) or (Pad.Right>=0) or (Pad.Bottom>=0) then
@@ -1100,6 +1179,130 @@ var
     end;
     if Element='font' then Exit(Raw);
   end;
+  { a length from a list of them, like gap: 10px 12px, or flex: 1 1 220px }
+  function FirstPixels(const V: string; Last: Boolean): Integer;
+  var Parts: TStringList; K: Integer;
+  begin
+    Result := -1;
+    Parts := TStringList.Create;
+    try
+      Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+      Parts.DelimitedText := V;
+      for K := 0 to Parts.Count-1 do
+        if (Pos('px',LowerCase(Parts[K]))>0) or (Pos('em',LowerCase(Parts[K]))>0) or
+          ((Parts.Count=1) and (CSSPixels(Parts[K],-1)>0)) then
+        begin
+          Result := CSSPixels(Parts[K],-1);
+          if not Last then Exit;
+        end;
+    finally Parts.Free end;
+  end;
+  procedure StartFlex(const ADisplay: string);
+  var V: string; K: Integer;
+  begin
+    Flush;
+    FlexEl := Element; FlexCls := Cls;
+    FlexCtx := Trim(Context+' '+Element+DotClasses(Cls));
+    if TableDepth=0 then FlexCtx := Element+DotClasses(Cls);
+    FlexItems.Clear; FlexText := '';
+    FlexDepth := 1; ItemDepth := 0; ItemCtx := '';
+    FlexBasis := -1; FlexMaxCols := 0; FlexPad := Rect(-1,-1,-1,-1);
+    V := FStyles.Value(Element,Cls,'column-gap','');
+    if V='' then V := FStyles.Value(Element,Cls,'gap','');
+    FlexGap := Max(0,FirstPixels(V,False));
+    if Pos('grid',ADisplay)>0 then
+    begin
+      V := LowerCase(FStyles.Value(Element,Cls,'grid-template-columns',''));
+      FlexWrap := (Pos('auto-fill',V)>0) or (Pos('auto-fit',V)>0);
+      K := Pos('minmax(',V);
+      if K>0 then FlexBasis := FirstPixels(StringReplace(Copy(V,K+7,MaxInt),',',' ',[rfReplaceAll]),False);
+      K := Pos('repeat(',V);
+      if (K>0) and not FlexWrap then
+        FlexMaxCols := StrToIntDef(Trim(Copy(V,K+7,Pos(',',Copy(V,K+7,MaxInt))-1)),0)
+      else if (K=0) and (V<>'') then
+      begin
+        { "1fr 1fr 1fr": as many columns as it names }
+        V := Trim(V); FlexMaxCols := 1;
+        for K := 1 to Length(V) do if (V[K]=' ') and (V[K-1]<>' ') then Inc(FlexMaxCols);
+      end;
+      if FlexMaxCols=0 then FlexWrap := True;
+    end
+    else
+      FlexWrap := Pos('wrap',LowerCase(FStyles.Value(Element,Cls,'flex-wrap',
+        FStyles.Value(Element,Cls,'flex-flow',''))))>0;
+  end;
+  procedure StartItem;
+  var V: string;
+  begin
+    ItemTag := Element;
+    ItemCtx := FlexCtx+' '+Element+DotClasses(Cls);
+    { the first item says how wide the items want to be, and their padding }
+    if FlexBasis<0 then
+    begin
+      V := FStyles.Value(Element,Cls,'flex-basis','',FlexCtx);
+      if V='' then V := FStyles.Value(Element,Cls,'flex','',FlexCtx);
+      FlexBasis := FirstPixels(V,True);
+      if FlexBasis<=0 then FlexBasis := FStyles.Pixels(Element,Cls,'min-width',-1,FlexCtx);
+      if FlexBasis<=0 then FlexBasis := FStyles.Pixels(Element,Cls,'width',-1,FlexCtx);
+    end;
+    if FlexPad.Top<0 then
+    begin
+      FlexPad := FStyles.Box(Element,Cls,'padding',Rect(0,0,0,0),FlexCtx);
+      FirstItemTag := Element; FirstItemCls := Cls;
+    end;
+    Buffer := '<td'+CellStyleAttrs(Element,Cls,FlexCtx)+'>';
+    ItemIsLink := (Element='a') and (Attribute(Raw,'href')<>'');
+    if ItemIsLink then Buffer := Buffer+InlineTag;
+  end;
+  procedure EndItem;
+  begin
+    if ItemIsLink then Buffer := Buffer+'</a>';
+    ItemIsLink := False;
+    Buffer := TrimRight(Buffer);
+    while Copy(Buffer,Length(Buffer)-3,4)='<br>' do SetLength(Buffer,Length(Buffer)-4);
+    FlexItems.Add(Buffer+'</td>');
+    Buffer := ''; ItemCtx := '';
+  end;
+  procedure EndFlex;
+  var K: Integer;
+  begin
+    FlexDepth := 0;
+    if FlexItems.Count=0 then Exit;
+    B := TInkPageBlock.Create;
+    B.Tag := 'table'; B.CSSClass := FlexCls; B.Nest := Nest;
+    B.Anchor := PendingAnchor; PendingAnchor := '';
+    B.Flex := True; B.FlexWrap := FlexWrap; B.FlexGap := FlexGap;
+    if FlexBasis<=0 then FlexBasis := Scale96ToFont(200);
+    B.FlexBasis := FlexBasis; B.FlexMaxCols := FlexMaxCols;
+    B.FlexAttrs := Format(' cellpadding="%d %d %d %d" border="none"',
+      [Max(0,FlexPad.Top),Max(0,FlexPad.Right),Max(0,FlexPad.Bottom),Max(0,FlexPad.Left)]);
+    SetLength(B.FlexCells,FlexItems.Count);
+    for K := 0 to FlexItems.Count-1 do B.FlexCells[K] := FlexItems[K];
+    B.FlexCols := FlexItems.Count;
+    B.Source := FlexTable(B,B.FlexCols);
+    SetLength(B.LinkTargets,Targets.Count);
+    for K := 0 to Targets.Count-1 do B.LinkTargets[K] := Targets[K];
+    Targets.Clear;
+    { links take their look from the item when it is the link (a.card),
+      or from rules for links inside the items }
+    if FirstItemTag='a' then
+    begin
+      B.NoLinkUnderline := LowerCase(FStyles.Value('a',FirstItemCls,'text-decoration','',FlexCtx))='none';
+      B.LinkColor := FStyles.Color('a',FirstItemCls,'color',clNone,FlexCtx);
+    end
+    else
+    begin
+      B.NoLinkUnderline := LowerCase(FStyles.Value('a','','text-decoration','',
+        FlexCtx+' '+FirstItemTag+DotClasses(FirstItemCls)))='none';
+      B.LinkColor := FStyles.Color('a','','color',clNone,FlexCtx+' '+FirstItemTag+DotClasses(FirstItemCls));
+    end;
+    { the outer gap the table adds is not the container's: reach out by it }
+    Margins := FStyles.Box(FlexEl,FlexCls,'margin',Rect(0,0,0,0));
+    B.MarginLeft := Margins.Left-FlexGap; B.MarginRight := Margins.Right-FlexGap;
+    FBlocks.Add(B);
+    BlockTag := ContainerTag; BlockClass := '';
+    FirstItemTag := ''; FirstItemCls := '';
+  end;
 begin
   if FBlocks=nil then Exit;
   BeginDocument;
@@ -1109,6 +1312,8 @@ begin
     else S := MarkdownToHTML(FSource);
   end
   else S := FSource;
+  { @media width queries are judged against the page's own width }
+  if ClientWidth>0 then FStyles.MediaWidth := ClientWidth else FStyles.MediaWidth := 1024;
   { the host's styles first, so the page's own come after them and win }
   if FStyleSheet.Count>0 then FStyles.Add(FStyleSheet.Text);
   { Collect external styles before layout; scripts and page metadata never paint. }
@@ -1135,6 +1340,7 @@ begin
     end;
     P := Q+1;
   end;
+  FMediaState := FStyles.MediaState(FStyles.MediaWidth);
   { code with no background of its own gets a shade of the page's, so it
     still reads as code }
   PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
@@ -1142,6 +1348,9 @@ begin
   Targets := TStringList.Create;
   try
   OpenHref := ''; OpenTarget := '';
+  HideDepth := 0; FlexDepth := 0; ItemDepth := 0; ItemCtx := ''; ItemIsLink := False;
+  CellsAsBlocks := False; TableSpacing := 0;
+  FlexItems := TStringList.Create;
   P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := ''; Nest := '';
   PendingAnchor := ''; PendingMarker := ''; TableDepth := 0; SkipDepth := 0; PreDepth := 0;
   SetLength(Containers,0);
@@ -1150,7 +1359,15 @@ begin
     if S[P]<>'<' then
     begin
       Q := P; while (P<=Length(S)) and (S[P]<>'<') do Inc(P);
-      if SkipDepth=0 then Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q),PreDepth=0);
+      if (SkipDepth>0) or (HideDepth>0) then Continue;
+      if (FlexDepth>0) and (ItemDepth=0) then
+      begin
+        { words straight inside a flex container are an item of their own }
+        if Trim(Copy(S,Q,P-Q))<>'' then
+          FlexItems.Add('<td>'+TextMarkup(Copy(S,Q,P-Q))+'</td>');
+        Continue;
+      end;
+      Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q),PreDepth=0);
       Continue;
     end;
     if Copy(S,P,4)='<!--' then
@@ -1168,6 +1385,67 @@ begin
       Continue;
     end;
     if SkipDepth>0 then Continue;
+    { display: none - the element and everything in it }
+    if HideDepth>0 then
+    begin
+      if not IsVoidElement(Element) then
+        if Closing then Dec(HideDepth) else Inc(HideDepth);
+      Continue;
+    end;
+    if not Closing and not IsVoidElement(Element) and (PreDepth=0) then
+    begin
+      Display := LowerCase(FStyles.Value(Element,Cls,'display','',Context));
+      if (Display='none') or HasAttribute(Raw,'hidden') then
+      begin
+        HideDepth := 1;
+        Continue;
+      end;
+      if (FlexDepth=0) and (TableDepth=0) and
+        ((Display='flex') or (Display='inline-flex') or (Display='grid') or (Display='inline-grid')) then
+      begin
+        StartFlex(Display);
+        Continue;
+      end;
+    end;
+    if FlexDepth>0 then
+    begin
+      { inside a flex container: each child is an item, its insides one
+        cell's worth of words }
+      if IsVoidElement(Element) then
+      begin
+        if ItemDepth=0 then
+        begin
+          if Element='img' then FlexItems.Add('<td>'+HTMLEscape(Attribute(Raw,'alt'))+'</td>');
+        end
+        else if Element='br' then Buffer := Buffer+'<br>'
+        else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
+        else if Element='input' then Buffer := Buffer+InlineTag;
+        Continue;
+      end;
+      if not Closing then
+      begin
+        Inc(ItemDepth);
+        if ItemDepth=1 then StartItem
+        else if IsHeadingTag(Element) then Buffer := Buffer+'<b>'
+        else if Element='li' then Buffer := Buffer+'• '
+        else if not IsBlockElement(Element) then Buffer := Buffer+InlineTag;
+        Continue;
+      end;
+      if ItemDepth=0 then
+      begin
+        EndFlex;
+        Continue;
+      end;
+      if ItemDepth=1 then EndItem
+      else if IsHeadingTag(Element) then Buffer := Buffer+'</b><br>'
+      else if IsBlockElement(Element) then
+      begin
+        if (Buffer<>'') and (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then Buffer := Buffer+'<br>';
+      end
+      else Buffer := Buffer+InlineTag;
+      Dec(ItemDepth);
+      Continue;
+    end;
     if not Closing then
     begin
       URL := Attribute(Raw,'id');
@@ -1203,9 +1481,21 @@ begin
     begin
       if (Element='tr') or (Element='td') or (Element='th') then
       begin
-        if Closing then Buffer := Buffer+'</'+Element+'>'
+        if CellsAsBlocks and (TableDepth=1) then
+        begin
+          { every cell a row of its own }
+          if Element='tr' then
+          else if Closing then Buffer := Buffer+'</'+Element+'></tr>'
+          else Buffer := Buffer+'<tr><'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
+        end
+        else if Closing then Buffer := Buffer+'</'+Element+'>'
         else if Element='tr' then Buffer := Buffer+'<tr>'
         else Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
+        if (Element<>'tr') then
+        begin
+          if Closing then ItemCtx := ''
+          else ItemCtx := TableCtx+' '+Element+DotClasses(Cls);
+        end;
       end
       else if (Element='p') and Closing then Buffer := Buffer+'<br>'
       else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
@@ -1357,8 +1647,13 @@ begin
     end;
     Buffer := Buffer+InlineTag;
   end;
+  if FlexDepth>0 then
+  begin
+    if ItemDepth>0 then EndItem;
+    EndFlex;
+  end;
   Flush;
-  finally Targets.Free end;
+  finally Targets.Free; FlexItems.Free end;
   if PendingAnchor<>'' then
   begin
     { ids at the very end still lead somewhere: the end }
@@ -1541,10 +1836,17 @@ begin
       FStyles.Color('hr',B.CSSClass,'background',MixColor(FBodyText,FPageBack,0.7))));
 end;
 procedure TInkCustomPage.Layout;
-var I,Y,W,BlockLeft,ImageW,ImageH,ImageX,TextW,Thick,Start: Integer;
+var I,Y,W,BlockLeft,ImageW,ImageH,ImageX,TextW,Thick,Start,KeepY,Cols: Integer;
   B,Prev: TInkPageBlock; Sz: TSize; O: THTMLOptions;
 begin
   if not FLayoutDirty then Exit;
+  { a width that crosses one of the page's @media queries reads it again }
+  if (ClientWidth>0) and (FStyles.MediaState(ClientWidth)<>FMediaState) then
+  begin
+    KeepY := FScroll.Position;
+    Parse;
+    FScroll.Position := KeepY;
+  end;
   FLayoutDirty := False;
   StyleScrollBar;
   LayoutColumn(BlockLeft,W);
@@ -1609,6 +1911,19 @@ begin
       if B.Marker<>'' then
         B.MarkerWidth := Canvas.TextWidth(B.Marker+' ');
       TextW := Max(20,W-B.Indent-B.Padding*2-B.MarginLeft-B.MarginRight);
+      if B.Flex then
+      begin
+        { as many items to a row as fit at their width, with the gaps }
+        Cols := Length(B.FlexCells);
+        if B.FlexWrap then
+          Cols := Max(1,Min(Cols,(TextW-B.FlexGap) div Max(1,B.FlexBasis+B.FlexGap)));
+        if B.FlexMaxCols>0 then Cols := Min(Cols,B.FlexMaxCols);
+        if (Cols<>B.FlexCols) or (B.Source='') then
+        begin
+          B.FlexCols := Cols;
+          B.Source := FlexTable(B,Cols);
+        end;
+      end;
       if B.NoWrap then B.Wrapped := B.Source
       else B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,O.SuperSubScriptRatio,O.Scale);
       Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);

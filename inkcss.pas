@@ -8,9 +8,24 @@ type
     "tag.class.class" - "table.cards td".  With one, selectors like
     "table.cards small" or "nav > a" match; without, only simple ones. }
   TInkCSSContext = string;
+  { One rule's declarations, and the width it applies at: an @media
+    (min-width) / (max-width) block, or always.  Media the reader cannot
+    judge - print, color schemes - never apply. }
+  TInkRule = class(TStringList)
+  public
+    MinWidth, MaxWidth: Integer;
+    Never: Boolean;
+    function Applies(AWidth: Integer): Boolean;
+  end;
+
   TInkStyleSheet = class
   private
-    FRules, FVars: TStringList;
+    FRules, FVars, FConditions: TStringList;
+    FMediaWidth: Integer;
+    { the @media block being read }
+    FMin, FMax: Integer;
+    FNever, FInMedia: Boolean;
+    procedure ReadMedia(const Condition, Body: string);
   public
     function Resolve(const S: string): string;
     constructor Create;
@@ -34,6 +49,12 @@ type
       out Sides: string; const Context: TInkCSSContext = ''): Boolean;
     { a property of one selector exactly as written - '::selection' }
     function RuleValue(const Selector, Prop, Fallback: string): string;
+    { The width, in pixels, @media width queries are judged against - the
+      page's own width.  1024 until a page says otherwise. }
+    property MediaWidth: Integer read FMediaWidth write FMediaWidth;
+    { which of the sheet's width queries hold at AWidth, as a string that
+      changes when any of them does - '' when there are none }
+    function MediaState(AWidth: Integer): string;
   end;
 { #rgb, #rrggbb, rgb()/rgba(), a color name, "none"/"transparent" (clNone),
   or Fallback }
@@ -43,6 +64,12 @@ function CSSPixels(const S: string; Fallback: Integer): Integer;
 
 implementation
 uses InkHtml, Math;
+
+function TInkRule.Applies(AWidth: Integer): Boolean;
+begin
+  Result := not Never and ((MinWidth <= 0) or (AWidth >= MinWidth)) and
+    ((MaxWidth <= 0) or (AWidth <= MaxWidth));
+end;
 
 function CSSColor(const S: string; Fallback: TColor): TColor;
 var V, Inner: string; Parts: TStringList; R,G,B: Integer;
@@ -114,17 +141,65 @@ begin
   finally Parts.Free end;
 end;
 constructor TInkStyleSheet.Create;
-begin inherited; FRules := TStringList.Create; FVars := TStringList.Create end;
+begin
+  inherited;
+  FRules := TStringList.Create; FVars := TStringList.Create;
+  FConditions := TStringList.Create; FConditions.Sorted := True; FConditions.Duplicates := dupIgnore;
+  FMediaWidth := 1024;
+end;
 destructor TInkStyleSheet.Destroy;
-begin Clear; FRules.Free; FVars.Free; inherited end;
+begin Clear; FRules.Free; FVars.Free; FConditions.Free; inherited end;
+{ "(max-width: 600px)", "screen and (min-width:40em)", "print" }
+procedure TInkStyleSheet.ReadMedia(const Condition, Body: string);
+var C, Feature: string; P, Q: Integer; OldMin, OldMax: Integer; OldNever, OldIn: Boolean;
+begin
+  OldMin := FMin; OldMax := FMax; OldNever := FNever; OldIn := FInMedia;
+  try
+    FInMedia := True;
+    C := LowerCase(Condition);
+    if (Pos('print',C)>0) and (Pos('screen',C)=0) then FNever := True;
+    if Pos(' not ',' '+C)>0 then FNever := True;
+    P := Pos('(',C);
+    while P>0 do
+    begin
+      Q := Pos(')',C);
+      if Q<P then Break;
+      Feature := StringReplace(Copy(C,P+1,Q-P-1),' ','',[rfReplaceAll]);
+      Delete(C,1,Q);
+      if Copy(Feature,1,10)='max-width:' then FMax := CSSPixels(Copy(Feature,11,MaxInt),0)
+      else if Copy(Feature,1,10)='min-width:' then FMin := CSSPixels(Copy(Feature,11,MaxInt),0)
+      else FNever := True;          // a feature this reader cannot judge
+      P := Pos('(',C);
+    end;
+    if not FNever then FConditions.Add(IntToStr(FMin)+':'+IntToStr(FMax));
+    Add(Body);
+  finally
+    FMin := OldMin; FMax := OldMax; FNever := OldNever; FInMedia := OldIn;
+  end;
+end;
+function TInkStyleSheet.MediaState(AWidth: Integer): string;
+var I, K: Integer; Cond: string;
+begin
+  Result := '';
+  for I := 0 to FConditions.Count-1 do
+  begin
+    Cond := FConditions[I];
+    K := Pos(':',Cond);
+    if ((StrToIntDef(Copy(Cond,1,K-1),0)<=0) or (AWidth>=StrToIntDef(Copy(Cond,1,K-1),0))) and
+      ((StrToIntDef(Copy(Cond,K+1,MaxInt),0)<=0) or (AWidth<=StrToIntDef(Copy(Cond,K+1,MaxInt),0))) then
+      Result := Result+'1'
+    else Result := Result+'0';
+  end;
+end;
 procedure TInkStyleSheet.Clear;
 var I: Integer;
 begin
   for I := 0 to FRules.Count-1 do FRules.Objects[I].Free;
-  FRules.Clear; FVars.Clear;
+  FRules.Clear; FVars.Clear; FConditions.Clear;
 end;
 procedure TInkStyleSheet.Add(const CSS: string);
 var S, Selector, Body, Pair, Name: string; P,Q,Depth,I: Integer; Props, Selectors: TStringList;
+  Rule: TInkRule;
 begin
   S := CSS;
   P := Pos('/*',S);
@@ -143,6 +218,11 @@ begin
       Inc(Q);
     end;
     Body := Copy(S,P+1,Q-P-2); Delete(S,1,Q-1);
+    if LowerCase(Copy(Selector,1,6))='@media' then
+    begin
+      ReadMedia(Copy(Selector,7,MaxInt),Body);
+      Continue;
+    end;
     if (Selector='') or (Selector[1]='@') then Continue;
     Props := TStringList.Create;
     try
@@ -153,15 +233,18 @@ begin
         P := Pos(':',Pair); if P=0 then Continue;
         Name := LowerCase(Trim(Copy(Pair,1,P-1)));
         Props.Values[Name] := Trim(Copy(Pair,P+1,MaxInt));
-        if (Selector=':root') and (Copy(Name,1,2)='--') then FVars.Values[Name] := Props.Values[Name];
+        if (Selector=':root') and (Copy(Name,1,2)='--') and not FInMedia then
+          FVars.Values[Name] := Props.Values[Name];
       end;
       Selectors := TStringList.Create;
       try
         Selectors.StrictDelimiter := True; Selectors.Delimiter := ','; Selectors.DelimitedText := Selector;
         for I := 0 to Selectors.Count-1 do
         begin
-          FRules.AddObject(Trim(Selectors[I]),TStringList.Create);
-          TStringList(FRules.Objects[FRules.Count-1]).Assign(Props);
+          Rule := TInkRule.Create;
+          Rule.Assign(Props);
+          Rule.MinWidth := FMin; Rule.MaxWidth := FMax; Rule.Never := FNever;
+          FRules.AddObject(Trim(Selectors[I]),Rule);
         end;
       finally Selectors.Free end;
     finally Props.Free end;
@@ -214,6 +297,7 @@ begin
         Sel := 'html'; Score := 10;
       end;
       if Pos(':',Sel)>0 then Continue;
+      if not TInkRule(FRules.Objects[I]).Applies(FMediaWidth) then Continue;
       Sel := StringReplace(Sel,'>',' ',[rfReplaceAll]);
       Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
       Parts.DelimitedText := Sel;
@@ -261,7 +345,7 @@ var I: Integer; V: string;
 begin
   Result := Fallback;
   for I := 0 to FRules.Count-1 do
-    if SameText(FRules[I],Selector) then
+    if SameText(FRules[I],Selector) and TInkRule(FRules.Objects[I]).Applies(FMediaWidth) then
     begin
       V := TStringList(FRules.Objects[I]).Values[Prop];
       if V<>'' then V := Resolve(V);
