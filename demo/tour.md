@@ -83,6 +83,20 @@ LazInk shows code but does not color it - for that, use SynEdit.
 address such as https://www.lazarus-ide.org, entities like &copy; and
 &rarr;, and headings you can link to - [back to the top](#welcome-to-lazink).
 
+## Which control?
+
+| Show... | Written by | Use |
+|---|---|---|
+| a caption or a status | the program | `TInkLabel` |
+| one line being typed, colored | the user | `TInkEdit` |
+| lines arriving - a log, a chat | the program, a line at a time | `TInkMemo` |
+| a whole document, like this one | an author, ahead of time | `TInkPage` |
+| items to pick and rename | the program; the user edits items | `TInkListBox` |
+| formatted text with a caret | the user | `TInkRichEdit` |
+
+If you would call `Append`, it is a memo; if you would call `LoadFromFile`,
+it is a page.
+
 ## The other tabs
 
 - **Markdown editor** - this kind of page, with its source beside it.

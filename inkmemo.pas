@@ -17,6 +17,16 @@
   already showing the end, and leaves it alone when the reader has scrolled
   back.
 
+  When to use it, and when not:
+    - the program adds lines as things happen (a log, a chat, an event
+      history)                                          -> TInkMemo
+    - an author wrote a whole document (help, release notes, a README) with
+      headings, lists, code and pictures               -> TInkPage
+    - the user writes and formats the text             -> TInkRichEdit
+    - each line is an item the user picks or renames   -> TInkListBox
+  If you would call Append, it is a memo; if you would call LoadFromFile,
+  it is a page.
+
   License: component code MIT; the renderer unit InkHtml is derived from the
   JVCL project (MPL 1.1) - see that unit's header.
 }

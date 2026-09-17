@@ -1,7 +1,7 @@
 object frmMain: TfrmMain
-  Left = 180
+  Left = 1611
   Height = 780
-  Top = 120
+  Top = 1172
   Width = 1140
   Caption = 'LazInk — HTML-formatted text controls for Lazarus'
   ClientHeight = 780
@@ -31,6 +31,12 @@ object frmMain: TfrmMain
       Width = 61
       Caption = '<font size="16"><b>Laz</b><font color="#2E86DE">Ink</font></font>'
       SuperSubScriptRatio = 0.7
+      LinkStyle.Color = clBlue
+      LinkStyle.BackColor = clNone
+      LinkStyle.Underline = False
+      LinkHoverStyle.Color = clBlue
+      LinkHoverStyle.BackColor = clNone
+      LinkHoverStyle.Underline = True
       AutoSize = True
       ParentColor = False
     end
@@ -38,10 +44,14 @@ object frmMain: TfrmMain
       Left = 15
       Height = 18
       Top = 31
-      Width = 751
+      Width = 1005
       Caption = '<font color="#7F8C8D">HTML and Markdown text drawn entirely on a TCanvas, with no widgetset-specific code. Started in <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">this forum thread</a>; source and releases <a href="https://github.com/TonyStone31/LazInk">on GitHub</a>.</font>'
       SuperSubScriptRatio = 0.7
+      LinkStyle.Color = clBlue
+      LinkStyle.BackColor = clNone
+      LinkStyle.Underline = False
       LinkHoverStyle.Color = clRed
+      LinkHoverStyle.BackColor = clNone
       LinkHoverStyle.Underline = True
       OnLinkClick = lblLinkClick
       AutoSize = True
@@ -53,12 +63,14 @@ object frmMain: TfrmMain
     Height = 726
     Top = 54
     Width = 1140
-    ActivePage = tabDocuments
+    ActivePage = tabMemo
     Align = alClient
-    TabIndex = 0
+    TabIndex = 4
     TabOrder = 1
     object tabDocuments: TTabSheet
       Caption = 'Documents'
+      ClientHeight = 698
+      ClientWidth = 1138
       object pnlDocTools: TPanel
         Left = 0
         Height = 42
@@ -66,6 +78,8 @@ object frmMain: TfrmMain
         Width = 1138
         Align = alTop
         BevelOuter = bvNone
+        ClientHeight = 42
+        ClientWidth = 1138
         TabOrder = 0
         object btnDocOpen: TButton
           Left = 8
@@ -73,8 +87,8 @@ object frmMain: TfrmMain
           Top = 7
           Width = 92
           Caption = 'Open...'
-          OnClick = DocOpen
           TabOrder = 0
+          OnClick = DocOpen
         end
         object btnDocBack: TButton
           Left = 106
@@ -83,8 +97,8 @@ object frmMain: TfrmMain
           Width = 80
           Caption = 'Back'
           Enabled = False
-          OnClick = DocBack
           TabOrder = 1
+          OnClick = DocBack
         end
         object btnDocForward: TButton
           Left = 192
@@ -93,8 +107,8 @@ object frmMain: TfrmMain
           Width = 80
           Caption = 'Forward'
           Enabled = False
-          OnClick = DocForward
           TabOrder = 2
+          OnClick = DocForward
         end
         object btnDocFind: TButton
           Left = 278
@@ -102,14 +116,15 @@ object frmMain: TfrmMain
           Top = 7
           Width = 80
           Caption = 'Find'
-          OnClick = DocFind
           TabOrder = 3
+          OnClick = DocFind
         end
         object cbDocTheme: TComboBox
           Left = 372
-          Height = 28
+          Height = 30
           Top = 7
           Width = 180
+          ItemHeight = 0
           ItemIndex = 0
           Items.Strings = (
             'The page''s own look'
@@ -117,39 +132,48 @@ object frmMain: TfrmMain
             'Sepia'
           )
           Style = csDropDownList
-          OnChange = DocThemeChange
           TabOrder = 4
+          Text = 'The page''s own look'
+          OnChange = DocThemeChange
         end
         object lblDocHint: TInkLabel
           Left = 566
           Height = 18
           Top = 12
-          Width = 400
+          Width = 634
           Caption = '<font color="#7F8C8D">Drag to select, right-click to copy, Ctrl+F to find. The mouse''s back and forward buttons work.</font>'
           SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           AutoSize = True
           ParentColor = False
         end
       end
       object pageDoc: TInkPage
+        Cursor = crIBeam
         Left = 0
         Height = 656
         Top = 42
         Width = 1138
-        Align = alClient
-        TabStop = True
-        TabOrder = 1
         OnLinkClick = DocLinkClick
         OnNavigate = DocNavigate
-      end
-      object dlgDocOpen: TOpenDialog
-        Filter = 'Documents (HTML, Markdown)|*.html;*.htm;*.md;*.markdown|All files|*'
-        Left = 1000
-        Top = 60
+        Align = alClient
+        Color = clWindow
+        Font.Color = clWindowText
+        Font.Height = -15
+        ParentColor = False
+        ParentFont = False
+        TabOrder = 1
       end
     end
     object tabMarkdown: TTabSheet
       Caption = 'Markdown editor'
+      ClientHeight = 698
+      ClientWidth = 1138
       object pnlMdTools: TPanel
         Left = 0
         Height = 42
@@ -157,6 +181,8 @@ object frmMain: TfrmMain
         Width = 1138
         Align = alTop
         BevelOuter = bvNone
+        ClientHeight = 42
+        ClientWidth = 1138
         TabOrder = 0
         object btnMdOpen: TButton
           Left = 8
@@ -164,8 +190,8 @@ object frmMain: TfrmMain
           Top = 7
           Width = 92
           Caption = 'Open...'
-          OnClick = MdOpen
           TabOrder = 0
+          OnClick = MdOpen
         end
         object btnMdSave: TButton
           Left = 106
@@ -173,8 +199,8 @@ object frmMain: TfrmMain
           Top = 7
           Width = 80
           Caption = 'Save'
-          OnClick = MdSave
           TabOrder = 1
+          OnClick = MdSave
         end
         object btnMdSaveAs: TButton
           Left = 192
@@ -182,25 +208,31 @@ object frmMain: TfrmMain
           Top = 7
           Width = 92
           Caption = 'Save as...'
-          OnClick = MdSaveAs
           TabOrder = 2
+          OnClick = MdSaveAs
         end
         object chkMdRawHTML: TCheckBox
           Left = 298
           Height = 22
           Top = 10
-          Width = 150
+          Width = 149
           Caption = 'HTML in the source'
-          OnChange = MdRawHTMLChange
           TabOrder = 3
+          OnChange = MdRawHTMLChange
         end
         object lblMdFile: TInkLabel
           Left = 470
           Height = 18
           Top = 12
-          Width = 200
+          Width = 3
           Caption = ' '
           SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           AutoSize = True
           ParentColor = False
         end
@@ -212,12 +244,12 @@ object frmMain: TfrmMain
         Width = 540
         Align = alLeft
         Font.Height = -13
-        OnChange = MdSourceChange
         ParentFont = False
         ScrollBars = ssAutoBoth
         TabOrder = 1
         WantTabs = True
         WordWrap = False
+        OnChange = MdSourceChange
       end
       object splMarkdown: TSplitter
         Left = 540
@@ -226,33 +258,19 @@ object frmMain: TfrmMain
         Width = 6
       end
       object pageMdPreview: TInkPage
+        Cursor = crIBeam
         Left = 546
         Height = 656
         Top = 42
         Width = 592
-        Align = alClient
-        TabStop = True
-        TabOrder = 2
         OnLinkClick = DocLinkClick
-      end
-      object tmrMarkdown: TTimer
-        Enabled = False
-        Interval = 300
-        OnTimer = MdTimer
-        Left = 1000
-        Top = 60
-      end
-      object dlgMdOpen: TOpenDialog
-        Filter = 'Markdown|*.md;*.markdown|All files|*'
-        Left = 1040
-        Top = 60
-      end
-      object dlgMdSave: TSaveDialog
-        DefaultExt = '.md'
-        Filter = 'Markdown|*.md;*.markdown|All files|*'
-        Options = [ofOverwritePrompt, ofEnableSizing, ofViewDetail]
-        Left = 1080
-        Top = 60
+        Align = alClient
+        Color = clWindow
+        Font.Color = clWindowText
+        Font.Height = -15
+        ParentColor = False
+        ParentFont = False
+        TabOrder = 2
       end
     end
     object tabEditor: TTabSheet
@@ -533,6 +551,12 @@ object frmMain: TfrmMain
           Width = 3
           Caption = ' '
           SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           AutoSize = True
           ParentColor = False
         end
@@ -609,6 +633,12 @@ object frmMain: TfrmMain
               Width = 229
               Caption = '<b>Markup</b> <font color="#7F8C8D">— one paragraph per line</font>'
               SuperSubScriptRatio = 0.7
+              LinkStyle.Color = clBlue
+              LinkStyle.BackColor = clNone
+              LinkStyle.Underline = False
+              LinkHoverStyle.Color = clBlue
+              LinkHoverStyle.BackColor = clNone
+              LinkHoverStyle.Underline = True
               AutoSize = True
               ParentColor = False
             end
@@ -649,6 +679,12 @@ object frmMain: TfrmMain
         Width = 79
         Caption = '<font size="13"><b>TInkLabel</b></font>'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -659,6 +695,12 @@ object frmMain: TfrmMain
         Width = 250
         Caption = 'Status: <b><font color="#1E8449">connected</font></b> to <font face="DejaVu Sans Mono">db-01</font> — <i>14 ms</i>'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -669,6 +711,12 @@ object frmMain: TfrmMain
         Width = 365
         Caption = '<font size="15">Big</font>, <font size="8">small</font>, <u>underlined</u>, <s>struck</s>, <font bgcolor="#FBEEA8">highlighted</font>, H<sub>2</sub>O, E=mc<sup>2</sup>'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -679,7 +727,11 @@ object frmMain: TfrmMain
         Width = 346
         Caption = 'Links fire OnLinkClick: <a href="https://www.lazarus-ide.org/">lazarus-ide.org</a> and <a href="https://wiki.freepascal.org/">the wiki</a>.'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
         LinkHoverStyle.Color = clRed
+        LinkHoverStyle.BackColor = clNone
         LinkHoverStyle.Underline = True
         OnLinkClick = lblLinkClick
         AutoSize = True
@@ -692,6 +744,12 @@ object frmMain: TfrmMain
         Width = 510
         Caption = 'Entities: &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;copy; &amp;reg; &amp;trade; render as &amp; &lt; &gt; &quot; &copy; &reg; &trade;'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -702,6 +760,12 @@ object frmMain: TfrmMain
         Width = 386
         Caption = '<font color="#7F8C8D">WordWrap = True — resize the window and this re-flows:</font>'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -713,6 +777,12 @@ object frmMain: TfrmMain
         Caption = 'The renderer only ever broke a line where the markup said so, at a <b>&lt;br&gt;</b>. Word wrap works by re-writing the markup: measure the line, drop in a break at the last word that fits, and carry the still-open <b>tags</b> across so the second line stays <font color="#C0392B">exactly as formatted</font> as the first one was.'
         SuperSubScriptRatio = 0.7
         WordWrap = True
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         ParentColor = False
       end
       object lblSection2: TInkLabel
@@ -722,6 +792,12 @@ object frmMain: TfrmMain
         Width = 67
         Caption = '<font size="13"><b>TInkEdit</b></font>'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -733,6 +809,12 @@ object frmMain: TfrmMain
         Caption = 'A single-line edit that hands you every character and asks how to draw it. The text itself stays plain — what you read back from <font face="DejaVu Sans Mono">Text</font> is exactly what was typed.'
         SuperSubScriptRatio = 0.7
         WordWrap = True
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         ParentColor = False
       end
       object edtPassword: TInkEdit
@@ -759,6 +841,12 @@ object frmMain: TfrmMain
         Width = 3
         Caption = ' '
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -791,9 +879,15 @@ object frmMain: TfrmMain
         Left = 620
         Height = 21
         Top = 16
-        Width = 60
+        Width = 41
         Caption = '<font size="13"><b>Try it</b></font>'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -805,6 +899,12 @@ object frmMain: TfrmMain
         Caption = 'Type markup in the box - a <b>TInkEdit</b> coloring its own tags - and the <b>TInkLabel</b> under it draws it as you type.'
         SuperSubScriptRatio = 0.7
         WordWrap = True
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         Anchors = [akTop, akLeft, akRight]
         ParentColor = False
       end
@@ -815,6 +915,8 @@ object frmMain: TfrmMain
         Top = 92
         Width = 490
         Text = 'Say <b>hello</b> in <font color="#C0392B">red</font>, <i>lean</i> or <a href="https://www.lazarus-ide.org/">link</a> it'
+        SelStart = 119
+        SelLength = 0
         OnChange = LiveChange
         OnGetCharAttrs = edtMarkupGetCharAttrs
         Anchors = [akTop, akLeft, akRight]
@@ -828,10 +930,10 @@ object frmMain: TfrmMain
         Left = 620
         Height = 22
         Top = 132
-        Width = 200
+        Width = 162
         Caption = 'Read it as Markdown'
-        OnChange = LiveMarkdownChange
         TabOrder = 3
+        OnChange = LiveMarkdownChange
       end
       object lblLive: TInkLabel
         Left = 620
@@ -841,6 +943,12 @@ object frmMain: TfrmMain
         Caption = ' '
         SuperSubScriptRatio = 0.7
         WordWrap = True
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         OnLinkClick = lblLinkClick
         Anchors = [akTop, akLeft, akRight]
         Font.Height = -18
@@ -851,9 +959,15 @@ object frmMain: TfrmMain
         Left = 620
         Height = 21
         Top = 256
-        Width = 170
+        Width = 158
         Caption = '<font size="13"><b>Markdown in a label</b></font>'
         SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
       end
@@ -866,6 +980,12 @@ object frmMain: TfrmMain
         Caption = '`TextFormat = itfMarkdown` - **bold**, *emphasis*, ~~struck~~ and [links](https://wiki.freepascal.org/), the same Markdown the page reads.'
         SuperSubScriptRatio = 0.7
         WordWrap = True
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         OnLinkClick = lblLinkClick
         Anchors = [akTop, akLeft, akRight]
         ParentColor = False
@@ -878,6 +998,12 @@ object frmMain: TfrmMain
         Caption = '<font color="#7F8C8D">Right-click any label on this tab: <b>Copy link address</b> over a link, <b>Copy all</b> anywhere.</font>'
         SuperSubScriptRatio = 0.7
         WordWrap = True
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
         Anchors = [akTop, akLeft, akRight]
         ParentColor = False
       end
@@ -898,18 +1024,24 @@ object frmMain: TfrmMain
         TabOrder = 0
         object lblMemoHelp: TInkLabel
           Left = 12
-          Height = 300
+          Height = 344
           Top = 12
           Width = 236
-          Caption = '<b>TInkMemo</b> shows lines of markup - a log, a chat, a page of notes. Each line of <font face="DejaVu Sans Mono">Lines</font> is one paragraph; <font face="DejaVu Sans Mono">Append</font> adds one and follows the end when you are there.<br><br>It is drawn by the same engine as the Documents tab: drag to select across lines, double-click a word, triple-click a line, Ctrl+A and Ctrl+C, right-click to copy, Ctrl+F to find.'
+          Caption = '<b>TInkMemo</b> is for text the <b>program</b> adds a line at a time - a log, a chat, a history of events. <font face="DejaVu Sans Mono">Append</font> adds a line and follows the end when you are there.<br><br><b>Not</b> a document: a whole help page or README belongs in <b>TInkPage</b> (Documents tab). <b>Not</b> an editor: text the user writes belongs in <b>TInkRichEdit</b>. <b>Not</b> a list: lines the user picks or renames belong in <b>TInkListBox</b>.<br><br>Select across lines, double-click a word, triple-click a line, Ctrl+A / Ctrl+C, right-click to copy.'
           SuperSubScriptRatio = 0.7
           WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           ParentColor = False
         end
         object chkMemoWrap: TCheckBox
           Left = 12
           Height = 22
-          Top = 324
+          Top = 364
           Width = 97
           Caption = 'WordWrap'
           Checked = True
@@ -920,17 +1052,23 @@ object frmMain: TfrmMain
         object lblScale: TInkLabel
           Left = 12
           Height = 18
-          Top = 356
+          Top = 396
           Width = 79
           Caption = 'Scale: <b>100%</b>'
           SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           AutoSize = True
           ParentColor = False
         end
         object tbScale: TTrackBar
           Left = 12
           Height = 40
-          Top = 378
+          Top = 418
           Width = 236
           Frequency = 25
           Max = 200
@@ -942,10 +1080,16 @@ object frmMain: TfrmMain
         object lblAppendHdr: TInkLabel
           Left = 12
           Height = 18
-          Top = 440
-          Width = 200
+          Top = 480
+          Width = 173
           Caption = '<b>Append</b> a line of markup:'
           SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           AutoSize = True
           ParentColor = False
         end
@@ -953,37 +1097,40 @@ object frmMain: TfrmMain
           Cursor = crIBeam
           Left = 12
           Height = 30
-          Top = 464
+          Top = 504
           Width = 236
           Text = '<b>you</b>: hello, <font color="#2E86DE">memo</font>!'
+          SelStart = 53
+          SelLength = 0
           OnChange = edtAppendChange
           OnGetCharAttrs = edtMarkupGetCharAttrs
-          OnKeyDown = edtAppendKeyDown
           Color = clWindow
           Font.Color = clWindowText
           ParentFont = False
           TabOrder = 2
+          OnKeyDown = edtAppendKeyDown
         end
         object btnAppend: TButton
           Left = 12
           Height = 28
-          Top = 502
+          Top = 542
           Width = 114
           Caption = 'Append'
-          OnClick = btnAppendClick
           TabOrder = 3
+          OnClick = btnAppendClick
         end
         object btnMemoClear: TButton
           Left = 134
           Height = 28
-          Top = 502
+          Top = 542
           Width = 114
           Caption = 'Clear'
-          OnClick = btnMemoClearClick
           TabOrder = 4
+          OnClick = btnMemoClearClick
         end
       end
       object memCheat: TInkMemo
+        Cursor = crIBeam
         Left = 0
         Height = 698
         Top = 0
@@ -1017,13 +1164,19 @@ object frmMain: TfrmMain
         Borders.Right = 8
         Borders.Bottom = 7
         Images = ilStatus
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
         LinkHoverStyle.Color = clRed
         LinkHoverStyle.BackColor = 14548991
         LinkHoverStyle.Underline = True
-        WordWrap = True
         OnLinkClick = memLinkClick
+        WordWrap = True
         Align = alClient
+        Color = clWindow
+        Font.Color = clWindowText
         Font.Height = -14
+        ParentColor = False
         ParentFont = False
         TabOrder = 1
       end
@@ -1050,6 +1203,12 @@ object frmMain: TfrmMain
           Caption = '<b>TInkListBox</b> — the control this whole package grew out of.<br><br>Every item is a line of markup, owner-drawn on the canvas. Click an item and an editor floats into place over it, exactly as in the original forum demo.'
           SuperSubScriptRatio = 0.7
           WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           ParentColor = False
         end
         object edtMarkup: TInkEdit
@@ -1078,6 +1237,12 @@ object frmMain: TfrmMain
           Caption = '<font color="#7F8C8D">That box is a <b>TInkEdit</b>: the text stays plain, the colors come from OnGetCharAttrs.</font>'
           SuperSubScriptRatio = 0.7
           WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           ParentColor = False
         end
         object btnAddItem: TButton
@@ -1141,7 +1306,7 @@ object frmMain: TfrmMain
           Left = 12
           Height = 22
           Top = 328
-          Width = 175
+          Width = 167
           Caption = 'Alternating row color'
           Checked = True
           State = cbChecked
@@ -1156,6 +1321,12 @@ object frmMain: TfrmMain
           Caption = 'Click an item: the popup holds its <b>markup</b>, edit and press Enter.'
           SuperSubScriptRatio = 0.7
           WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           ParentColor = False
         end
         object lblListCopy: TInkLabel
@@ -1166,23 +1337,36 @@ object frmMain: TfrmMain
           Caption = '<font color="#7F8C8D">Right-click a line for <b>Copy this item</b> and <b>Copy all</b>; Ctrl+C copies the selected line.</font>'
           SuperSubScriptRatio = 0.7
           WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           ParentColor = False
         end
         object lblEditMode: TInkLabel
           Left = 12
           Height = 18
           Top = 500
-          Width = 200
+          Width = 195
           Caption = '<b>EditMode</b> - the editor opens:'
           SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           AutoSize = True
           ParentColor = False
         end
         object cbEditMode: TComboBox
           Left = 12
-          Height = 28
+          Height = 30
           Top = 524
           Width = 296
+          ItemHeight = 0
           ItemIndex = 1
           Items.Strings = (
             'never by itself (EditItem, F2 off)'
@@ -1192,8 +1376,9 @@ object frmMain: TfrmMain
             'on a click on the selected item'
           )
           Style = csDropDownList
-          OnChange = cbEditModeChange
           TabOrder = 8
+          Text = 'when an item is selected'
+          OnChange = cbEditModeChange
         end
         object lblEditModeHint: TInkLabel
           Left = 12
@@ -1203,6 +1388,12 @@ object frmMain: TfrmMain
           Caption = '<font color="#7F8C8D">Hold the button and move to drag the highlight; F2 edits the current line in every mode but the first.</font>'
           SuperSubScriptRatio = 0.7
           WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
           ParentColor = False
         end
       end
@@ -1214,11 +1405,14 @@ object frmMain: TfrmMain
         SuperSubScriptRatio = 0.7
         ReadOnlyEdit = False
         EditRawHTML = True
-        EditTimeout = 8000
         Images = ilStatus
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
         LinkHoverStyle.Color = clRed
         LinkHoverStyle.BackColor = 14548991
         LinkHoverStyle.Underline = True
+        EditTimeout = 8000
         OnItemEdited = lstLogItemEdited
         OnLinkClick = lstLogLinkClick
         Align = alClient
@@ -1240,7 +1434,6 @@ object frmMain: TfrmMain
         ParentFont = False
         Style = lbOwnerDrawFixed
         TabOrder = 1
-        TopIndex = -1
       end
     end
     object tabCredits: TTabSheet
@@ -1248,6 +1441,7 @@ object frmMain: TfrmMain
       ClientHeight = 698
       ClientWidth = 1138
       object memCredits: TInkMemo
+        Cursor = crIBeam
         Left = 0
         Height = 698
         Top = 0
@@ -1279,20 +1473,51 @@ object frmMain: TfrmMain
         Borders.Top = 6
         Borders.Right = 10
         Borders.Bottom = 6
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
         LinkHoverStyle.Color = clRed
+        LinkHoverStyle.BackColor = clNone
         LinkHoverStyle.Underline = True
-        WordWrap = True
         OnLinkClick = memLinkClick
+        WordWrap = True
         Align = alClient
+        Color = clWindow
+        Font.Color = clWindowText
         Font.Height = -14
+        ParentColor = False
         ParentFont = False
         TabOrder = 0
       end
     end
   end
+  object dlgDocOpen: TOpenDialog
+    Filter = 'Documents (HTML, Markdown)|*.html;*.htm;*.md;*.markdown|All files|*'
+    Left = 1000
+    Top = 60
+  end
+  object tmrMarkdown: TTimer
+    Enabled = False
+    Interval = 300
+    OnTimer = MdTimer
+    Left = 1000
+    Top = 60
+  end
+  object dlgMdOpen: TOpenDialog
+    Filter = 'Markdown|*.md;*.markdown|All files|*'
+    Left = 1040
+    Top = 60
+  end
+  object dlgMdSave: TSaveDialog
+    DefaultExt = '.md'
+    Filter = 'Markdown|*.md;*.markdown|All files|*'
+    Options = [ofOverwritePrompt, ofEnableSizing, ofViewDetail]
+    Left = 1080
+    Top = 60
+  end
   object ilStatus: TImageList
-    left = 968
-    top = 8
+    Left = 968
+    Top = 8
     Bitmap = {
       4C7A050000001000000010000000D80B00000000000078DAAD570B5054E71546
       A36D4C9A9944C63689B08B8FC03EEF2E603A661AABD141C69AB41A5D016161C5
