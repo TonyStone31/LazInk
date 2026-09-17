@@ -56,12 +56,12 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 | `TInkLabel` | inline markup, HTML or Markdown, copy menu | character selection |
 | `TInkMemo` | lines of markup, whole-document Markdown, copy menu, Ctrl+A/Ctrl+C by line | character selection |
 | `TInkListBox` | markup items, in-place editor, copy menu, Ctrl+A/Ctrl+C by item | character selection |
-| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward (buttons, mouse, keys), small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection, copy menu, find in page | hardware check of touch |
+| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward (buttons, mouse, keys), small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection, copy menu, find in page, style attributes, folding `<details>` | hardware check of touch |
 | `TInkEdit` | single-line edit, per-character colors | - |
 | `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
 | `TInkScrollBar` | canvas scrollbar, colored from CSS `scrollbar-color` / `scrollbar-width` | - |
 
-Checked against the Heckers Sketch manual (38 pages, 14 images, 2,209 text
+Checked against the Heckers Sketch manual (38 pages, 14 images, 2,270 text
 fragments all render).  Only **GTK3 on Linux** has been run.
 
 Heckers Sketch already uses `TInkPage` for its "What's new" window.
@@ -557,6 +557,28 @@ because it is not a real legal instrument, which defeats the purpose.
 
 This is not legal advice - read the one you pick before switching.
 
+### Where the line is today
+
+Worth knowing before picking this up, because it decides how much is left:
+
+* **Ours already, MIT:** `inkpage.pas` (reading HTML into blocks, the CSS
+  that shapes them, flex and grid, tables built from CSS, folds, pictures,
+  selection, find, history), `inkcss.pas`, `inkmarkdown.pas`,
+  `inkscrollbar.pas`, `inkgif.pas`, `inktouch.pas`, `inkcopymenu.pas` and
+  every control.
+* **Not ours, MPL 1.1:** `inkhtml.pas` and `inktables.inc` - the part that
+  measures and paints a string of inline markup on a canvas, and the table
+  drawing built on it.  That is the whole of what is left to replace.
+* So **every feature since September 2026 has gone into our own code**: new
+  tags are turned into the small inline markup the old drawer already
+  understands (`<b>`, `<i>`, `<u>`, `<s>`, `<font>`, `<a>`, `<center>`,
+  `<table>`), and nothing new has been added to the MPL files.  Keep it that
+  way: it shrinks what the new renderer has to do and keeps the line clean.
+* What the drawer still owns, and the new one will have to do: word
+  wrapping, text measurement, the inline markup vocabulary above, hit
+  testing a link, run reporting for selection, and table measurement and
+  drawing (`inktables.inc`).
+
 ### How to do it without carrying JVCL code across
 
 The new renderer has to be **genuinely new code**, not `inkhtml.pas`
@@ -618,7 +640,9 @@ help pages already use and LazInk currently drops (see
 `HELP_COMPATIBILITY.md`):
 
 1. **The `style` attribute** - `<span style="color:#c00">`.  The most common
-   way people color one thing.
+   way people color one thing.  **Done, 17 September 2026**, in LazInk's own
+   code: color, background, size, weight, slant and decoration on a word;
+   those plus alignment, margins and padding on a block.
 2. **`<span>` and `<div>` with classes**, styled from the stylesheet.
 3. **Simple descendant selectors** - `.sheet td`, `nav a` - and child
    selectors.  Real stylesheets are written this way.
@@ -640,11 +664,17 @@ help pages already use and LazInk currently drops (see
 10. **More elements** - `<dl>`/`<dt>`/`<dd>`, `<blockquote>`, `<pre>`,
     `<small>`, `<mark>`, `<del>`/`<ins>`, `<abbr title>` (tooltip),
     `<details>`/`<summary>` (click to open), `<figure>`/`<figcaption>`.
+    All done except `<abbr title>`; `<details>`/`<summary>` folds and opens
+    on a click (17 September 2026).  `<q>`, `<caption>` and `<center>` were
+    added with them, and what is inside `<svg>` or `<template>` is left
+    alone.
 11. **Code blocks** - monospace, a background, whitespace kept, no wrapping,
     long lines clipped or scrolled.  See below.
 12. **The full named-entity table** and correct UTF-8 everywhere, emoji
     included.
 13. **Link titles as tooltips**, and anchors on any element with an `id`.
+    Both done (17 September 2026); a title on anything that is not a link is
+    still dropped.
 14. **A simple flex row** (`display: flex` with wrapping) - enough for card
     grids like the Heckers Sketch help index, instead of stacking them.
 15. **Hi-DPI** - everything scales with the control's font and the screen.

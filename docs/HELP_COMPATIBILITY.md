@@ -31,7 +31,15 @@ Supported content in this site:
 - Code blocks (`<pre>`): whitespace kept, fixed face, shaded background, long
   lines cut off at the block's edge.
 - Blockquotes with a bar, horizontal rules, `<dl>`/`<dt>`/`<dd>`,
-  `<del>`/`<ins>`/`<mark>`, task-list checkboxes.
+  `<del>`/`<ins>`/`<mark>`, task-list checkboxes, `<q>` (quotation marks).
+- `<details>`/`<summary>`: what a `<details>` holds is folded away behind its
+  summary, which wears a triangle and opens or shuts on a click, as in a
+  browser. `open` starts it open, and a `<details>` with no summary stays
+  open because nothing could open it. `TInkPage.FoldOpen`, `ToggleFold` and
+  `BlockVisible` let a program do the same.
+- A table's `<caption>`: a line of its own above the table.
+- `title` on a link: its tooltip while the pointer is over it.
+- What is inside `<svg>` or `<template>` is not drawn or read out.
 - Lists with hanging markers: bullets and numbers sit to the left of the
   text, and wrapped lines line up under the first word. `<ol start>`, `<ol
   type>` and `list-style-type` (`decimal`, `lower-alpha`, `upper-alpha`,
@@ -96,9 +104,15 @@ This is **not CSS conformance**. In particular:
   element, and `display: block` on table cells stacks them one to a row -
   Heckers Sketch's index does both below 600 pixels, as in a browser.
   Positioning is ignored.
-- Descendant selectors only match inside tables (the one place the page keeps
-  its ancestors); pseudo-classes (`:first-child`, `:hover`), inline `style`
-  attributes, and general CSS inheritance are not implemented.
+- A `style` attribute is read: `color`, `background`/`background-color`,
+  `font-size`, `font-weight`, `font-style` and `text-decoration` on a word or
+  a span, and those plus `text-align`, `margin-top`, `margin-bottom` and
+  `padding` on a block, where it beats what the stylesheet said. An element's
+  `align`, a `<center>`, and `text-align` from the stylesheet center or
+  right-align a block's lines.
+- Descendant selectors only match inside tables and flex containers (the
+  places the page keeps its ancestors); pseudo-classes (`:first-child`,
+  `:hover`) and general CSS inheritance are not implemented.
 - Shorthand font declarations, shorthand margins outside tables, line-height,
   letter spacing, uppercase transforms, individual column widths, and dashed or
   dotted border styles are not reproduced.

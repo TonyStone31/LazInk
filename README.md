@@ -384,10 +384,12 @@ then add `LazInk` to your project's required packages.
 LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 
 * No JavaScript, forms, video or web fonts.
-* CSS is a small reader, not CSS conformance - no positioning, pseudo-classes
-  or inline `style` attributes; descendant selectors only inside tables and
-  flex/grid containers; flex and grid lay out as rows of cards, not the full
-  specification; `@media` understands only `min-width` and `max-width`.
+* CSS is a small reader, not CSS conformance - no positioning and no
+  pseudo-classes; descendant selectors only inside tables and flex/grid
+  containers; flex and grid lay out as rows of cards, not the full
+  specification; `@media` understands only `min-width` and `max-width`.  A
+  `style` attribute is read for color, background, size, weight, slant,
+  decoration and alignment, on a word or on a whole block.
 * Tables take widths, equal columns, spacing, padding, cell colors, borders
   and rounded corners from CSS, but have no row or column spans and no nested
   tables.

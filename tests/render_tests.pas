@@ -1038,6 +1038,130 @@ begin
   Probe.SetBounds(0, 0, 400, 200);
 end;
 
+{ --- style attributes, <details>, <caption>, <q> and link titles --- }
+procedure TagChecks;
+const
+  Doc =
+    '<html><head><style>' +
+    'body { background: #ffffff; color: #000000 } p.wide { color: #0000ff } ' +
+    'h4 { text-align: center } ' +
+    '</style></head><body>' +
+    '<p>Plain <span style="color: #ff0000">red</span>, ' +
+    '<span style="font-weight: bold">thick</span>, ' +
+    '<span style="text-decoration: underline; font-style: italic">under</span>, ' +
+    '<b style="color: #00ff00">both</b>.</p>' +
+    '<p class="wide" style="color: #008800; background: #101010; font-size: 24px">styled block</p>' +
+    '<p style="text-align: center">middled</p>' +
+    '<h4>a heading the sheet centers</h4>' +
+    '<center><p>in a center</p></center>' +
+    '<p>She said <q>hello</q> loudly.</p>' +
+    '<p><a href="a.html" title="the first page">link</a> and ' +
+    '<a href="b.html">no title</a></p>' +
+    '<table><caption>Table one</caption><tr><td>cell</td></tr></table>' +
+    '<details><summary>More</summary><p>the secret</p></details>' +
+    '<details open><summary>Already</summary><p>on show</p></details>' +
+    '<details><p>no summary here</p></details>' +
+    '<p>an icon <svg viewBox="0 0 8 8"><title>a drawing</title><path d="M0 0"/></svg> beside words</p>' +
+    '<template><p>not a real paragraph</p></template>' +
+    '<p>last line</p>' +
+    '</body></html>';
+var
+  I, Summary, Secret, Caption, TableAt, Middled: Integer;
+  B: TInkPageBlock; Plain, Spans: string; WasHigh: Integer;
+begin
+  Probe.SetBounds(0, 0, 500, 400);
+  Probe.LoadHTML(Doc);
+  Probe.ScrollTo(0);
+  Summary := -1; Secret := -1; Caption := -1; TableAt := -1; Middled := -1;
+  Spans := '';
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    if Pos('Plain', B.Source) > 0 then Spans := B.Source;
+    if (Summary < 0) and (B.FoldHead >= 0) then Summary := I;
+    if Pos('the secret', B.Source) > 0 then Secret := I;
+    if B.Tag = 'caption' then Caption := I;
+    if (TableAt < 0) and (B.Tag = 'table') then TableAt := I;
+    if Pos('middled', B.Source) > 0 then Middled := I;
+  end;
+
+  { a style attribute on something inside a paragraph }
+  Check(Pos('<font color="#FF0000">red</font>', Spans) > 0, 'style="color" colors a span');
+  Check(Pos('<b>thick</b>', Spans) > 0, 'style="font-weight: bold" thickens one');
+  Check((Pos('<u>', Spans) > 0) and (Pos('<i>', Spans) > 0), 'underline and italic together');
+  Check(Pos('</u></i>', Spans) > 0, 'and they are closed in order');
+  Check(Pos('<b><font color="#00FF00">both</font></b>', Spans) > 0,
+    'a style on an element that already draws something keeps both');
+
+  { and on a block of its own }
+  B := Probe.Block(1);
+  Check(Pos('styled block', B.Source) > 0, 'the styled block is where it should be');
+  Check(ColorToRGB(B.TextColor) = RGBToColor(0, $88, 0), 'a block''s style attribute beats its class');
+  Check(ColorToRGB(B.BackColor) = RGBToColor($10, $10, $10), 'and gives it a background');
+  Check(B.PointSize = 18, Format('font-size: 24px is 18 points (%d)', [B.PointSize]));
+
+  Check((Middled >= 0) and (Pos('<center>', Probe.Block(Middled).Source) = 1),
+    'style="text-align: center" centers a block');
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'h4' then
+      Check(Pos('<center>', Probe.Block(I).Source) = 1, 'and so does text-align in the stylesheet');
+  for I := 0 to Probe.BlockCount - 1 do
+    if Pos('in a center', Probe.Block(I).Source) > 0 then
+      Check(Pos('<center>', Probe.Block(I).Source) = 1, 'a <center> centers what is inside it');
+
+  Plain := Probe.PlainText;
+  Check(Pos('said ' + #$E2#$80#$9C + 'hello' + #$E2#$80#$9D + ' loudly', Plain) > 0,
+    '<q> puts quotation marks round what it holds');
+
+  { a link''s title is its tooltip }
+  for I := 0 to Probe.BlockCount - 1 do
+    if Pos('no title', Probe.Block(I).Source) > 0 then
+    begin
+      B := Probe.Block(I);
+      Check(Length(B.LinkTitles) = 2, Format('a title for each link (%d)', [Length(B.LinkTitles)]));
+      Check(B.LinkTitles[0] = 'the first page', 'the title the page gave');
+      Check(B.LinkTitles[1] = '', 'and nothing for the link without one');
+    end;
+
+  { a table''s caption is a line above it }
+  Check(Caption >= 0, 'a <caption> makes a block');
+  Check((TableAt >= 0) and (Caption < TableAt), 'and it comes before its table');
+  Check(Pos('Table one', Probe.Block(Caption).Source) > 0, 'holding the caption''s words');
+  Check(Pos('Table one', Probe.Block(TableAt).Source) = 0, 'and not left in the table');
+  Check(Pos('cell', Probe.Block(TableAt).Source) > 0, 'whose cell is still there');
+
+  { <details> starts shut, and a click on the summary opens it }
+  Check(Summary >= 0, 'a <summary> is a block that works a fold');
+  Check(Secret >= 0, 'and what it hides is a block too');
+  Check(not Probe.BlockVisible(Secret), '<details> starts folded away');
+  Check(Probe.Block(Secret).Bounds.Bottom - Probe.Block(Secret).Bounds.Top = 0, 'taking up no room');
+  Check(Probe.Block(Summary).Marker = #$E2#$96#$B8, 'the summary points right while it is shut');
+  B := Probe.Block(Summary);
+  WasHigh := Probe.Block(Probe.BlockCount - 1).Bounds.Bottom;
+  Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
+  Probe.Let(B.Bounds.Left + 4, B.Bounds.Top + 2);
+  Check(Probe.BlockVisible(Secret), 'a click on the summary opens it');
+  Check(Probe.Block(Secret).Bounds.Bottom - Probe.Block(Secret).Bounds.Top > 0, 'and it takes room');
+  Check(Probe.Block(Probe.BlockCount - 1).Bounds.Bottom > WasHigh, 'so the page grows');
+  Check(Probe.Block(Summary).Marker = #$E2#$96#$BE, 'and the summary points down');
+  Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
+  Probe.Let(B.Bounds.Left + 4, B.Bounds.Top + 2);
+  Check(not Probe.BlockVisible(Secret), 'and another click shuts it again');
+
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    if Pos('on show', Probe.Block(I).Source) > 0 then
+      Check(Probe.BlockVisible(I), '<details open> starts open');
+    if Pos('no summary', Probe.Block(I).Source) > 0 then
+      Check(Probe.BlockVisible(I), 'a <details> with no summary is left open');
+  end;
+  Check(Pos('a drawing', Plain) = 0, 'what is inside an <svg> is not read out');
+  Check(Pos('not a real paragraph', Plain) = 0, 'nor what is in a <template>');
+  Check(Pos('icon', Plain) > 0, 'the words either side of a drawing stay');
+  Check(Pos('last line', Plain) > 0, 'and so does the rest of the page');
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 { --- find in page --- }
 procedure FindChecks;
 var Current, Total, K: Integer; Key: Word; Doc: string;
@@ -1619,6 +1743,7 @@ begin
     PictureChecks;
     CardTableChecks;
     NarrowChecks;
+    TagChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
