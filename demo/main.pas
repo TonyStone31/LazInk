@@ -87,6 +87,9 @@ type
     chkStripes: TCheckBox;
     lblListStatus: TInkLabel;
     lblListCopy: TInkLabel;
+    lblEditMode: TInkLabel;
+    cbEditMode: TComboBox;
+    lblEditModeHint: TInkLabel;
     tmrLog: TTimer;
 
     { ---- tab: label + edit ---- }
@@ -194,6 +197,7 @@ type
     procedure btnStopLogClick(Sender: TObject);
     procedure chkRawEditChange(Sender: TObject);
     procedure chkStripesChange(Sender: TObject);
+    procedure cbEditModeChange(Sender: TObject);
     procedure lstLogItemEdited(Sender: TObject; Index: Integer;
       const OldText, NewText: string; var Accept: Boolean);
     procedure lstLogLinkClick(Sender: TObject; Index: Integer;
@@ -720,7 +724,7 @@ end;
 
 { --------------------------------------------------------------- list box  }
 
-{ Colour the markup as it is typed. TInkEdit keeps the text plain and asks
+{ Color the markup as it is typed. TInkEdit keeps the text plain and asks
   per character how to draw it, so this is syntax highlighting without the
   text ever containing anything but what the user typed. }
 function TfrmMain.TagMask(const S: string): TBytes;
@@ -853,11 +857,18 @@ end;
 procedure TfrmMain.chkStripesChange(Sender: TObject);
 begin
   if chkStripes.Checked then
-    // derived from the listbox's own colour rather than hard-coded, so the
+    // derived from the listbox's own color rather than hard-coded, so the
     // stripe stays readable whether the theme is light or dark
     lstLog.AlternateColor := HTMLShadeColor(lstLog.Color, 5)
   else
     lstLog.AlternateColor := clNone;
+end;
+
+{ the list box's EditMode, in the order the combo box lists them }
+procedure TfrmMain.cbEditModeChange(Sender: TObject);
+begin
+  lstLog.CancelEdit;
+  lstLog.EditMode := TInkEditMode(cbEditMode.ItemIndex);
 end;
 
 procedure TfrmMain.lstLogItemEdited(Sender: TObject; Index: Integer;
@@ -916,7 +927,7 @@ end;
 
 { Two ways of using OnGetCharAttrs, chosen by the radio group. The control
   never sees any markup - it hands over one character at a time and takes back
-  a colour and a style. }
+  a color and a style. }
 procedure TfrmMain.edtPasswordGetCharAttrs(Sender: TObject; AIndex: Integer;
   const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
 var
@@ -943,7 +954,7 @@ begin
       else
         AColor := $00C03080;
       end;
-  else  // every other character emphasised
+  else  // every other character emphasized
     if Odd(AIndex) then
       AStyle := [fsBold]
     else

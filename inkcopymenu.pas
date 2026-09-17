@@ -30,7 +30,7 @@ type
   TInkItemTextFunc = function(Index: Integer): string of object;
 
   { What the menu shows and copies.  An empty text leaves its item out,
-    except Selection, whose item is shown greyed when CanSelect is set. }
+    except Selection, whose item is shown grayed when CanSelect is set. }
   TInkCopyTexts = record
     Selection, SelectionHTML, Block, BlockCaption, Link, All: string;
     CanSelect: Boolean;

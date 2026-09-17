@@ -15,7 +15,7 @@
         </SyntaxOptions>
       </Parsing>
     </CompilerOptions>
-    <Description Value="LazInk — lightweight HTML-formatted text controls drawn entirely with TCanvas: TInkLabel, TInkEdit (per-character coloured edit box), TInkRichEdit (multi-line WYSIWYG editor with caret and selection inside the rendered text), TInkMemo and TInkListBox. Renders a simple HTML subset (bold, italic, underline, strikeout, font colour/bgcolour/size/face, sub/sup, paragraphs, alignment, links) identically on every LCL widgetset including gtk3."/>
+    <Description Value="LazInk — lightweight HTML-formatted text controls drawn entirely with TCanvas: TInkLabel, TInkEdit (per-character colored edit box), TInkRichEdit (multi-line WYSIWYG editor with caret and selection inside the rendered text), TInkMemo and TInkListBox. Renders a simple HTML subset (bold, italic, underline, strikeout, font color/bgcolour/size/face, sub/sup, paragraphs, alignment, links) identically on every LCL widgetset including gtk3."/>
     <License Value="Independent component code: MIT. Renderer inkhtml.pas and inktables.inc: MPL 1.1. See LICENSE and THIRD_PARTY_NOTICES.md."/>
     <Version Major="1"/>
     <Files>

@@ -7,7 +7,7 @@
   keep in sync, because the document is not markup: markup is only what it is
   read from and written back to.
 
-  Every character carries its own colour, background, size, face, style,
+  Every character carries its own color, background, size, face, style,
   script and link. Nothing is drawn by a native text widget, so this behaves
   and looks identical on win32, gtk2, gtk3, qt5/6 and cocoa — the whole point
   of LazInk. No RichMemo, no per-widgetset backend.
@@ -35,7 +35,7 @@ type
 
   { Everything one character can carry. The sentinels — clDefault, clNone, 0,
     '' — mean "follow the control's Font", so a document that never mentions a
-    colour still tracks the control when the control's Font changes. }
+    color still tracks the control when the control's Font changes. }
   TInkAttr = record
     Color: TColor;        // clDefault -> Font.Color
     BackColor: TColor;    // clNone    -> transparent
@@ -296,7 +296,7 @@ begin
     (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align);
 end;
 
-{ '#RRGGBB' for a real colour, '' for the sentinels }
+{ '#RRGGBB' for a real color, '' for the sentinels }
 function InkColorToHTML(C: TColor): string;
 var
   RGB: LongInt;
@@ -487,9 +487,9 @@ begin
   else if A.Color <> clDefault then
     Canvas.Font.Color := A.Color
   else if A.BackColor <> clNone then
-    // highlighted, but nobody said what colour the text should be - so pick
+    // highlighted, but nobody said what color the text should be - so pick
     // one that can be read on that background rather than inheriting a
-    // control colour that may well be invisible on it
+    // control color that may well be invisible on it
     Canvas.Font.Color := HTMLContrastColor(A.BackColor)
   else
     Canvas.Font.Color := Font.Color;

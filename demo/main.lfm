@@ -39,7 +39,7 @@ object frmMain: TfrmMain
       Height = 18
       Top = 31
       Width = 751
-      Caption = '<font color="#7F8C8D">HTML and Markdown text drawn entirely on a TCanvas, with no widgetset-specific code. Started in <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">this forum thread</a>.</font>'
+      Caption = '<font color="#7F8C8D">HTML and Markdown text drawn entirely on a TCanvas, with no widgetset-specific code. Started in <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">this forum thread</a>; source and releases <a href="https://github.com/TonyStone31/LazInk">on GitHub</a>.</font>'
       SuperSubScriptRatio = 0.7
       LinkHoverStyle.Color = clRed
       LinkHoverStyle.Underline = True
@@ -366,10 +366,10 @@ object frmMain: TfrmMain
         object btnColor: TSpeedButton
           Left = 214
           Height = 28
-          Hint = 'Text colour of the selection'
+          Hint = 'Text color of the selection'
           Top = 7
           Width = 56
-          Caption = 'Colour'
+          Caption = 'Color'
           ShowHint = True
           ParentShowHint = False
           OnClick = btnColorClick
@@ -377,7 +377,7 @@ object frmMain: TfrmMain
         object btnFill: TSpeedButton
           Left = 272
           Height = 28
-          Hint = 'Highlight colour behind the selection'
+          Hint = 'Highlight color behind the selection'
           Top = 7
           Width = 46
           Caption = 'Fill'
@@ -449,7 +449,7 @@ object frmMain: TfrmMain
           Tag = 1
           Left = 566
           Height = 28
-          Hint = 'Centre'
+          Hint = 'Center'
           Top = 7
           Width = 26
           Caption = 'C'
@@ -560,9 +560,9 @@ object frmMain: TfrmMain
             ''
             'Every glyph is drawn on a <i>TCanvas</i>, so it looks the same on gtk2, <b>gtk3</b>, qt5, win32 and cocoa. No RichMemo, no per-widgetset backend, no native text widget anywhere.'
             ''
-            'It can do <font color="#C0392B">colour</font>, <font bgcolor="#FBEEA8">highlight</font>, <font size="17">size</font>, <font face="DejaVu Serif">a different face</font>, <u>underline</u>, <s>strikeout</s>, H<sub>2</sub>O and E=mc<sup>2</sup>.'
+            'It can do <font color="#C0392B">color</font>, <font bgcolor="#FBEEA8">highlight</font>, <font size="17">size</font>, <font face="DejaVu Serif">a different face</font>, <u>underline</u>, <s>strikeout</s>, H<sub>2</sub>O and E=mc<sup>2</sup>.'
             ''
-            '<center>A centred paragraph, with a <a href="https://www.lazarus-ide.org/">link</a> in it. Ctrl+click to follow.</center>'
+            '<center>A centered paragraph, with a <a href="https://www.lazarus-ide.org/">link</a> in it. Ctrl+click to follow.</center>'
             ''
             'The panel on the right is the markup this document would be saved as; it keeps up as you type. Edit it over there and press <b>Apply</b> to send it back this way.'
           )
@@ -768,7 +768,7 @@ object frmMain: TfrmMain
         Top = 430
         Width = 380
         AutoFill = True
-        Caption = ' How OnGetCharAttrs colours it '
+        Caption = ' How OnGetCharAttrs colors it '
         ChildSizing.LeftRightSpacing = 6
         ChildSizing.EnlargeHorizontal = crsHomogenousChildResize
         ChildSizing.EnlargeVertical = crsHomogenousChildResize
@@ -782,7 +782,7 @@ object frmMain: TfrmMain
         Items.Strings = (
           'By character class — digits, capitals, symbols'
           'Rainbow by position'
-          'Every other character emphasised'
+          'Every other character emphasized'
         )
         TabOrder = 1
         OnClick = rgCharModeClick
@@ -802,7 +802,7 @@ object frmMain: TfrmMain
         Height = 36
         Top = 48
         Width = 490
-        Caption = 'Type markup in the box - a <b>TInkEdit</b> colouring its own tags - and the <b>TInkLabel</b> under it draws it as you type.'
+        Caption = 'Type markup in the box - a <b>TInkEdit</b> coloring its own tags - and the <b>TInkLabel</b> under it draws it as you type.'
         SuperSubScriptRatio = 0.7
         WordWrap = True
         Anchors = [akTop, akLeft, akRight]
@@ -948,7 +948,7 @@ object frmMain: TfrmMain
         Lines.Strings = (
           '<font size="16"><b>The markup LazInk understands</b></font>'
           '<b>&lt;b&gt;</b> <b>bold</b>   <b>&lt;i&gt;</b> <i>italic</i>   <b>&lt;u&gt;</b> <u>underline</u>   <b>&lt;s&gt;</b> <s>strikeout</s>'
-          '<b>&lt;font color="#RRGGBB"&gt;</b> — <font color="#C0392B">red</font>, <font color="#1E8449">green</font>, <font color="#2E86DE">blue</font>. Named colours work too: <font color="olive">olive</font>, <font color="clPurple">clPurple</font>.'
+          '<b>&lt;font color="#RRGGBB"&gt;</b> — <font color="#C0392B">red</font>, <font color="#1E8449">green</font>, <font color="#2E86DE">blue</font>. Named colors work too: <font color="olive">olive</font>, <font color="clPurple">clPurple</font>.'
           '<b>&lt;font bgcolor="#RRGGBB"&gt;</b> — <font bgcolor="#FBEEA8">a highlighter pen</font>, useful for search hits.'
           '<b>&lt;font size="n"&gt;</b> — <font size="9">nine</font>, <font size="12">twelve</font>, <font size="18">eighteen</font>.'
           '<b>&lt;font face="name"&gt;</b> — <font face="DejaVu Serif">a serif face</font>, <font face="DejaVu Sans Mono">a monospaced one</font>.'
@@ -958,7 +958,7 @@ object frmMain: TfrmMain
           '<b>&lt;br&gt;</b> breaks a line.<br>Like that.'
           '<b>&lt;p&gt;...&lt;/p&gt;</b> is a paragraph: a break plus a blank line.<p>Like this one.</p>'
           '<b>&lt;center&gt;</b> and <b>&lt;right&gt;</b> move a whole line:'
-          '<center>this line is centred</center>'
+          '<center>this line is centered</center>'
           '<right>and this one is right aligned</right>'
           '<b>&lt;hr&gt;</b> draws a rule:'
           '<hr>'
@@ -1032,7 +1032,7 @@ object frmMain: TfrmMain
           Height = 32
           Top = 184
           Width = 296
-          Caption = '<font color="#7F8C8D">That box is a <b>TInkEdit</b>: the text stays plain, the colours come from OnGetCharAttrs.</font>'
+          Caption = '<font color="#7F8C8D">That box is a <b>TInkEdit</b>: the text stays plain, the colors come from OnGetCharAttrs.</font>'
           SuperSubScriptRatio = 0.7
           WordWrap = True
           ParentColor = False
@@ -1099,7 +1099,7 @@ object frmMain: TfrmMain
           Height = 22
           Top = 328
           Width = 175
-          Caption = 'Alternating row colour'
+          Caption = 'Alternating row color'
           Checked = True
           State = cbChecked
           TabOrder = 7
@@ -1121,6 +1121,43 @@ object frmMain: TfrmMain
           Top = 430
           Width = 296
           Caption = '<font color="#7F8C8D">Right-click a line for <b>Copy this item</b> and <b>Copy all</b>; Ctrl+C copies the selected line.</font>'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          ParentColor = False
+        end
+        object lblEditMode: TInkLabel
+          Left = 12
+          Height = 18
+          Top = 500
+          Width = 200
+          Caption = '<b>EditMode</b> - the editor opens:'
+          SuperSubScriptRatio = 0.7
+          AutoSize = True
+          ParentColor = False
+        end
+        object cbEditMode: TComboBox
+          Left = 12
+          Height = 28
+          Top = 524
+          Width = 296
+          ItemIndex = 1
+          Items.Strings = (
+            'never by itself (EditItem, F2 off)'
+            'when an item is selected'
+            'on a double click'
+            'on a triple click'
+            'on a click on the selected item'
+          )
+          Style = csDropDownList
+          OnChange = cbEditModeChange
+          TabOrder = 8
+        end
+        object lblEditModeHint: TInkLabel
+          Left = 12
+          Height = 60
+          Top = 560
+          Width = 296
+          Caption = '<font color="#7F8C8D">Hold the button and move to drag the highlight; F2 edits the current line in every mode but the first.</font>'
           SuperSubScriptRatio = 0.7
           WordWrap = True
           ParentColor = False
