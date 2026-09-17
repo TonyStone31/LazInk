@@ -10,13 +10,29 @@ type
     Destination: TStream; var Handled: Boolean) of object;
   TInkPageBlock = class
   public
-    Source, Wrapped, Anchor, Tag, CSSClass: string;
+    Source, Wrapped, Tag, CSSClass: string;
+    { the ids that lead to this block, separated by spaces }
+    Anchor: string;
+    { a list item's bullet, number or task box, drawn hanging to the left of
+      the text }
+    Marker: string;
+    { what the block sits inside, outermost first: 'l' a list, 'q' a quote,
+      'd' a definition }
+    Nest: string;
     Picture: TPicture;
     Animation: TInkGIF;
-    Bounds: TRect;
-    Indent, PointSize, Padding, GapBefore, GapAfter: Integer;
+    { the block, and the part of it the words are drawn in; page coordinates }
+    Bounds, TextBounds: TRect;
+    Indent, PointSize, Padding, GapBefore, GapAfter, MarkerWidth: Integer;
+    { code: whitespace kept, the fixed face, never wrapped - a long line is
+      cut off at the block's edge }
+    Pre: Boolean;
+    Bold: Boolean;
+    FaceName: string;
+    { where the bars of the quotes it is in are drawn, from the column's left }
+    Bars: array of Integer;
     BorderColor: TColor;
-    TextColor, BackColor: TColor;
+    TextColor, BackColor, BarColor: TColor;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -32,8 +48,10 @@ type
     FHistory: TStringList;
     FHistoryIndex: Integer;
     FTextFormat: TInkTextFormat;
+    FStyleSheet: TStringList;
+    FMarkdownRawHTML: Boolean;
     FLayoutDirty: Boolean;
-    FContentHeight: Integer;
+    FContentHeight, FColumnLeft: Integer;
     FOnLinkClick: TInkPageLinkEvent;
     FOnResource: TInkPageResourceEvent;
     { dragging the page, which is how a finger scrolls: on Windows a touch
@@ -42,6 +60,10 @@ type
     FDragScroll, FGrab, FDragged: Boolean;
     FGrabY, FGrabAt: Integer;
     function GetScrollY: Integer;
+    function GetStyleSheet: TStrings;
+    procedure SetStyleSheet(AValue: TStrings);
+    procedure StyleSheetChanged(Sender: TObject);
+    procedure SetMarkdownRawHTML(AValue: Boolean);
     procedure ClearBlocks;
     procedure Parse;
     procedure Layout;
@@ -54,6 +76,7 @@ type
     procedure Navigate(const URL: string; AddHistory: Boolean);
     function HitLink(X,Y: Integer): string;
     function Options: THTMLOptions;
+    procedure BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
   protected
     procedure Paint; override;
     procedure Resize; override;
@@ -69,15 +92,22 @@ type
     procedure LoadFromFile(const FileName: string);
     procedure LoadFromURL(const URL: string);
     procedure LoadHTML(const HTML: string; const BaseURL: string = '');
+    { Markdown, read the way GitHub reads it; relative links and images are
+      resolved against BaseURL }
+    procedure LoadMarkdown(const Markdown: string; const BaseURL: string = '');
     procedure RenderTo(ACanvas: TCanvas);
     function PlainText: string;
     function ImageCount: Integer;
+    { the blocks the page was read into, in document order }
+    function BlockCount: Integer;
+    function Block(Index: Integer): TInkPageBlock;
     procedure Back;
     procedure Forward;
     procedure ScrollTo(Y: Integer);
     procedure JumpToAnchor(const Anchor: string);
     function ResolveURL(const Reference: string): string;
     property Location: string read FLocation;
+    { the page's <title>, or its first heading when it has none }
     property DocumentTitle: string read FTitle;
     property ContentHeight: Integer read FContentHeight;
     { how far down the page is scrolled, in pixels }
@@ -91,6 +121,13 @@ type
   published
     property Source: string read FSource write SetSource;
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
+    { CSS applied to every page before the page's own styles - how a program
+      dresses a Markdown document, which has no stylesheet, in its theme.
+      A page's own rules win over these where both say something. }
+    property StyleSheet: TStrings read GetStyleSheet write SetStyleSheet;
+    { HTML written inside a Markdown source is drawn as HTML, not shown as
+      text.  Only for documents you trust. }
+    property MarkdownRawHTML: Boolean read FMarkdownRawHTML write SetMarkdownRawHTML default False;
     property OnLinkClick: TInkPageLinkEvent read FOnLinkClick write FOnLinkClick;
     property OnResource: TInkPageResourceEvent read FOnResource write FOnResource;
     { drag the page with the left button - or a finger - to scroll it; a
@@ -100,7 +137,15 @@ type
     property ParentFont; property TabStop; property TabOrder; property Visible;
   end;
 implementation
-uses Math, URIParser, LCLType, LazUTF8, Forms;
+uses Math, URIParser, LCLType, LCLIntf, LazUTF8, Forms;
+
+type
+  { a list, a quote or a definition the parser is inside }
+  TPageContainer = record
+    Kind: Char;
+    Counter: Integer;
+    Style: string;
+  end;
 
 function Attribute(const Tag, Name: string): string;
 var P,Q: Integer; Key: string; Quote: Char;
@@ -125,6 +170,21 @@ begin
     if Quote<>#0 then Inc(P);
   end;
 end;
+{ whether a tag has the attribute at all - checked, with or without a value }
+function HasAttribute(const Tag, Name: string): Boolean;
+var P,Q: Integer; Lower: string;
+begin
+  Result := False;
+  Lower := LowerCase(Tag);
+  P := Pos(Name,Lower);
+  while P>0 do
+  begin
+    Q := P+Length(Name);
+    if (P>1) and (Lower[P-1] in [' ',#9,#10,#13]) and
+      ((Q>Length(Lower)) or (Lower[Q] in [' ',#9,#10,#13,'=','>','/'])) then Exit(True);
+    P := Pos(Name,Lower,P+1);
+  end;
+end;
 function TagName(const Tag: string): string;
 var P,Q: Integer;
 begin
@@ -132,10 +192,27 @@ begin
   Q := P; while (P<=Length(Tag)) and (Tag[P] in ['a'..'z','A'..'Z','0'..'9']) do Inc(P);
   Result := LowerCase(Copy(Tag,Q,P-Q));
 end;
-function TextMarkup(const S: string): string;
-var P,Q,N: Integer; E,T: string; Space: Boolean;
+function IsHeadingTag(const Tag: string): Boolean;
 begin
-  T := ''; P := 1; Space := False;
+  Result := (Length(Tag)=2) and (Tag[1]='h') and (Tag[2] in ['1'..'6']);
+end;
+{ the elements that start a block of their own; everything else is inline }
+function IsBlockElement(const E: string): Boolean;
+begin
+  Result := IsHeadingTag(E) or (E='p') or (E='div') or (E='header') or
+    (E='footer') or (E='nav') or (E='figure') or (E='figcaption') or (E='li') or
+    (E='section') or (E='article') or (E='main') or (E='aside') or
+    (E='address') or (E='details') or (E='summary') or (E='dt') or (E='dd') or
+    (E='dl') or (E='ul') or (E='ol') or (E='menu') or (E='blockquote') or
+    (E='pre') or (E='table') or (E='hr') or (E='img');
+end;
+{ Text between tags as renderer markup.  Collapse: white space is one space,
+  as in running HTML; otherwise it is kept, tabs become spaces and line
+  breaks become <br>, as in <pre>. }
+function TextMarkup(const S: string; Collapse: Boolean = True): string;
+var P,Q,N,Column: Integer; E,T: string; Space: Boolean;
+begin
+  T := ''; P := 1; Space := False; Column := 0;
   while P<=Length(S) do
   begin
     if S[P]='&' then
@@ -148,6 +225,7 @@ begin
         else if Copy(E,1,1)='#' then N := StrToIntDef(Copy(E,2,MaxInt),-1);
         if (N>=0) and (N<=$10FFFF) and not ((N>=$D800) and (N<=$DFFF)) then E := UnicodeToUTF8(N)
         else if E='rsaquo' then E := '›'
+        else if E='lsaquo' then E := '‹'
         else if E='uarr' then E := '↑'
         else if E='darr' then E := '↓'
         else if E='larr' then E := '←'
@@ -155,16 +233,102 @@ begin
         else if E='ndash' then E := '–'
         else if E='mdash' then E := '—'
         else if E='hellip' then E := '…'
+        else if E='lsquo' then E := '‘'
+        else if E='rsquo' then E := '’'
+        else if E='ldquo' then E := '“'
+        else if E='rdquo' then E := '”'
+        else if E='laquo' then E := '«'
+        else if E='raquo' then E := '»'
+        else if E='times' then E := '×'
+        else if E='middot' then E := '·'
+        else if E='bull' then E := '•'
+        else if E='deg' then E := '°'
+        else if E='check' then E := '✓'
         else E := HTMLUnescape('&'+E+';');
-        T := T + E; P := Q+1; Space := False; Continue;
+        T := T + E; P := Q+1; Space := False; Inc(Column); Continue;
       end;
     end;
-    if S[P] in [' ',#9,#10,#13] then
+    if not Collapse then
+    begin
+      case S[P] of
+        #13: ;
+        #10: begin T := T+#10; Column := 0 end;
+        #9: repeat T := T+' '; Inc(Column) until Column mod 4 = 0;
+      else
+        T := T+S[P];
+        { a column is a character, not a byte }
+        if (Ord(S[P]) and $C0)<>$80 then Inc(Column);
+      end;
+    end
+    else if S[P] in [' ',#9,#10,#13] then
     begin if not Space then T := T+' '; Space := True end
     else begin T := T+S[P]; Space := False end;
     Inc(P);
   end;
   Result := HTMLEscape(T);
+  if not Collapse then Result := StringReplace(Result,#10,'<br>',[rfReplaceAll]);
+end;
+function RomanNumeral(N: Integer): string;
+const
+  Values: array[0..12] of Integer = (1000,900,500,400,100,90,50,40,10,9,5,4,1);
+  Digits: array[0..12] of string = ('m','cm','d','cd','c','xc','l','xl','x','ix','v','iv','i');
+var I: Integer;
+begin
+  Result := '';
+  if (N<=0) or (N>3999) then Exit(IntToStr(N));
+  for I := 0 to High(Values) do
+    while N>=Values[I] do begin Result := Result+Digits[I]; Dec(N,Values[I]) end;
+end;
+function AlphaNumeral(N: Integer): string;
+begin
+  Result := '';
+  if N<=0 then Exit(IntToStr(N));
+  while N>0 do
+  begin
+    Dec(N);
+    Result := Chr(Ord('a')+N mod 26)+Result;
+    N := N div 26;
+  end;
+end;
+{ A list item's marker, for a list-style-type (or an <ol type>) and the
+  item's number.  Depth picks the bullet of an unstyled nested list, as a
+  browser does. }
+function ListMarker(const Style: string; Ordered: Boolean; Number, Depth: Integer): string;
+var S: string;
+begin
+  S := LowerCase(Trim(Style));
+  if S='1' then S := 'decimal'
+  else if Style='a' then S := 'lower-alpha'
+  else if Style='A' then S := 'upper-alpha'
+  else if Style='i' then S := 'lower-roman'
+  else if Style='I' then S := 'upper-roman';
+  if S='none' then Exit('');
+  if (S='lower-alpha') or (S='lower-latin') then Exit(AlphaNumeral(Number)+'.');
+  if (S='upper-alpha') or (S='upper-latin') then Exit(UpperCase(AlphaNumeral(Number))+'.');
+  if S='lower-roman' then Exit(RomanNumeral(Number)+'.');
+  if S='upper-roman' then Exit(UpperCase(RomanNumeral(Number))+'.');
+  if S='decimal' then Exit(IntToStr(Number)+'.');
+  if S='disc' then Exit('•');
+  if S='circle' then Exit('◦');
+  if S='square' then Exit('▪');
+  if Ordered then Exit(IntToStr(Number)+'.');
+  case Depth mod 3 of
+    0: Result := '•';
+    1: Result := '◦';
+  else
+    Result := '▪';
+  end;
+end;
+function MixColor(A, B: TColor; Amount: Double): TColor;
+begin
+  A := ColorToRGB(A); B := ColorToRGB(B);
+  Result := RGBToColor(Round(Red(A)+(Red(B)-Red(A))*Amount),
+    Round(Green(A)+(Green(B)-Green(A))*Amount),Round(Blue(A)+(Blue(B)-Blue(A))*Amount));
+end;
+function ColorAttr(C: TColor): string;
+begin
+  C := ColorToRGB(C);
+  Result := Format('#%.2x%.2x%.2x',[Red(C),Green(C),Blue(C)]);
 end;
 constructor TInkPageBlock.Create;
 begin inherited; Picture := TPicture.Create end;
@@ -174,6 +338,7 @@ constructor TInkPage.Create(AOwner: TComponent);
 begin
   inherited; Width := 640; Height := 480; TabStop := True;
   FBlocks := TList.Create; FStyles := TInkStyleSheet.Create;
+  FStyleSheet := TStringList.Create; FStyleSheet.OnChange := @StyleSheetChanged;
   FHistory := TStringList.Create; FHistoryIndex := -1;
   FScroll := TInkScrollBar.Create(Self); FScroll.Parent := Self;
   FScroll.Align := alRight; FScroll.Width := 18;
@@ -183,7 +348,11 @@ begin
   Color := clWindow; Font.Color := clWindowText; Font.Size := 11;
 end;
 destructor TInkPage.Destroy;
-begin FTimer.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free; inherited end;
+begin
+  FTimer.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free;
+  FStyleSheet.OnChange := nil; FStyleSheet.Free;
+  inherited;
+end;
 procedure TInkPage.ClearBlocks;
 var I: Integer;
 begin for I := 0 to FBlocks.Count-1 do TObject(FBlocks[I]).Free; FBlocks.Clear end;
@@ -205,6 +374,18 @@ procedure TInkPage.SetTextFormat(AValue: TInkTextFormat);
 begin if FTextFormat=AValue then Exit; FTextFormat := AValue; Parse end;
 procedure TInkPage.SetSource(const AValue: string);
 begin FSource := AValue; Parse end;
+function TInkPage.GetStyleSheet: TStrings;
+begin Result := FStyleSheet end;
+procedure TInkPage.SetStyleSheet(AValue: TStrings);
+begin FStyleSheet.Assign(AValue) end;
+procedure TInkPage.StyleSheetChanged(Sender: TObject);
+begin Parse end;
+procedure TInkPage.SetMarkdownRawHTML(AValue: Boolean);
+begin
+  if FMarkdownRawHTML=AValue then Exit;
+  FMarkdownRawHTML := AValue;
+  if FTextFormat=itfMarkdown then Parse;
+end;
 function TInkPage.ResolveURL(const Reference: string): string;
 begin
   if not ResolveRelativeURI(FLocation,Reference,Result) then Result := Reference;
@@ -230,20 +411,27 @@ begin
   finally S.Free end;
 end;
 procedure TInkPage.LoadHTML(const HTML: string; const BaseURL: string);
-begin FLocation := BaseURL; FSource := HTML; Parse end;
+begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse end;
+procedure TInkPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
+begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse end;
 procedure TInkPage.LoadFromFile(const FileName: string);
 begin Navigate(FilenameToURI(ExpandFileName(FileName)),True) end;
 procedure TInkPage.LoadFromURL(const URL: string);
 begin Navigate(ResolveURL(URL),True) end;
 procedure TInkPage.Navigate(const URL: string; AddHistory: Boolean);
-var P: Integer; PageURL,Anchor,NewSource: string;
+var P: Integer; PageURL,Anchor,NewSource,Ext: string;
 begin
   PageURL := URL; Anchor := ''; P := Pos('#',PageURL);
   if P>0 then begin Anchor := Copy(PageURL,P+1,MaxInt); Delete(PageURL,P,MaxInt) end;
   if PageURL<>FLocation then
   begin
     NewSource := ReadText(PageURL);
-    FLocation := PageURL; FSource := NewSource; Parse;
+    FLocation := PageURL; FSource := NewSource;
+    { a .md file is Markdown, whatever the page before it was }
+    Ext := LowerCase(ExtractFileExt(PageURL));
+    if (Ext='.md') or (Ext='.markdown') then FTextFormat := itfMarkdown
+    else if (Ext='.html') or (Ext='.htm') then FTextFormat := itfHTML;
+    Parse;
   end;
   if Anchor<>'' then JumpToAnchor(Anchor) else FScroll.Position := 0;
   if AddHistory then
@@ -253,11 +441,15 @@ begin
   end;
 end;
 function TInkPage.PlainText: string;
-var I: Integer;
+var I: Integer; B: TInkPageBlock;
 begin
   Result := '';
   for I := 0 to FBlocks.Count-1 do
-    Result := Result + HTMLPlainText(TInkPageBlock(FBlocks[I]).Source) + LineEnding;
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    if B.Marker<>'' then Result := Result + B.Marker + ' ';
+    Result := Result + HTMLPlainText(B.Source) + LineEnding;
+  end;
 end;
 function TInkPage.ImageCount: Integer;
 var I: Integer;
@@ -266,58 +458,131 @@ begin
   for I := 0 to FBlocks.Count-1 do
     if TInkPageBlock(FBlocks[I]).Picture.Graphic<>nil then Inc(Result);
 end;
+function TInkPage.BlockCount: Integer;
+begin Result := FBlocks.Count end;
+function TInkPage.Block(Index: Integer): TInkPageBlock;
+begin Layout; Result := TInkPageBlock(FBlocks[Index]) end;
 procedure TInkPage.Back;
 begin if FHistoryIndex>0 then begin Navigate(FHistory[FHistoryIndex-1],False); Dec(FHistoryIndex) end end;
 procedure TInkPage.Forward;
 begin if FHistoryIndex+1<FHistory.Count then begin Navigate(FHistory[FHistoryIndex+1],False); Inc(FHistoryIndex) end end;
 procedure TInkPage.Parse;
 var
-  S, Raw, Element, Cls, Buffer, BlockTag, BlockClass, PendingAnchor, Prefix, URL: string;
-  P,Q,I,Level,TableDepth,SkipDepth: Integer;
+  S, Raw, Element, Cls, Buffer, BlockTag, BlockClass, PendingAnchor, PendingMarker,
+    Prefix, URL, Nest, Box, Kind: string;
+  P,Q,I,Level,TableDepth,SkipDepth,PreDepth,Depth: Integer;
   Closing: Boolean;
   B: TInkPageBlock;
   ImageData: TMemoryStream;
-  Lists: array of Integer;
+  Containers: array of TPageContainer;
+  CodeBack, PageBack: TColor;
   procedure Flush;
+  var Text: string;
   begin
-    if (Trim(Buffer)='') and (PendingAnchor='') then Exit;
+    Text := Buffer;
+    if BlockTag='pre' then
+    begin
+      { the line break that ends the last line of code is not another line }
+      Text := TrimRight(Text);
+      while Copy(Text,Length(Text)-3,4)='<br>' do Text := TrimRight(Copy(Text,1,Length(Text)-4));
+    end
+    else Text := Trim(Text);
+    { an id with nothing yet to show waits for the block that has }
+    if Text='' then begin Buffer := ''; Exit end;
     B := TInkPageBlock.Create;
-    B.Source := Trim(Buffer); B.Tag := BlockTag; B.CSSClass := BlockClass;
-    B.Anchor := PendingAnchor; B.Indent := Length(Lists)*18;
+    B.Source := Text; B.Tag := BlockTag; B.CSSClass := BlockClass;
+    B.Anchor := PendingAnchor; B.Nest := Nest; B.Pre := BlockTag='pre';
+    { an item's marker goes on its first words, not on an anchor before them }
+    if Text<>'' then begin B.Marker := PendingMarker; PendingMarker := '' end;
     FBlocks.Add(B); Buffer := ''; PendingAnchor := '';
   end;
+  procedure OpenContainer(AKind: Char; const AStyle: string; AStart: Integer);
+  begin
+    Level := Length(Containers); SetLength(Containers,Level+1);
+    Containers[Level].Kind := AKind; Containers[Level].Style := AStyle;
+    Containers[Level].Counter := AStart;
+    if AKind in ['o','u'] then Nest := Nest+'l' else Nest := Nest+AKind;
+  end;
+  procedure CloseContainer(AKinds: TSysCharSet);
+  begin
+    Level := High(Containers);
+    if (Level<0) or not (Containers[Level].Kind in AKinds) then Exit;
+    SetLength(Containers,Level); Delete(Nest,Length(Nest),1);
+  end;
+  { the text directly inside a container, when no block element says what
+    it is }
+  function ContainerTag: string;
+  begin
+    Result := 'p';
+    if Length(Containers)=0 then Exit;
+    case Containers[High(Containers)].Kind of
+      'q': Result := 'blockquote';
+      'd': Result := 'dd';
+    end;
+  end;
+  function CellAlign: string;
+  var A: string;
+  begin
+    A := LowerCase(Attribute(Raw,'align'));
+    if A='' then
+    begin
+      A := LowerCase(StringReplace(Attribute(Raw,'style'),' ','',[rfReplaceAll]));
+      if Pos('text-align:center',A)>0 then A := 'center'
+      else if Pos('text-align:right',A)>0 then A := 'right';
+    end;
+    if A='center' then Result := '<center>'
+    else if A='right' then Result := '<right>'
+    else Result := '';
+  end;
   function InlineTag: string;
-  var Target, BG: string; C: TColor;
+  var BG, FG: string; C: TColor;
   begin
     Result := '';
     if Closing then Prefix := '/' else Prefix := '';
     if (Element='b') or (Element='strong') then Exit('<'+Prefix+'b>');
-    if (Element='i') or (Element='em') then Exit('<'+Prefix+'i>');
+    if (Element='i') or (Element='em') or (Element='cite') or (Element='dfn') then Exit('<'+Prefix+'i>');
     if (Element='u') or (Element='s') or (Element='sup') or (Element='sub') then Exit('<'+Prefix+Element+'>');
+    if (Element='del') or (Element='strike') then Exit('<'+Prefix+'s>');
+    if Element='ins' then Exit('<'+Prefix+'u>');
     if Element='br' then Exit('<br>');
     if Element='a' then
     begin
       if Closing then Exit('</a>');
-      Target := StringReplace(HTMLEscape(Attribute(Raw,'href')),'"','&quot;',[rfReplaceAll]);
-      Exit('<a href="'+Target+'">');
+      if Attribute(Raw,'href')='' then Exit;
+      Result := StringReplace(HTMLEscape(Attribute(Raw,'href')),'"','&quot;',[rfReplaceAll]);
+      Exit('<a href="'+Result+'">');
     end;
-    if (Element='code') or (Element='kbd') then
+    if (Element='code') or (Element='kbd') or (Element='tt') or (Element='samp') then
+    begin
+      { inside <pre> the whole block is already code }
+      if PreDepth>0 then Exit;
+      if Closing then Exit('</font>');
+      BG := ''; FG := '';
+      C := FStyles.Color(Element,Cls,'background',
+        FStyles.Color(Element,Cls,'background-color',CodeBack));
+      if C<>clNone then BG := ' bgcolor="'+ColorAttr(C)+'"';
+      C := FStyles.Color(Element,Cls,'color',clNone);
+      if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
+      Exit('<font face="'+InkMonoFace+'"'+BG+FG+'>');
+    end;
+    if Element='mark' then
     begin
       if Closing then Exit('</font>');
-      BG := ''; C := FStyles.Color(Element,Cls,'background',clNone);
-      if C<>clNone then
-      begin
-        C := ColorToRGB(C);
-        BG := Format(' bgcolor="#%.2x%.2x%.2x"',[Red(C),Green(C),Blue(C)]);
-      end;
-      Exit('<font face="monospace"'+BG+'>');
+      Exit('<font bgcolor="'+ColorAttr(FStyles.Color('mark',Cls,'background',RGBToColor($FF,$F3,$A0)))+'">');
     end;
     if Element='font' then Exit(Raw);
   end;
 begin
   if FBlocks=nil then Exit;
   ClearBlocks; FStyles.Clear; FTitle := ''; FHoverLink := ''; Cursor := crDefault;
-  S := InkToHTML(FSource,FTextFormat);
+  if FTextFormat=itfMarkdown then
+  begin
+    if FMarkdownRawHTML then S := MarkdownToHTML(FSource,[imoRawHTML])
+    else S := MarkdownToHTML(FSource);
+  end
+  else S := FSource;
+  { the host's styles first, so the page's own come after them and win }
+  if FStyleSheet.Count>0 then FStyles.Add(FStyleSheet.Text);
   { Collect external styles before layout; scripts and page metadata never paint. }
   P := 1;
   while P<=Length(S) do
@@ -342,14 +607,19 @@ begin
     end;
     P := Q+1;
   end;
-  P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := '';
-  PendingAnchor := ''; TableDepth := 0; SkipDepth := 0; SetLength(Lists,0);
+  { code with no background of its own gets a shade of the page's, so it
+    still reads as code }
+  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
+  CodeBack := HTMLShadeColor(PageBack,7);
+  P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := ''; Nest := '';
+  PendingAnchor := ''; PendingMarker := ''; TableDepth := 0; SkipDepth := 0; PreDepth := 0;
+  SetLength(Containers,0);
   while P<=Length(S) do
   begin
     if S[P]<>'<' then
     begin
       Q := P; while (P<=Length(S)) and (S[P]<>'<') do Inc(P);
-      if SkipDepth=0 then Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q));
+      if SkipDepth=0 then Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q),PreDepth=0);
       Continue;
     end;
     if Copy(S,P,4)='<!--' then
@@ -367,14 +637,24 @@ begin
       Continue;
     end;
     if SkipDepth>0 then Continue;
-    if not Closing and (Attribute(Raw,'id')<>'') then
-    begin Flush; PendingAnchor := Attribute(Raw,'id') end;
+    if not Closing then
+    begin
+      URL := Attribute(Raw,'id');
+      if (URL='') and (Element='a') then URL := Attribute(Raw,'name');
+      if URL<>'' then
+      begin
+        { a block's id belongs to the block, so what came before is
+          finished first; an inline id marks the block it is in }
+        if IsBlockElement(Element) and (TableDepth=0) and (PreDepth=0) then Flush;
+        PendingAnchor := Trim(PendingAnchor+' '+URL);
+      end;
+    end;
     if Element='table' then
     begin
       if Closing then
       begin
         Buffer := Buffer+'</table>'; Dec(TableDepth);
-        if TableDepth=0 then begin Flush; BlockTag := 'p'; BlockClass := '' end;
+        if TableDepth=0 then begin Flush; BlockTag := ContainerTag; BlockClass := '' end;
       end
       else begin Flush; BlockTag := 'table'; BlockClass := Cls; Inc(TableDepth); Buffer := '<table>' end;
       Continue;
@@ -383,23 +663,94 @@ begin
     begin
       if (Element='tr') or (Element='td') or (Element='th') then
       begin
-        if Closing then Prefix := '/' else Prefix := '';
-        Buffer := Buffer+'<'+Prefix+Element+'>';
+        if Closing then Buffer := Buffer+'</'+Element+'>'
+        else if Element='tr' then Buffer := Buffer+'<tr>'
+        else Buffer := Buffer+'<'+Element+'>'+CellAlign;
       end
       else if (Element='p') and Closing then Buffer := Buffer+'<br>'
+      else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
       else Buffer := Buffer+InlineTag;
       Continue;
     end;
-    if (Element='ul') or (Element='ol') then
+    if Element='pre' then
     begin
       Flush;
-      if Closing then begin if Length(Lists)>0 then SetLength(Lists,Length(Lists)-1) end
-      else begin Level := Length(Lists); SetLength(Lists,Level+1); if Element='ol' then Lists[Level] := 1 else Lists[Level] := 0 end;
+      if Closing then begin PreDepth := Max(0,PreDepth-1); BlockTag := ContainerTag; BlockClass := '' end
+      else
+      begin
+        Inc(PreDepth); BlockTag := 'pre'; BlockClass := Cls;
+        { a line break straight after <pre> is not part of the code }
+        if (P<=Length(S)) and (S[P]=#13) then Inc(P);
+        if (P<=Length(S)) and (S[P]=#10) then Inc(P);
+      end;
+      Continue;
+    end;
+    if (Element='code') and not Closing and (PreDepth>0) and (Trim(Buffer)='') then
+    begin
+      { <pre><code> - the newline GitHub-style HTML puts after <code> is
+        not code either }
+      if (P<=Length(S)) and (S[P]=#10) then Inc(P);
+      Continue;
+    end;
+    if PreDepth>0 then
+    begin
+      Buffer := Buffer+InlineTag;
+      Continue;
+    end;
+    if (Element='ul') or (Element='ol') or (Element='menu') then
+    begin
+      Flush;
+      if Closing then CloseContainer(['o','u'])
+      else
+      begin
+        { the style from the tag's type, then the stylesheet }
+        Kind := Attribute(Raw,'type');
+        if Kind='' then Kind := FStyles.Value(Element,Cls,'list-style-type',
+          FStyles.Value(Element,Cls,'list-style',''));
+        if Element='ol' then OpenContainer('o',Kind,StrToIntDef(Attribute(Raw,'start'),1))
+        else OpenContainer('u',Kind,0);
+      end;
+      BlockTag := ContainerTag; BlockClass := '';
+      Continue;
+    end;
+    if Element='blockquote' then
+    begin
+      Flush;
+      if Closing then CloseContainer(['q']) else OpenContainer('q','',0);
+      BlockTag := ContainerTag; BlockClass := Cls;
+      Continue;
+    end;
+    if (Element='dd') or (Element='dl') then
+    begin
+      Flush;
+      if Element='dd' then
+      begin
+        if Closing then CloseContainer(['d']) else OpenContainer('d','',0);
+      end;
+      BlockTag := ContainerTag; BlockClass := '';
+      Continue;
+    end;
+    if Element='hr' then
+    begin
+      Flush; B := TInkPageBlock.Create; B.Tag := 'hr'; B.CSSClass := Cls; B.Nest := Nest;
+      B.Anchor := PendingAnchor; PendingAnchor := '';
+      FBlocks.Add(B); Continue;
+    end;
+    if Element='input' then
+    begin
+      if LowerCase(Attribute(Raw,'type'))='checkbox' then
+      begin
+        if HasAttribute(Raw,'checked') then Box := '☑' else Box := '☐';
+        { a task list's box takes the bullet's place }
+        if (PendingMarker<>'') and (Trim(Buffer)='') then PendingMarker := Box
+        else Buffer := Buffer+Box+' ';
+      end;
       Continue;
     end;
     if Element='img' then
     begin
       Flush; B := TInkPageBlock.Create; B.Tag := 'img'; B.Source := Attribute(Raw,'alt');
+      B.Nest := Nest;
       B.Anchor := PendingAnchor; PendingAnchor := ''; ImageData := TMemoryStream.Create;
       try
         try
@@ -419,31 +770,71 @@ begin
     end;
     if (Element='p') or (Element='div') or (Element='header') or (Element='footer') or
       (Element='nav') or (Element='figure') or (Element='figcaption') or (Element='li') or
-      ((Length(Element)=2) and (Element[1]='h') and (Element[2] in ['1'..'6'])) then
+      (Element='section') or (Element='article') or (Element='main') or (Element='aside') or
+      (Element='address') or (Element='details') or (Element='summary') or (Element='dt') or
+      IsHeadingTag(Element) then
     begin
       Flush;
-      if Closing then begin BlockTag := 'p'; BlockClass := '' end
+      if Closing then begin BlockTag := ContainerTag; BlockClass := '' end
       else
       begin
         BlockTag := Element; BlockClass := Cls;
         if Element='li' then
         begin
-          Level := High(Lists);
-          if (Level>=0) and (Lists[Level]>0) then begin Buffer := IntToStr(Lists[Level])+'. '; Inc(Lists[Level]) end
-          else Buffer := '• ';
+          Level := High(Containers);
+          if (Level>=0) and (Containers[Level].Kind in ['o','u']) then
+          begin
+            { how many unordered lists deep, for the bullet's shape }
+            Depth := 0;
+            for I := 0 to Level-1 do if Containers[I].Kind='u' then Inc(Depth);
+            PendingMarker := ListMarker(Containers[Level].Style,
+              Containers[Level].Kind='o',Containers[Level].Counter,Depth);
+            Inc(Containers[Level].Counter);
+          end
+          else PendingMarker := '•';
         end;
       end;
       Continue;
     end;
     Buffer := Buffer+InlineTag;
   end;
-  Flush; FScroll.Position := 0; FLayoutDirty := True; Invalidate;
+  Flush;
+  if PendingAnchor<>'' then
+  begin
+    { ids at the very end still lead somewhere: the end }
+    B := TInkPageBlock.Create; B.Tag := 'p'; B.Anchor := PendingAnchor;
+    FBlocks.Add(B);
+  end;
+  { a Markdown document has no <title>: its first heading names it }
+  if FTitle='' then
+    for I := 0 to FBlocks.Count-1 do
+      if IsHeadingTag(TInkPageBlock(FBlocks[I]).Tag) and
+        (TInkPageBlock(FBlocks[I]).Source<>'') then
+      begin
+        FTitle := Trim(HTMLPlainText(TInkPageBlock(FBlocks[I]).Source));
+        Break;
+      end;
+  FScroll.Position := 0; FLayoutDirty := True; Invalidate;
 end;
 function TInkPage.Options: THTMLOptions;
+var Link: TColor;
 begin
   Result := DefaultHTMLOptions;
-  Result.LinkColor := FStyles.Color('a','','color',clBlue);
+  { without a colour from the page, a link is a blue that reads on its
+    background: dark blue on a light page, light blue on a dark one }
+  if HTMLContrastColor(FStyles.Color('body','','background',
+    FStyles.Color('body','','background-color',Color)))=clWhite then
+    Link := RGBToColor($58,$A6,$FF)
+  else
+    Link := RGBToColor($09,$69,$DA);
+  Result.LinkColor := FStyles.Color('a','','color',Link);
   Result.LinkUnderline := True;
+end;
+procedure TInkPage.BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
+begin
+  ACanvas.Font.Assign(Font); ACanvas.Font.Size := B.PointSize; ACanvas.Font.Color := B.TextColor;
+  if B.Bold then ACanvas.Font.Style := ACanvas.Font.Style+[fsBold];
+  if B.FaceName<>'' then ACanvas.Font.Name := B.FaceName;
 end;
 procedure TInkPage.StyleScrollBar;
 var Track,Thumb,TextColor,C1,C2: TColor; Colors,SizeValue: string;
@@ -519,7 +910,13 @@ begin
   FScroll.Width := NewWidth;
 end;
 procedure TInkPage.Layout;
-var I,Y,W,BlockLeft,MaxWidth,ImageH,K: Integer; BorderSpec: string; B: TInkPageBlock; Sz: TSize; O: THTMLOptions;
+var I,J,X,Y,W,BlockLeft,MaxWidth,ImageH,K,Base,ListW,QuoteW,TextW,Thick: Integer;
+  BorderSpec: string; B: TInkPageBlock; Sz: TSize; O: THTMLOptions;
+  BodyText, PageBack, QuoteText, BarColor, CodeBack: TColor;
+  function Defaulted(const Prop: string; Fallback: Integer): Integer;
+  begin
+    Result := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,Prop,Fallback));
+  end;
 begin
   if not FLayoutDirty then Exit;
   FLayoutDirty := False; Y := 24;
@@ -527,18 +924,48 @@ begin
   StyleScrollBar;
   W := Max(40,Min(ClientWidth-FScroll.Width-40,MaxWidth));
   BlockLeft := Max(20,(ClientWidth-FScroll.Width-W) div 2);
+  FColumnLeft := BlockLeft;
   O := Options;
+  Base := Font.Size;
+  if Base<=0 then Base := 11;
+  { a list's indent is room for its markers; a quote's, room for its bar }
+  Canvas.Font.Assign(Font); Canvas.Font.Size := Base;
+  ListW := Max(Scale96ToFont(24),Canvas.TextWidth('00. '));
+  QuoteW := Scale96ToFont(18);
+  BodyText := FStyles.Color('body','','color',Font.Color);
+  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
+  QuoteText := FStyles.Color('blockquote','','color',MixColor(BodyText,PageBack,0.3));
+  BarColor := FStyles.Color('blockquote','','border-color',MixColor(BodyText,PageBack,0.6));
+  CodeBack := FStyles.Color('code','','background',
+    FStyles.Color('code','','background-color',HTMLShadeColor(PageBack,7)));
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]);
-    B.PointSize := Font.Size;
-    if B.PointSize<=0 then B.PointSize := 11;
-    if B.Tag='h1' then B.PointSize := 21 else if B.Tag='h2' then B.PointSize := 15;
+    X := 0; SetLength(B.Bars,0);
+    for J := 1 to Length(B.Nest) do
+      if B.Nest[J]='q' then
+      begin
+        SetLength(B.Bars,Length(B.Bars)+1); B.Bars[High(B.Bars)] := X; Inc(X,QuoteW);
+      end
+      else Inc(X,ListW);
+    B.Indent := X;
+    B.PointSize := Base;
+    if B.Tag='h1' then B.PointSize := Round(Base*1.9)
+    else if B.Tag='h2' then B.PointSize := Round(Base*1.36)
+    else if B.Tag='h3' then B.PointSize := Round(Base*1.15)
+    else if (B.Tag='h5') or (B.Tag='h6') then B.PointSize := Max(1,Round(Base*0.9));
     B.PointSize := Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',B.PointSize*4 div 3)*3 div 4);
-    B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FStyles.Color('body','','color',Font.Color));
-    B.Padding := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,'padding',6));
-    B.GapBefore := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,'margin-top',0));
-    B.GapAfter := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,'margin-bottom',12));
+    B.Bold := IsHeadingTag(B.Tag) or (B.Tag='dt') or (B.Tag='summary');
+    if B.Pre then B.FaceName := InkMonoFace else B.FaceName := '';
+    if Length(B.Bars)>0 then
+      B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',QuoteText)
+    else
+      B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',BodyText);
+    if B.Pre then B.Padding := Defaulted('padding',10)
+    else B.Padding := Defaulted('padding',6);
+    B.GapBefore := Defaulted('margin-top',0);
+    if B.Tag='li' then B.GapAfter := Defaulted('margin-bottom',2)
+    else B.GapAfter := Defaulted('margin-bottom',12);
     B.BorderColor := clNone;
     BorderSpec := FStyles.Value(B.Tag,B.CSSClass,'border','');
     K := Pos('var(',BorderSpec);
@@ -549,21 +976,49 @@ begin
       B.BorderColor := HTMLStringToColor(FStyles.Resolve(BorderSpec),clNone);
     end;
     Inc(Y,B.GapBefore);
-    B.BackColor := FStyles.Color(B.Tag,B.CSSClass,'background',clNone);
-    Canvas.Font.Assign(Font); Canvas.Font.Size := B.PointSize; Canvas.Font.Color := B.TextColor;
-    if Copy(B.Tag,1,1)='h' then Canvas.Font.Style := Canvas.Font.Style+[fsBold];
-    if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
+    B.BackColor := FStyles.Color(B.Tag,B.CSSClass,'background',
+      FStyles.Color(B.Tag,B.CSSClass,'background-color',clNone));
+    if B.Pre and (B.BackColor=clNone) then B.BackColor := CodeBack;
+    B.BarColor := BarColor;
+    BlockFont(Canvas,B);
+    B.MarkerWidth := 0;
+    if B.Tag='hr' then
     begin
-      ImageH := Max(1,Round(B.Picture.Height * Min(W,B.Picture.Width)/B.Picture.Width));
-      Sz.cx := Min(W,B.Picture.Width); Sz.cy := ImageH;
+      { a rule: its colour from color, border-color or background, in
+        that order, and a line two pixels thick }
+      B.BarColor := FStyles.Color('hr',B.CSSClass,'color',
+        FStyles.Color('hr',B.CSSClass,'border-color',
+        FStyles.Color('hr',B.CSSClass,'background',MixColor(BodyText,PageBack,0.7))));
+      Thick := Max(1,Scale96ToFont(2));
+      Sz.cx := W-B.Indent; Sz.cy := Thick;
+      B.Wrapped := '';
+    end
+    else if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
+    begin
+      TextW := W-B.Indent;
+      ImageH := Max(1,Round(B.Picture.Height * Min(TextW,B.Picture.Width)/B.Picture.Width));
+      Sz.cx := Min(TextW,B.Picture.Width); Sz.cy := ImageH;
       B.Wrapped := '';
     end
     else
     begin
-      B.Wrapped := HTMLWordWrap(Canvas,B.Source,Max(20,W-B.Indent-B.Padding*2),0.7);
-      Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,Max(20,W-B.Indent-B.Padding*2),0),[],B.Wrapped,O);
+      if B.Marker<>'' then
+        B.MarkerWidth := Canvas.TextWidth(B.Marker+' ');
+      TextW := Max(20,W-B.Indent-B.Padding*2);
+      if B.Pre then
+      begin
+        B.Wrapped := B.Source;
+        Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
+      end
+      else
+      begin
+        B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,0.7);
+        Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
+      end;
     end;
     B.Bounds := Rect(BlockLeft+B.Indent,Y,BlockLeft+W,Y+Sz.cy+B.Padding*2);
+    B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.Padding,
+      B.Bounds.Right-B.Padding,B.Bounds.Bottom-B.Padding);
     Inc(Y,Sz.cy+B.Padding*2+B.GapAfter);
   end;
   FContentHeight := Y;
@@ -572,17 +1027,40 @@ end;
 procedure TInkPage.Paint;
 begin RenderTo(Canvas) end;
 procedure TInkPage.RenderTo(ACanvas: TCanvas);
-var I: Integer; B: TInkPageBlock; R: TRect; O: THTMLOptions;
+var I,J,BarTop,BarBottom,Saved: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
 begin
   Layout;
-  ACanvas.Brush.Color := FStyles.Color('body','','background',Color); ACanvas.Brush.Style := bsSolid;
+  ACanvas.Brush.Color := FStyles.Color('body','','background',
+    FStyles.Color('body','','background-color',Color));
+  ACanvas.Brush.Style := bsSolid;
   ACanvas.FillRect(ClientRect); O := Options;
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
-    if (R.Bottom<0) or (R.Top>ClientHeight) then Continue;
-    ACanvas.Font.Assign(Font); ACanvas.Font.Size := B.PointSize; ACanvas.Font.Color := B.TextColor;
-    if Copy(B.Tag,1,1)='h' then ACanvas.Font.Style := ACanvas.Font.Style+[fsBold];
+    if (R.Bottom+B.GapAfter<0) or (R.Top-B.GapBefore>ClientHeight) then Continue;
+    { a quote's bar runs on through the gap to the next block in the same
+      quote, so a quote of several paragraphs has one bar }
+    if Length(B.Bars)>0 then
+    begin
+      Next := nil;
+      if I+1<FBlocks.Count then Next := TInkPageBlock(FBlocks[I+1]);
+      ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
+      for J := 0 to High(B.Bars) do
+      begin
+        BarTop := R.Top; BarBottom := R.Bottom;
+        if (Next<>nil) and (Length(Next.Bars)>J) then Inc(BarBottom,B.GapAfter+Next.GapBefore);
+        ACanvas.FillRect(Rect(FColumnLeft+B.Bars[J]+Scale96ToFont(4),BarTop,
+          FColumnLeft+B.Bars[J]+Scale96ToFont(4)+Max(2,Scale96ToFont(3)),BarBottom));
+      end;
+    end;
+    BlockFont(ACanvas,B);
+    if B.Tag='hr' then
+    begin
+      ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
+      TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
+      ACanvas.FillRect(TR);
+      Continue;
+    end;
     if B.BackColor<>clNone then begin ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid; ACanvas.FillRect(R) end;
     ACanvas.Brush.Style := bsClear;
     if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
@@ -590,8 +1068,22 @@ begin
     begin
       R.Right := R.Left+Min(R.Right-R.Left,B.Picture.Width); Dec(R.Bottom,B.Padding*2);
       ACanvas.StretchDraw(R,B.Picture.Graphic);
+      Continue;
+    end;
+    TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
+    if B.Marker<>'' then
+      HTMLDrawOpt(ACanvas,Rect(TR.Left-B.MarkerWidth,TR.Top,TR.Left,TR.Bottom),[],
+        HTMLEscape(B.Marker),O);
+    if B.Pre then
+    begin
+      { a long line of code is cut off at the block's edge, not wrapped }
+      Saved := SaveDC(ACanvas.Handle);
+      try
+        IntersectClipRect(ACanvas.Handle,R.Left,R.Top,R.Right,R.Bottom);
+        HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);
+      finally RestoreDC(ACanvas.Handle,Saved) end;
     end
-    else begin Inc(R.Left,B.Padding); Inc(R.Top,B.Padding); Dec(R.Right,B.Padding); HTMLDrawOpt(ACanvas,R,[],B.Wrapped,O) end;
+    else HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);
   end;
   if FScroll.Visible then
     FScroll.RenderTo(ACanvas,Rect(ClientWidth-FScroll.Width,0,ClientWidth,ClientHeight));
@@ -607,10 +1099,9 @@ begin
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
-    if not PtInRect(R,Point(X,Y)) then Continue;
-    Canvas.Font.Assign(Font); Canvas.Font.Size := B.PointSize; Canvas.Font.Color := B.TextColor;
-    if Copy(B.Tag,1,1)='h' then Canvas.Font.Style := Canvas.Font.Style+[fsBold];
-    Inc(R.Left,B.Padding); Inc(R.Top,B.Padding); Dec(R.Right,B.Padding);
+    if not PtInRect(R,Point(X,Y)) or (B.Wrapped='') then Continue;
+    BlockFont(Canvas,B);
+    R := B.TextBounds; OffsetRect(R,0,-FScroll.Position);
     Hit := HTMLHitTest(Canvas,R,B.Wrapped,Options,X,Y);
     if Hit.OnLink then Exit(ResolveURL(HTMLUnescape(Hit.LinkName)));
   end;
@@ -690,7 +1181,7 @@ begin
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]);
-    if B.Anchor=Anchor then begin FScroll.Position := Min(B.Bounds.Top,Max(0,FContentHeight-ClientHeight)); Exit end;
+    if Pos(' '+Anchor+' ',' '+B.Anchor+' ')>0 then begin FScroll.Position := Min(B.Bounds.Top,Max(0,FContentHeight-ClientHeight)); Exit end;
   end;
 end;
 end.

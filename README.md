@@ -98,6 +98,24 @@ CSS grid cards become a vertical list. No browser engine is added.
 InkPage1.LoadFromFile('/path/to/help/index.html');
 ```
 
+It reads Markdown just as well - a `.md` file is recognised by its name, and
+`LoadMarkdown` takes a string. Relative images and links are resolved against
+the document. A Markdown document has no stylesheet of its own, so
+`StyleSheet` lets the program dress it in its own theme; the page's own rules,
+when it has some, win over these:
+
+```pascal
+InkPage1.StyleSheet.Text :=
+  'body { background: #23262c; color: #b8bcc4 } h2 { color: #4ab3e8 }';
+InkPage1.LoadMarkdown(ReleaseNotes);
+```
+
+Lists hang their bullets and numbers to the left of the text, so wrapped lines
+line up under the first word; nested lists step in, and a task list shows its
+boxes where the bullets would be. Code blocks keep their spacing in the fixed
+face, on a shaded background, and a long line is cut off at the block's edge
+rather than wrapped. Quotes get a bar down their left side.
+
 **Its scrollbar** is drawn by LazInk (`TInkScrollBar`), so it can wear the
 page's colours instead of the platform's grey.  It reads the same CSS a
 browser does:
@@ -141,13 +159,23 @@ and borders use the current font colour. Links inside cells retain click and
 hover support. List boxes now measure variable-height rows, with `ItemHeight`
 as their minimum height.
 
-Markdown supports ATX headings, `**bold**`, `*italic*`, `~~strikeout~~`, inline
-backticks, triple-backtick code fences, links, simple bullets, and pipe tables.
-Raw HTML is escaped. This is a deliberately small subset, not a CommonMark or
-GitHub Markdown implementation: nested lists, reference links, images,
-underscore emphasis, and table alignment markers are not implemented (alignment
-markers are accepted but cells remain left aligned). Code blocks use monospace;
-whitespace still follows the existing renderer's handling.
+Markdown is read the way GitHub reads it, for the parts real documents use:
+`#` and underlined headings (with GitHub's anchors, so `[see](#some-heading)`
+works), paragraphs joined across wrapped lines, hard breaks, bullet and
+numbered lists nested by indentation (wrapped continuation lines included),
+task lists `- [x]`, fenced code with its language kept
+(`class="language-pascal"`), indented code, blockquotes and `> [!NOTE]`
+alerts, horizontal rules, pipe tables with their alignment, `*` `_` `**` `__`
+and `~~` emphasis, code spans, inline, reference and `<angle>` links, bare
+`https://` and `www.` links, images, entities and backslash escapes. HTML
+comments are dropped. Other raw HTML is shown as text unless you ask for it
+(`MarkdownToHTML(S, [imoRawHTML])`, or `TInkPage.MarkdownRawHTML`) - only do
+that for documents you trust.
+
+`MarkdownToHTML` gives real HTML - headings, paragraphs, lists, `<pre>` - and
+is what `TInkPage` draws. `MarkdownToInk` flattens the same HTML into the
+inline markup `TInkLabel`, `TInkMemo` and `TInkListBox` draw, so every control
+reads the same Markdown.
 
 ```pascal
 uses InkMarkdown;
@@ -218,7 +246,10 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 * CSS is a small reader, not CSS conformance - no grid, flexbox, positioning,
   media queries, descendant selectors or inline `style` attributes.
 * Tables are simple grids: no row or column spans, no nested tables.
-* The Markdown is a small subset, not CommonMark.
+* The Markdown is GitHub's, as documents use it, not CommonMark-complete:
+  emphasis follows simpler rules than the specification, a link reference
+  definition has to fit on one line, and footnotes are not read.
+* LazInk shows code blocks but does not colour them - for that, use SynEdit.
 * No built-in HTTP downloads - a host supplies remote content through
   `OnResource`.
 
