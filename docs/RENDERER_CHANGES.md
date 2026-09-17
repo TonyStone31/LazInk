@@ -32,6 +32,15 @@ or date.
 - **September 16, 2026:** source notices are expanded to preserve the named
   initial developers and upstream copyrights. Full license texts, per-file
   licensing information, and the retained-code comparison are added.
+- **September 16, 2026:** `HTMLWordWrap` no longer breaks before the first
+  word of a line that holds only tags so far (a cell starting `<b>` wrapped
+  onto a blank line). Table columns are sized from their longest word first,
+  then share the remaining width by how much wider each would like to be,
+  instead of all shrinking in proportion. `HTMLWordWrap` measures each new
+  word and adds it to the line's width instead of measuring the whole line
+  again, and `CanvasMaxTextHeight` remembers the text metrics of recent
+  fonts; together they cut the layout of a 118 KB Markdown document from
+  0.9 s to 0.19 s.
 
 Independent Markdown, page-viewer, CSS and animation helper units are covered
 by the project's MIT license, not represented as upstream JVCL implementations.

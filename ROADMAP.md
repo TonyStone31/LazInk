@@ -54,7 +54,7 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 | `TInkLabel` | inline markup, HTML or Markdown | text selection / copy |
 | `TInkMemo` | lines of markup, whole-document Markdown | text selection / copy |
 | `TInkListBox` | markup items, in-place editor | text selection / copy |
-| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward, small CSS reader, themed scrollbar, drag-to-scroll | **touch on Linux**, **text selection / copy**, fuller Markdown |
+| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward, small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet | **touch on Linux**, **text selection / copy** |
 | `TInkEdit` | single-line edit, per-character colours | - |
 | `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
 | `TInkScrollBar` | canvas scrollbar, coloured from CSS `scrollbar-color` / `scrollbar-width` | - |
@@ -161,6 +161,27 @@ GitHub-flavoured Markdown, and Heckers Sketch wants to hand its
 **Done when:** LazInk's own `README.md` and Heckers Sketch's
 `WHATS_NEW.md` render correctly in `TInkPage` with
 `TextFormat := itfMarkdown`, with a test for each construct above.
+
+**Done (16 September 2026).**  `inkmarkdown.pas` now parses blocks and
+writes real HTML (`MarkdownToHTML`); `MarkdownToInk` flattens that for the
+inline controls.  Everything listed above is in, plus setext headings with
+GitHub's anchors, reference links, bare URLs, indented code, `> [!NOTE]`
+alerts and entities.  `TInkPage` learned `<pre>`, `<blockquote>`, `<hr>`,
+hanging markers, `list-style-type`, task boxes, cell alignment,
+`LoadMarkdown`, `.md` files by name, a first-heading title, and a
+`StyleSheet` property for the host's CSS.  Both documents render; tests
+cover each construct.  Found on the way and fixed in the renderer: table
+columns were squeezed in proportion (now longest word first), and wrapping
+was slow - the whole `WHATS_NEW.md` (118 KB) lays out in 0.19 s instead of
+0.9 s.
+
+For Heckers Sketch: `uWhatsNew.ReleaseNotesHTML` can become
+`FPage.StyleSheet.Text := <its CSS>` and `FPage.LoadMarkdown(<the sections
+to show>)`; picking the sections stays in the program.
+
+Still simplified: emphasis does not follow the full CommonMark delimiter
+rules, link definitions must fit on one line, no footnotes, and an image
+inside a table cell shows its alt text.
 
 ### P4. Real text selection
 

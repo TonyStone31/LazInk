@@ -27,7 +27,18 @@ Supported content in this site:
 - Numeric HTML entities and every named entity used in the audited site.
 - Relative local page, stylesheet, and image references; anchor navigation;
   Back and Forward. Browser history scroll restoration is not implemented.
-- HTML or the documented Markdown subset as input.
+- HTML or Markdown as input (see the README for the Markdown read).
+- Code blocks (`<pre>`): whitespace kept, fixed face, shaded background, long
+  lines cut off at the block's edge.
+- Blockquotes with a bar, horizontal rules, `<dl>`/`<dt>`/`<dd>`,
+  `<del>`/`<ins>`/`<mark>`, task-list checkboxes.
+- Lists with hanging markers: bullets and numbers sit to the left of the
+  text, and wrapped lines line up under the first word. `<ol start>`, `<ol
+  type>` and `list-style-type` (`decimal`, `lower-alpha`, `upper-alpha`,
+  `lower-roman`, `upper-roman`, `disc`, `circle`, `square`, `none`).
+- Table cell alignment from `align` or `style="text-align: ..."`.
+- `id` on any element, and `<a name>`, as anchors.
+- A program's own CSS (`TInkPage.StyleSheet`) beneath the page's.
 
 `OnLinkClick`, when assigned, replaces built-in navigation. Hosts can use it to
 route external links, report errors, or call `LoadFromURL` themselves. Local
@@ -68,7 +79,6 @@ This is **not CSS conformance**. In particular:
 - Tables use a simple grid and content-derived column widths. No row/column
   spans, nested tables, or explicit column widths; long unbroken words can
   overflow a cell. The audited site has no spans or nested tables.
-- List continuation lines use the list indentation, not hanging markers.
 - GIFs loop continuously; finite loop counts and transparent-page compositing
   are not supported. The site's GIF is opaque and loops continuously.
 - No JavaScript, forms, video, general web fonts, or arbitrary website support.

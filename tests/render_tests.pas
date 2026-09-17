@@ -98,8 +98,278 @@ procedure Check(OK: Boolean; const MessageText: string);
 begin
   if not OK then raise Exception.Create(MessageText);
 end;
+
+{ Markdown to HTML contains Wanted }
+procedure HasHTML(const MD, Wanted, What: string);
+var H: string;
+begin
+  H := MarkdownToHTML(MD);
+  if Pos(Wanted, H) = 0 then
+    raise Exception.Create('Markdown: ' + What + LineEnding + '  wanted: ' + Wanted +
+      LineEnding + '  got: ' + H);
+end;
+
+procedure LacksHTML(const MD, Unwanted, What: string);
+var H: string;
+begin
+  H := MarkdownToHTML(MD);
+  if Pos(Unwanted, H) > 0 then
+    raise Exception.Create('Markdown: ' + What + LineEnding + '  unwanted: ' + Unwanted +
+      LineEnding + '  got: ' + H);
+end;
+
+function FindBlock(APage: TInkPage; const Tag, Text: string): TInkPageBlock;
+var K: Integer;
+begin
+  Result := nil;
+  for K := 0 to APage.BlockCount - 1 do
+    if ((Tag = '') or (APage.Block(K).Tag = Tag)) and
+      (Pos(Text, HTMLPlainText(APage.Block(K).Source)) > 0) then
+      Exit(APage.Block(K));
+  raise Exception.Create('No ' + Tag + ' block with "' + Text + '"');
+end;
+
+procedure MarkdownChecks;
+const
+  E = LineEnding;
+var H: string;
+begin
+  { headings, both forms, with GitHub's anchors }
+  HasHTML('# One', '<h1 id="one">One</h1>', 'ATX h1');
+  HasHTML('###### Six ###', '<h6 id="six">Six</h6>', 'ATX h6, closing hashes dropped');
+  HasHTML('#NoSpace', '<p>#NoSpace</p>', 'a hash without a space is text');
+  HasHTML('Big' + E + '===', '<h1 id="big">Big</h1>', 'setext h1');
+  HasHTML('Less' + E + '---', '<h2 id="less">Less</h2>', 'setext h2');
+  HasHTML('## Complete help pages', 'id="complete-help-pages"', 'slug');
+  HasHTML('## A' + E + '## A', 'id="a-1"', 'repeated headings get numbered anchors');
+  { paragraphs }
+  HasHTML('one' + E + 'two' + E + E + 'three', '<p>one' + #10 + 'two</p>', 'wrapped lines join');
+  HasHTML('one' + E + 'two' + E + E + 'three', '<p>three</p>', 'a blank line ends a paragraph');
+  HasHTML('hard  ' + E + 'break', 'hard<br>', 'two trailing spaces break a line');
+  HasHTML('hard\' + E + 'break', 'hard<br>', 'a trailing backslash breaks a line');
+  LacksHTML('no' + E + 'break', '<br>', 'a plain line end is not a break');
+  { emphasis }
+  HasHTML('**b** __b__', '<strong>b</strong> <strong>b</strong>', 'strong');
+  HasHTML('*i* _i_', '<em>i</em> <em>i</em>', 'emphasis');
+  HasHTML('***both***', '<strong><em>both</em></strong>', 'strong emphasis');
+  HasHTML('~~gone~~', '<del>gone</del>', 'strikethrough');
+  HasHTML('snake_case_name', 'snake_case_name', 'underscores inside words stay');
+  HasHTML('2 * 3 * 4', '2 * 3 * 4', 'spaced asterisks stay');
+  HasHTML('*a **b** c*', '<em>a <strong>b</strong> c</em>', 'nested emphasis');
+  HasHTML('\*not\*', '*not*', 'escaped asterisks');
+  { code }
+  HasHTML('`a<b`', '<code>a&lt;b</code>', 'code span escapes');
+  HasHTML('``a ` b``', '<code>a ` b</code>', 'double-backtick code span');
+  HasHTML('`**x**`', '<code>**x**</code>', 'no emphasis in code');
+  HasHTML('```pascal' + E + 'if a<b then' + E + '  x := 1;' + E + '```',
+    '<pre><code class="language-pascal">if a&lt;b then' + #10 + '  x := 1;' + #10 + '</code></pre>',
+    'fenced code keeps its language and indentation');
+  HasHTML('~~~' + E + '```' + E + '~~~', '<pre><code>```' + #10 + '</code></pre>', 'tilde fence');
+  HasHTML('```' + E + 'never closed', '<pre><code>never closed', 'an unclosed fence runs to the end');
+  HasHTML('para' + E + E + '    indented' + E + '    code', '<pre><code>indented' + #10 + 'code', 'indented code');
+  { lists }
+  H := '- **Lead.**  First line' + E + '  wraps here' + E + '  and here.' + E + '- Second';
+  HasHTML(H, '<li><strong>Lead.</strong>  First line' + #10 + 'wraps here' + #10 + 'and here.</li>',
+    'a bullet''s wrapped continuation lines stay in it');
+  HasHTML(H, '<li>Second</li>', 'second bullet');
+  HasHTML('* a' + E + '* b', '<ul>', 'star bullets');
+  HasHTML('+ a' + E + '+ b', '<li>b</li>', 'plus bullets');
+  HasHTML('- a' + E + 'lazy', '<li>a' + #10 + 'lazy</li>', 'lazy continuation');
+  HasHTML('- a' + E + '  - b' + E + '    - c' + E + '- d',
+    '<li>a' + #10 + '<ul>' + #10 + '<li>b' + #10 + '<ul>' + #10 + '<li>c</li>', 'nested lists');
+  HasHTML('1. one' + E + '2. two', '<ol>' + #10 + '<li>one</li>', 'numbered list');
+  HasHTML('3. three' + E + '4. four', '<ol start="3">', 'a numbered list keeps its start');
+  HasHTML('- a' + E + E + '- b', '<li><p>a</p></li>', 'a loose list has paragraphs');
+  HasHTML('- [ ] todo' + E + '- [x] done',
+    '<li class="task-list-item"><input type="checkbox" disabled=""> todo</li>', 'open task');
+  HasHTML('- [ ] todo' + E + '- [x] done', 'checked=""> done', 'finished task');
+  HasHTML('text' + E + '2. not a list', '<p>text' + #10 + '2. not a list</p>',
+    'only a list starting at 1 interrupts a paragraph');
+  HasHTML('- a' + E + '```' + E + 'code' + E + '```', '<pre><code>code', 'code after a list');
+  { links and images }
+  HasHTML('[text](http://x.org "Title")', '<a href="http://x.org" title="Title">text</a>', 'inline link');
+  HasHTML('[a](<b c>)', '<a href="b c">a</a>', 'angle-bracket destination');
+  HasHTML('[a](u(1))', '<a href="u(1)">a</a>', 'parentheses in a destination');
+  HasHTML('[ref][R]' + E + E + '[r]: http://r.org', '<a href="http://r.org">ref</a>', 'reference link');
+  HasHTML('[R]' + E + E + '[r]: http://r.org', '<a href="http://r.org">R</a>', 'shortcut reference');
+  LacksHTML('[r]: http://r.org', 'http://r.org', 'a definition is not shown');
+  HasHTML('<https://x.org/a?b&c>', '<a href="https://x.org/a?b&amp;c">', 'autolink');
+  HasHTML('<me@example.com>', 'href="mailto:me@example.com"', 'email autolink');
+  HasHTML('see https://x.org/p.', '<a href="https://x.org/p">https://x.org/p</a>.', 'bare URL');
+  HasHTML('(www.x.org)', '<a href="http://www.x.org">www.x.org</a>)', 'bare www address');
+  HasHTML('![shot](shots/a.png)', '<img src="shots/a.png" alt="shot">', 'image');
+  HasHTML('[![b](i.png)](http://x)', '<a href="http://x"><img src="i.png" alt="b"></a>', 'linked image');
+  LacksHTML('[a [b](c)](d)', 'href="c"></a', 'no link in a link''s text is made twice');
+  { quotes, rules }
+  HasHTML('> quoted' + E + 'lazy', '<blockquote>' + #10 + '<p>quoted' + #10 + 'lazy</p>', 'blockquote');
+  HasHTML('> a' + E + '> > b', '<blockquote>' + #10 + '<p>b</p>', 'nested blockquote');
+  HasHTML('> [!WARNING]' + E + '> Careful.', 'markdown-alert-warning', 'GitHub alert');
+  HasHTML('---', '<hr>', 'rule of dashes');
+  HasHTML('* * *', '<hr>', 'rule of spaced stars');
+  HasHTML('___', '<hr>', 'rule of underscores');
+  { tables }
+  H := '| L | C | R |' + E + '|:--|:-:|--:|' + E + '| a | b | c |';
+  HasHTML(H, '<th align="left">L</th><th align="center">C</th><th align="right">R</th>', 'header alignment');
+  HasHTML(H, '<td align="right">c</td>', 'cell alignment');
+  HasHTML('a | b' + E + '--- | ---' + E + 'only', '<td>only</td><td></td>', 'short rows are filled');
+  { HTML in Markdown }
+  HasHTML('<!-- note -->' + E + '# After', '<h1', 'a comment before a heading');
+  LacksHTML('<!--' + E + 'hidden' + E + '-->' + E + 'shown', 'hidden', 'multi-line comments are dropped');
+  LacksHTML('a <!-- x --> b', 'x', 'inline comments are dropped');
+  HasHTML('<b>x</b>', '&lt;b&gt;x&lt;/b&gt;', 'raw HTML is text by default');
+  Check(Pos('<b>x</b>', MarkdownToHTML('<b>x</b>', [imoRawHTML])) > 0, 'Markdown: raw HTML when trusted');
+  Check(Pos('<div>' + #10 + '<b>y</b>' + #10 + '</div>',
+    MarkdownToHTML('<div>' + E + '<b>y</b>' + E + '</div>', [imoRawHTML])) > 0, 'Markdown: raw HTML block');
+  HasHTML('&copy; & &#169;', '&copy; &amp; &#169;', 'entities kept, a lone ampersand escaped');
+  { flattened for the inline controls }
+  H := MarkdownToInk('- [x] done' + E + '- item' + E + '  - nested');
+  Check(Pos('☑ done', H) > 0, 'Ink: a finished task is ticked');
+  Check(Pos('• item', H) > 0, 'Ink: bullets');
+  Check(Pos('<ind="20">', H) > 0, 'Ink: nested items are indented');
+  H := MarkdownToInk('```' + E + 'a  b' + E + 'c' + E + '```');
+  Check(Pos('a  b<br>c</font>', H) > 0, 'Ink: code keeps its spaces and lines: ' + H);
+  Check(Pos('&#169;', MarkdownToInk('&#169;')) = 0, 'Ink: numeric entities are decoded');
+  Check(Copy(MarkdownToInk('para'), 1, 4) = 'para', 'Ink: no break before the first line');
+  Check(Pos('<br><br>', MarkdownToInk('a' + E + E + 'b')) > 0, 'Ink: paragraphs are apart');
+  Check(Pos('<th><right>R', MarkdownToInk('| R |' + E + '| --: |' + E + '| 1 |')) > 0,
+    'Ink: cell alignment');
+end;
+procedure MarkdownPageChecks(APage: TInkPage);
+const
+  E = LineEnding;
+var
+  B, B2: TInkPageBlock;
+  K, Rules: Integer;
+  Doc: string;
+  Styles: TStringList;
+  Shot: TBitmap;
+  R: TRect;
+begin
+  Doc :=
+    '<!--' + E + '  notes for whoever edits this' + E + '-->' + E +
+    '# What''s New' + E + E +
+    '## v1.2' + E + E +
+    '### Fixed' + E + E +
+    '- **Updates no longer fail.**  GitHub only answers so many update' + E +
+    '  checks an hour, and when that runs out the check was simply' + E +
+    '  refused.  It now falls back to the release page.' + E +
+    '- **`--offline`** starts with the network off.' + E +
+    '  - nested detail' + E + E +
+    '1. first' + E + '2. second' + E + E +
+    '- [x] shipped' + E + E +
+    '> quoted words' + E + '>' + E + '> > deeper' + E + E +
+    '---' + E + E +
+    '```pascal' + E + 'begin' + E + '  WriteLn(''a  b'');   // ' +
+      StringOfChar('x', 300) + E + 'end.' + E + '```' + E + E +
+    '## Section two' + E + E + '[back](#whats-new)' + E;
+  APage.LoadMarkdown(Doc);
+  Check(APage.TextFormat = itfMarkdown, 'LoadMarkdown sets the format');
+  Check(APage.DocumentTitle = 'What''s New', 'a Markdown page is named by its first heading');
+  Check(Pos('notes for whoever', APage.PlainText) = 0, 'the leading comment is not shown');
+  Check(APage.Block(0).Tag = 'h1', 'the first block is the heading');
+  Check(FindBlock(APage, 'h3', 'Fixed') <> nil, 'h3');
+
+  B := FindBlock(APage, 'li', 'Updates no longer fail');
+  Check(B.Marker = '•', 'a bullet is a marker, not part of the text');
+  Check(Pos('•', B.Source) = 0, 'and not in the words');
+  Check(Pos('simply refused', HTMLPlainText(B.Source)) > 0, 'wrapped continuation lines join the bullet');
+  Check(B.MarkerWidth > 0, 'the marker is measured');
+  Check(B.Indent > 0, 'a list is indented');
+  Check(B.TextBounds.Left = B.Bounds.Left + B.Padding,
+    'the words start at the indent; the marker hangs to their left');
+  Check(Pos('<BR>', UpperCase(B.Wrapped)) > 0, 'a long bullet wraps');
+  B2 := FindBlock(APage, 'li', 'nested detail');
+  Check(B2.Marker = '◦', 'a nested bullet is a circle');
+  Check(B2.Indent > B.Indent, 'and indented further');
+  Check(FindBlock(APage, 'li', 'first').Marker = '1.', 'numbered item 1');
+  Check(FindBlock(APage, 'li', 'second').Marker = '2.', 'numbered item 2');
+  Check(FindBlock(APage, 'li', 'shipped').Marker = '☑', 'a finished task shows a ticked box');
+
+  B := FindBlock(APage, '', 'quoted words');
+  Check(Length(B.Bars) = 1, 'a quote has a bar');
+  Check(Length(FindBlock(APage, '', 'deeper').Bars) = 2, 'a quote in a quote has two');
+  Check(ColorToRGB(B.TextColor) <> ColorToRGB(APage.Block(0).TextColor), 'quoted text is dimmed');
+
+  Rules := 0;
+  for K := 0 to APage.BlockCount - 1 do
+    if APage.Block(K).Tag = 'hr' then Inc(Rules);
+  Check(Rules = 1, Format('one rule (%d)', [Rules]));
+
+  B := FindBlock(APage, 'pre', 'WriteLn');
+  Check(B.Pre, 'a fence is a code block');
+  Check(Pos('WriteLn(''a  b'')', HTMLPlainText(B.Source)) > 0, 'code keeps its spaces');
+  Check(Pos('  WriteLn', HTMLPlainText(B.Source)) > 0, 'and its indentation');
+  Check(B.Wrapped = B.Source, 'code is never wrapped');
+  Check(B.FaceName <> '', 'code is in the fixed face');
+  Check(B.BackColor <> clNone, 'code has a background');
+  Check(Pos('end.', HTMLPlainText(B.Source)) > 0, 'every line of code is kept');
+
+  { the code block's background is painted, and its long line is cut off
+    at the block's edge }
+  APage.ScrollTo(B.Bounds.Top - 10);
+  Shot := TBitmap.Create;
+  try
+    Shot.SetSize(APage.ClientWidth, APage.ClientHeight);
+    APage.RenderTo(Shot.Canvas);
+    R := B.Bounds; OffsetRect(R, 0, -APage.ScrollY);
+    Check(ColorToRGB(Shot.Canvas.Pixels[R.Right - 2, R.Top + 2]) = ColorToRGB(B.BackColor),
+      'the code background is painted');
+    { beside the block is bare page, all the way down it }
+    Rules := 0;
+    for K := R.Top to R.Bottom - 1 do
+      if ColorToRGB(Shot.Canvas.Pixels[R.Right + 4, K]) <> ColorToRGB(Shot.Canvas.Pixels[2, K]) then
+        Inc(Rules);
+    Check(Rules = 0, Format('a long line of code does not run past the block (%d)', [Rules]));
+  finally Shot.Free end;
+
+  APage.ScrollTo(0);
+  APage.JumpToAnchor('section-two');
+  Check(APage.ScrollY > 0, 'a heading''s anchor can be jumped to');
+  Check(FindBlock(APage, 'h2', 'Section two').Anchor = 'section-two',
+    'the anchor belongs to the heading, not to an empty block before it');
+
+  { the host dresses a Markdown page; a page's own rules still win }
+  Styles := TStringList.Create;
+  try
+    Styles.Text := 'h1 { color: #ff0000 } li { color: #00ff00 }';
+    APage.StyleSheet := Styles;
+    Check(ColorToRGB(FindBlock(APage, 'h1', 'New').TextColor) = RGBToColor(255, 0, 0),
+      'StyleSheet colours a Markdown heading');
+    Check(ColorToRGB(FindBlock(APage, 'li', 'first').TextColor) = RGBToColor(0, 255, 0),
+      'and its list items');
+    APage.LoadHTML('<html><head><style>h1 { color: #0000ff }</style></head><body><h1>Own</h1></body></html>');
+    Check(APage.TextFormat = itfHTML, 'LoadHTML sets the format');
+    Check(ColorToRGB(FindBlock(APage, 'h1', 'Own').TextColor) = RGBToColor(0, 0, 255),
+      'the page''s own style wins over the host''s');
+    APage.StyleSheet.Clear;
+  finally Styles.Free end;
+
+  { HTML written inside Markdown }
+  APage.LoadMarkdown('a <b>b</b>');
+  Check(Pos('<b>', APage.PlainText) > 0, 'raw HTML is shown as text by default');
+  APage.MarkdownRawHTML := True;
+  Check(Pos('<b>', APage.PlainText) = 0, 'and drawn when MarkdownRawHTML is on');
+  APage.MarkdownRawHTML := False;
+
+  { a document with images beside it, loaded from a file: run.sh runs the
+    tests from the repository's root }
+  APage.LoadFromFile(ExpandFileName('README.md'));
+  Check(APage.TextFormat = itfMarkdown, 'a .md file is read as Markdown');
+  Check(APage.DocumentTitle = 'LazInk', 'README title');
+  Check(APage.ImageCount = 3, Format('README''s images load relative to it (%d)', [APage.ImageCount]));
+  Check(Pos('Credits and origins', APage.PlainText) > 0, 'README text');
+  Check(Pos('```', APage.PlainText) = 0, 'no fence marks are left in the README');
+  Check((Pos('Status: 0.9.', APage.PlainText) > 0) and (Pos('**Status', APage.PlainText) = 0),
+    'README''s bold marks are read, not shown');
+  APage.JumpToAnchor('complete-help-pages');
+  Check(APage.ScrollY > 0, 'README''s own contents links lead somewhere');
+end;
+
 begin
   Application.Initialize;
+  { a failed check ends the run with its message and stack trace, instead of
+    waiting behind LCL's exception dialog once the test form is showing }
+  Application.CaptureExceptions := False;
   S := MarkdownToInk('# Heading'+LineEnding+'| Name | Value |'+LineEnding+
     '| --- | --- |'+LineEnding+'| **bold** | `a|b` |');
   Check(Pos('<table>',S)>0,'Markdown table');
@@ -108,9 +378,12 @@ begin
   Check(Pos('a|b</font>',S)>0,'Code pipes must not split cells');
   Check(Pos('&lt;script&gt;',MarkdownToInk('<script>'))>0,'Escape raw HTML');
   Check(Pos('<a href="x&amp;y">label</a>',MarkdownToInk('[label](x&y)'))>0,'Link escaping');
-  Check(Pos('<table>',MarkdownToInk('a | b'+LineEnding+'-- | ---'))=0,'Invalid delimiter row');
+  { GitHub takes a single dash as a delimiter; letters are not one }
+  Check(Pos('<table>',MarkdownToInk('a | b'+LineEnding+'-- | x'))=0,'Invalid delimiter row');
+  Check(Pos('<table>',MarkdownToInk('a | b'+LineEnding+'- | -'))>0,'One dash is a delimiter');
   Check(Pos('a|b</td>',MarkdownToInk('a | b'+LineEnding+'--- | ---'+LineEnding+'a\|b | c'))>0,'Escaped pipes');
   Check(InkToHTML('<b>hello</b>',itfHTML)='<b>hello</b>','HTML passthrough');
+  MarkdownChecks;
   B := TBitmap.Create;
   F := TForm.Create(nil);
   try
@@ -168,6 +441,7 @@ begin
     Check(Pos('hidden',Page.PlainText)=0,'Scripts do not paint');
     F.Show; Application.ProcessMessages;
     Page.JumpToAnchor('target');
+    MarkdownPageChecks(Page);
 
     { Dragging the page scrolls it - a touch screen has no wheel, and on
       Windows a finger arrives as a press, moves and a release.  A press

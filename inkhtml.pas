@@ -229,13 +229,33 @@ const
   cPOpen2 = '<P/>';
   cPClose = '</P>';
 
+var
+  { GetTextMetrics is slow on some widgetsets (GTK3 asks Pango every time),
+    and a render asks for every run of text, so the answer is remembered
+    for the last few fonts. }
+  MetricKeys: array[0..15] of string;
+  MetricValues: array[0..15] of integer;
+  MetricNext: integer = 0;
+
 function CanvasMaxTextHeight(Canvas: TCanvas): integer;
 var
   tt: TTextMetric;
+  Key: string;
+  I: integer;
 begin
+  with Canvas.Font do
+    Key := Name + '|' + IntToStr(Height) + '|' + IntToStr(Size) + '|' +
+      IntToStr(Integer(Style)) + '|' + IntToStr(PixelsPerInch) + '|' +
+      IntToStr(Ord(Pitch)) + '|' + IntToStr(Ord(Quality));
+  for I := 0 to High(MetricKeys) do
+    if MetricKeys[I] = Key then
+      Exit(MetricValues[I]);
   // (ahuser) Qt returns different values for TextHeight('Ay') and TextHeigth(#1..#255)
   GetTextMetrics(Canvas.Handle, tt{%H-});
   Result := tt.tmHeight;
+  MetricKeys[MetricNext] := Key;
+  MetricValues[MetricNext] := Result;
+  MetricNext := (MetricNext + 1) mod Length(MetricKeys);
 end;
 
 // moved from JvHTControls and renamed
@@ -1420,6 +1440,8 @@ function HTMLWordWrap(Canvas: TCanvas; const Text: string; MaxWidth: integer;
 var
   Stack: TStringList;             // open formatting tags, innermost last
   Res, Line, LineOpen, Pending: string;
+  LineHasText: boolean;           // a line of nothing but tags is still empty
+  LineWidth: integer;             // how wide Line is drawn
   Atom, Nm: string;
   P, Start, Len, I, CpLen: integer;
   Cp: Cardinal;
@@ -1472,20 +1494,32 @@ var
   procedure StartNewLine;
   begin
     Line := '';
+    LineHasText := False;
+    LineWidth := 0;
     Pending := '';
     LineOpen := OpenPrefix;
   end;
 
+  { Only the new word is measured, in the formatting open around it, and
+    added to the width of the line so far: measuring the whole line again
+    for every word made wrapping a long document take seconds. }
   procedure AddWord(const W: string);
+  var
+    Extra: integer;
   begin
-    if (Line <> '') and (HTMLTextWidth(Canvas, R, [], LineOpen + Line + Pending + W,
-      SuperSubScriptRatio, Scale) > MaxWidth) then
+    Extra := HTMLTextWidth(Canvas, R, [], OpenPrefix + Pending + W,
+      SuperSubScriptRatio, Scale);
+    if LineHasText and (LineWidth + Extra > MaxWidth) then
     begin
       Res := Res + cBR;                       // the held spaces die with the break
       StartNewLine;
+      Pending := '';
+      Extra := HTMLTextWidth(Canvas, R, [], OpenPrefix + W, SuperSubScriptRatio, Scale);
     end;
     Res := Res + Pending + W;
     Line := Line + Pending + W;
+    LineWidth := LineWidth + Extra;
+    LineHasText := True;
     Pending := '';
   end;
 
@@ -1510,6 +1544,8 @@ begin
   try
     Res := '';
     Line := '';
+    LineHasText := False;
+    LineWidth := 0;
     LineOpen := '';
     Pending := '';
     P := 1;
@@ -1525,6 +1561,9 @@ begin
           Inc(P);                             // take the '>' too
         Atom := Copy(Text, Start, P - Start);
         Nm := TagNameOf(Atom);
+        if Pending <> '' then
+          LineWidth := LineWidth + HTMLTextWidth(Canvas, R, [], OpenPrefix + Pending,
+            SuperSubScriptRatio, Scale);
         Res := Res + Pending + Atom;
         Line := Line + Pending + Atom;
         Pending := '';
@@ -1533,12 +1572,19 @@ begin
         else if IsStyleTag(Nm) then
           Stack.Add(Atom)
         else if (Length(Nm) > 1) and (Nm[1] = '/') then
+        begin
           for I := Stack.Count - 1 downto 0 do
             if TagNameOf(Stack[I]) = Copy(Nm, 2, Length(Nm)) then
             begin
               Stack.Delete(I);
               Break;
             end;
+        end
+        else
+          { an image, an indent or an alignment moves or widens the line:
+            measure it whole again }
+          LineWidth := HTMLTextWidth(Canvas, R, [], LineOpen + Line,
+            SuperSubScriptRatio, Scale);
       end
       else if (Text[P] = ' ') or (Text[P] = #9) then
       begin

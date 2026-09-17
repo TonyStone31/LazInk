@@ -27,9 +27,9 @@ type
   TRow = array of string;
 var
   Rows: array of TRow;
-  Cols: array of Integer;
+  Cols, MinCols: array of Integer;
   S, Lower, Body, Tag, Cell, Part: string;
-  P, Q, E, R, C, N, X, Y, W, H, RH, Total, Avail, Offset: Integer;
+  P, Q, E, R, C, N, X, Y, W, H, RH, Total, Avail, Offset, MinTotal, Spare: Integer;
   O: THTMLOptions;
   Hit: THTMLHitInfo;
   Box: TRect;
@@ -116,17 +116,37 @@ begin
         Rows[R][N] := Trim(Cell);
         if Length(Cols) <= N then SetLength(Cols, N+1);
       end;
-      Total := 0;
+      { Each column wants its content on one line (Cols) and cannot go below
+        its longest word (MinCols).  When the widest layout does not fit,
+        every column first gets its longest word and the room left over is
+        shared out by how much more each would like - so a column of short
+        names is not squeezed to make way for a column of sentences. }
+      Total := 0; MinTotal := 0;
+      SetLength(MinCols, Length(Cols));
       for C := 0 to High(Cols) do
       begin
-        Cols[C] := 24;
+        Cols[C] := 24; MinCols[C] := 24;
         for R := 0 to High(Rows) do if C < Length(Rows[R]) then
+        begin
           Cols[C] := Max(Cols[C],HTMLTextWidth(Canvas,Types.Rect(0,0,0,0),State,Rows[R][C],O.SuperSubScriptRatio,O.Scale)+12);
-        Inc(Total,Cols[C]);
+          MinCols[C] := Max(MinCols[C],HTMLTextWidth(Canvas,Types.Rect(0,0,0,0),State,
+            HTMLWordWrap(Canvas,Rows[R][C],1,O.SuperSubScriptRatio,O.Scale),O.SuperSubScriptRatio,O.Scale)+12);
+        end;
+        MinCols[C] := Min(MinCols[C],Cols[C]);
+        Inc(Total,Cols[C]); Inc(MinTotal,MinCols[C]);
       end;
       Avail := Rect.Right-Rect.Left;
       if (Avail > 0) and (Total > Avail) then
-        for C := 0 to High(Cols) do Cols[C] := Max(12,Cols[C]*Avail div Total);
+      begin
+        if MinTotal >= Avail then
+          for C := 0 to High(Cols) do Cols[C] := Max(12,MinCols[C]*Avail div MinTotal)
+        else
+        begin
+          Spare := Avail-MinTotal;
+          for C := 0 to High(Cols) do
+            Cols[C] := MinCols[C]+Int64(Cols[C]-MinCols[C])*Spare div (Total-MinTotal);
+        end;
+      end;
       Total := 0; for C := 0 to High(Cols) do Inc(Total,Cols[C]);
       Width := Max(Width,Total);
       for R := 0 to High(Rows) do
