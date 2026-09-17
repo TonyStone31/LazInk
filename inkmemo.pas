@@ -1,21 +1,24 @@
-{ LazInk — lightweight HTML-formatted text controls for Lazarus.
+{ LazInk - lightweight HTML-formatted text controls for Lazarus.
 
-  TInkMemo: a scrollable multi-line HTML text viewer. Each line of Lines is
-  one paragraph of inline markup (<b> <i> <u> <s> <font ...> <sup> <sub>
-  <br> <hr> <center> <right> <a href=> ...), rendered with plain TCanvas
-  drawing, so it looks the same on every LCL widgetset. Lines can differ in
-  height (font size tags, <br> inside a line).
+  TInkMemo: a scrollable multi-line viewer for formatted text - a log, a chat
+  transcript, a page of help.  Each line of Lines is one paragraph of inline
+  markup (<b> <i> <u> <s> <font ...> <sup> <sub> <br> <hr> <center> <right>
+  <a href=> <img src="n"> ...), or of Markdown with TextFormat itfMarkdown.
+  Lines can differ in height, and with WordWrap they re-flow to the width.
 
-  It is a display control — a log, a chat transcript, formatted help text —
-  not a rich text editor. Text is changed through Lines/Append from code.
-  <a href=...> links fire OnLinkClick.
+  It is drawn by the same engine as TInkPage, so its text is selected the
+  way a browser's is - drag, double-click a word, triple-click a line,
+  Ctrl+A and Ctrl+C - and it has the copy menu, find (Ctrl+F) and finger
+  scrolling.  Unlike the page, it reads no CSS: its look is its Font, Color,
+  Borders and LineSpacing.
 
-  Implementation note: it rides on TCustomListBox with variable-height
-  owner drawing, which supplies scrolling, invalidation, and keyboard
-  navigation without a native text widget ever seeing the markup.
+  It is a viewer, not an editor: text changes through Lines, Append and
+  LoadDocument.  Append keeps the view on the newest line when it was
+  already showing the end, and leaves it alone when the reader has scrolled
+  back.
 
-  License: component code MIT; the renderer unit InkHtml is derived
-  from the JVCL project (MPL 1.1) — see that unit's header.
+  License: component code MIT; the renderer unit InkHtml is derived from the
+  JVCL project (MPL 1.1) - see that unit's header.
 }
 unit InkMemo;
 
@@ -24,8 +27,8 @@ unit InkMemo;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, StdCtrls, ImgList, LCLType, LCLIntf,
-  Types, Menus, InkHtml, InkMarkdown, InkCopyMenu;
+  Classes, SysUtils, Controls, Graphics, ImgList, LCLType, LCLIntf,
+  Types, InkHtml, InkMarkdown, InkPage, InkCopyMenu;
 
 type
   TInkMemoLinkEvent = procedure(Sender: TObject; LineIndex: Integer;
@@ -33,107 +36,88 @@ type
 
   { TInkMemo }
 
-  TInkMemo = class(TCustomListBox)
+  TInkMemo = class(TInkCustomPage)
   private
-    FTextFormat: TInkTextFormat;
-    procedure SetTextFormat(AValue: TInkTextFormat);
-  private
+    FLines: TStringList;
     FHTMLScale: Integer;
     FSuperSubScriptRatio: Double;
     FShowSelection: Boolean;
     FWordWrap: Boolean;
-    FWrapSrc: TStringList;   { the item text each cache entry was built from }
-    FWrapOut: TStringList;   { the wrapped markup for it }
-    FWrapWidth: Integer;     { the width the cache was built for, -1 = empty }
     FLineSpacing: Integer;
     FBorders: TInkBorders;
+    FNoBorders: TInkBorders;
     FImages: TCustomImageList;
     FLinkStyle: TInkLinkStyle;
     FLinkHoverStyle: TInkLinkStyle;
     FAutoOpenLink: Boolean;
     FHoverLine: Integer;     // -1 when the mouse is not over a link
     FHoverIndex: Integer;    // ordinal of that link within its line
-    FHoverLink: string;
+    FHoverHref: string;
     FHoverLinkText: string;
     FOnLinkClick: TInkMemoLinkEvent;
     FOnLinkEnter: TInkMemoLinkEvent;
     FOnLinkLeave: TInkMemoLinkEvent;
     FOnLinkRightClick: TInkMemoLinkEvent;
-  private
-    { the copy menu, and Ctrl+A / Ctrl+C }
-    FCopyMenu: Boolean;
-    FCopyMenuHost: TInkCopyMenu;
-    FOnCopyMenu: TInkCopyMenuEvent;
-    { Ctrl+A was the last thing done: Ctrl+C copies everything }
-    FAllChosen: Boolean;
-    procedure DoSelectAll(Sender: TObject);
+    function GetLines: TStrings;
+    procedure SetLines(AValue: TStrings);
+    procedure LinesChanged(Sender: TObject);
+    procedure SetHTMLScale(AValue: Integer);
+    procedure SetSuperSubScriptRatio(AValue: Double);
+    procedure SetWordWrap(AValue: Boolean);
     procedure SetLineSpacing(AValue: Integer);
     procedure SetBorders(AValue: TInkBorders);
     procedure SetImages(AValue: TCustomImageList);
     procedure SetLinkStyle(AValue: TInkLinkStyle);
     procedure SetLinkHoverStyle(AValue: TInkLinkStyle);
     procedure SubPropChanged(Sender: TObject);
-    procedure UpdateHover(ALine: Integer; const AHit: THTMLHitInfo);
-    function GetLines: TStrings;
-    procedure SetLines(AValue: TStrings);
-    procedure SetHTMLScale(AValue: Integer);
-    procedure SetWordWrap(AValue: Boolean);
-    procedure InvalidateWrap;
-    procedure RemeasureItems;
-    { The markup for line Index as it will actually be drawn - re-flowed to the
-      client width when WordWrap is on, otherwise the line untouched. }
-    function RenderText(Index: Integer): string;
-  public
-    { The href under the mouse, '' when none }
-    property HoverLink: string read FHoverLink;
-    property HoverLinkText: string read FHoverLinkText;
+    function MakeLine(AIndex: Integer): TInkPageBlock;
+    function AtEnd: Boolean;
   protected
-    { Everything the renderer needs beyond the text itself. }
-    function Options(AHoverIndex: Integer = 0): THTMLOptions;
-    procedure DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState); override;
-    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure Parse; override;
+    procedure LayoutColumn(out ALeft, AWidth: Integer); override;
+    function LayoutTop: Integer; override;
+    procedure StyleBlock(B: TInkPageBlock); override;
+    function Options: THTMLOptions; override;
+    function BlockOptions(Index: Integer): THTMLOptions; override;
+    procedure LinkClicked(ABlock: Integer; const Href, URL: string); override;
+    procedure HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo); override;
+    function CopyBlockCaption: string; override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer); override;
-    procedure MouseLeave; override;
-    procedure Resize; override;
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
-    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
-    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
-    procedure MeasureItem(Index: Integer; var TheHeight: Integer); override;
-    procedure Click; override;
+    { adds a line at the end; the view follows it if it was at the end }
     procedure Append(const ALine: string);
-    procedure LoadDocument(const Source: string);
+    { one complete HTML or Markdown document as the only line - a table or
+      a list cannot be split across lines }
+    procedure LoadDocument(const ADocument: string);
+    procedure Clear;
     { line ALine with all markup stripped }
     function GetPlainText(ALine: Integer): string;
-    { the whole text with all markup stripped }
+    { the whole text with all markup stripped, a line each }
     function PlainText: string;
     procedure SaveAsPlain(const FileName: string);
     procedure SaveAsHTML(const FileName: string);
-    { the selected lines as plain text - every one after Ctrl+A }
-    function SelectedText: string;
-    procedure CopyToClipboard;
-    { fills the copy menu for client X, Y without opening it }
-    function BuildCopyMenu(X, Y: Integer): TPopupMenu;
+    { how many lines there are }
+    function Count: Integer;
+    { The href under the mouse, '' when none }
+    property HoverLink: string read FHoverHref;
+    property HoverLinkText: string read FHoverLinkText;
   published
-    property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
+    property TextFormat;
     property Lines: TStrings read GetLines write SetLines;
-    { the right-click menu: Copy, Copy this line, Copy link address,
-      Copy all, Select all.  Not shown when off or when PopupMenu is set. }
-    property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
-    { lets a program add its own items to that menu as it opens }
-    property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
-
+    { the text's size, in percent of Font }
     property HTMLScale: Integer read FHTMLScale write SetHTMLScale default 100;
-    property SuperSubScriptRatio: Double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    property SuperSubScriptRatio: Double read FSuperSubScriptRatio write SetSuperSubScriptRatio;
+    { kept so forms from before selection existed still load; text is now
+      selected with the mouse whatever this says }
     property ShowSelection: Boolean read FShowSelection write FShowSelection default False;
+    { extra pixels between the lines inside one line of Lines }
     property LineSpacing: Integer read FLineSpacing write SetLineSpacing default 0;
-    { Margins around the text. Each row is drawn on its own, so Top and Bottom
-      are padding inside every row rather than once for the whole control;
-      LineSpacing is what separates lines within a row. }
+    { Left and Right are margins beside the text; Top and Bottom are space
+      above and below every line of Lines }
     property Borders: TInkBorders read FBorders write SetBorders;
     { Supplies <img src="n">, where n is an index into this list. }
     property Images: TCustomImageList read FImages write SetImages;
@@ -142,120 +126,176 @@ type
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
     property AutoOpenLink: Boolean read FAutoOpenLink write FAutoOpenLink default False;
+    property OnLinkClick: TInkMemoLinkEvent read FOnLinkClick write FOnLinkClick;
     property OnLinkEnter: TInkMemoLinkEvent read FOnLinkEnter write FOnLinkEnter;
     property OnLinkLeave: TInkMemoLinkEvent read FOnLinkLeave write FOnLinkLeave;
     property OnLinkRightClick: TInkMemoLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
-    { Re-flow each line to the control width instead of letting it run off the
-      right edge. Lines still break at <br>/<p> as well; wrapping only adds
-      breaks. Set ScrollWidth to 0 so no horizontal scrollbar appears. }
+    { Re-flow each line to the width.  Off, a long line is cut off at the
+      right edge. }
     property WordWrap: Boolean read FWordWrap write SetWordWrap default False;
-    property OnLinkClick: TInkMemoLinkEvent read FOnLinkClick write FOnLinkClick;
-
-    property Align;
-    property Anchors;
-    property BorderSpacing;
-    property BorderStyle;
-    property Color;
-    property Constraints;
-    property Enabled;
-    property Font;
-    property Hint;
-    property MultiSelect;
-    property OnClick;
-    property OnDblClick;
-    property OnEnter;
-    property OnExit;
-    property OnKeyDown;
-    property OnKeyPress;
-    property OnKeyUp;
-    property OnMouseDown;
-    property OnMouseEnter;
-    property OnMouseLeave;
-    property OnMouseMove;
-    property OnMouseUp;
-    property OnMouseWheel;
-    property OnResize;
+    property DragScroll;
+    property FlickScroll;
+    property MouseDrag;
+    property SelectionColor;
     property OnSelectionChange;
-    property ParentColor;
-    property ParentFont;
-    property ParentShowHint;
+    property CopyMenu;
+    property OnCopyMenu;
     property PopupMenu;
-    property ScrollWidth;
-    property ShowHint;
-    property TabOrder;
-    property TabStop;
-    property Visible;
+    property Align; property Anchors; property BorderSpacing; property BorderStyle;
+    property Color; property Constraints; property Enabled; property Font;
+    property Hint; property ParentColor; property ParentFont; property ParentShowHint;
+    property ShowHint; property TabStop default True; property TabOrder; property Visible;
+    property OnClick; property OnDblClick; property OnEnter; property OnExit;
+    property OnKeyDown; property OnKeyPress; property OnKeyUp; property OnUTF8KeyPress;
+    property OnMouseDown; property OnMouseEnter; property OnMouseLeave; property OnMouseMove;
+    property OnMouseUp; property OnMouseWheel; property OnResize;
   end;
 
 implementation
 
-procedure TInkMemo.LoadDocument(const Source: string);
-begin
-  Items.BeginUpdate;
-  try
-    Items.Clear;
-    Items.Add(Source);
-  finally Items.EndUpdate end;
-end;
-
-procedure TInkMemo.SetTextFormat(AValue: TInkTextFormat);
-begin
-  if FTextFormat = AValue then Exit;
-  FTextFormat := AValue;
-  SubPropChanged(nil);
-end;
-
-
-const
-  { room for the border and the couple of pixels the renderer leaves }
-  cWrapMargin = 6;
-  { cache sentinel - no real item ever starts with this }
-  cNeverAnItem = #1'?';
+uses
+  Math;
 
 { TInkMemo }
 
 constructor TInkMemo.Create(AOwner: TComponent);
 begin
+  FLines := TStringList.Create;
   inherited Create(AOwner);
-  FCopyMenu := True;
-  FCopyMenuHost := TInkCopyMenu.Create(Self);
+  FLines.OnChange := @LinesChanged;
   FHTMLScale := 100;
   FSuperSubScriptRatio := 0.7;
-  FShowSelection := False;
   FWordWrap := False;
   FHoverLine := -1;
   FBorders := TInkBorders.Create;
   FBorders.OnChange := @SubPropChanged;
+  FNoBorders := TInkBorders.Create;
   FLinkStyle := TInkLinkStyle.Create(False);
   FLinkStyle.OnChange := @SubPropChanged;
   FLinkHoverStyle := TInkLinkStyle.Create(True);
   FLinkHoverStyle.OnChange := @SubPropChanged;
-  FWrapSrc := TStringList.Create;
-  FWrapOut := TStringList.Create;
-  FWrapWidth := -1;
-  Style := lbOwnerDrawVariable;
+  { a memo is text first: the mouse selects, like any memo }
+  Width := 300; Height := 150;
+  Color := clWindow;
+  Font.Color := clWindowText;
+  Font.Size := 0;
+  ParentFont := True;
 end;
 
 destructor TInkMemo.Destroy;
 begin
-  FreeAndNil(FWrapSrc);
-  FreeAndNil(FWrapOut);
+  FLines.OnChange := nil;
+  inherited Destroy;
+  FreeAndNil(FLines);
   FreeAndNil(FBorders);
+  FreeAndNil(FNoBorders);
   FreeAndNil(FLinkStyle);
   FreeAndNil(FLinkHoverStyle);
-  inherited Destroy;
 end;
 
-function TInkMemo.Options(AHoverIndex: Integer = 0): THTMLOptions;
+function TInkMemo.MakeLine(AIndex: Integer): TInkPageBlock;
 begin
-  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
-    FBorders, FImages, FLinkStyle, FLinkHoverStyle, AHoverIndex);
+  Result := TInkPageBlock.Create;
+  Result.Tag := 'line';
+  Result.Source := InkToHTML(FLines[AIndex], TextFormat);
+end;
+
+{ one block per line, and the view stays where it was }
+procedure TInkMemo.Parse;
+var
+  I: Integer;
+begin
+  if FLines = nil then Exit;
+  BeginDocument;
+  for I := 0 to FLines.Count - 1 do
+    AddBlock(MakeLine(I));
+  InvalidateLayout(0);
+end;
+
+procedure TInkMemo.LinesChanged(Sender: TObject);
+begin
+  Parse;
+end;
+
+{ at the end, or everything fits - then new lines are followed, as in a
+  terminal }
+function TInkMemo.AtEnd: Boolean;
+begin
+  Layout;
+  Result := ScrollY >= ContentHeight - ClientHeight - 2;
+end;
+
+procedure TInkMemo.Append(const ALine: string);
+var
+  Follow: Boolean;
+begin
+  Follow := AtEnd;
+  { one new block and one block laid out, not the whole memo again }
+  FLines.OnChange := nil;
+  try
+    FLines.Add(ALine);
+  finally
+    FLines.OnChange := @LinesChanged;
+  end;
+  AddBlock(MakeLine(FLines.Count - 1));
+  InvalidateLayout(FLines.Count - 1);
+  if Follow then ScrollTo(MaxInt);
+end;
+
+procedure TInkMemo.LoadDocument(const ADocument: string);
+begin
+  FLines.BeginUpdate;
+  try
+    FLines.Clear;
+    FLines.Add(ADocument);
+  finally FLines.EndUpdate end;
+end;
+
+procedure TInkMemo.Clear;
+begin
+  FLines.Clear;
+end;
+
+function TInkMemo.Count: Integer;
+begin
+  Result := FLines.Count;
+end;
+
+function TInkMemo.GetLines: TStrings;
+begin
+  Result := FLines;
+end;
+
+procedure TInkMemo.SetLines(AValue: TStrings);
+begin
+  FLines.Assign(AValue);
 end;
 
 procedure TInkMemo.SubPropChanged(Sender: TObject);
 begin
-  InvalidateWrap;
-  RemeasureItems;
+  InvalidateLayout(0);
+end;
+
+procedure TInkMemo.SetHTMLScale(AValue: Integer);
+begin
+  AValue := EnsureRange(AValue, 10, 1000);
+  if FHTMLScale = AValue then Exit;
+  FHTMLScale := AValue;
+  SubPropChanged(nil);
+end;
+
+procedure TInkMemo.SetSuperSubScriptRatio(AValue: Double);
+begin
+  if FSuperSubScriptRatio = AValue then Exit;
+  FSuperSubScriptRatio := AValue;
+  SubPropChanged(nil);
+end;
+
+procedure TInkMemo.SetWordWrap(AValue: Boolean);
+begin
+  if FWordWrap = AValue then Exit;
+  FWordWrap := AValue;
+  SubPropChanged(nil);
 end;
 
 procedure TInkMemo.SetLineSpacing(AValue: Integer);
@@ -293,269 +333,135 @@ procedure TInkMemo.Notification(AComponent: TComponent; Operation: TOperation);
 begin
   inherited Notification(AComponent, Operation);
   if (Operation = opRemove) and (AComponent = FImages) then
+  begin
     FImages := nil;
-end;
-
-function TInkMemo.GetLines: TStrings;
-begin
-  Result := Items;
-end;
-
-procedure TInkMemo.SetLines(AValue: TStrings);
-begin
-  Items.Assign(AValue);
-end;
-
-procedure TInkMemo.SetHTMLScale(AValue: Integer);
-begin
-  if FHTMLScale = AValue then Exit;
-  FHTMLScale := AValue;
-  InvalidateWrap;
-  RemeasureItems;
-end;
-
-procedure TInkMemo.SetWordWrap(AValue: Boolean);
-begin
-  if FWordWrap = AValue then Exit;
-  FWordWrap := AValue;
-  InvalidateWrap;
-  RemeasureItems;
-end;
-
-procedure TInkMemo.InvalidateWrap;
-begin
-  FWrapWidth := -1;
-  FWrapSrc.Clear;
-  FWrapOut.Clear;
-end;
-
-{ Line heights come from MeasureItem, which the widgetset only asks for when it
-  thinks something changed. Touching Items is the portable way to say so. }
-procedure TInkMemo.RemeasureItems;
-begin
-  if HandleAllocated then
-  begin
-    Items.BeginUpdate;
-    Items.EndUpdate;
-  end;
-  Invalidate;
-end;
-
-procedure TInkMemo.Resize;
-begin
-  inherited Resize;
-  if Assigned(FWrapSrc) and (FWrapWidth <> ClientWidth - cWrapMargin - FBorders.Left - FBorders.Right) then
-  begin
-    InvalidateWrap;
-    RemeasureItems;
+    SubPropChanged(nil);
   end;
 end;
 
-function TInkMemo.RenderText(Index: Integer): string;
+{ --- how it is laid out and drawn --------------------------------------- }
+
+procedure TInkMemo.LayoutColumn(out ALeft, AWidth: Integer);
+begin
+  ALeft := FBorders.Left;
+  AWidth := Max(20, ClientWidth - ScrollBar.Width - FBorders.Left - FBorders.Right);
+end;
+
+function TInkMemo.LayoutTop: Integer;
+begin
+  Result := 0;
+end;
+
+procedure TInkMemo.StyleBlock(B: TInkPageBlock);
 var
-  W: Integer;
+  C: TColor;
 begin
-  if (Index < 0) or (Index >= Items.Count) then
-    Exit('');
-  if not FWordWrap then
-    Exit(InkToHTML(Items[Index], FTextFormat));
-
-  W := ClientWidth - cWrapMargin - FBorders.Left - FBorders.Right;
-  if W <= 0 then
-    Exit(InkToHTML(Items[Index], FTextFormat));
-
-  // wrapping a line is not cheap and both MeasureItem and DrawItem want the
-  // same answer, so keep it until the line or the width it was fitted to changes
-  if W <> FWrapWidth then
-  begin
-    FWrapWidth := W;
-    FWrapSrc.Clear;
-    FWrapOut.Clear;
-  end;
-  while FWrapSrc.Count > Items.Count do
-  begin
-    FWrapSrc.Delete(FWrapSrc.Count - 1);
-    FWrapOut.Delete(FWrapOut.Count - 1);
-  end;
-  while FWrapSrc.Count <= Index do
-  begin
-    FWrapSrc.Add(cNeverAnItem);
-    FWrapOut.Add('');
-  end;
-  if FWrapSrc[Index] <> Items[Index] then
-  begin
-    Canvas.Font := Font;
-    FWrapOut[Index] := HTMLWordWrap(Canvas, InkToHTML(Items[Index], FTextFormat), W,
-      FSuperSubScriptRatio, FHTMLScale);
-    FWrapSrc[Index] := Items[Index];
-  end;
-  Result := FWrapOut[Index];
+  SetLength(B.Bars, 0);
+  B.Indent := 0;
+  B.PointSize := Max(1, Round(FLayoutBase * FHTMLScale / 100));
+  B.Bold := False;
+  B.FaceName := '';
+  B.Pre := False;
+  B.NoWrap := not FWordWrap;
+  C := Font.Color;
+  if C = clDefault then C := clWindowText;
+  B.TextColor := C;
+  B.Padding := 0;
+  B.GapBefore := FBorders.Top;
+  B.GapAfter := FBorders.Bottom;
+  B.BorderColor := clNone;
+  B.BackColor := clNone;
+  B.BarColor := clNone;
 end;
 
-procedure TInkMemo.MeasureItem(Index: Integer; var TheHeight: Integer);
+function TInkMemo.Options: THTMLOptions;
 begin
-  if (Index >= 0) and (Index < Items.Count) then
-  begin
-    Canvas.Font := Font;
-    TheHeight := HTMLTextExtentOpt(Canvas, Rect(0, 0, ClientWidth, 0), [], RenderText(Index), Options).cy + 2;
-  end
-  else
-    inherited MeasureItem(Index, TheHeight);
+  { the borders are the layout's business here, not the renderer's }
+  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
+    FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, 0);
 end;
 
-procedure TInkMemo.DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState);
-var
-  TextR: TRect;
-  Opts: THTMLOptions;
+function TInkMemo.BlockOptions(Index: Integer): THTMLOptions;
 begin
-  if FShowSelection and ([odSelected, odFocused] * State <> []) then
-  begin
-    Canvas.Brush.Color := clHighlight;
-    Canvas.Font.Color := clHighlightText;
-  end
-  else
-  begin
-    Canvas.Brush.Color := Color;
-    Canvas.Font.Color := Font.Color;
-  end;
-  Canvas.Brush.Style := bsSolid;
-  Canvas.FillRect(ARect);
-
-  if (Index < 0) or (Index >= Items.Count) then Exit;
-
-  Canvas.Brush.Style := bsClear;
-  // The row rectangle the widgetset hands over can be wider than the column
-  // actually on screen, and <center>/<right> place themselves relative to
-  // whatever rectangle they are given - which would push a centered line off
-  // to the right and a right-aligned one clean out of view.
-  TextR := ARect;
-  if TextR.Right > ClientWidth then
-    TextR.Right := ClientWidth;
-
-  // the hovered link only lights up on the line it is actually on
+  Result := Options;
+  { the hovered link only lights up on the line it is actually on }
   if Index = FHoverLine then
-    Opts := Options(FHoverIndex)
-  else
-    Opts := Options;
-  if FShowSelection then
-    HTMLDrawOpt(Canvas, TextR, State, RenderText(Index), Opts)
-  else
-    HTMLDrawOpt(Canvas, TextR, [], RenderText(Index), Opts);
+    Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
+      FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, FHoverIndex);
 end;
+
+function TInkMemo.CopyBlockCaption: string;
+begin
+  Result := SInkCopyLine;
+end;
+
+{ --- links -------------------------------------------------------------- }
 
 { Hover is tracked as (line, ordinal-of-link-on-that-line), so two links with
   the same target still light up one at a time. }
-procedure TInkMemo.UpdateHover(ALine: Integer; const AHit: THTMLHitInfo);
+procedure TInkMemo.HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo);
 var
-  NewIndex, OldLine: Integer;
+  OldLine: Integer;
   OldLink: string;
 begin
-  if AHit.OnLink then NewIndex := AHit.LinkIndex else NewIndex := 0;
-  if NewIndex = 0 then ALine := -1;
-  if (ALine = FHoverLine) and (NewIndex = FHoverIndex) then Exit;
-
   OldLine := FHoverLine;
-  OldLink := FHoverLink;
+  OldLink := FHoverHref;
   if (OldLine >= 0) and Assigned(FOnLinkLeave) then
     FOnLinkLeave(Self, OldLine, OldLink);
-
-  FHoverLine := ALine;
-  FHoverIndex := NewIndex;
-  if ALine >= 0 then
+  if AHit.OnLink and (ABlock >= 0) then
   begin
-    FHoverLink := AHit.LinkName;
+    FHoverLine := ABlock;
+    FHoverIndex := AHit.LinkIndex;
+    FHoverHref := LinkHref(AHit);
     FHoverLinkText := AHit.LinkText;
-    Cursor := crHandPoint;
-    if Assigned(FOnLinkEnter) then FOnLinkEnter(Self, ALine, FHoverLink);
+    if Assigned(FOnLinkEnter) then FOnLinkEnter(Self, ABlock, FHoverHref);
   end
   else
   begin
-    FHoverLink := '';
+    FHoverLine := -1;
+    FHoverIndex := 0;
+    FHoverHref := '';
     FHoverLinkText := '';
-    Cursor := crDefault;
   end;
   Invalidate;
 end;
 
-procedure TInkMemo.MouseMove(Shift: TShiftState; X, Y: Integer);
-var
-  Idx: Integer;
-  R: TRect;
-  Hit: THTMLHitInfo;
+procedure TInkMemo.LinkClicked(ABlock: Integer; const Href, URL: string);
 begin
-  inherited MouseMove(Shift, X, Y);
-  Hit.OnLink := False;
-  Hit.LinkName := '';
-  Hit.LinkText := '';
-  Hit.LinkIndex := 0;
-  Idx := GetIndexAtY(Y);
-  if (Idx >= 0) and (Idx < Items.Count) then
-  begin
-    R := ItemRect(Idx);
-    if R.Right > ClientWidth then
-      R.Right := ClientWidth;
-    Canvas.Font := Font;
-    Hit := HTMLHitTest(Canvas, R, RenderText(Idx), Options, X, Y);
-  end;
-  UpdateHover(Idx, Hit);
-end;
-
-procedure TInkMemo.MouseLeave;
-var
-  Empty: THTMLHitInfo;
-begin
-  inherited MouseLeave;
-  Empty.OnLink := False;
-  Empty.LinkName := '';
-  Empty.LinkText := '';
-  Empty.LinkIndex := 0;
-  UpdateHover(-1, Empty);
+  if Assigned(FOnLinkClick) then
+    FOnLinkClick(Self, ABlock, Href)
+  else if FAutoOpenLink then
+    OpenURL(Href);
 end;
 
 procedure TInkMemo.MouseUp(Button: TMouseButton; Shift: TShiftState;
   X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
-  if (Button = mbRight) and (FHoverLine >= 0) and (FHoverLink <> '') and
+  if (Button = mbRight) and (FHoverLine >= 0) and (FHoverHref <> '') and
     Assigned(FOnLinkRightClick) then
-    FOnLinkRightClick(Self, FHoverLine, FHoverLink);
+    FOnLinkRightClick(Self, FHoverLine, FHoverHref);
 end;
 
-procedure TInkMemo.Click;
-begin
-  inherited Click;
-  if (FHoverLine >= 0) and (FHoverLink <> '') then
-  begin
-    if Assigned(FOnLinkClick) then
-      FOnLinkClick(Self, FHoverLine, FHoverLink)
-    else if FAutoOpenLink then
-      OpenURL(FHoverLink);
-  end;
-end;
-
-procedure TInkMemo.Append(const ALine: string);
-begin
-  Items.Add(ALine);
-  TopIndex := Items.Count - 1;
-end;
+{ --- text --------------------------------------------------------------- }
 
 function TInkMemo.GetPlainText(ALine: Integer): string;
 begin
-  if (ALine < 0) or (ALine >= Items.Count) then
+  if (ALine < 0) or (ALine >= FLines.Count) then
     Result := ''
   else
-    Result := HTMLPlainText(InkToHTML(Items[ALine], FTextFormat));
+    Result := HTMLPlainText(InkToHTML(FLines[ALine], TextFormat));
 end;
 
 function TInkMemo.PlainText: string;
 var
   SL: TStringList;
-  i: Integer;
+  I: Integer;
 begin
   SL := TStringList.Create;
   try
-    for i := 0 to Items.Count - 1 do
-      SL.Add(HTMLPlainText(InkToHTML(Items[i], FTextFormat)));
+    for I := 0 to FLines.Count - 1 do
+      SL.Add(GetPlainText(I));
     Result := SL.Text;
   finally
     SL.Free;
@@ -565,12 +471,12 @@ end;
 procedure TInkMemo.SaveAsPlain(const FileName: string);
 var
   SL: TStringList;
-  i: Integer;
+  I: Integer;
 begin
   SL := TStringList.Create;
   try
-    for i := 0 to Items.Count - 1 do
-      SL.Add(HTMLPlainText(InkToHTML(Items[i], FTextFormat)));
+    for I := 0 to FLines.Count - 1 do
+      SL.Add(GetPlainText(I));
     SL.SaveToFile(FileName);
   finally
     SL.Free;
@@ -578,92 +484,18 @@ begin
 end;
 
 procedure TInkMemo.SaveAsHTML(const FileName: string);
-var SL: TStringList; I: Integer;
+var
+  SL: TStringList;
+  I: Integer;
 begin
   SL := TStringList.Create;
   try
-    for I := 0 to Items.Count - 1 do SL.Add(InkToHTML(Items[I], FTextFormat));
+    for I := 0 to FLines.Count - 1 do
+      SL.Add(InkToHTML(FLines[I], TextFormat));
     SL.SaveToFile(FileName);
-  finally SL.Free end;
-end;
-
-
-{ --- copying ------------------------------------------------------------ }
-
-procedure TInkMemo.DoSelectAll(Sender: TObject);
-begin
-  if MultiSelect then SelectAll;
-  FAllChosen := True;
-end;
-
-function TInkMemo.SelectedText: string;
-begin
-  if FAllChosen then Result := TrimRight(PlainText)
-  else Result := InkListSelection(Self, @GetPlainText);
-end;
-
-procedure TInkMemo.CopyToClipboard;
-var S: string;
-begin
-  S := SelectedText;
-  if S <> '' then InkCopyText(S);
-end;
-
-function TInkMemo.BuildCopyMenu(X, Y: Integer): TPopupMenu;
-var Texts: TInkCopyTexts; I: Integer;
-begin
-  Texts := Default(TInkCopyTexts);
-  Texts.CanSelect := True;
-  Texts.Selection := SelectedText;
-  I := ItemAtPos(Point(X, Y), True);
-  if I >= 0 then
-  begin
-    Texts.Block := GetPlainText(I);
-    Texts.BlockCaption := SInkCopyLine;
+  finally
+    SL.Free;
   end;
-  Texts.Link := FHoverLink;
-  Texts.All := TrimRight(PlainText);
-  Texts.SelectAll := @DoSelectAll;
-  FCopyMenuHost.Build(Self, Texts, X, Y, FOnCopyMenu);
-  Result := FCopyMenuHost.Menu;
-end;
-
-procedure TInkMemo.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
-var P: TPoint;
-begin
-  inherited DoContextPopup(MousePos, Handled);
-  if Handled or not FCopyMenu or Assigned(PopupMenu) then Exit;
-  if (MousePos.X < 0) and (MousePos.Y < 0) then MousePos := Point(8, 8);
-  BuildCopyMenu(MousePos.X, MousePos.Y);
-  if FCopyMenuHost.Menu.Items.Count = 0 then Exit;
-  P := ClientToScreen(MousePos);
-  FCopyMenuHost.Menu.PopUp(P.X, P.Y);
-  Handled := True;
-end;
-
-procedure TInkMemo.KeyDown(var Key: Word; Shift: TShiftState);
-begin
-  if (Shift * [ssCtrl, ssAlt, ssShift] = [ssCtrl]) and (Key = VK_A) then
-  begin
-    DoSelectAll(Self);
-    Key := 0;
-    Exit;
-  end;
-  if (ssCtrl in Shift) and ((Key = VK_C) or (Key = VK_INSERT)) then
-  begin
-    CopyToClipboard;
-    Key := 0;
-    Exit;
-  end;
-  { Ctrl on its own is how both of those begin; anything else ends "all" }
-  if not (Key in [VK_CONTROL, VK_LCONTROL, VK_RCONTROL]) then FAllChosen := False;
-  inherited KeyDown(Key, Shift);
-end;
-
-procedure TInkMemo.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-begin
-  if Button = mbLeft then FAllChosen := False;
-  inherited MouseDown(Button, Shift, X, Y);
 end;
 
 end.

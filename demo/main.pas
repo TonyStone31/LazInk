@@ -123,6 +123,9 @@ type
     lblScale: TInkLabel;
     tbScale: TTrackBar;
     lblMemoHelp: TInkLabel;
+    lblAppendHdr: TInkLabel;
+    edtAppend: TInkEdit;
+    btnAppend, btnMemoClear: TButton;
 
     { ---- tab: documents ---- }
     tabDocuments: TTabSheet;
@@ -216,12 +219,16 @@ type
     procedure tbScaleChange(Sender: TObject);
     procedure memLinkClick(Sender: TObject; LineIndex: Integer;
       const LinkName: string);
+    procedure edtAppendChange(Sender: TObject);
+    procedure edtAppendKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure btnAppendClick(Sender: TObject);
+    procedure btnMemoClearClick(Sender: TObject);
   private
     FSyncing: Boolean;
     { one entry per character of edtMarkup: 0 plain, 1 tag, 2 attribute value.
       Worked out once when the text changes rather than per character, because
       OnGetCharAttrs is handed a character with no idea what surrounds it. }
-    FTagMask, FLiveMask: TBytes;
+    FTagMask, FLiveMask, FAppendMask: TBytes;
     FMdFile: string;
     procedure UpdateSource;
     function TagMask(const S: string): TBytes;
@@ -335,6 +342,7 @@ begin
     ShowMdFile;
   end;
   LiveChange(nil);
+  edtAppendChange(nil);
   chkStripesChange(chkStripes);
   cbSize.ItemIndex := 0;
   cbFace.ItemIndex := 0;
@@ -772,7 +780,9 @@ var
   Mask: TBytes;
 begin
   { both markup boxes share this; each has its own mask }
-  if Sender = edtLive then Mask := FLiveMask else Mask := FTagMask;
+  if Sender = edtLive then Mask := FLiveMask
+  else if Sender = edtAppend then Mask := FAppendMask
+  else Mask := FTagMask;
   if (AIndex < 1) or (AIndex > Length(Mask)) then Exit;
   case Mask[AIndex - 1] of
     1: begin AColor := $00A05A2C; AStyle := [fsBold]; end;   // the tag itself
@@ -1004,6 +1014,37 @@ procedure TfrmMain.memLinkClick(Sender: TObject; LineIndex: Integer;
   const LinkName: string);
 begin
   OpenURL(LinkName);
+end;
+
+{ ---------------------------------------------------------- memo: append }
+
+procedure TfrmMain.edtAppendChange(Sender: TObject);
+begin
+  FAppendMask := TagMask(edtAppend.Text);
+  edtAppend.Invalidate;
+end;
+
+procedure TfrmMain.edtAppendKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  if Key = VK_RETURN then
+  begin
+    btnAppendClick(Sender);
+    Key := 0;
+  end;
+end;
+
+{ a timestamp, then the line as typed; the memo follows it down if the view
+  was at the end }
+procedure TfrmMain.btnAppendClick(Sender: TObject);
+begin
+  if Trim(edtAppend.Text) = '' then Exit;
+  memCheat.Append(Format('<font color="#7F8C8D">%s</font> %s',
+    [FormatDateTime('hh:nn:ss', Now), edtAppend.Text]));
+end;
+
+procedure TfrmMain.btnMemoClearClick(Sender: TObject);
+begin
+  memCheat.Clear;
 end;
 
 end.

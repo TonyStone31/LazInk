@@ -19,7 +19,7 @@ widgetset-specific backends, no browser engine.
 | ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. |
 | ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment. |
 | ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
-| ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`. |
+| ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
 | | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG and animated GIF images, relative links, anchors, Back and Forward, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
 | ![](images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. |
 
@@ -186,9 +186,9 @@ so do Alt+Left, Alt+Right and a keyboard's Back and Forward keys.
 
 **The copy menu:** right-click any display control for **Copy**, **Copy this
 paragraph** (or line, or item), **Copy link address** over a link, **Copy
-all** and **Select all**. `TInkMemo` and `TInkListBox` copy their selected
-lines with Ctrl+C, and everything after Ctrl+A; `TInkLabel` offers its words
-and links. `CopyMenu := False` turns the menu off, a `PopupMenu` of your own
+all** and **Select all**. `TInkMemo` selects and copies like the page;
+`TInkListBox` copies its selected lines with Ctrl+C, and everything after
+Ctrl+A; `TInkLabel` offers its words and links. `CopyMenu := False` turns the menu off, a `PopupMenu` of your own
 replaces it, and `OnCopyMenu` lets you add items as it opens:
 
 ```pascal
@@ -263,11 +263,11 @@ plain-text export removes formatting and separates table cells and rows.
 Limits: no CSS, nested tables, merged cells (`rowspan` / `colspan`), specified
 column widths, or table editing tools. Very long unbroken words can overflow a
 cell, and very narrow controls may not fit the minimum cell padding. Table blocks
-currently use top-left placement. Large documents remain subject to the native
-list-box row-height limits; use `TInkPage` for a full document.
+currently use top-left placement. Use `TInkPage` for a full document with
+headings, lists and code blocks.
 
-The demo's **Tables / Markdown** tab offers sample selection and a live source
-preview. Renderer tests run on Linux x86-64 with a display available:
+The demo's **Markdown editor** tab shows a live preview of what you type.
+Renderer tests run on Linux x86-64 with a display available:
 
 ```sh
 LAZARUS_DIR=/path/to/lazarus FPC=/path/to/fpc tests/run.sh

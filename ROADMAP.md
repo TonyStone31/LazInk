@@ -268,9 +268,25 @@ messages through `InkMouseIsTouch`.  Tests cover the hit test both ways,
 every selection gesture, the painted highlight, the copied text and HTML,
 the menu, and a finger that must still scroll.
 
-Not done: character selection in `TInkLabel`, `TInkMemo` and `TInkListBox`
-(they have the copy menu and line-level copying instead); keyboard
-selection (Shift+arrows).
+Not done: character selection in `TInkLabel` and `TInkListBox` (they have
+the copy menu and line-level copying instead); keyboard selection
+(Shift+arrows).
+
+**`TInkMemo` rebuilt on the page engine (16 September 2026).**  It had been
+an owner-drawn list box, which is why it highlighted and copied whole rows.
+`TInkPage` is now `TInkCustomPage` plus published properties, and the
+custom class has the hooks a descendant needs (`Parse`, `LayoutColumn`,
+`LayoutTop`, `StyleBlock`, `Options`, `BlockOptions`, `LinkClicked`,
+`HoverChanged`, `CopyBlockCaption`, and layout from a given block on).
+`TInkMemo` descends from it: one block per line of `Lines`, no CSS, its
+look from `Font`, `Color`, `Borders`, `LineSpacing` and `HTMLScale`, and
+browser-style selection, copy menu, find and touch for free.  `Append` lays
+out only the new line and follows the end only when the view was there.
+List-box members are gone (`Items`, `ItemIndex`, `TopIndex`, `MultiSelect`,
+`ScrollWidth`, `MeasureItem`); `ShowSelection` stays as a no-op so old
+forms load; `OnSelectionChange` is now a `TNotifyEvent`; `OnLinkClick`
+gets the href unescaped.  Word-wrap still measures a line without its
+`<img>` images, so a line of images can run a little past the edge.
 On Qt and GTK2 a finger cannot be told from the mouse, so there it selects
 unless `MouseDrag := imdScroll`.
 

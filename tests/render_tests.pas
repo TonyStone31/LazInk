@@ -198,9 +198,27 @@ end;
 var Probe: TPageProbe; Tall: string; J: Integer;
   Bar: TBarProbe; TR: TRect; Before: Integer; Shot: TBitmap;
 
+function Pos2(ABlock, AOffset: Integer): TInkPagePosition;
+begin
+  Result.Block := ABlock;
+  Result.Offset := AOffset;
+end;
+
 type
   { protected members, reached as a descendant would }
   TMemoAccess = class(TInkMemo);
+  TMemoProbe = class(TInkMemo)
+  public
+    Clicked: string;
+    procedure LinkHit(Sender: TObject; LineIndex: Integer; const LinkName: string);
+  end;
+
+procedure TMemoProbe.LinkHit(Sender: TObject; LineIndex: Integer; const LinkName: string);
+begin
+  Clicked := IntToStr(LineIndex) + ':' + LinkName;
+end;
+
+type
   TListAccess = class(TInkListBox);
   TLabelAccess = class(TInkLabel);
   TInkEditAccess = class(TInkEdit);
@@ -296,32 +314,37 @@ begin
 end;
 
 { --- copying from the memo, the list box and the label --- }
-procedure ListCopyChecks(AMemo: TInkMemo; AList: TInkListBox; ALabel: TInkLabel);
+procedure ListCopyChecks(AMemo: TMemoProbe; AList: TInkListBox; ALabel: TInkLabel);
 const
   E = LineEnding;
 var
   Menu: TPopupMenu;
   R: TRect;
+  P: TPoint;
   Handled: Boolean;
   K: Word;
+  Y0: Integer;
 begin
   AMemo.TextFormat := itfHTML;
   AMemo.SetBounds(0, 300, 300, 150);
+  AMemo.WordWrap := True;
   AMemo.Lines.Text := '<b>first</b> line' + E + 'second <i>line</i>' + E + 'third';
   Application.ProcessMessages;
-  AMemo.ItemIndex := 1;
-  Check(AMemo.SelectedText = 'second line', 'memo: the current line is the selection: ' + AMemo.SelectedText);
+  Check(AMemo.Count = 3, 'memo: three lines');
+  Check(AMemo.BlockText(1) = 'second line', 'memo: a line''s words: ' + AMemo.BlockText(1));
+  AMemo.Select(Pos2(1, 0), Pos2(1, MaxInt));
+  Check(AMemo.SelectedText = 'second line', 'memo: a selected line: ' + AMemo.SelectedText);
   Clipboard.AsText := '';
   K := VK_C; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
   Check(Clipboard.AsText = 'second line', 'memo: Ctrl+C copies it');
+  AMemo.Select(Pos2(0, 6), Pos2(1, 6));
+  Check(AMemo.SelectedText = 'line' + E + 'second', 'memo: a selection across lines: ' + AMemo.SelectedText);
   K := VK_A; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
   K := VK_C; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
   Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third',
     'memo: Ctrl+A then Ctrl+C copies everything: ' + Clipboard.AsText);
-  K := VK_DOWN; TMemoAccess(AMemo).KeyDown(K, []);
-  Check(AMemo.SelectedText <> AMemo.PlainText, 'memo: another key ends "everything"');
-  R := AMemo.ItemRect(2);
-  Menu := AMemo.BuildCopyMenu(R.Left + 5, R.Top + 2);
+  P := AMemo.PositionPoint(Pos2(2, 1));
+  Menu := AMemo.BuildCopyMenu(P.X, P.Y + 2);
   Check(Menu.Items[0].Caption = SInkCopy, 'memo menu: Copy');
   Check(Menu.Items[1].Caption = SInkCopyLine, 'memo menu: Copy this line');
   Menu.Items[1].Click;
@@ -330,9 +353,36 @@ begin
   Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third', 'memo menu: Copy all');
   AMemo.CopyMenu := False;
   Handled := False;
-  TMemoAccess(AMemo).DoContextPopup(Point(R.Left + 5, R.Top + 2), Handled);
+  TMemoAccess(AMemo).DoContextPopup(Point(P.X, P.Y + 2), Handled);
   Check(not Handled, 'memo: CopyMenu off shows no menu');
   AMemo.CopyMenu := True;
+
+  { Append adds a line, and follows the end only when the view was there }
+  for K := 1 to 29 do AMemo.Append('line ' + IntToStr(K));
+  Check(AMemo.Count = 32, 'memo: Append');
+  Check(AMemo.ScrollY > 0, 'memo: while it was all in view, the end was followed');
+  AMemo.ScrollTo(0);
+  AMemo.Append('line 30');
+  Check(AMemo.ScrollY = 0, 'memo: a view scrolled back to the top stays there');
+  AMemo.ScrollTo(MaxInt);
+  Y0 := AMemo.ScrollY;
+  AMemo.Append('<b>newest</b>');
+  Check(AMemo.ScrollY > Y0, 'memo: a view at the end follows new lines');
+  Check(AMemo.BlockText(33) = 'newest', 'memo: the appended line is drawn');
+  Check(AMemo.Block(33).Bounds.Top > AMemo.Block(32).Bounds.Top, 'memo: below the one before');
+
+  { links: the line and the href, as written }
+  AMemo.Clicked := '';
+  AMemo.OnLinkClick := @AMemo.LinkHit;
+  AMemo.MouseDrag := imdSelect;
+  AMemo.Lines.Text := 'a <a href="x&amp;y">link</a> here';
+  AMemo.ScrollTo(0);
+  P := AMemo.PositionPoint(Pos2(0, 3));
+  TMemoAccess(AMemo).MouseDown(mbLeft, [ssLeft], P.X, P.Y + 3);
+  TMemoAccess(AMemo).MouseUp(mbLeft, [], P.X, P.Y + 3);
+  Check(AMemo.Clicked = '0:x&y', 'memo: OnLinkClick has the line and href: ' + AMemo.Clicked);
+  AMemo.OnLinkClick := nil;
+  AMemo.WordWrap := False;
 
   AList.TextFormat := itfHTML;
   AList.EditMode := emNone;
@@ -374,11 +424,6 @@ begin
   ALabel.CopyMenu := True;
 end;
 
-function Pos2(ABlock, AOffset: Integer): TInkPagePosition;
-begin
-  Result.Block := ABlock;
-  Result.Offset := AOffset;
-end;
 
 { --- selecting text with the mouse, and copying it --- }
 procedure SelectionChecks;
@@ -584,6 +629,15 @@ begin
   Check(Probe.ScrollY > 0, 'a drag below the page scrolls it');
   Probe.Let(20, Probe.ClientHeight + 40);
   Check(Probe.SelectionEnd.Block > 1, 'and the selection follows');
+
+  { an ampersand in a link survives the click }
+  Sleep(GetDoubleClickTime + 50);
+  Probe.LoadHTML('<p><a href="p?a=1&amp;b=2">go there</a></p>');
+  Probe.ScrollTo(0);
+  P := Probe.PositionPoint(Pos2(0, 2));
+  Probe.Clicked := '';
+  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
+  Check(Probe.Clicked = 'p?a=1&b=2', 'a link''s & is kept: ' + Probe.Clicked);
 
   Probe.OnSelectionChange := nil;
   Probe.MouseDrag := imdScroll;
@@ -1161,7 +1215,7 @@ begin
     HTMLDrawOpt(B.Canvas,Rect(0,0,100,700),[],'<table><tr><td>unfinished',O);
     HTMLDrawOpt(B.Canvas,Rect(0,0,100,700),[],'<table></table>',O);
     HTMLDrawOpt(B.Canvas,Rect(0,0,100,700),[],'<table><tr><td>A</td><td>B</td></tr><tr><td>C</td></tr></table>',O);
-    M := TInkMemo.Create(F); M.Parent := F; M.TextFormat := itfMarkdown;
+    M := TMemoProbe.Create(F); M.Parent := F; M.TextFormat := itfMarkdown;
     M.LoadDocument('| A | B |'+LineEnding+'| --- | --- |'+LineEnding+'| C | D |');
     Check(M.Lines.Count=1,'Whole document remains one memo entry');
     M.TextFormat := itfHTML; M.TextFormat := itfMarkdown;
@@ -1182,7 +1236,7 @@ begin
     Check(Pos('A''s › B',Page.PlainText)>0,'HTML numeric and named entities');
     Check(Pos('hidden',Page.PlainText)=0,'Scripts do not paint');
     F.Show; Application.ProcessMessages;
-    ListCopyChecks(M, List, L);
+    ListCopyChecks(TMemoProbe(M), List, L);
     Page.JumpToAnchor('target');
     MarkdownPageChecks(Page);
 

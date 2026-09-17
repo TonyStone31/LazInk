@@ -48,6 +48,9 @@ type
     { code: whitespace kept, the fixed face, never wrapped - a long line is
       cut off at the block's edge }
     Pre: Boolean;
+    { laid out as written, and cut off at the edge - code, or a memo with
+      WordWrap off }
+    NoWrap: Boolean;
     Bold: Boolean;
     FaceName: string;
     { where the bars of the quotes it is in are drawn, from the column's left }
@@ -63,7 +66,11 @@ type
     constructor Create;
     destructor Destroy; override;
   end;
-  TInkPage = class(TCustomControl)
+  { The engine behind TInkPage and TInkMemo: blocks of markup laid out down
+    a scrolling column, with selection, the copy menu, find, touch and
+    history.  Descendants decide where the blocks come from (Parse), how
+    they look (StyleBlock) and how wide the column is (LayoutColumn). }
+  TInkCustomPage = class(TCustomControl)
   private
     FBlocks: TList;
     FStyles: TInkStyleSheet;
@@ -72,6 +79,7 @@ type
     procedure Animate(Sender: TObject);
   private
     FSource, FLocation, FTitle, FHoverLink: string;
+    FHoverBlock, FHoverLinkIndex: Integer;
     FHistory: TStringList;
     FHistoryIndex: Integer;
     FTextFormat: TInkTextFormat;
@@ -164,9 +172,6 @@ type
     procedure SetStyleSheet(AValue: TStrings);
     procedure StyleSheetChanged(Sender: TObject);
     procedure SetMarkdownRawHTML(AValue: Boolean);
-    procedure ClearBlocks;
-    procedure Parse;
-    procedure Layout;
     procedure StyleScrollBar;
     procedure ScrollChanged(Sender: TObject);
     procedure SetTextFormat(AValue: TInkTextFormat);
@@ -174,10 +179,38 @@ type
     function ReadResource(const URL: string; Destination: TStream): Boolean;
     function ReadText(const URL: string): string;
     procedure Navigate(const URL: string; AddHistory: Boolean);
-    function HitLink(X,Y: Integer): string;
-    function Options: THTMLOptions;
-    procedure BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
   protected
+    { layout, worked out once per layout and shared by the blocks }
+    FListWidth, FQuoteWidth, FLayoutBase, FLayoutWidth, FLayoutFrom: Integer;
+    FBodyText, FPageBack, FQuoteText, FBarDefault, FCodeBack: TColor;
+    FColumnWidth: Integer;
+    procedure ClearBlocks;
+    { no blocks, no styles, no selection: what Parse starts from }
+    procedure BeginDocument;
+    procedure AddBlock(B: TInkPageBlock);
+    { blocks from Index on are laid out again when next needed; 0 for all }
+    procedure InvalidateLayout(FromIndex: Integer = 0);
+    procedure Layout;
+    { where the blocks come from: the page reads Source; a memo, its Lines }
+    procedure Parse; virtual;
+    { the column the blocks are laid out in, in client coordinates }
+    procedure LayoutColumn(out ALeft, AWidth: Integer); virtual;
+    function LayoutTop: Integer; virtual;
+    { a block's font, colors, padding and gaps, before it is measured }
+    procedure StyleBlock(B: TInkPageBlock); virtual;
+    function Options: THTMLOptions; virtual;
+    { the options a block is drawn with - a hovered link, say }
+    function BlockOptions(Index: Integer): THTMLOptions; virtual;
+    function HitLink(X,Y: Integer): string;
+    function HitTestLink(X,Y: Integer; out ABlock: Integer; out AHit: THTMLHitInfo): Boolean;
+    { a link was clicked: Href as written, URL resolved against the page }
+    procedure LinkClicked(ABlock: Integer; const Href, URL: string); virtual;
+    { the pointer moved onto another link, or off one (ABlock -1) }
+    procedure HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo); virtual;
+    { the copy menu's name for the block under the pointer }
+    function CopyBlockCaption: string; virtual;
+    procedure BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
+    property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     procedure CreateWnd; override;
     procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
     { scrolls on while a selection is dragged beyond the top or bottom }
@@ -192,6 +225,7 @@ type
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X,Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer); override;
+    procedure MouseLeave; override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
   public
@@ -283,9 +317,8 @@ type
       them the track is the page background and the thumb sits halfway
       between that and the text color. }
     property ScrollBar: TInkScrollBar read FScroll;
-  published
+  protected
     property Source: string read FSource write SetSource;
-    property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     { CSS applied to every page before the page's own styles - how a program
       dresses a Markdown document, which has no stylesheet, in its theme.
       A page's own rules win over these where both say something. }
@@ -320,10 +353,39 @@ type
     property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
     { lets a program add its own items to that menu as it opens }
     property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
-    property PopupMenu;
-    property Align; property Anchors; property Color; property Font;
-    property ParentFont; property TabStop; property TabOrder; property Visible;
   end;
+
+  { A scrolling viewer for whole HTML or Markdown documents. }
+  TInkPage = class(TInkCustomPage)
+  published
+    property Source;
+    property TextFormat;
+    property StyleSheet;
+    property MarkdownRawHTML;
+    property OnLinkClick;
+    property OnResource;
+    property DragScroll;
+    property FlickScroll;
+    property MouseDrag;
+    property SelectionColor;
+    property OnSelectionChange;
+    property OnNavigate;
+    property CopyMenu;
+    property OnCopyMenu;
+    property PopupMenu;
+    property Align; property Anchors; property BorderSpacing; property BorderStyle;
+    property Color; property Constraints; property Enabled; property Font;
+    property Hint; property ParentColor; property ParentFont; property ParentShowHint;
+    property ShowHint; property TabStop default True; property TabOrder; property Visible;
+    property OnClick; property OnDblClick; property OnEnter; property OnExit;
+    property OnKeyDown; property OnKeyPress; property OnKeyUp; property OnUTF8KeyPress;
+    property OnMouseDown; property OnMouseEnter; property OnMouseLeave; property OnMouseMove;
+    property OnMouseUp; property OnMouseWheel; property OnResize;
+  end;
+{ a hit link's href as written: entities read, and the renderer's stand-in
+  for an ampersand turned back into one }
+function LinkHref(const AHit: THTMLHitInfo): string;
+
 implementation
 uses Math, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
 
@@ -335,6 +397,10 @@ type
     Style: string;
   end;
 
+function LinkHref(const AHit: THTMLHitInfo): string;
+begin
+  Result := StringReplace(HTMLUnescape(AHit.LinkName),#1,'&',[rfReplaceAll]);
+end;
 function Attribute(const Tag, Name: string): string;
 var P,Q: Integer; Key: string; Quote: Char;
 begin
@@ -522,15 +588,16 @@ constructor TInkPageBlock.Create;
 begin inherited; Picture := TPicture.Create end;
 destructor TInkPageBlock.Destroy;
 begin Animation.Free; Picture.Free; inherited end;
-constructor TInkPage.Create(AOwner: TComponent);
+constructor TInkCustomPage.Create(AOwner: TComponent);
 begin
   inherited; Width := 640; Height := 480; TabStop := True;
+  FHoverBlock := -1;
   FBlocks := TList.Create; FStyles := TInkStyleSheet.Create;
   FStyleSheet := TStringList.Create; FStyleSheet.OnChange := @StyleSheetChanged;
   FHistory := TStringList.Create; FHistoryIndex := -1;
   FScroll := TInkScrollBar.Create(Self); FScroll.Parent := Self;
   FScroll.Align := alRight; FScroll.Width := 18;
-  FScroll.OnChange := @ScrollChanged; FLayoutDirty := True;
+  FScroll.OnChange := @ScrollChanged; FLayoutDirty := True; FLayoutFrom := 0;
   FTimer := TTimer.Create(Self); FTimer.Interval := 20; FTimer.OnTimer := @Animate;
   FDragScroll := True; FFlickScroll := True;
   FFlickTimer := TTimer.Create(Self); FFlickTimer.Enabled := False;
@@ -542,16 +609,45 @@ begin
   Cursor := crIBeam;
   Color := clWindow; Font.Color := clWindowText; Font.Size := 11;
 end;
-destructor TInkPage.Destroy;
+destructor TInkCustomPage.Destroy;
 begin
   FTimer.Enabled := False; FFlickTimer.Enabled := False; FAutoScroll.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   inherited;
 end;
-procedure TInkPage.ClearBlocks;
+procedure TInkCustomPage.BeginDocument;
+begin
+  ClearBlocks; FStyles.Clear; FTitle := ''; FHoverLink := ''; FHoverBlock := -1;
+  FSelecting := False;
+  if HasSelection then
+  begin
+    FSelAnchor.Block := 0; FSelAnchor.Offset := 0; FSelCaret := FSelAnchor;
+    if Assigned(FOnSelectionChange) then FOnSelectionChange(Self);
+  end;
+end;
+procedure TInkCustomPage.ClearBlocks;
 var I: Integer;
 begin for I := 0 to FBlocks.Count-1 do TObject(FBlocks[I]).Free; FBlocks.Clear end;
-procedure TInkPage.Animate(Sender: TObject);
+procedure TInkCustomPage.AddBlock(B: TInkPageBlock);
+begin FBlocks.Add(B) end;
+procedure TInkCustomPage.InvalidateLayout(FromIndex: Integer);
+begin
+  if not FLayoutDirty or (FromIndex<FLayoutFrom) then FLayoutFrom := Max(0,FromIndex);
+  FLayoutDirty := True;
+  Invalidate;
+end;
+function TInkCustomPage.BlockOptions(Index: Integer): THTMLOptions;
+begin Result := Options end;
+procedure TInkCustomPage.LinkClicked(ABlock: Integer; const Href, URL: string);
+begin
+  if Assigned(FOnLinkClick) then FOnLinkClick(Self,URL) else LoadFromURL(URL);
+end;
+procedure TInkCustomPage.HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo);
+begin
+end;
+function TInkCustomPage.CopyBlockCaption: string;
+begin Result := SInkCopyParagraph end;
+procedure TInkCustomPage.Animate(Sender: TObject);
 var I: Integer; B: TInkPageBlock;
 begin
   if not Visible then Exit;
@@ -563,29 +659,29 @@ begin
     begin B.Picture.Assign(B.Animation.Bitmap); Invalidate end;
   end;
 end;
-procedure TInkPage.ScrollChanged(Sender: TObject);
+procedure TInkCustomPage.ScrollChanged(Sender: TObject);
 begin Invalidate end;
-procedure TInkPage.SetTextFormat(AValue: TInkTextFormat);
+procedure TInkCustomPage.SetTextFormat(AValue: TInkTextFormat);
 begin if FTextFormat=AValue then Exit; FTextFormat := AValue; Parse end;
-procedure TInkPage.SetSource(const AValue: string);
+procedure TInkCustomPage.SetSource(const AValue: string);
 begin FSource := AValue; Parse end;
-function TInkPage.GetStyleSheet: TStrings;
+function TInkCustomPage.GetStyleSheet: TStrings;
 begin Result := FStyleSheet end;
-procedure TInkPage.SetStyleSheet(AValue: TStrings);
+procedure TInkCustomPage.SetStyleSheet(AValue: TStrings);
 begin FStyleSheet.Assign(AValue) end;
-procedure TInkPage.StyleSheetChanged(Sender: TObject);
+procedure TInkCustomPage.StyleSheetChanged(Sender: TObject);
 begin Parse end;
-procedure TInkPage.SetMarkdownRawHTML(AValue: Boolean);
+procedure TInkCustomPage.SetMarkdownRawHTML(AValue: Boolean);
 begin
   if FMarkdownRawHTML=AValue then Exit;
   FMarkdownRawHTML := AValue;
   if FTextFormat=itfMarkdown then Parse;
 end;
-function TInkPage.ResolveURL(const Reference: string): string;
+function TInkCustomPage.ResolveURL(const Reference: string): string;
 begin
   if not ResolveRelativeURI(FLocation,Reference,Result) then Result := Reference;
 end;
-function TInkPage.ReadResource(const URL: string; Destination: TStream): Boolean;
+function TInkCustomPage.ReadResource(const URL: string; Destination: TStream): Boolean;
 var FileName: string; Stream: TFileStream;
 begin
   Result := False;
@@ -596,7 +692,7 @@ begin
   Stream := TFileStream.Create(FileName,fmOpenRead or fmShareDenyWrite);
   try Destination.CopyFrom(Stream,0); Destination.Position := 0; Result := True finally Stream.Free end;
 end;
-function TInkPage.ReadText(const URL: string): string;
+function TInkCustomPage.ReadText(const URL: string): string;
 var S: TStringStream;
 begin
   S := TStringStream.Create('');
@@ -605,23 +701,23 @@ begin
     Result := S.DataString;
   finally S.Free end;
 end;
-procedure TInkPage.LoadHTML(const HTML: string; const BaseURL: string);
+procedure TInkCustomPage.LoadHTML(const HTML: string; const BaseURL: string);
 begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse; Navigated end;
-procedure TInkPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
+procedure TInkCustomPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
 begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse; Navigated end;
-procedure TInkPage.Navigated;
+procedure TInkCustomPage.Navigated;
 begin
   if Assigned(FOnNavigate) then FOnNavigate(Self);
 end;
-function TInkPage.GetCanGoBack: Boolean;
+function TInkCustomPage.GetCanGoBack: Boolean;
 begin Result := FHistoryIndex>0 end;
-function TInkPage.GetCanGoForward: Boolean;
+function TInkCustomPage.GetCanGoForward: Boolean;
 begin Result := FHistoryIndex+1<FHistory.Count end;
-procedure TInkPage.LoadFromFile(const FileName: string);
+procedure TInkCustomPage.LoadFromFile(const FileName: string);
 begin Navigate(FilenameToURI(ExpandFileName(FileName)),True) end;
-procedure TInkPage.LoadFromURL(const URL: string);
+procedure TInkCustomPage.LoadFromURL(const URL: string);
 begin Navigate(ResolveURL(URL),True) end;
-procedure TInkPage.Navigate(const URL: string; AddHistory: Boolean);
+procedure TInkCustomPage.Navigate(const URL: string; AddHistory: Boolean);
 var P: Integer; PageURL,Anchor,NewSource,Ext: string;
 begin
   PageURL := URL; Anchor := ''; P := Pos('#',PageURL);
@@ -654,7 +750,7 @@ begin
     SetLength(Result,Length(Result)-1);
 end;
 
-function TInkPage.PlainText: string;
+function TInkCustomPage.PlainText: string;
 var I: Integer; B: TInkPageBlock;
 begin
   Result := '';
@@ -665,30 +761,30 @@ begin
     Result := Result + TidyCopy(HTMLPlainText(B.Source)) + LineEnding;
   end;
 end;
-function TInkPage.ImageCount: Integer;
+function TInkCustomPage.ImageCount: Integer;
 var I: Integer;
 begin
   Result := 0;
   for I := 0 to FBlocks.Count-1 do
     if TInkPageBlock(FBlocks[I]).Picture.Graphic<>nil then Inc(Result);
 end;
-function TInkPage.BlockCount: Integer;
+function TInkCustomPage.BlockCount: Integer;
 begin Result := FBlocks.Count end;
-function TInkPage.Block(Index: Integer): TInkPageBlock;
+function TInkCustomPage.Block(Index: Integer): TInkPageBlock;
 begin Layout; Result := TInkPageBlock(FBlocks[Index]) end;
-procedure TInkPage.Back;
+procedure TInkCustomPage.Back;
 begin
   if FHistoryIndex<=0 then Exit;
   Dec(FHistoryIndex);
   Navigate(FHistory[FHistoryIndex],False);
 end;
-procedure TInkPage.Forward;
+procedure TInkCustomPage.Forward;
 begin
   if FHistoryIndex+1>=FHistory.Count then Exit;
   Inc(FHistoryIndex);
   Navigate(FHistory[FHistoryIndex],False);
 end;
-procedure TInkPage.Parse;
+procedure TInkCustomPage.Parse;
 var
   S, Raw, Element, Cls, Buffer, BlockTag, BlockClass, PendingAnchor, PendingMarker,
     Prefix, URL, Nest, Box, Kind: string;
@@ -796,13 +892,7 @@ var
   end;
 begin
   if FBlocks=nil then Exit;
-  ClearBlocks; FStyles.Clear; FTitle := ''; FHoverLink := '';
-  FSelecting := False;
-  if HasSelection then
-  begin
-    FSelAnchor.Block := 0; FSelAnchor.Offset := 0; FSelCaret := FSelAnchor;
-    if Assigned(FOnSelectionChange) then FOnSelectionChange(Self);
-  end;
+  BeginDocument;
   if FTextFormat=itfMarkdown then
   begin
     if FMarkdownRawHTML then S := MarkdownToHTML(FSource,[imoRawHTML])
@@ -1042,9 +1132,9 @@ begin
         FTitle := Trim(HTMLPlainText(TInkPageBlock(FBlocks[I]).Source));
         Break;
       end;
-  FScroll.Position := 0; FLayoutDirty := True; Invalidate;
+  FScroll.Position := 0; InvalidateLayout(0);
 end;
-function TInkPage.Options: THTMLOptions;
+function TInkCustomPage.Options: THTMLOptions;
 var Link: TColor;
 begin
   Result := DefaultHTMLOptions;
@@ -1058,13 +1148,13 @@ begin
   Result.LinkColor := FStyles.Color('a','','color',Link);
   Result.LinkUnderline := True;
 end;
-procedure TInkPage.BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
+procedure TInkCustomPage.BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
 begin
   ACanvas.Font.Assign(Font); ACanvas.Font.Size := B.PointSize; ACanvas.Font.Color := B.TextColor;
   if B.Bold then ACanvas.Font.Style := ACanvas.Font.Style+[fsBold];
   if B.FaceName<>'' then ACanvas.Font.Name := B.FaceName;
 end;
-procedure TInkPage.StyleScrollBar;
+procedure TInkCustomPage.StyleScrollBar;
 var Track,Thumb,TextColor,C1,C2: TColor; Colors,SizeValue: string;
   Tokens: TStringList; P,Q,Depth,NewWidth: Integer;
   { #rgb, #rrggbb, a color name, currentcolor, or rgb()/rgba() with the
@@ -1137,87 +1227,111 @@ begin
   FScroll.Visible := NewWidth>0;
   FScroll.Width := NewWidth;
 end;
-procedure TInkPage.Layout;
-var I,J,X,Y,W,BlockLeft,MaxWidth,ImageH,K,Base,ListW,QuoteW,TextW,Thick: Integer;
-  BorderSpec: string; B: TInkPageBlock; Sz: TSize; O: THTMLOptions;
-  BodyText, PageBack, QuoteText, BarColor, CodeBack: TColor;
+procedure TInkCustomPage.LayoutColumn(out ALeft, AWidth: Integer);
+var MaxWidth: Integer;
+begin
+  MaxWidth := FStyles.Pixels('div','wrap','max-width',820);
+  AWidth := Max(40,Min(ClientWidth-FScroll.Width-40,MaxWidth));
+  ALeft := Max(20,(ClientWidth-FScroll.Width-AWidth) div 2);
+end;
+function TInkCustomPage.LayoutTop: Integer;
+begin Result := 24 end;
+procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
+var J,X,K: Integer; BorderSpec: string; Base: Integer;
   function Defaulted(const Prop: string; Fallback: Integer): Integer;
   begin
     Result := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,Prop,Fallback));
   end;
 begin
+  Base := FLayoutBase;
+  X := 0; SetLength(B.Bars,0);
+  for J := 1 to Length(B.Nest) do
+    if B.Nest[J]='q' then
+    begin
+      SetLength(B.Bars,Length(B.Bars)+1); B.Bars[High(B.Bars)] := X; Inc(X,FQuoteWidth);
+    end
+    else Inc(X,FListWidth);
+  B.Indent := X;
+  B.PointSize := Base;
+  if B.Tag='h1' then B.PointSize := Round(Base*1.9)
+  else if B.Tag='h2' then B.PointSize := Round(Base*1.36)
+  else if B.Tag='h3' then B.PointSize := Round(Base*1.15)
+  else if (B.Tag='h5') or (B.Tag='h6') then B.PointSize := Max(1,Round(Base*0.9));
+  B.PointSize := Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',B.PointSize*4 div 3)*3 div 4);
+  B.Bold := IsHeadingTag(B.Tag) or (B.Tag='dt') or (B.Tag='summary');
+  if B.Pre then B.FaceName := InkMonoFace else B.FaceName := '';
+  B.NoWrap := B.Pre;
+  if Length(B.Bars)>0 then
+    B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FQuoteText)
+  else
+    B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FBodyText);
+  if B.Pre then B.Padding := Defaulted('padding',10)
+  else B.Padding := Defaulted('padding',6);
+  B.GapBefore := Defaulted('margin-top',0);
+  if B.Tag='li' then B.GapAfter := Defaulted('margin-bottom',2)
+  else B.GapAfter := Defaulted('margin-bottom',12);
+  B.BorderColor := clNone;
+  BorderSpec := FStyles.Value(B.Tag,B.CSSClass,'border','');
+  K := Pos('var(',BorderSpec);
+  if K>0 then BorderSpec := Copy(BorderSpec,K,MaxInt)
+  else begin K := LastDelimiter(' ',BorderSpec); if K>0 then Delete(BorderSpec,1,K) end;
+  if BorderSpec<>'' then
+    B.BorderColor := HTMLStringToColor(FStyles.Resolve(BorderSpec),clNone);
+  B.BackColor := FStyles.Color(B.Tag,B.CSSClass,'background',
+    FStyles.Color(B.Tag,B.CSSClass,'background-color',clNone));
+  if B.Pre and (B.BackColor=clNone) then B.BackColor := FCodeBack;
+  B.BarColor := FBarDefault;
+  if B.Tag='hr' then
+    { a rule: its color from color, border-color or background, in that
+      order }
+    B.BarColor := FStyles.Color('hr',B.CSSClass,'color',
+      FStyles.Color('hr',B.CSSClass,'border-color',
+      FStyles.Color('hr',B.CSSClass,'background',MixColor(FBodyText,FPageBack,0.7))));
+end;
+procedure TInkCustomPage.Layout;
+var I,Y,W,BlockLeft,ImageH,TextW,Thick,Start: Integer;
+  B,Prev: TInkPageBlock; Sz: TSize; O: THTMLOptions;
+begin
   if not FLayoutDirty then Exit;
-  FLayoutDirty := False; Y := 24;
-  MaxWidth := FStyles.Pixels('div','wrap','max-width',820);
+  FLayoutDirty := False;
   StyleScrollBar;
-  W := Max(40,Min(ClientWidth-FScroll.Width-40,MaxWidth));
-  BlockLeft := Max(20,(ClientWidth-FScroll.Width-W) div 2);
-  FColumnLeft := BlockLeft;
+  LayoutColumn(BlockLeft,W);
+  { only the blocks from FLayoutFrom on, unless the column changed }
+  Start := FLayoutFrom;
+  if (W<>FColumnWidth) or (BlockLeft<>FColumnLeft) or (FLayoutWidth<>ClientWidth) then Start := 0;
+  if Start>=FBlocks.Count then Start := FBlocks.Count;
+  FLayoutFrom := MaxInt;
+  FColumnLeft := BlockLeft; FColumnWidth := W; FLayoutWidth := ClientWidth;
+  if Start=0 then Y := LayoutTop
+  else
+  begin
+    Prev := TInkPageBlock(FBlocks[Start-1]);
+    Y := Prev.Bounds.Bottom+Prev.GapAfter;
+  end;
   O := Options;
-  Base := Font.Size;
-  if Base<=0 then Base := 11;
+  FLayoutBase := Font.Size;
+  if FLayoutBase<=0 then FLayoutBase := Screen.SystemFont.Size;
+  if FLayoutBase<=0 then FLayoutBase := 11;
   { a list's indent is room for its markers; a quote's, room for its bar }
-  Canvas.Font.Assign(Font); Canvas.Font.Size := Base;
-  ListW := Max(Scale96ToFont(24),Canvas.TextWidth('00. '));
-  QuoteW := Scale96ToFont(18);
-  BodyText := FStyles.Color('body','','color',Font.Color);
-  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
-  QuoteText := FStyles.Color('blockquote','','color',MixColor(BodyText,PageBack,0.3));
-  BarColor := FStyles.Color('blockquote','','border-color',MixColor(BodyText,PageBack,0.6));
-  CodeBack := FStyles.Color('code','','background',
-    FStyles.Color('code','','background-color',HTMLShadeColor(PageBack,7)));
-  for I := 0 to FBlocks.Count-1 do
+  Canvas.Font.Assign(Font); Canvas.Font.Size := FLayoutBase;
+  FListWidth := Max(Scale96ToFont(24),Canvas.TextWidth('00. '));
+  FQuoteWidth := Scale96ToFont(18);
+  FBodyText := FStyles.Color('body','','color',Font.Color);
+  FPageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
+  FQuoteText := FStyles.Color('blockquote','','color',MixColor(FBodyText,FPageBack,0.3));
+  FBarDefault := FStyles.Color('blockquote','','border-color',MixColor(FBodyText,FPageBack,0.6));
+  FCodeBack := FStyles.Color('code','','background',
+    FStyles.Color('code','','background-color',HTMLShadeColor(FPageBack,7)));
+  for I := Start to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]);
     B.RunsReady := False;
-    X := 0; SetLength(B.Bars,0);
-    for J := 1 to Length(B.Nest) do
-      if B.Nest[J]='q' then
-      begin
-        SetLength(B.Bars,Length(B.Bars)+1); B.Bars[High(B.Bars)] := X; Inc(X,QuoteW);
-      end
-      else Inc(X,ListW);
-    B.Indent := X;
-    B.PointSize := Base;
-    if B.Tag='h1' then B.PointSize := Round(Base*1.9)
-    else if B.Tag='h2' then B.PointSize := Round(Base*1.36)
-    else if B.Tag='h3' then B.PointSize := Round(Base*1.15)
-    else if (B.Tag='h5') or (B.Tag='h6') then B.PointSize := Max(1,Round(Base*0.9));
-    B.PointSize := Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',B.PointSize*4 div 3)*3 div 4);
-    B.Bold := IsHeadingTag(B.Tag) or (B.Tag='dt') or (B.Tag='summary');
-    if B.Pre then B.FaceName := InkMonoFace else B.FaceName := '';
-    if Length(B.Bars)>0 then
-      B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',QuoteText)
-    else
-      B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',BodyText);
-    if B.Pre then B.Padding := Defaulted('padding',10)
-    else B.Padding := Defaulted('padding',6);
-    B.GapBefore := Defaulted('margin-top',0);
-    if B.Tag='li' then B.GapAfter := Defaulted('margin-bottom',2)
-    else B.GapAfter := Defaulted('margin-bottom',12);
-    B.BorderColor := clNone;
-    BorderSpec := FStyles.Value(B.Tag,B.CSSClass,'border','');
-    K := Pos('var(',BorderSpec);
-    if K>0 then BorderSpec := Copy(BorderSpec,K,MaxInt)
-    else begin K := LastDelimiter(' ',BorderSpec); if K>0 then Delete(BorderSpec,1,K) end;
-    if BorderSpec<>'' then
-    begin
-      B.BorderColor := HTMLStringToColor(FStyles.Resolve(BorderSpec),clNone);
-    end;
+    StyleBlock(B);
     Inc(Y,B.GapBefore);
-    B.BackColor := FStyles.Color(B.Tag,B.CSSClass,'background',
-      FStyles.Color(B.Tag,B.CSSClass,'background-color',clNone));
-    if B.Pre and (B.BackColor=clNone) then B.BackColor := CodeBack;
-    B.BarColor := BarColor;
     BlockFont(Canvas,B);
     B.MarkerWidth := 0;
     if B.Tag='hr' then
     begin
-      { a rule: its color from color, border-color or background, in
-        that order, and a line two pixels thick }
-      B.BarColor := FStyles.Color('hr',B.CSSClass,'color',
-        FStyles.Color('hr',B.CSSClass,'border-color',
-        FStyles.Color('hr',B.CSSClass,'background',MixColor(BodyText,PageBack,0.7))));
       Thick := Max(1,Scale96ToFont(2));
       Sz.cx := W-B.Indent; Sz.cy := Thick;
       B.Wrapped := '';
@@ -1234,28 +1348,27 @@ begin
       if B.Marker<>'' then
         B.MarkerWidth := Canvas.TextWidth(B.Marker+' ');
       TextW := Max(20,W-B.Indent-B.Padding*2);
-      if B.Pre then
-      begin
-        B.Wrapped := B.Source;
-        Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
-      end
-      else
-      begin
-        B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,0.7);
-        Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
-      end;
+      if B.NoWrap then B.Wrapped := B.Source
+      else B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,O.SuperSubScriptRatio,O.Scale);
+      Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
     end;
     B.Bounds := Rect(BlockLeft+B.Indent,Y,BlockLeft+W,Y+Sz.cy+B.Padding*2);
     B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.Padding,
       B.Bounds.Right-B.Padding,B.Bounds.Bottom-B.Padding);
     Inc(Y,Sz.cy+B.Padding*2+B.GapAfter);
   end;
+  if (Start>0) and (Start>=FBlocks.Count) and (FBlocks.Count>0) then
+  begin
+    Prev := TInkPageBlock(FBlocks[FBlocks.Count-1]);
+    Y := Prev.Bounds.Bottom+Prev.GapAfter;
+  end;
+  if FBlocks.Count=0 then Y := LayoutTop;
   FContentHeight := Y;
   FScroll.SetParams(Min(FScroll.Position,Max(0,Y-ClientHeight)),0,Max(ClientHeight,Y),Max(1,ClientHeight));
 end;
-procedure TInkPage.Paint;
+procedure TInkCustomPage.Paint;
 begin RenderTo(Canvas) end;
-procedure TInkPage.RenderTo(ACanvas: TCanvas);
+procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
 var I,J,BarTop,BarBottom,Saved: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
   SelFrom, SelTo: TInkPagePosition; Selected: Boolean;
 begin
@@ -1306,7 +1419,8 @@ begin
     if B.Marker<>'' then
       HTMLDrawOpt(ACanvas,Rect(TR.Left-B.MarkerWidth,TR.Top,TR.Left,TR.Bottom),[],
         HTMLEscape(B.Marker),O);
-    if B.Pre then
+    O := BlockOptions(I);
+    if B.NoWrap then
     begin
       { a long line of code is cut off at the block's edge, not wrapped }
       Saved := SaveDC(ACanvas.Handle);
@@ -1328,30 +1442,42 @@ begin
     FScroll.RenderTo(ACanvas,Rect(ClientWidth-FScroll.Width,0,ClientWidth,ClientHeight));
   if FindBarVisible then PaintFindBar(ACanvas);
 end;
-procedure TInkPage.Resize;
-begin inherited; FLayoutDirty := True; PlaceFindBar; Invalidate end;
-procedure TInkPage.FontChanged(Sender: TObject);
-begin inherited; FLayoutDirty := True; Invalidate end;
-function TInkPage.HitLink(X,Y: Integer): string;
-var I: Integer; B: TInkPageBlock; R: TRect; Hit: THTMLHitInfo;
+procedure TInkCustomPage.Resize;
+begin inherited; InvalidateLayout(0); PlaceFindBar end;
+procedure TInkCustomPage.FontChanged(Sender: TObject);
+begin inherited; InvalidateLayout(0) end;
+function TInkCustomPage.HitTestLink(X,Y: Integer; out ABlock: Integer; out AHit: THTMLHitInfo): Boolean;
+var I: Integer; B: TInkPageBlock; R: TRect;
 begin
-  Result := ''; Layout;
+  Result := False; ABlock := -1;
+  AHit.OnLink := False; AHit.LinkName := ''; AHit.LinkText := ''; AHit.LinkIndex := 0;
+  Layout;
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
     if not PtInRect(R,Point(X,Y)) or (B.Wrapped='') then Continue;
     BlockFont(Canvas,B);
     R := B.TextBounds; OffsetRect(R,0,-FScroll.Position);
-    Hit := HTMLHitTest(Canvas,R,B.Wrapped,Options,X,Y);
-    if Hit.OnLink then Exit(ResolveURL(HTMLUnescape(Hit.LinkName)));
+    AHit := HTMLHitTest(Canvas,R,B.Wrapped,Options,X,Y);
+    if AHit.OnLink then
+    begin
+      ABlock := I;
+      Exit(True);
+    end;
   end;
 end;
-function TInkPage.GetScrollY: Integer;
+function TInkCustomPage.HitLink(X,Y: Integer): string;
+var B: Integer; Hit: THTMLHitInfo;
+begin
+  Result := '';
+  if HitTestLink(X,Y,B,Hit) then Result := ResolveURL(LinkHref(Hit));
+end;
+function TInkCustomPage.GetScrollY: Integer;
 begin
   Result := FScroll.Position;
 end;
 
-procedure TInkPage.CreateWnd;
+procedure TInkCustomPage.CreateWnd;
 begin
   inherited CreateWnd;
   InkHookTouch(Self,@Touch);
@@ -1371,7 +1497,7 @@ const
   { what is left of the speed after a second of coasting }
   FLICK_FRICTION = 0.05;
 
-procedure TInkPage.GrabBegin(X,Y: Integer; Finger: Boolean; Time: QWord);
+procedure TInkCustomPage.GrabBegin(X,Y: Integer; Finger: Boolean; Time: QWord);
 begin
   StopFlick;
   FGrab := True; FDragged := False; FGrabFinger := Finger;
@@ -1380,7 +1506,7 @@ begin
   GrabMove(X,Y,Time);
 end;
 
-procedure TInkPage.GrabMove(X,Y: Integer; Time: QWord);
+procedure TInkCustomPage.GrabMove(X,Y: Integer; Time: QWord);
 var K: Integer;
 begin
   if not FGrab then Exit;
@@ -1400,7 +1526,7 @@ begin
   end;
 end;
 
-procedure TInkPage.GrabEnd(X,Y: Integer; Time: QWord);
+procedure TInkCustomPage.GrabEnd(X,Y: Integer; Time: QWord);
 var WasDrag: Boolean; K: Integer; DT: Int64;
 begin
   if not FGrab then Exit;
@@ -1421,26 +1547,27 @@ begin
   FFlickTimer.Enabled := True;
 end;
 
-procedure TInkPage.ClickAt(X,Y: Integer);
-var URL: string;
+procedure TInkCustomPage.ClickAt(X,Y: Integer);
+var B: Integer; Hit: THTMLHitInfo; Href: string;
 begin
   if CanFocus then SetFocus;
-  URL := HitLink(X,Y); if URL='' then Exit;
-  if Assigned(FOnLinkClick) then FOnLinkClick(Self,URL) else LoadFromURL(URL);
+  if not HitTestLink(X,Y,B,Hit) then Exit;
+  Href := LinkHref(Hit);
+  LinkClicked(B,Href,ResolveURL(Href));
 end;
 
-procedure TInkPage.StopFlick;
+procedure TInkCustomPage.StopFlick;
 begin
   FVelocity := 0;
   FFlickTimer.Enabled := False;
 end;
 
-function TInkPage.GetFlicking: Boolean;
+function TInkCustomPage.GetFlicking: Boolean;
 begin
   Result := FVelocity<>0;
 end;
 
-procedure TInkPage.FlickStep(Milliseconds: Integer);
+procedure TInkCustomPage.FlickStep(Milliseconds: Integer);
 var Last, Next: Integer;
 begin
   if FVelocity=0 then Exit;
@@ -1453,7 +1580,7 @@ begin
     StopFlick;
 end;
 
-procedure TInkPage.FlickTimer(Sender: TObject);
+procedure TInkCustomPage.FlickTimer(Sender: TObject);
 var Now_: QWord;
 begin
   Now_ := GetTickCount64;
@@ -1461,12 +1588,12 @@ begin
   FFlickLast := Now_;
 end;
 
-procedure TInkPage.Touch(Phase: TInkTouchPhase; X,Y: Integer);
+procedure TInkCustomPage.Touch(Phase: TInkTouchPhase; X,Y: Integer);
 begin
   TouchAt(Phase,X,Y,GetTickCount64);
 end;
 
-procedure TInkPage.TouchAt(Phase: TInkTouchPhase; X,Y: Integer; Time: QWord);
+procedure TInkCustomPage.TouchAt(Phase: TInkTouchPhase; X,Y: Integer; Time: QWord);
 begin
   case Phase of
     itpBegin: GrabBegin(X,Y,True,Time);
@@ -1486,7 +1613,7 @@ begin
   end;
 end;
 
-procedure TInkPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
+procedure TInkCustomPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
 var P, WordFrom, WordTo: TInkPagePosition; Now_: QWord; Near: Boolean;
 begin
   inherited;
@@ -1552,8 +1679,9 @@ begin
   end;
 end;
 
-procedure TInkPage.MouseMove(Shift: TShiftState; X,Y: Integer);
+procedure TInkCustomPage.MouseMove(Shift: TShiftState; X,Y: Integer);
 var I: Integer; B: TInkPageBlock; OnText: Boolean; R: TRect;
+  HoverBlock: Integer; HoverHit: THTMLHitInfo;
 begin
   inherited;
   if FGrab then
@@ -1573,7 +1701,14 @@ begin
       Exit;
     end;
   end;
-  FHoverLink := HitLink(X,Y);
+  HitTestLink(X,Y,HoverBlock,HoverHit);
+  if HoverHit.OnLink then FHoverLink := ResolveURL(LinkHref(HoverHit))
+  else FHoverLink := '';
+  if (HoverBlock<>FHoverBlock) or (HoverHit.LinkIndex<>FHoverLinkIndex) then
+  begin
+    FHoverBlock := HoverBlock; FHoverLinkIndex := HoverHit.LinkIndex;
+    HoverChanged(HoverBlock,HoverHit);
+  end;
   if FHoverLink<>'' then Cursor := crHandPoint
   else
   begin
@@ -1588,7 +1723,7 @@ begin
   end;
 end;
 
-procedure TInkPage.MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
+procedure TInkCustomPage.MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
 begin
   inherited;
   { the mouse's own back and forward buttons }
@@ -1610,7 +1745,17 @@ begin
   GrabEnd(X,Y,GetTickCount64);
 end;
 
-procedure TInkPage.AutoScrollTimer(Sender: TObject);
+procedure TInkCustomPage.MouseLeave;
+var NoHit: THTMLHitInfo;
+begin
+  inherited MouseLeave;
+  if FHoverBlock<0 then Exit;
+  FHoverBlock := -1; FHoverLinkIndex := 0; FHoverLink := '';
+  NoHit.OnLink := False; NoHit.LinkName := ''; NoHit.LinkText := ''; NoHit.LinkIndex := 0;
+  HoverChanged(-1,NoHit);
+end;
+
+procedure TInkCustomPage.AutoScrollTimer(Sender: TObject);
 var Delta: Integer;
 begin
   if not FSelecting then begin FAutoScroll.Enabled := False; Exit end;
@@ -1621,7 +1766,7 @@ begin
   ExtendTo(PositionAt(FDragX,EnsureRange(FDragY,0,ClientHeight-1)));
 end;
 
-procedure TInkPage.CollectRun(const AText: string; ALeft, ATop, AWidth, AHeight,
+procedure TInkCustomPage.CollectRun(const AText: string; ALeft, ATop, AWidth, AHeight,
   ALine, APart: Integer; AFont: TFont);
 var B: TInkPageBlock;
 begin
@@ -1638,7 +1783,7 @@ begin
   Inc(B.RunCount);
 end;
 
-procedure TInkPage.PrepareRuns(B: TInkPageBlock);
+procedure TInkCustomPage.PrepareRuns(B: TInkPageBlock);
 var O: THTMLOptions; W,H,I,J,K,P,Q,Tallest: Integer; Hit: THTMLHitInfo; Plain: string;
 begin
   Layout;
@@ -1683,14 +1828,14 @@ begin
   end;
 end;
 
-procedure TInkPage.RunFont(ACanvas: TCanvas; const R: TInkPageRun);
+procedure TInkCustomPage.RunFont(ACanvas: TCanvas; const R: TInkPageRun);
 begin
   ACanvas.Font.Name := R.FontName;
   ACanvas.Font.Size := R.FontSize;
   ACanvas.Font.Style := R.FontStyle;
 end;
 
-function TInkPage.RunX(const R: TInkPageRun; Offset: Integer): Integer;
+function TInkCustomPage.RunX(const R: TInkPageRun; Offset: Integer): Integer;
 var K: Integer;
 begin
   K := EnsureRange(Offset-R.Start,0,Length(R.Text));
@@ -1700,7 +1845,7 @@ begin
   Result := R.Left+Canvas.TextWidth(Copy(R.Text,1,K));
 end;
 
-function TInkPage.BlockAt(X,Y: Integer): Integer;
+function TInkCustomPage.BlockAt(X,Y: Integer): Integer;
 var I,DocY: Integer; B: TInkPageBlock;
 begin
   Layout;
@@ -1713,7 +1858,7 @@ begin
   end;
 end;
 
-function TInkPage.PositionAt(X,Y: Integer): TInkPagePosition;
+function TInkCustomPage.PositionAt(X,Y: Integer): TInkPagePosition;
 var I,K,DocY,Best,BestDY,BestDX,DY,DX,Prev,W,Len: Integer; B: TInkPageBlock; R: TInkPageRun;
 begin
   Layout;
@@ -1761,7 +1906,7 @@ begin
   end;
 end;
 
-function TInkPage.PositionPoint(const APosition: TInkPagePosition): TPoint;
+function TInkCustomPage.PositionPoint(const APosition: TInkPagePosition): TPoint;
 var P: TInkPagePosition; B: TInkPageBlock; K,Found: Integer;
 begin
   P := Clamp(APosition);
@@ -1781,13 +1926,13 @@ begin
   Result := Point(RunX(B.Runs[Found],P.Offset),B.Runs[Found].Top-FScroll.Position);
 end;
 
-function TInkPage.BlockText(Index: Integer): string;
+function TInkCustomPage.BlockText(Index: Integer): string;
 begin
   PrepareRuns(TInkPageBlock(FBlocks[Index]));
   Result := TInkPageBlock(FBlocks[Index]).Words;
 end;
 
-function TInkPage.Clamp(const P: TInkPagePosition): TInkPagePosition;
+function TInkCustomPage.Clamp(const P: TInkPagePosition): TInkPagePosition;
 var B: TInkPageBlock;
 begin
   Result := P;
@@ -1811,7 +1956,7 @@ begin
   Result := (C in ['a'..'z','A'..'Z','0'..'9','_']) or (Ord(C)>=$80);
 end;
 
-function TInkPage.WordAt(const P: TInkPagePosition; out AFrom, ATo: TInkPagePosition): Boolean;
+function TInkCustomPage.WordAt(const P: TInkPagePosition; out AFrom, ATo: TInkPagePosition): Boolean;
 var Words: string; A,Z: Integer; Kind: Boolean;
 begin
   AFrom := Clamp(P); ATo := AFrom;
@@ -1837,7 +1982,7 @@ begin
   AFrom.Offset := A; ATo.Offset := Z;
 end;
 
-procedure TInkPage.ExtendTo(const P: TInkPagePosition);
+procedure TInkCustomPage.ExtendTo(const P: TInkPagePosition);
 var WordFrom, WordTo: TInkPagePosition;
 begin
   case FSelectUnit of
@@ -1864,54 +2009,54 @@ begin
   SelectionChanged;
 end;
 
-procedure TInkPage.SelectionChanged;
+procedure TInkCustomPage.SelectionChanged;
 begin
   Invalidate;
   if Assigned(FOnSelectionChange) then FOnSelectionChange(Self);
 end;
 
-procedure TInkPage.Select(const AFrom, ATo: TInkPagePosition);
+procedure TInkCustomPage.Select(const AFrom, ATo: TInkPagePosition);
 begin
   FSelAnchor := Clamp(AFrom); FSelCaret := Clamp(ATo);
   SelectionChanged;
 end;
 
-procedure TInkPage.SelectAll;
+procedure TInkCustomPage.SelectAll;
 begin
   FSelAnchor.Block := 0; FSelAnchor.Offset := 0;
   FSelCaret.Block := Max(0,FBlocks.Count-1); FSelCaret.Offset := MaxInt;
   SelectionChanged;
 end;
 
-procedure TInkPage.DoSelectAll(Sender: TObject);
+procedure TInkCustomPage.DoSelectAll(Sender: TObject);
 begin
   SelectAll;
 end;
 
-procedure TInkPage.ClearSelection;
+procedure TInkCustomPage.ClearSelection;
 begin
   if not HasSelection then Exit;
   FSelAnchor := FSelCaret;
   SelectionChanged;
 end;
 
-function TInkPage.HasSelection: Boolean;
+function TInkCustomPage.HasSelection: Boolean;
 begin
   Result := (FBlocks<>nil) and (FBlocks.Count>0) and
     (ComparePositions(FSelAnchor,FSelCaret)<>0);
 end;
 
-function TInkPage.GetSelectionStart: TInkPagePosition;
+function TInkCustomPage.GetSelectionStart: TInkPagePosition;
 begin
   if ComparePositions(FSelAnchor,FSelCaret)<=0 then Result := FSelAnchor else Result := FSelCaret;
 end;
 
-function TInkPage.GetSelectionEnd: TInkPagePosition;
+function TInkCustomPage.GetSelectionEnd: TInkPagePosition;
 begin
   if ComparePositions(FSelAnchor,FSelCaret)<=0 then Result := FSelCaret else Result := FSelAnchor;
 end;
 
-function TInkPage.SelectedText: string;
+function TInkCustomPage.SelectedText: string;
 var I,A,Z: Integer; B: TInkPageBlock; SelFrom,SelTo: TInkPagePosition; Part: string;
 begin
   Result := '';
@@ -1936,7 +2081,7 @@ begin
   end;
 end;
 
-function TInkPage.SelectedHTML: string;
+function TInkCustomPage.SelectedHTML: string;
 var I,A,Z: Integer; B: TInkPageBlock; SelFrom,SelTo: TInkPagePosition; Element,Part: string;
 begin
   Result := '';
@@ -1962,12 +2107,12 @@ begin
   Result := '<html><body>'+LineEnding+Result+'</body></html>';
 end;
 
-procedure TInkPage.CopyToClipboard;
+procedure TInkCustomPage.CopyToClipboard;
 begin
   if HasSelection then InkCopyText(SelectedText,SelectedHTML);
 end;
 
-function TInkPage.SelectionBackground: TColor;
+function TInkCustomPage.SelectionBackground: TColor;
 var PageBack: TColor;
 begin
   PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
@@ -1977,14 +2122,14 @@ begin
     FStyles.RuleValue('::selection','background-color','')),Result);
 end;
 
-procedure TInkPage.SetSelectionColor(AValue: TColor);
+procedure TInkCustomPage.SetSelectionColor(AValue: TColor);
 begin
   if FSelectionColor=AValue then Exit;
   FSelectionColor := AValue;
   Invalidate;
 end;
 
-procedure TInkPage.PaintSelection(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock;
+procedure TInkCustomPage.PaintSelection(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock;
   const AFrom, ATo: TInkPagePosition);
 var K,A,Z,SelA,SelZ,X1,X2,RunEnd: Integer; R: TInkPageRun; Space: Boolean;
 begin
@@ -2015,7 +2160,7 @@ begin
   end;
 end;
 
-function TInkPage.BuildCopyMenu(X,Y: Integer): TPopupMenu;
+function TInkCustomPage.BuildCopyMenu(X,Y: Integer): TPopupMenu;
 var Texts: TInkCopyTexts; I: Integer; B: TInkPageBlock;
 begin
   Texts := Default(TInkCopyTexts);
@@ -2030,6 +2175,7 @@ begin
   begin
     B := TInkPageBlock(FBlocks[I]);
     Texts.Block := TidyCopy(BlockText(I));
+    Texts.BlockCaption := CopyBlockCaption;
     if (Texts.Block<>'') and (B.Marker<>'') then Texts.Block := B.Marker+' '+Texts.Block;
   end;
   Texts.Link := HitLink(X,Y);
@@ -2039,7 +2185,7 @@ begin
   Result := FCopyMenuHost.Menu;
 end;
 
-procedure TInkPage.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+procedure TInkCustomPage.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
 var P: TPoint;
 begin
   inherited DoContextPopup(MousePos,Handled);
@@ -2053,12 +2199,12 @@ begin
   Handled := True;
 end;
 
-function TInkPage.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
+function TInkCustomPage.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
 begin
   FScroll.Position := EnsureRange(FScroll.Position-WheelDelta div 3,0,Max(0,FContentHeight-ClientHeight));
   Result := True;
 end;
-procedure TInkPage.KeyDown(var Key: Word; Shift: TShiftState);
+procedure TInkCustomPage.KeyDown(var Key: Word; Shift: TShiftState);
 var Delta: Integer;
 begin
   inherited; Delta := 0;
@@ -2093,11 +2239,11 @@ begin
   end;
   if Delta<>0 then begin FScroll.Position := EnsureRange(FScroll.Position+Delta,0,Max(0,FContentHeight-ClientHeight)); Key := 0 end;
 end;
-procedure TInkPage.ScrollTo(Y: Integer);
+procedure TInkCustomPage.ScrollTo(Y: Integer);
 begin
   Layout; FScroll.Position := EnsureRange(Y,0,Max(0,FContentHeight-ClientHeight));
 end;
-procedure TInkPage.JumpToAnchor(const Anchor: string);
+procedure TInkCustomPage.JumpToAnchor(const Anchor: string);
 var I: Integer; B: TInkPageBlock;
 begin
   Layout;
@@ -2109,7 +2255,7 @@ begin
 end;
 { --- finding ------------------------------------------------------------ }
 
-function TInkPage.SearchWords(Index: Integer; AOptions: TInkFindOptions): string;
+function TInkCustomPage.SearchWords(Index: Integer; AOptions: TInkFindOptions): string;
 var Lower: string;
 begin
   Result := BlockText(Index);
@@ -2119,7 +2265,7 @@ begin
   if Length(Lower)=Length(Result) then Result := Lower else Result := LowerCase(Result);
 end;
 
-function TInkPage.FindFrom(const AText: string; AOptions: TInkFindOptions;
+function TInkCustomPage.FindFrom(const AText: string; AOptions: TInkFindOptions;
   const AFrom: TInkPagePosition; out AMatch: TInkPagePosition): Boolean;
 var Needle, Hay: string; I, Step, K, N, Q, Last: Integer; Start: TInkPagePosition;
 begin
@@ -2175,7 +2321,7 @@ begin
   end;
 end;
 
-function TInkPage.SelectMatch(const AText: string; AOptions: TInkFindOptions;
+function TInkCustomPage.SelectMatch(const AText: string; AOptions: TInkFindOptions;
   const AFrom: TInkPagePosition): Boolean;
 var Match, MatchEnd: TInkPagePosition;
 begin
@@ -2189,7 +2335,7 @@ begin
   SelectionChanged;
 end;
 
-function TInkPage.FindStart(AOptions: TInkFindOptions): TInkPagePosition;
+function TInkCustomPage.FindStart(AOptions: TInkFindOptions): TInkPagePosition;
 begin
   if HasSelection then Exit(SelectionStart);
   { nothing selected: from what is on screen }
@@ -2197,7 +2343,7 @@ begin
   else Result := PositionAt(0,0);
 end;
 
-function TInkPage.Find(const AText: string; AOptions: TInkFindOptions): Boolean;
+function TInkCustomPage.Find(const AText: string; AOptions: TInkFindOptions): Boolean;
 var From: TInkPagePosition;
 begin
   From := FindStart(AOptions);
@@ -2207,7 +2353,7 @@ begin
   Result := SelectMatch(AText,AOptions,From);
 end;
 
-function TInkPage.FindCount(const AText: string; AOptions: TInkFindOptions;
+function TInkCustomPage.FindCount(const AText: string; AOptions: TInkFindOptions;
   out Current: Integer): Integer;
 var I, Q: Integer; Needle, Hay: string; SelFrom, SelTo: TInkPagePosition;
 begin
@@ -2234,7 +2380,7 @@ begin
   end;
 end;
 
-procedure TInkPage.ScrollIntoView(const APosition: TInkPagePosition);
+procedure TInkCustomPage.ScrollIntoView(const APosition: TInkPagePosition);
 var P: TPoint; B: TInkPageBlock; Margin, PlaceTop, PlaceBottom: Integer;
 begin
   P := PositionPoint(APosition);
@@ -2250,12 +2396,12 @@ begin
       0,Max(0,FContentHeight-ClientHeight));
 end;
 
-function TInkPage.GetFindBarVisible: Boolean;
+function TInkCustomPage.GetFindBarVisible: Boolean;
 begin
   Result := Assigned(FFindEdit) and FFindEdit.Visible;
 end;
 
-function TInkPage.FindBarRect: TRect;
+function TInkCustomPage.FindBarRect: TRect;
 var W, H: Integer;
 begin
   H := Scale96ToFont(34);
@@ -2264,7 +2410,7 @@ begin
 end;
 
 { 0 previous, 1 next, 2 close }
-function TInkPage.FindButtonRect(Index: Integer): TRect;
+function TInkCustomPage.FindButtonRect(Index: Integer): TRect;
 var Bar: TRect; S: Integer;
 begin
   Bar := FindBarRect;
@@ -2272,7 +2418,7 @@ begin
   Result := Rect(Bar.Right-4-(3-Index)*S,Bar.Top+4,Bar.Right-4-(2-Index)*S,Bar.Bottom-4);
 end;
 
-procedure TInkPage.PlaceFindBar;
+procedure TInkCustomPage.PlaceFindBar;
 var Bar: TRect;
 begin
   if not Assigned(FFindEdit) then Exit;
@@ -2282,7 +2428,7 @@ begin
     Max(40,FindButtonRect(0).Left-Bar.Left-6-Scale96ToFont(64)),Bar.Bottom-Bar.Top-10);
 end;
 
-procedure TInkPage.ShowFindBar;
+procedure TInkCustomPage.ShowFindBar;
 begin
   if not Assigned(FFindEdit) then
   begin
@@ -2302,7 +2448,7 @@ begin
   Invalidate;
 end;
 
-procedure TInkPage.HideFindBar;
+procedure TInkCustomPage.HideFindBar;
 begin
   if not FindBarVisible then Exit;
   FFindEdit.Visible := False;
@@ -2310,7 +2456,7 @@ begin
   Invalidate;
 end;
 
-procedure TInkPage.FindEditChange(Sender: TObject);
+procedure TInkCustomPage.FindEditChange(Sender: TObject);
 begin
   if FFindEdit.Text='' then
   begin
@@ -2325,7 +2471,7 @@ begin
   Invalidate;
 end;
 
-procedure TInkPage.FindEditKey(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TInkCustomPage.FindEditKey(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
   case Key of
     VK_RETURN, VK_F3:
@@ -2343,7 +2489,7 @@ begin
   end;
 end;
 
-procedure TInkPage.PaintFindBar(ACanvas: TCanvas);
+procedure TInkCustomPage.PaintFindBar(ACanvas: TCanvas);
 const
   Glyphs: array[0..2] of string = ('▲','▼','✕');
 var Bar, R: TRect; PageBack, Fore: TColor; Total, Current, K: Integer; Count: string;
