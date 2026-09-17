@@ -412,11 +412,11 @@ checks every image decodes:
 
 ```sh
 LAZARUS_DIR=... FPC=... tests/run.sh pages.txt results/
-python3 tests/check_help_text.py pages.txt results/
 ```
 
-The second command checks that every visible piece of text in the source pages
-survived into the rendered page.
+Given those two, it also checks that every visible piece of text in the source
+pages survived into the rendered page (`tests/check_help_text.pas`, which reads
+the pages with the FCL's own HTML reader rather than LazInk's).
 
 ## Where it is going
 
