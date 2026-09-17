@@ -2,8 +2,12 @@
 unit InkCSS;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Graphics;
+uses Classes, SysUtils, Graphics, Types;
 type
+  { Where an element sits: its ancestors, outermost first, each written
+    "tag.class.class" - "table.cards td".  With one, selectors like
+    "table.cards small" or "nav > a" match; without, only simple ones. }
+  TInkCSSContext = string;
   TInkStyleSheet = class
   private
     FRules, FVars: TStringList;
@@ -13,14 +17,102 @@ type
     destructor Destroy; override;
     procedure Clear;
     procedure Add(const CSS: string);
-    function Value(const Tag, Classes, Prop, Fallback: string): string;
-    function Color(const Tag, Classes, Prop: string; Fallback: TColor): TColor;
-    function Pixels(const Tag, Classes, Prop: string; Fallback: Integer): Integer;
+    function Value(const Tag, Classes, Prop, Fallback: string;
+      const Context: TInkCSSContext = ''): string;
+    function Color(const Tag, Classes, Prop: string; Fallback: TColor;
+      const Context: TInkCSSContext = ''): TColor;
+    function Pixels(const Tag, Classes, Prop: string; Fallback: Integer;
+      const Context: TInkCSSContext = ''): Integer;
+    { padding or margin: the shorthand's one to four values, then the
+      -top/-right/-bottom/-left longhands over them; Left, Top, Right,
+      Bottom in pixels, Fallback where nothing is said }
+    function Box(const Tag, Classes, Prop: string; const Fallback: TRect;
+      const Context: TInkCSSContext = ''): TRect;
+    { a border: its color (clNone for "none"), and whether one was given at
+      all; Sides says which of top, right, bottom, left have one ('trbl') }
+    function Border(const Tag, Classes: string; out AColor: TColor;
+      out Sides: string; const Context: TInkCSSContext = ''): Boolean;
     { a property of one selector exactly as written - '::selection' }
     function RuleValue(const Selector, Prop, Fallback: string): string;
   end;
+{ #rgb, #rrggbb, rgb()/rgba(), a color name, "none"/"transparent" (clNone),
+  or Fallback }
+function CSSColor(const S: string; Fallback: TColor): TColor;
+{ a length in pixels: "12px", "12", "-10px", "1em" (16 px), or Fallback }
+function CSSPixels(const S: string; Fallback: Integer): Integer;
+
 implementation
-uses InkHtml;
+uses InkHtml, Math;
+
+function CSSColor(const S: string; Fallback: TColor): TColor;
+var V, Inner: string; Parts: TStringList; R,G,B: Integer;
+begin
+  V := LowerCase(Trim(S));
+  if V='' then Exit(Fallback);
+  if (V='none') or (V='transparent') then Exit(clNone);
+  if (Copy(V,1,4)='rgb(') or (Copy(V,1,5)='rgba(') then
+  begin
+    Result := Fallback;
+    if V[Length(V)]<>')' then Exit;
+    Inner := Copy(V,Pos('(',V)+1,Length(V)-Pos('(',V)-1);
+    Inner := StringReplace(Inner,',',' ',[rfReplaceAll]);
+    Inner := StringReplace(Inner,'/',' ',[rfReplaceAll]);
+    Parts := TStringList.Create;
+    try
+      Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+      Parts.DelimitedText := Inner;
+      if Parts.Count<3 then Exit;
+      R := StrToIntDef(Parts[0],-1); G := StrToIntDef(Parts[1],-1); B := StrToIntDef(Parts[2],-1);
+      if (R<0) or (G<0) or (B<0) or (R>255) or (G>255) or (B>255) then Exit;
+      Result := RGBToColor(R,G,B);
+    finally Parts.Free end;
+    Exit;
+  end;
+  if (Length(V)=4) and (V[1]='#') then V := '#'+V[2]+V[2]+V[3]+V[3]+V[4]+V[4];
+  Result := HTMLStringToColor(V,Fallback);
+end;
+
+function CSSPixels(const S: string; Fallback: Integer): Integer;
+var V: string; F: Double; Mult: Double;
+begin
+  V := LowerCase(Trim(S));
+  Mult := 1;
+  if Copy(V,Length(V)-1,2)='px' then SetLength(V,Length(V)-2)
+  else if (Copy(V,Length(V)-2,3)='rem') then begin SetLength(V,Length(V)-3); Mult := 16 end
+  else if Copy(V,Length(V)-1,2)='em' then begin SetLength(V,Length(V)-2); Mult := 16 end;
+  if not TryStrToFloat(V,F,DefaultFormatSettings) then
+  begin
+    V := StringReplace(V,'.',DefaultFormatSettings.DecimalSeparator,[]);
+    if not TryStrToFloat(V,F) then Exit(Fallback);
+  end;
+  Result := Round(F*Mult);
+end;
+
+{ "td.empty" against a tag and its classes; Score is the selector's weight }
+function MatchSimple(const Sel, Tag, Classes: string; out Score: Integer): Boolean;
+var Parts: TStringList; T: string; I: Integer;
+begin
+  Result := False; Score := 0;
+  if Sel='' then Exit;
+  Parts := TStringList.Create;
+  try
+    Parts.StrictDelimiter := True; Parts.Delimiter := '.';
+    Parts.DelimitedText := Sel;
+    T := Parts[0];
+    if (T<>'') and (T<>'*') then
+    begin
+      if T<>Tag then Exit;
+      Inc(Score);
+    end;
+    for I := 1 to Parts.Count-1 do
+    begin
+      if Parts[I]='' then Continue;
+      if Pos(' '+Parts[I]+' ',' '+Classes+' ')=0 then Exit;
+      Inc(Score,10);
+    end;
+    Result := True;
+  finally Parts.Free end;
+end;
 constructor TInkStyleSheet.Create;
 begin inherited; FRules := TStringList.Create; FVars := TStringList.Create end;
 destructor TInkStyleSheet.Destroy;
@@ -102,28 +194,66 @@ begin
   { Cyclic custom properties invalidate the value, rather than looping. }
   if Pos('var(',Result)>0 then Result := '';
 end;
-function TInkStyleSheet.Value(const Tag, Classes, Prop, Fallback: string): string;
-var I,P,Score,Best: Integer; Sel,T,C,V: string;
+function TInkStyleSheet.Value(const Tag, Classes, Prop, Fallback: string;
+  const Context: TInkCSSContext): string;
+var I,K,J,Score,Part,Best: Integer; Sel,V,Tok,TokTag,TokClasses: string;
+  Parts, Ancestors: TStringList; Matched: Boolean;
 begin
   Result := Fallback; Best := -1;
-  for I := 0 to FRules.Count-1 do
-  begin
-    Sel := FRules[I]; Score := 0;
-    if Sel=':root' then
+  Parts := TStringList.Create;
+  Ancestors := TStringList.Create;
+  try
+    Ancestors.Delimiter := ' '; Ancestors.StrictDelimiter := False;
+    Ancestors.DelimitedText := Context;
+    for I := 0 to FRules.Count-1 do
     begin
-      if Tag<>'html' then Continue;
-      Sel := 'html'; Score := 10;
+      Sel := FRules[I]; Score := 0;
+      if Sel=':root' then
+      begin
+        if Tag<>'html' then Continue;
+        Sel := 'html'; Score := 10;
+      end;
+      if Pos(':',Sel)>0 then Continue;
+      Sel := StringReplace(Sel,'>',' ',[rfReplaceAll]);
+      Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+      Parts.DelimitedText := Sel;
+      if Parts.Count=0 then Continue;
+      if not MatchSimple(Parts[Parts.Count-1],Tag,Classes,Part) then Continue;
+      Inc(Score,Part);
+      { the rest, right to left, each somewhere further out than the last }
+      Matched := True;
+      K := Ancestors.Count-1;
+      for J := Parts.Count-2 downto 0 do
+      begin
+        Matched := False;
+        while K>=0 do
+        begin
+          Tok := Ancestors[K]; Dec(K);
+          TokTag := Tok; TokClasses := '';
+          if Pos('.',Tok)>0 then
+          begin
+            TokTag := Copy(Tok,1,Pos('.',Tok)-1);
+            TokClasses := StringReplace(Copy(Tok,Pos('.',Tok)+1,MaxInt),'.',' ',[rfReplaceAll]);
+          end;
+          if MatchSimple(Parts[J],TokTag,TokClasses,Part) then
+          begin
+            Inc(Score,Part);
+            Matched := True;
+            Break;
+          end;
+        end;
+        if not Matched then Break;
+      end;
+      if not Matched then Continue;
+      V := TStringList(FRules.Objects[I]).Values[Prop];
+      { a value whose var() cannot be resolved is invalid, and an invalid
+        declaration is dropped - it does not wipe out one that was valid }
+      if V<>'' then V := Resolve(V);
+      if (V<>'') and (Score>=Best) then begin Result := V; Best := Score end;
     end;
-    if (Pos(' ',Sel)>0) or (Pos(':',Sel)>0) or (Pos('>',Sel)>0) then Continue;
-    P := Pos('.',Sel); T := Sel; C := '';
-    if P>0 then begin T := Copy(Sel,1,P-1); C := Copy(Sel,P+1,MaxInt); Inc(Score,10) end;
-    if (T<>'') and (T<>'*') then begin if T<>Tag then Continue; Inc(Score) end;
-    if (C<>'') and (Pos(' '+C+' ',' '+Classes+' ')=0) then Continue;
-    V := TStringList(FRules.Objects[I]).Values[Prop];
-    { a value whose var() cannot be resolved is invalid, and an invalid
-      declaration is dropped - it does not wipe out one that was valid }
-    if V<>'' then V := Resolve(V);
-    if (V<>'') and (Score>=Best) then begin Result := V; Best := Score end;
+  finally
+    Parts.Free;
+    Ancestors.Free;
   end;
 end;
 function TInkStyleSheet.RuleValue(const Selector, Prop, Fallback: string): string;
@@ -138,13 +268,94 @@ begin
       if V<>'' then Result := V;
     end;
 end;
-function TInkStyleSheet.Color(const Tag, Classes, Prop: string; Fallback: TColor): TColor;
-begin Result := HTMLStringToColor(Value(Tag,Classes,Prop,''),Fallback) end;
-function TInkStyleSheet.Pixels(const Tag, Classes, Prop: string; Fallback: Integer): Integer;
-var S: string;
+function TInkStyleSheet.Color(const Tag, Classes, Prop: string; Fallback: TColor;
+  const Context: TInkCSSContext): TColor;
+begin Result := CSSColor(Value(Tag,Classes,Prop,'',Context),Fallback) end;
+function TInkStyleSheet.Pixels(const Tag, Classes, Prop: string; Fallback: Integer;
+  const Context: TInkCSSContext): Integer;
+begin Result := CSSPixels(Value(Tag,Classes,Prop,'',Context),Fallback) end;
+function TInkStyleSheet.Box(const Tag, Classes, Prop: string; const Fallback: TRect;
+  const Context: TInkCSSContext): TRect;
+var Parts: TStringList; V: string; N: array[0..3] of Integer; I: Integer;
 begin
-  S := Value(Tag,Classes,Prop,'');
-  if Copy(S,Length(S)-1,2)='px' then Delete(S,Length(S)-1,2);
-  Result := StrToIntDef(S,Fallback);
+  Result := Fallback;
+  V := Value(Tag,Classes,Prop,'',Context);
+  if V<>'' then
+  begin
+    Parts := TStringList.Create;
+    try
+      Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+      Parts.DelimitedText := V;
+      if (Parts.Count>=1) and (Parts.Count<=4) then
+      begin
+        for I := 0 to Parts.Count-1 do N[I] := CSSPixels(Parts[I],0);
+        case Parts.Count of
+          1: Result := Rect(N[0],N[0],N[0],N[0]);
+          2: Result := Rect(N[1],N[0],N[1],N[0]);
+          3: Result := Rect(N[1],N[0],N[1],N[2]);
+        else
+          Result := Rect(N[3],N[0],N[1],N[2]);
+        end;
+      end;
+    finally Parts.Free end;
+  end;
+  Result.Top := Pixels(Tag,Classes,Prop+'-top',Result.Top,Context);
+  Result.Right := Pixels(Tag,Classes,Prop+'-right',Result.Right,Context);
+  Result.Bottom := Pixels(Tag,Classes,Prop+'-bottom',Result.Bottom,Context);
+  Result.Left := Pixels(Tag,Classes,Prop+'-left',Result.Left,Context);
+end;
+function TInkStyleSheet.Border(const Tag, Classes: string; out AColor: TColor;
+  out Sides: string; const Context: TInkCSSContext): Boolean;
+const
+  Names: array[0..3] of string = ('top','right','bottom','left');
+  Letters: array[0..3] of Char = ('t','r','b','l');
+var V: string; I: Integer; C: TColor;
+
+  { "1px solid #ccc" - the color is the part that reads as one; "none" or a
+    zero width is no border }
+  function ColorOf(const Spec: string; out Col: TColor): Boolean;
+  var Parts: TStringList; K: Integer; Low: string;
+  begin
+    Result := False; Col := clNone;
+    Low := LowerCase(Trim(Spec));
+    if Low='' then Exit;
+    Result := True;
+    if (Low='none') or (Low='0') or (Pos('none',Low)>0) or (Pos('hidden',Low)>0) then Exit;
+    Col := clDefault;
+    Parts := TStringList.Create;
+    try
+      Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+      Parts.DelimitedText := Spec;
+      for K := 0 to Parts.Count-1 do
+        if (CSSColor(Parts[K],clNone)<>clNone) and (CSSPixels(Parts[K],-1)=-1) then
+          Col := CSSColor(Parts[K],clDefault);
+    finally Parts.Free end;
+  end;
+
+begin
+  Result := False; AColor := clDefault; Sides := '';
+  V := Value(Tag,Classes,'border','',Context);
+  if V<>'' then
+  begin
+    Result := True;
+    if ColorOf(V,C) then AColor := C;
+    if C<>clNone then Sides := 'trbl';
+  end;
+  V := Value(Tag,Classes,'border-color','',Context);
+  if V<>'' then AColor := CSSColor(V,AColor);
+  for I := 0 to 3 do
+  begin
+    V := Value(Tag,Classes,'border-'+Names[I],'',Context);
+    if V='' then Continue;
+    Result := True;
+    ColorOf(V,C);
+    if C=clNone then Sides := StringReplace(Sides,Letters[I],'',[])
+    else
+    begin
+      if Pos(Letters[I],Sides)=0 then Sides := Sides+Letters[I];
+      if C<>clDefault then AColor := C;
+    end;
+  end;
+  if Result and (Sides='') then AColor := clNone;
 end;
 end.
