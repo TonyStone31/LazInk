@@ -162,6 +162,17 @@ page's `::selection { background: ... }`. From code: `SelectAll`, `Select`,
 `SelectedText`, `SelectedHTML`, `CopyToClipboard`, and the character-level
 hit test `PositionAt(X, Y)` with its reverse `PositionPoint`.
 
+**Finding:** Ctrl+F opens a find bar at the top right of the page - it finds
+as you type, Enter or F3 goes to the next match and Shift with either to the
+one before, Esc closes it. From code: `Find(Text, Options)`, `FindCount`,
+`ShowFindBar`, `ScrollIntoView`.
+
+**Back and Forward:** `Back`, `Forward`, `CanGoBack` and `CanGoForward` are
+there for buttons, and `OnNavigate` fires after each new document so the
+buttons can follow. The mouse's own back and forward buttons work too - on
+GTK3, where the Lazarus backend drops them, `InkTouch` brings them back - and
+so do Alt+Left, Alt+Right and a keyboard's Back and Forward keys.
+
 **The copy menu:** right-click any display control for **Copy**, **Copy this
 paragraph** (or line, or item), **Copy link address** over a link, **Copy
 all** and **Select all**. `TInkMemo` and `TInkListBox` copy their selected
