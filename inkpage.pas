@@ -99,7 +99,7 @@ type
     procedure GrabBegin(X,Y: Integer; Finger: Boolean; Time: QWord);
     procedure GrabMove(X,Y: Integer; Time: QWord);
     procedure GrabEnd(X,Y: Integer; Time: QWord);
-    procedure Click(X,Y: Integer);
+    procedure ClickAt(X,Y: Integer);
     procedure StopFlick;
     procedure FlickTimer(Sender: TObject);
     function GetFlicking: Boolean;
@@ -1402,7 +1402,7 @@ begin
   if not FGrab then Exit;
   GrabMove(X,Y,Time);
   WasDrag := FDragged; FGrab := False; FDragged := False;
-  if not WasDrag then begin Click(X,Y); Exit end;
+  if not WasDrag then begin ClickAt(X,Y); Exit end;
   { a drag that happened to end over a link was a scroll, not a click; a
     quick one with a finger carries on }
   if not (FGrabFinger and FFlickScroll) then Exit;
@@ -1417,7 +1417,7 @@ begin
   FFlickTimer.Enabled := True;
 end;
 
-procedure TInkPage.Click(X,Y: Integer);
+procedure TInkPage.ClickAt(X,Y: Integer);
 var URL: string;
 begin
   if CanFocus then SetFocus;
@@ -1583,7 +1583,7 @@ begin
     FSelecting := False;
     FAutoScroll.Enabled := False;
     { a press that did not move is a click: on a link, it is followed }
-    if not FSelMoved then Click(X,Y)
+    if not FSelMoved then ClickAt(X,Y)
     else if HasSelection then
       { X11's other clipboard: what is selected is ready for a middle click }
       Clipboard(ctPrimarySelection).AsText := SelectedText;
