@@ -320,18 +320,26 @@ rewritten line by line, or it is still derived.
    `check_help_text.py`), and is at least as fast.
 2. Delete `inkhtml.pas` and `inktables.inc`.
 3. **Check provenance of every remaining file before relicensing.**  All of
-   them say MIT today, but `inklistbox.pas` grew out of wp's forum listbox
-   example - confirm what, if anything, of that example is still in it.
+   them say MIT today, but `inklistbox.pas` grew out of wp's forum list box
+   example (via Tony's demo built on it) - confirm what, if anything, of
+   that example is still in it, and rewrite whatever is.  The goal is that
+   **no code from JVCL or from the forum example remains** - the forum
+   thread is credited as where LazInk came from, not as a source of code.
    Relicense only files whose authors agree; anything uncertain gets
    rewritten too.
 4. Switch `LICENSE` to the chosen licence, drop `LICENSES/MPL-1.1.txt`,
    update the SPDX lines and `lazink.lpk`'s licence field.
-5. **Keep the credit.**  `THIRD_PARTY_NOTICES.md` and the README keep
-   saying that LazInk started from Project JEDI's JVCL HTML drawing code
-   (`JvHTControls`, `JvJVCLUtils`), by way of wp's Lazarus forum example,
-   and that it got the project off the ground - as history and
-   inspiration, with no JVCL code left in the package.  Keep
-   `docs/RENDERER_CHANGES.md` as a record of the old renderer.
+5. **Keep the credit.**  The story, as Tony tells it: he started the forum
+   thread in 2021 wanting simple HTML to decorate list box text; wp
+   suggested taking what was needed from JVCL and helped make it happen;
+   Tony's demo on that example is where the idea for LazInk was born; and
+   the components have been LazInk's own since.  `THIRD_PARTY_NOTICES.md`,
+   the README and the demo's Credits tab keep saying so - JVCL, wp and the
+   other forum helpers as where it started, `TDzHTMLText` as a source of
+   ideas (no code) - with no borrowed code left in the package.  This is
+   not about discrediting anyone; Tony sees how code should be shared
+   differently, and that is only possible with code written for LazInk.
+   Keep `docs/RENDERER_CHANGES.md` as a record of the old renderer.
 
 ### What the new renderer should learn
 
@@ -459,6 +467,10 @@ editor tab (P5), because Markdown is LazInk's own business.
 * Heckers Sketch builds against LazInk from `../LazInk/lazink.lpk`, so a
   change here reaches it on its next build.  Keep `tests/run.sh` green
   before pushing.
+* **A stale demo build**: `lazbuild` can miss an edit to `demo/main.lfm`
+  made in the same second as the build, and the demo then shows the old
+  form.  `rm -rf demo/lib` and build again.  (`lazbuild -B` rebuilds
+  Lazarus itself and fails without `--lazarusdir`.)
 * Update `README.md`, `docs/HELP_COMPATIBILITY.md` and this file as items
   land.  Commit finished work; don't leave it uncommitted.
 

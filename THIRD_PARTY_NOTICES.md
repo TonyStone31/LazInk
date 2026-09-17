@@ -1,5 +1,28 @@
 # Upstream attribution and provenance
 
+## How LazInk started
+
+LazInk began with a thread Tony Stone started on the Lazarus forum in
+August 2021,
+[Memo Component that supports HTML markup](https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html),
+asking for a simple way to decorate list box and memo text with a little
+HTML.  wp suggested using the HTML drawing code from Project JEDI's JVCL and
+helped extract it into a standalone unit with an owner-drawn list box
+example.  Tony's demo built on that example is where LazInk was born; the
+components have been developed as LazInk's own since.
+
+The JVCL-derived renderer described below is still in the package.  The
+intention (see `ROADMAP.md`, section 4) is to replace it with a renderer
+written for LazInk, so the package can be released with essentially no
+conditions.  When that is done, this file will keep the history and the
+credit: JVCL and wp's example are what got LazInk started.
+
+## Ideas, not code
+
+Digão Dalpiaz's `TDzHTMLText`, the other well-known HTML label for Lazarus
+and Delphi, was a source of ideas - inline images, link hover styling,
+borders, line spacing and CJK line breaking.  **No code was taken from it.**
+
 ## Project JEDI — JVCL
 
 LazInk's `inkhtml.pas` is derived from the JVCL HTML drawing routines. It is

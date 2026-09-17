@@ -252,18 +252,63 @@ after that - with what "done" means for each.
 
 ## Credits and origins
 
-LazInk grew from a small HTML-formatted listbox example into reusable Lazarus
-components needed by other projects. AI assistants helped teach the component
-creation process and assisted with design, implementation, and debugging.
+### How LazInk started
 
-The HTML renderer derives from **Project JEDI's JVCL**, specifically
-`JvHTControls` and `JvJVCLUtils`. Credit belongs to their original developers
-and contributors, including Andrei Prygounkov, Fedor Koshevnikov, Igor Pavluk,
-Serge Korolev, SGB Software, Maciej Kaczkowski, Timo Tegtmeier, and Andreas
-Hausladen. The [upstream notices and provenance](THIRD_PARTY_NOTICES.md)
-preserve the specific attribution for each source file and the route through
-the original Lazarus forum example. Lazarus/LCL and Free Pascal provide the
-component framework, compiler, runtime, and image decoding.
+In August 2021 Tony Stone started a thread on the Lazarus forum,
+[Memo Component that supports HTML markup](https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html),
+asking for a simple way to decorate text in list boxes and memos with a
+little HTML - mostly colour and bold - for showing log files, without
+pulling in a heavyweight HTML component.
+
+**wp** suggested taking what was needed from the HTML drawing code in
+Project JEDI's JVCL, and helped make it happen: he pulled those routines
+out into a standalone unit and wrote an owner-drawn list box example around
+it.  Tony built a demo on top of that example - the floating in-place
+editor over a list item, saving the list as text or as markup - and that
+demo is where the idea for LazInk was born.
+
+Since then LazInk has grown into its own set of Lazarus components: labels,
+memos, list boxes, a page viewer, a rich editor, a scrollbar, Markdown and
+tables.  AI assistants helped teach the component-writing process and
+worked on the design, the code and the debugging.
+
+### Where the code comes from today
+
+The HTML renderer (`inkhtml.pas`, with `inktables.inc`) still contains code
+adapted from JVCL, and is under JVCL's licence (MPL 1.1) - see
+[License](#license) and [the notices](THIRD_PARTY_NOTICES.md).  Everything
+else was written for LazInk.
+
+The plan ([ROADMAP.md](ROADMAP.md), section 4) is to replace that renderer
+with one written for LazInk, so the whole package can be released with
+essentially no conditions.  That is not a judgement on JVCL or on anyone
+who helped - it is a different view of how this particular code should be
+shared, and it can only be done with code written for it.  The credit below
+stays either way: JVCL and wp's example are what got LazInk off the ground.
+
+### Thanks
+
+* **Project JEDI's JVCL** - the HTML drawing code LazInk grew from
+  (`JvHTControls`, `JvJVCLUtils`).  Andrei Prygounkov, Fedor Koshevnikov,
+  Igor Pavluk, Serge Korolev, SGB Software, Maciej Kaczkowski, Timo
+  Tegtmeier, Andreas Hausladen and the JEDI contributors.
+* **wp** - suggested the JVCL route, extracted the routines into a
+  standalone unit, and wrote the list box example LazInk started from.
+* **jamie** - suggested `TIpHtmlPanel` on the IPro tab, the first thing that
+  actually rendered.
+* **skalogryz** - pointed out that a Qt5 memo could do it with low-level
+  widget access.
+* **avra** - the RichMemo wiki examples for mixed-colour text, and the IDE
+  shortcuts for finding lost forms.
+* **Jurassic Pork** - reported that the original demo opened off-screen on a
+  single-monitor machine; the demo centres itself because of that.
+* **tetrastes** and **denis.totoliciu** - the *Window / Center lost window*
+  discussion that came out of it.
+* **Digão Dalpiaz**, whose `TDzHTMLText` label was a source of **ideas** -
+  inline images, link hover styling, borders, line spacing and CJK line
+  breaking.  No code was taken from it.
+* **Lazarus and Free Pascal** - the component framework, the compiler, the
+  runtime and the image decoders.
 
 ## License
 

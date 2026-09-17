@@ -39,7 +39,7 @@ object frmMain: TfrmMain
       Height = 18
       Top = 31
       Width = 751
-      Caption = '<font color="#7F8C8D">HTML-formatted text drawn entirely on a TCanvas — identical on every widgetset. Started in <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">this forum thread</a>.</font>'
+      Caption = '<font color="#7F8C8D">HTML and Markdown text drawn entirely on a TCanvas, with no widgetset-specific code. Started in <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">this forum thread</a>.</font>'
       SuperSubScriptRatio = 0.7
       LinkHoverStyle.Color = clRed
       LinkHoverStyle.Underline = True
@@ -955,16 +955,26 @@ object frmMain: TfrmMain
         Lines.Strings = (
           '<font size="17"><b>LazInk — credits and origins</b></font>'
           ''
-          'LazInk grew from an HTML-formatted listbox example into reusable Lazarus components needed by other projects.'
+          'LazInk started with a Lazarus forum thread Tony Stone began in August 2021, <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">Memo Component that supports HTML markup</a>, asking for a simple way to decorate list box text with a little HTML.'
           ''
-          'AI assistants helped teach the component creation process and assisted with design, implementation, and debugging.'
+          'wp suggested taking what was needed from the HTML drawing code in Project JEDI''s JVCL and helped make it happen, with a standalone unit and an owner-drawn list box example. Tony''s demo built on that example - the List box tab here - is where the idea for LazInk was born. The components have been LazInk''s own since.'
+          ''
+          'AI assistants helped teach the component creation process and worked on design, implementation and debugging.'
           ''
           '<font size="15"><b>Project JEDI / JVCL</b></font>'
           ''
-          'The HTML renderer contains adapted JVCL code from JvHTControls and JvJVCLUtils.'
+          'The HTML renderer still contains adapted JVCL code from JvHTControls and JvJVCLUtils. The plan is to replace it with a renderer written for LazInk, so the package can be released with essentially no conditions - the credit stays either way.'
           'JvHTControls: Andrei Prygounkov; contributors include Maciej Kaczkowski, Timo Tegtmeier, and Andreas Hausladen.'
           'JvJVCLUtils: Fedor Koshevnikov, Igor Pavluk, Serge Korolev, and SGB Software.'
           '<a href="https://github.com/project-jedi/jvcl">Project JEDI / JVCL</a>'
+          ''
+          '<font size="15"><b>From the forum thread</b></font>'
+          ''
+          '<b>wp</b> - the JVCL route, the standalone unit and the list box example.   <b>jamie</b> - TIpHtmlPanel, the first thing that rendered.   <b>skalogryz</b> - the Qt5 memo idea.   <b>avra</b> - RichMemo examples and IDE shortcuts.   <b>Jurassic Pork</b> - the off-screen demo report.   <b>tetrastes</b> and <b>denis.totoliciu</b> - centring lost windows.'
+          ''
+          '<font size="15"><b>Ideas</b></font>'
+          ''
+          'Digão Dalpiaz''s TDzHTMLText was a source of ideas - inline images, link hover styling, borders, line spacing and CJK line breaking. No code was taken from it.'
           ''
           '<font size="15"><b>Lazarus and Free Pascal</b></font>'
           ''
