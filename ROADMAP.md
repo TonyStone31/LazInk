@@ -19,8 +19,17 @@ Most of the list below was built the same day, in a session of its own:
   images - true of the site on the day it was written - and now counts the
   `<img>` tags in the pages it is given.
 * **Published** on GitHub as `TonyStone31/LazInk`.
-* **Still open:** trying the other widgetsets (only GTK3 has been run), and
-  the first real use inside Heckers Sketch - which will show what is missing.
+* **First real use:** Heckers Sketch's release-notes window is a `TInkPage`
+  now.  Before the swap, `TInkPage` learned to scroll when the page is
+  dragged, which that window needed for Windows touch screens.
+* **Still open:**
+  * A **themed scrollbar.**  `TInkPage` uses the stock `TScrollBar`, which is
+    light grey on a dark page.  Heckers Sketch's old window drew its own in
+    the theme colours, and a canvas-drawn control ought to be able to.  A
+    drawn one, coloured from properties, with the same drag behavior.
+  * Trying the other widgetsets - only GTK3 has been run.
+  * Heckers Sketch's help pages inside the program, which will be the second
+    real use.
 
 The rest of this file is the original list, kept for the reasoning.
 
