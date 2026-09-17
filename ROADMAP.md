@@ -27,6 +27,10 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
   `{$IFDEF}`, and do nothing on platforms that don't need it.
 * **No external dependencies** beyond Lazarus/LCL and FPC.  In particular
   the package must **not** depend on SynEdit or any GPL code - see 5.
+* **No syntax highlighting of code, by decision.**  LazInk shows code
+  blocks well and hands them to the host to colour if it wants to - see
+  "Code blocks and syntax highlighting" below.  It does not ship
+  highlighters for programming languages.
 * **One renderer, two input formats.**  Markdown is converted to LazInk's
   markup and drawn by the same renderer.  Every display control has a
   `TextFormat` property (`itfHTML` / `itfMarkdown`) rather than a separate
@@ -135,8 +139,11 @@ GitHub-flavoured Markdown, and Heckers Sketch wants to hand its
   every bullet onto indented lines - and **nested lists** by indentation,
   `-`, `*`, `+`, and numbered `1.` lists.
 * `**bold**`, `*italic*`, `_italic_`, `__bold__`, `~~strike~~`,
-  `` `code` ``, fenced code blocks with a language tag (ignored for now, or
-  kept as a CSS class for later).
+  `` `code` ``.
+* Fenced code blocks, with the **language tag kept** - ` ```pascal `
+  becomes `<pre><code class="language-pascal">`, which is what GitHub and
+  every Markdown tool produce.  See "Code blocks and syntax highlighting"
+  below for what LazInk does with it.
 * Links `[text](url)`, autolinks `<https://...>`, images `![alt](path)`
   (relative to the document, the way `TInkPage` already handles HTML).
 * Blockquotes `>`.
@@ -200,15 +207,21 @@ demonstrate and maybe it opens the readme for the demo app."
 * **Open** and **Save** on this tab.  The README currently says the demo has
   "deliberately no File/Open/Save actions" - update it to say this tab is
   the exception.
-* Source pane: **SynEdit with `TSynMarkdownSyn`** where available.  It is in
-  Lazarus trunk (`components/synedit/synhighlightermarkdown.pas`), colours
-  headings, bold, italic, code, links, lists and quotes, and folds.
-  **But its header says GPL only.**  So:
-  * the **demo** may use it; the **package** must never;
-  * say so in the demo's source and in the README;
-  * it may not be in the stable Lazarus release yet - if it is not
-    available, fall back to plain SynEdit or a `TMemo`, so the demo still
-    builds.
+* Source pane: **do not use SynEdit's `TSynMarkdownSyn`.**  Tony's call:
+  build as much of this as possible out of LazInk itself.  (The highlighter
+  exists in Lazarus trunk, but its header says GPL only, and it may not be
+  in the stable release - reasons enough on their own.)
+  * Start with a plain multi-line source box (`TMemo`) so the tab works.
+  * Then colour the Markdown source with LazInk's own machinery: the
+    per-character colour/style callback `TInkEdit` already has
+    (`OnGetCharAttrs`), in a **multi-line** plain-text editor - a
+    `TInkCodeMemo`, or a plain-text mode of `TInkRichEdit`.  Headings,
+    `**bold**` markers, `` `code` ``, links, list markers and quotes in
+    their own colours.  Markdown is the only language it colours - see
+    "Code blocks and syntax highlighting".
+  * If that editor turns out to be worth having on its own, it belongs in
+    the package: a canvas-drawn multi-line editor with per-character
+    colouring is useful well beyond this demo.
 * Keeping the source and the preview scrolled together is nice, not
   essential.
 
@@ -252,16 +265,52 @@ In rough order of value to other Lazarus developers:
 4. **An Online Package Manager listing.**
 5. Nested and merged table cells, and more CSS only where a real document
    needs it.
-6. Syntax colouring inside fenced code blocks - a small, pluggable
-   tokenizer, not SynEdit.
+6. The **code-highlighting hook** described below, and a demo of it
+   wired to SynEdit's highlighters in a **separate, optional** package, so
+   nobody has to write the glue themselves.
+
+### Code blocks and syntax highlighting
+
+GitHub colours a fenced code block by the language named after the opening
+fence (` ```pascal `, ` ```python `), and people coming from GitHub will
+expect a Markdown component to do the same.  **LazInk will not do that
+itself** - a highlighter per language is a large, never-finished job, and
+SynEdit already does it well.  But it must not look like an oversight, so:
+
+* **Code blocks are shown well without colour**: monospace, a background
+  from CSS (`pre`, `code`), whitespace kept, no word wrapping, and a
+  horizontal scroll or clipping for long lines rather than a wrapped mess.
+* **The language is kept** (`class="language-pascal"`), so a host can see
+  it.
+* **A hook**: an event such as
+
+  ```pascal
+  TInkCodeBlockEvent = procedure(Sender: TObject; const Language,
+    Code: string; var Markup: string; var Handled: Boolean) of object;
+  ```
+
+  on `TInkPage` (and the other viewers): LazInk passes the language and the
+  plain code, and a host that wants colour returns LazInk markup with
+  `<font color=...>` spans.  Unhandled blocks are drawn plain.  A host can
+  drive SynEdit's highlighters from this, or its own tokenizer.
+* **Said plainly in the README**, under Limits: "LazInk does not colour
+  code.  Use `OnCodeBlock` to plug in a highlighter - SynEdit's work
+  well."
+* A small example of the hook in the demo - a handful of Pascal keywords
+  in bold is enough to show how it works, without becoming a highlighter.
+
+The one language LazInk *does* colour is Markdown itself, in the demo's
+source pane (P5), because that is LazInk's own business.
 
 ---
 
 ## 5. What not to do
 
 * **Don't build a browser** or chase CSS conformance.
-* **Don't write another Markdown syntax highlighter** - SynEdit has one.
-  LazInk's job is rendering and WYSIWYG editing.
+* **Don't use or depend on `TSynMarkdownSyn`** - not in the package, not
+  in the demo.
+* **Don't ship syntax highlighters for programming languages.**  Provide the
+  hook; let hosts bring their own.
 * **Don't make the package depend on SynEdit** or on any GPL code.
 * **Don't make separate "Markdown" versions of each control** - use
   `TextFormat`.
