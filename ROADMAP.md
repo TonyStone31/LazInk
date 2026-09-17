@@ -471,6 +471,25 @@ The idea, kept small on LazInk's side:
 * Maybe later: mouse-wheel zoom and drag-to-pan in that window.  Not in the
   package unless another program wants it too.
 
+**Tables: items 1-7 done (17 September 2026).**  `TInkPage` turns a
+table's CSS into attributes the table renderer reads (see
+`docs/RENDERER_CHANGES.md`): `width: 100%`, `table-layout: fixed` or `%`
+cell widths for equal columns, `border-spacing` with `separate`, cell
+`padding` (1-4 values), `background`, `border` / `border-<side>` /
+`none`, `border-radius`, `color`, `text-align`, and the table's `margin`
+including negative sides - which is how Heckers Sketch's cards line up
+with the text.  `<small>` is smaller and takes `small` colors.  The CSS
+reader gained descendant and child selectors (matched where the page knows
+the ancestors: table cells and what is inside them), `Box` for shorthand
+padding/margin, `Border`, and `CSSColor` with `#rgb`/`rgb()`/`none`.
+Heckers Sketch's index now looks like the browser's (rounded cards, three
+to a row, dim descriptions, no underlines) and its keys table has the
+browser's bottom rules and accent headings.  `vertical-align: top` is how
+cells already sat.  Table blocks now have no padding of their own by
+default.  Item 8 (flex wrapping) is still to do: a fixed three-column table
+stays three columns in a narrow window, and a long word can poke out of
+its cell.
+
 **Pictures: done (17 September 2026).**  A picture inside `<a>` is
 clickable over its drawn rectangle (the parser no longer leaves empty
 blocks for the tags around it, and the words after a picture stay in the

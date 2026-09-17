@@ -803,6 +803,101 @@ begin
   Probe.ImageFit := iifShrink;
 end;
 
+{ --- tables that look like a page --- }
+procedure CardTableChecks;
+const
+  Style =
+    '<style>body { background: #000000; color: #ffffff } ' +
+    'table.cards { width: 100%; border-collapse: separate; border-spacing: 10px; ' +
+    '  table-layout: fixed; margin: 4px -10px 10px } ' +
+    'table.cards td { background: #102030; border: 1px solid #405060; ' +
+    '  border-radius: 6px; padding: 8px 12px; vertical-align: top; width: 33% } ' +
+    'table.cards td.empty { background: none; border: none } ' +
+    'table.cards small { color: #00ff00 } ' +
+    'table.cards a { text-decoration: none } ' +
+    'table.lines td { border-bottom: 1px solid #ff0000; padding: 4px 8px 4px 0 } ' +
+    'small { color: #0000ff }</style>';
+var
+  CSS: TInkStyleSheet;
+  B, Plain: TInkPageBlock;
+  R: TRect;
+  Shot: TBitmap;
+  Col, Gap, X0, K: Integer;
+  C: TColor;
+  Sides: string;
+begin
+  { the CSS reader }
+  CSS := TInkStyleSheet.Create;
+  try
+    CSS.Add('nav a { color: #111111 } a { color: #222222 } div.x > p.y { color: #333333 } ' +
+      '.pad { padding: 1px 2px 3px 4px; padding-left: 9px } .two { margin: 5px -6px } ' +
+      '.b1 { border: 2px solid #abc } .b2 { border: none } .b3 { border-bottom: 1px dashed red } ' +
+      '.c { color: rgb(1, 2, 3) }');
+    Check(CSS.Value('a', '', 'color', '') = '#222222', 'a plain selector');
+    Check(CSS.Value('a', '', 'color', '', 'body nav') = '#111111', 'a descendant selector wins inside nav');
+    Check(CSS.Value('a', '', 'color', '', 'body div') = '#222222', 'and not outside it');
+    Check(CSS.Value('p', 'y', 'color', '', 'div.x') = '#333333', 'a child selector with classes');
+    Check(CSS.Value('p', 'y', 'color', '', 'div.z') = '', 'needs the ancestor''s class');
+    R := CSS.Box('div', 'pad', 'padding', Rect(0, 0, 0, 0));
+    Check((R.Top = 1) and (R.Right = 2) and (R.Bottom = 3) and (R.Left = 9), 'padding shorthand, then longhand');
+    R := CSS.Box('div', 'two', 'margin', Rect(0, 0, 0, 0));
+    Check((R.Top = 5) and (R.Left = -6) and (R.Right = -6) and (R.Bottom = 5), 'two-value margin, negative');
+    Check(CSS.Border('td', 'b1', C, Sides) and (ColorToRGB(C) = RGBToColor($AA, $BB, $CC)) and (Sides = 'trbl'),
+      'border shorthand with #rgb');
+    Check(CSS.Border('td', 'b2', C, Sides) and (Sides = ''), 'border: none');
+    Check(CSS.Border('td', 'b3', C, Sides) and (Sides = 'b') and (ColorToRGB(C) = clRed), 'border-bottom alone');
+    Check(not CSS.Border('td', 'none-at-all', C, Sides), 'no border said');
+    Check(ColorToRGB(CSS.Color('p', 'c', 'color', clNone)) = RGBToColor(1, 2, 3), 'rgb() colors');
+  finally CSS.Free end;
+
+  Probe.SetBounds(0, 0, 500, 300);
+  Probe.LoadHTML('<html><head>' + Style + '</head><body><table class="cards"><tr>' +
+    '<td><a href="one.html"><b>One</b></a><br><small>first</small></td>' +
+    '<td><a href="two.html"><b>Two</b></a><br><small>second card, longer than the first one</small></td>' +
+    '<td class="empty"></td></tr></table>' +
+    '<p>after <small>fine print</small></p>' +
+    '<table class="lines"><tr><td>a</td><td>b</td></tr></table></body></html>');
+  Probe.ScrollTo(0);
+  B := Probe.Block(0);
+  Check(B.Tag = 'table', 'the cards are a table');
+  Check(Pos('width="100%"', B.Source) > 0, 'width: 100%');
+  Check(Pos('layout="fixed"', B.Source) > 0, 'fixed layout');
+  Check(Pos('cellspacing="10"', B.Source) > 0, 'border-spacing');
+  Check(Pos('cellpadding="8 12 8 12"', B.Source) > 0, 'cell padding: ' + B.Source);
+  Check(Pos('cellbg="#102030"', B.Source) > 0, 'cell background');
+  Check(Pos('bordercolor="#405060"', B.Source) > 0, 'cell border color');
+  Check(Pos('radius="6"', B.Source) > 0, 'rounded cells');
+  Check(Pos('bgcolor="none"', B.Source) > 0, 'the empty cell has no background');
+  Check(Pos('border="none"', B.Source) > 0, 'and no border');
+  Check(Pos('color="#00ff00"', LowerCase(B.Source)) > 0, 'small in a card: its own color: ' + B.Source);
+  Check(B.NoLinkUnderline, 'links in cards are not underlined');
+  Check(B.MarginLeft = -10, 'the table reaches out by its margin');
+  Plain := Probe.Block(1);
+  Check((Pos('color="#0000ff"', LowerCase(Plain.Source)) > 0) and (Pos('size=', Plain.Source) > 0),
+    'small elsewhere: smaller, and the plain rule''s color: ' + Plain.Source);
+  Check(not Plain.NoLinkUnderline, 'links elsewhere keep their underline');
+  Check(Pos('sides="b"', Probe.Block(2).Source) > 0, 'a bottom border alone');
+
+  { painted: three equal columns with gaps, the third blank }
+  Shot := TBitmap.Create;
+  try
+    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+    Probe.RenderTo(Shot.Canvas);
+    R := B.Bounds; OffsetRect(R, 0, -Probe.ScrollY);
+    Col := (R.Right - R.Left - 40) div 3;
+    X0 := R.Left + 10;
+    Gap := 0;
+    for K := 0 to 2 do
+      if ColorToRGB(Shot.Canvas.Pixels[X0 + K * (Col + 10) + Col div 2, R.Top + 12]) = RGBToColor($10, $20, $30) then
+        Inc(Gap);
+    Check(Gap = 2, Format('two cards painted, the empty one not (%d)', [Gap]));
+    Check(ColorToRGB(Shot.Canvas.Pixels[X0 + Col + 5, R.Top + 20]) = clBlack, 'a gap between cards');
+    Check(ColorToRGB(Shot.Canvas.Pixels[X0 + Col div 2, R.Top + 9]) = clBlack,
+      'the first card starts one spacing down');
+  finally Shot.Free end;
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 { --- find in page --- }
 procedure FindChecks;
 var Current, Total, K: Integer; Key: Word; Doc: string;
@@ -1382,6 +1477,7 @@ begin
     SelectionChecks;
     NavigationChecks;
     PictureChecks;
+    CardTableChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }

@@ -66,6 +66,12 @@ type
     ImageRect: TRect;
     { the target of each text link in the block, in order }
     LinkTargets: array of string;
+    { how links in this block look, when CSS says so for where it is }
+    LinkColor: TColor;
+    NoLinkUnderline: Boolean;
+    { a table's own margins, which may be negative: cards spaced apart line
+      up with the text when the table reaches out by the spacing }
+    MarginLeft, MarginRight: Integer;
     { the block, and the part of it the words are drawn in; page coordinates }
     Bounds, TextBounds: TRect;
     Indent, PointSize, Padding, GapBefore, GapAfter, MarkerWidth: Integer;
@@ -627,7 +633,7 @@ begin
   Result := Format('#%.2x%.2x%.2x',[Red(C),Green(C),Blue(C)]);
 end;
 constructor TInkPageBlock.Create;
-begin inherited; Picture := TPicture.Create end;
+begin inherited; Picture := TPicture.Create; LinkColor := clNone end;
 destructor TInkPageBlock.Destroy;
 begin Animation.Free; Picture.Free; inherited end;
 constructor TInkCustomPage.Create(AOwner: TComponent);
@@ -679,7 +685,13 @@ begin
   Invalidate;
 end;
 function TInkCustomPage.BlockOptions(Index: Integer): THTMLOptions;
-begin Result := Options end;
+var B: TInkPageBlock;
+begin
+  Result := Options;
+  B := TInkPageBlock(FBlocks[Index]);
+  if B.NoLinkUnderline then Result.LinkUnderline := False;
+  if B.LinkColor<>clNone then Result.LinkColor := B.LinkColor;
+end;
 procedure TInkCustomPage.LinkClicked(const Link: TInkLinkInfo);
 var Handled: Boolean;
 begin
@@ -890,6 +902,20 @@ var
     and the targets of the links in the buffer, in order }
   OpenHref, OpenTarget: string;
   Targets: TStringList;
+  { the table being read: its classes as a CSS context }
+  TableCtx: string;
+  Margins: TRect;
+  function DotClasses(const AClasses: string): string;
+  begin
+    Result := Trim(AClasses);
+    if Result<>'' then Result := '.'+StringReplace(Result,' ','.',[rfReplaceAll]);
+  end;
+  { where the text being read sits, for CSS }
+  function Context: string;
+  begin
+    if TableDepth>0 then Result := TableCtx+' td'
+    else Result := BlockTag+DotClasses(BlockClass);
+  end;
   procedure Flush;
   var Text: string; K: Integer;
   begin
@@ -915,6 +941,14 @@ var
     Targets.Clear;
     B.Source := Text; B.Tag := BlockTag; B.CSSClass := BlockClass;
     B.Anchor := PendingAnchor; B.Nest := Nest; B.Pre := BlockTag='pre';
+    { links take their look from where they are: table.cards a }
+    B.NoLinkUnderline := LowerCase(FStyles.Value('a','','text-decoration','',Context))='none';
+    B.LinkColor := FStyles.Color('a','','color',clNone,Context);
+    if BlockTag='table' then
+    begin
+      Margins := FStyles.Box('table',BlockClass,'margin',Rect(0,0,0,0));
+      B.MarginLeft := Margins.Left; B.MarginRight := Margins.Right;
+    end;
     { an item's marker goes on its first words, not on an anchor before them }
     if Text<>'' then begin B.Marker := PendingMarker; PendingMarker := '' end;
     FBlocks.Add(B); Buffer := ''; PendingAnchor := '';
@@ -943,6 +977,58 @@ var
       'd': Result := 'dd';
     end;
   end;
+  function ColorText(C: TColor): string;
+  begin
+    if C=clNone then Result := 'none' else Result := ColorAttr(C);
+  end;
+  { a cell's look from CSS - the table's rules for td, and the cell's own }
+  function CellStyleAttrs(const El, AClasses, Ctx: string): string;
+  var V: string; C: TColor; Sides: string; K: Integer;
+  begin
+    Result := '';
+    V := FStyles.Value(El,AClasses,'background','',Ctx);
+    if V='' then V := FStyles.Value(El,AClasses,'background-color','',Ctx);
+    if V<>'' then Result := Result+' bgcolor="'+ColorText(CSSColor(V,clNone))+'"';
+    if FStyles.Border(El,AClasses,C,Sides,Ctx) then
+    begin
+      if Sides='' then Result := Result+' border="none"'
+      else
+      begin
+        Result := Result+' sides="'+Sides+'"';
+        if (C<>clNone) and (C<>clDefault) then Result := Result+' bordercolor="'+ColorAttr(C)+'"';
+      end;
+    end;
+    V := FStyles.Value(El,AClasses,'color','',Ctx);
+    if V<>'' then
+    begin
+      C := CSSColor(V,clNone);
+      if C<>clNone then Result := Result+' color="'+ColorAttr(C)+'"';
+    end;
+    K := FStyles.Pixels(El,AClasses,'border-radius',-1,Ctx);
+    if K>=0 then Result := Result+' radius="'+IntToStr(K)+'"';
+  end;
+  function TableAttrs: string;
+  var Pad: TRect; K: Integer; V: string;
+  begin
+    Result := '';
+    if FStyles.Value('table',Cls,'width','')='100%' then Result := Result+' width="100%"';
+    V := FStyles.Value('td','','width','',TableCtx);
+    if (LowerCase(FStyles.Value('table',Cls,'table-layout',''))='fixed') or
+      ((V<>'') and (V[Length(V)]='%')) then Result := Result+' layout="fixed"';
+    if LowerCase(FStyles.Value('table',Cls,'border-collapse',''))<>'collapse' then
+    begin
+      K := FStyles.Pixels('table',Cls,'border-spacing',0);
+      if K>0 then Result := Result+' cellspacing="'+IntToStr(K)+'"';
+    end;
+    Pad := FStyles.Box('td','','padding',Rect(-1,-1,-1,-1),TableCtx);
+    if (Pad.Left>=0) or (Pad.Top>=0) or (Pad.Right>=0) or (Pad.Bottom>=0) then
+      Result := Result+Format(' cellpadding="%d %d %d %d"',[Max(0,Pad.Top),Max(0,Pad.Right),
+        Max(0,Pad.Bottom),Max(0,Pad.Left)]);
+    V := CellStyleAttrs('td','',TableCtx);
+    { the table's default cell look goes on the table }
+    V := StringReplace(V,' bgcolor=',' cellbg=',[]);
+    Result := Result+V;
+  end;
   function CellAlign: string;
   var A: string;
   begin
@@ -951,14 +1037,15 @@ var
     begin
       A := LowerCase(StringReplace(Attribute(Raw,'style'),' ','',[rfReplaceAll]));
       if Pos('text-align:center',A)>0 then A := 'center'
-      else if Pos('text-align:right',A)>0 then A := 'right';
+      else if Pos('text-align:right',A)>0 then A := 'right'
+      else A := LowerCase(FStyles.Value(Element,Cls,'text-align','',TableCtx));
     end;
     if A='center' then Result := '<center>'
     else if A='right' then Result := '<right>'
     else Result := '';
   end;
   function InlineTag: string;
-  var BG, FG: string; C: TColor;
+  var BG, FG: string; C: TColor; K: Integer;
   begin
     Result := '';
     if Closing then Prefix := '/' else Prefix := '';
@@ -993,6 +1080,18 @@ var
       C := FStyles.Color(Element,Cls,'color',clNone);
       if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
       Exit('<font face="'+InkMonoFace+'"'+BG+FG+'>');
+    end;
+    if Element='small' then
+    begin
+      if Closing then Exit('</font>');
+      K := FStyles.Pixels('small',Cls,'font-size',-1,Context);
+      if K>0 then K := Max(1,K*3 div 4)
+      else if Font.Size>0 then K := Max(1,Round(Font.Size*0.85))
+      else K := 9;
+      C := FStyles.Color('small',Cls,'color',clNone,Context);
+      FG := '';
+      if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
+      Exit('<font size="'+IntToStr(K)+'"'+FG+'>');
     end;
     if Element='mark' then
     begin
@@ -1088,7 +1187,16 @@ begin
         Buffer := Buffer+'</table>'; Dec(TableDepth);
         if TableDepth=0 then begin Flush; BlockTag := ContainerTag; BlockClass := '' end;
       end
-      else begin Flush; BlockTag := 'table'; BlockClass := Cls; Inc(TableDepth); Buffer := '<table>' end;
+      else
+      begin
+        Flush; BlockTag := 'table'; BlockClass := Cls; Inc(TableDepth);
+        if TableDepth=1 then
+        begin
+          TableCtx := 'table'+DotClasses(Cls);
+          Buffer := '<table'+TableAttrs+'>';
+        end
+        else Buffer := '<table>';
+      end;
       Continue;
     end;
     if TableDepth>0 then
@@ -1097,7 +1205,7 @@ begin
       begin
         if Closing then Buffer := Buffer+'</'+Element+'>'
         else if Element='tr' then Buffer := Buffer+'<tr>'
-        else Buffer := Buffer+'<'+Element+'>'+CellAlign;
+        else Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
       end
       else if (Element='p') and Closing then Buffer := Buffer+'<br>'
       else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
@@ -1409,6 +1517,7 @@ begin
   else
     B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FBodyText);
   if B.Pre then B.Padding := Defaulted('padding',10)
+  else if B.Tag='table' then B.Padding := Defaulted('padding',0)
   else B.Padding := Defaulted('padding',6);
   B.GapBefore := Defaulted('margin-top',0);
   if B.Tag='li' then B.GapAfter := Defaulted('margin-bottom',2)
@@ -1499,12 +1608,12 @@ begin
     begin
       if B.Marker<>'' then
         B.MarkerWidth := Canvas.TextWidth(B.Marker+' ');
-      TextW := Max(20,W-B.Indent-B.Padding*2);
+      TextW := Max(20,W-B.Indent-B.Padding*2-B.MarginLeft-B.MarginRight);
       if B.NoWrap then B.Wrapped := B.Source
       else B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,O.SuperSubScriptRatio,O.Scale);
       Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
     end;
-    B.Bounds := Rect(BlockLeft+B.Indent,Y,BlockLeft+W,Y+Sz.cy+B.Padding*2);
+    B.Bounds := Rect(BlockLeft+B.Indent+B.MarginLeft,Y,BlockLeft+W-B.MarginRight,Y+Sz.cy+B.Padding*2);
     B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.Padding,
       B.Bounds.Right-B.Padding,B.Bounds.Bottom-B.Padding);
     { a picture sits at the block's top; one fitted to the window, centered }

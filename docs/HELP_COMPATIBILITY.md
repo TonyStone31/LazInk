@@ -48,13 +48,26 @@ for a missing stylesheet, and display alternate text for a missing image.
 ## Deliberately limited CSS
 
 The reader accepts external stylesheets and embedded `<style>` blocks. It
-supports simple element, class, and element-with-class selectors, comma-separated
-selectors, source order and simple selector specificity. `:root` custom properties
-and `var(--name)` allow the site's existing palette to work.
+supports element, class, and element-with-class selectors, descendant and child
+selectors (`table.cards td`, `nav > a`) where the page knows the ancestors - table
+cells, and what is inside them - comma-separated selectors, source order and
+simple specificity. `:root` custom properties and `var(--name)` allow the site's
+existing palette to work. Colors may be `#rgb`, `#rrggbb`, `rgb()`/`rgba()`,
+names, or `none`/`transparent`.
 
 The native layout uses `color`, `background`, pixel `font-size`, single-value
 pixel `padding`, pixel `margin-top`/`margin-bottom`, the color from a simple
-`border` declaration, and `.wrap`'s pixel `max-width`. Code/key font selection is
+`border` declaration, and `.wrap`'s pixel `max-width`.
+
+Tables read more (this is what makes Heckers Sketch's `table.cards` index look
+as it does in a browser): on the table, `width: 100%`, `table-layout: fixed`
+(or a `%` width on its cells) for equal columns, `border-collapse` and
+`border-spacing`, and `margin` including negative left/right; on its cells
+(`td`, `th`, with classes), `padding` in one to four values, `background`,
+`border` / `border-color` / `border-top` ... `border-left` (including `none`),
+`border-radius`, `color` and `text-align`. `<small>` is smaller, colored by
+`small` rules in context, and `a { text-decoration: none; color }` applies
+inside a table. Code/key font selection is
 semantic. The control's Font supplies the base font.
 
 The scrollbar is LazInk's own and takes `scrollbar-color` (thumb and track:
@@ -68,17 +81,18 @@ The bar keeps its width whether or not the page overflows, like
 
 This is **not CSS conformance**. In particular:
 
-- Cards stack vertically. CSS grid, flexbox, positioning and media queries are
-  ignored. Content still wraps and images shrink with the control.
-- Descendant selectors, pseudo-classes, inline `style` attributes, and general
-  CSS inheritance are not implemented. Alias-cell colors therefore fall back
-  to the normal text color.
-- Shorthand font/margin declarations, multi-value padding, line-height, rounded
-  corners, letter spacing, uppercase transforms, border-collapse, and individual
-  border styles are not reproduced.
-- Tables use a simple grid and content-derived column widths. No row/column
-  spans, nested tables, or explicit column widths; long unbroken words can
-  overflow a cell. The audited site has no spans or nested tables.
+- A CSS grid of cards stacks vertically; a table of cards is a grid. CSS grid,
+  flexbox, positioning and media queries are ignored, so a fixed three-column
+  table stays three columns in a narrow window. Content still wraps and images
+  shrink with the control.
+- Descendant selectors only match inside tables (the one place the page keeps
+  its ancestors); pseudo-classes (`:first-child`, `:hover`), inline `style`
+  attributes, and general CSS inheritance are not implemented.
+- Shorthand font declarations, shorthand margins outside tables, line-height,
+  letter spacing, uppercase transforms, individual column widths, and dashed or
+  dotted border styles are not reproduced.
+- No row/column spans or nested tables; cells align to the top; long unbroken
+  words can overflow a cell.
 - GIFs loop continuously; finite loop counts and transparent-page compositing
   are not supported. The site's GIF is opaque and loops continuously.
 - No JavaScript, forms, video, general web fonts, or arbitrary website support.

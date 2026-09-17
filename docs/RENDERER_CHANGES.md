@@ -49,6 +49,14 @@ or date.
 - **September 16, 2026:** `HTMLShadeColor` and `HTMLContrastColor` read
   `clDefault` as the window color; it had turned a list box's stripes
   black.
+- **September 17, 2026:** tables read attributes the page writes from CSS:
+  `width="100%"`, `layout="fixed"` (equal columns), `cellspacing`,
+  `cellpadding` (one or four values), `cellbg`, `bordercolor`,
+  `border="none"`, `sides` (which lines to draw), `radius`, and per cell
+  `bgcolor`, `bordercolor`, `sides`, `border`, `color`, `radius`. Without
+  them a table looks as before. Cells are painted by one routine (rounded
+  or square, any sides). `TableAttr`, `TTableCellStyle`, `ReadCellStyle`
+  and `PaintCell` are new.
 
 Independent Markdown, page-viewer, CSS and animation helper units are covered
 by the project's MIT license, not represented as upstream JVCL implementations.

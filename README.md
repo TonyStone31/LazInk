@@ -385,8 +385,11 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 
 * No JavaScript, forms, video or web fonts.
 * CSS is a small reader, not CSS conformance - no grid, flexbox, positioning,
-  media queries, descendant selectors or inline `style` attributes.
-* Tables are simple grids: no row or column spans, no nested tables.
+  media queries, pseudo-classes or inline `style` attributes; descendant
+  selectors only inside tables.
+* Tables take widths, equal columns, spacing, padding, cell colors, borders
+  and rounded corners from CSS, but have no row or column spans and no nested
+  tables.
 * The Markdown is GitHub's, as documents use it, not CommonMark-complete:
   emphasis follows simpler rules than the specification, a link reference
   definition has to fit on one line, and footnotes are not read.
