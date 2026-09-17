@@ -206,6 +206,31 @@ page's `::selection { background: ... }`. From code: `SelectAll`, `Select`,
 `SelectedText`, `SelectedHTML`, `CopyToClipboard`, and the character-level
 hit test `PositionAt(X, Y)` with its reverse `PositionPoint`.
 
+**Pictures you can click:** a picture inside a link is the link -
+`<a href="shots/x.gif" target="_blank"><img src="shots/x.gif"></a>`. Clicking
+it (or any link) fires `OnLinkActivate` first, with a `TInkLinkInfo`: the URL
+resolved and as written, the link's `target`, and the picture it wraps; set
+`Handled` to deal with it yourself - open a zoom window, say. `ClickedLink`
+has the same while `OnLinkClick` runs. Left alone, a link to a picture opens
+it as a page of its own, with Back to return. For a window that shows one
+picture, `ImageFit := iifWindow` makes it as large as fits (`iifWidth`: as
+wide as the page; `iifShrink`, the default: never larger than it is):
+
+```pascal
+procedure TForm1.PageLinkActivate(Sender: TObject; const Link: TInkLinkInfo;
+  var Handled: Boolean);
+begin
+  if Link.Image = '' then Exit;           // text links: let the page follow them
+  ZoomForm.Page.ImageFit := iifWindow;
+  ZoomForm.Page.LoadFromURL(Link.Image);
+  ZoomForm.Show;
+  Handled := True;
+end;
+```
+
+Pages given as text (`LoadHTML`, `LoadMarkdown`) are in the Back/Forward
+history too; `ClearHistory` forgets it.
+
 **Finding:** Ctrl+F opens a find bar at the top right of the page - it finds
 as you type, Enter or F3 goes to the next match and Shift with either to the
 one before, Esc closes it. From code: `Find(Text, Options)`, `FindCount`,

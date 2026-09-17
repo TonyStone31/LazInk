@@ -89,7 +89,7 @@ type
     procedure StyleBlock(B: TInkPageBlock); override;
     function Options: THTMLOptions; override;
     function BlockOptions(Index: Integer): THTMLOptions; override;
-    procedure LinkClicked(ABlock: Integer; const Href, URL: string); override;
+    procedure LinkClicked(const Link: TInkLinkInfo); override;
     procedure HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo); override;
     function CopyBlockCaption: string; override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
@@ -436,12 +436,12 @@ begin
   Invalidate;
 end;
 
-procedure TInkMemo.LinkClicked(ABlock: Integer; const Href, URL: string);
+procedure TInkMemo.LinkClicked(const Link: TInkLinkInfo);
 begin
   if Assigned(FOnLinkClick) then
-    FOnLinkClick(Self, ABlock, Href)
+    FOnLinkClick(Self, Link.Block, Link.Href)
   else if FAutoOpenLink then
-    OpenURL(Href);
+    OpenURL(Link.Href);
 end;
 
 procedure TInkMemo.MouseUp(Button: TMouseButton; Shift: TShiftState;

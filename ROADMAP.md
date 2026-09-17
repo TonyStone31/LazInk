@@ -471,6 +471,20 @@ The idea, kept small on LazInk's side:
 * Maybe later: mouse-wheel zoom and drag-to-pan in that window.  Not in the
   package unless another program wants it too.
 
+**Pictures: done (17 September 2026).**  A picture inside `<a>` is
+clickable over its drawn rectangle (the parser no longer leaves empty
+blocks for the tags around it, and the words after a picture stay in the
+link).  `OnLinkActivate(Sender, Link: TInkLinkInfo, var Handled)` comes
+before `OnLinkClick`, with `URL`, `Href`, `Target`, `Image` and `Block`;
+`ClickedLink` holds the same during `OnLinkClick`, so Heckers Sketch's
+existing handler can check `ClickedLink.Image`.  Unhandled, a link to a
+`.png`/`.gif`/`.jpg`/`.bmp` opens as a page holding only that picture.
+`ImageFit` (`iifShrink`, `iifWidth`, `iifWindow`) - `iifWindow` uses the
+whole window and centers the picture, for a zoom window made of one
+`TInkPage`.  Found on the way: `LoadHTML`/`LoadMarkdown` pages were not in
+the history, so Back skipped over them; they are now, and `ClearHistory`
+exists.
+
 ---
 
 ## 4. A renderer of our own, and a license with no strings

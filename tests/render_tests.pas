@@ -3,7 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF,
-  InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd;
+  InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
   List: TInkListBox; Page: TInkPage; CSS: TInkStyleSheet;
@@ -22,6 +22,10 @@ type
   public
     Clicked: string;
     Changes, Navigations: Integer;
+    Activated: TInkLinkInfo;
+    Activations: Integer;
+    HandleLinks: Boolean;
+    procedure LinkActivated(Sender: TObject; const Link: TInkLinkInfo; var Handled: Boolean);
     procedure Navigated(Sender: TObject);
     procedure Button(AButton: TMouseButton; X, Y: Integer);
     procedure Press(X, Y: Integer; Shift: TShiftState = []);
@@ -46,6 +50,13 @@ end;
 procedure TPageProbe.Key(K: Word; Shift: TShiftState);
 begin
   KeyDown(K, Shift);
+end;
+
+procedure TPageProbe.LinkActivated(Sender: TObject; const Link: TInkLinkInfo; var Handled: Boolean);
+begin
+  Activated := Link;
+  Inc(Activations);
+  Handled := HandleLinks;
 end;
 
 procedure TPageProbe.Navigated(Sender: TObject);
@@ -660,7 +671,10 @@ begin
   Probe.Navigations := 0;
   Probe.OnNavigate := @Probe.Navigated;
   Probe.OnLinkClick := nil;
+  Probe.ClearHistory;
+  Check(not Probe.CanGoBack, 'ClearHistory');
   Probe.LoadFromFile(A);
+  Probe.ClearHistory;
   Check(Probe.Navigations = 1, 'OnNavigate after a load');
   Check(not Probe.CanGoBack and not Probe.CanGoForward, 'one page: no Back or Forward');
   Probe.LoadFromFile(B2);
@@ -702,6 +716,91 @@ begin
   Probe.OnNavigate := nil;
   Probe.OnLinkClick := @Probe.LinkHit;
   DeleteFile(A); DeleteFile(B2); RemoveDir(Dir);
+end;
+
+{ --- pictures you can click, and pictures sized to fit --- }
+procedure PictureChecks;
+var Base: string; B: TInkPageBlock; R: TRect; P: TPoint; W: Integer;
+
+  procedure ClickAt(X, Y: Integer);
+  begin
+    Probe.Press(X, Y); Probe.Let(X, Y);
+  end;
+
+begin
+  Base := FilenameToURI(ExpandFileName('images/page.html'));
+  Probe.OnLinkActivate := @Probe.LinkActivated;
+  Probe.OnLinkClick := @Probe.LinkHit;
+  Probe.LoadHTML('<html><body><p>Before</p>' +
+    '<a href="palette.png" target="_blank"><img src="palette.png" alt="the palette"></a>' +
+    '<p>after <a href="t.html" target="side">text</a> and <a href="u.html">plain</a></p>' +
+    '</body></html>', Base);
+  Probe.ScrollTo(0);
+  Check(Probe.BlockCount = 3, Format('a linked picture makes no empty blocks (%d)', [Probe.BlockCount]));
+  B := Probe.Block(1);
+  Check(B.Picture.Graphic <> nil, 'the picture loads');
+  Check((B.LinkHref = 'palette.png') and (B.LinkTarget = '_blank'), 'and knows its link');
+
+  Probe.HandleLinks := True;
+  Probe.Activations := 0; Probe.Clicked := '';
+  R := B.ImageRect; OffsetRect(R, 0, -Probe.ScrollY);
+  ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
+  Check(Probe.Activations = 1, 'a click on a linked picture is a link click');
+  Check(Probe.Activated.Target = '_blank', 'with its target: ' + Probe.Activated.Target);
+  Check(Pos('images/palette.png', Probe.Activated.Image) > 0, 'and the picture: ' + Probe.Activated.Image);
+  Check(Pos('images/palette.png', Probe.Activated.URL) > 0, 'resolved: ' + Probe.Activated.URL);
+  Check(Probe.Activated.Href = 'palette.png', 'as written');
+  Check(Probe.Clicked = '', 'Handled stops it there');
+  ClickAt(R.Right + 20, (R.Top + R.Bottom) div 2);
+  Check(Probe.Activations = 1, 'beside the picture is not the link');
+
+  P := Probe.PositionPoint(Pos2(2, 7));
+  ClickAt(P.X, P.Y + 3);
+  Check((Probe.Activations = 2) and (Probe.Activated.Target = 'side') and (Probe.Activated.Image = ''),
+    'a text link''s target: ' + Probe.Activated.Target);
+  P := Probe.PositionPoint(Pos2(2, 17));
+  ClickAt(P.X, P.Y + 3);
+  Check((Probe.Activations = 3) and (Probe.Activated.Target = ''), 'no target: ' + Probe.Activated.Href);
+
+  Probe.HandleLinks := False;
+  ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
+  Check(Pos('palette.png', Probe.Clicked) > 0, 'not handled, OnLinkClick has it');
+  Check(Probe.ClickedLink.Target = '_blank', 'and ClickedLink says what it was');
+
+  { with nobody to take the click, a picture opens as a page of its own }
+  Probe.OnLinkClick := nil;
+  ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
+  Check(Probe.DocumentTitle = 'palette.png', 'the picture alone: ' + Probe.DocumentTitle);
+  Check(Probe.ImageCount = 1, 'showing the picture');
+  Check(Probe.CanGoBack, 'with a way back');
+  Probe.Back;
+  Check(Probe.BlockCount = 3, 'and back to a page that was given as text');
+  Probe.Forward;
+  Check(Probe.DocumentTitle = 'palette.png', 'and forward again');
+  Probe.Back;
+  Probe.OnLinkClick := @Probe.LinkHit;
+  Probe.OnLinkActivate := nil;
+
+  { how big a picture is drawn }
+  Probe.LoadHTML('<img src="palette.png">', Base);
+  Probe.ScrollTo(0);
+  B := Probe.Block(0);
+  W := B.Bounds.Right - B.Bounds.Left;
+  Check(B.ImageRect.Right - B.ImageRect.Left = Min(W, B.Picture.Width), 'iifShrink: never larger');
+  Probe.ImageFit := iifWidth;
+  B := Probe.Block(0);
+  W := B.Bounds.Right - B.Bounds.Left;
+  Check(B.ImageRect.Right - B.ImageRect.Left = W, 'iifWidth: as wide as the column');
+  Check(B.ImageRect.Bottom - B.ImageRect.Top =
+    Round(B.Picture.Height * W / B.Picture.Width), 'keeping its shape');
+  Probe.ImageFit := iifWindow;
+  B := Probe.Block(0);
+  R := B.ImageRect;
+  Check(R.Bottom - R.Top <= Probe.ClientHeight, 'iifWindow: no taller than the window');
+  Check(R.Right - R.Left <= Probe.ClientWidth - Probe.ScrollBar.Width, 'nor wider');
+  Check((R.Right - R.Left >= B.Bounds.Right - B.Bounds.Left - 2) or
+    (R.Bottom - R.Top >= Probe.ClientHeight - 60), 'and as big as fits');
+  Probe.ImageFit := iifShrink;
 end;
 
 { --- find in page --- }
@@ -1282,6 +1381,7 @@ begin
     TouchChecks;
     SelectionChecks;
     NavigationChecks;
+    PictureChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
