@@ -586,7 +586,11 @@ rewritten line by line, or it is still derived.
 
 * Write it from a **behavior specification**, not from the old source:
   `docs/HELP_COMPATIBILITY.md`, the test suite, and a list of what each tag
-  and CSS property does (write that list first, in `docs/RENDERER_SPEC.md`).
+  and CSS property does.  **That specification is written**:
+  `docs/RENDERER_SPEC.md` (17 September 2026) says what markup the engine
+  must accept, the API the controls call, the layout, table, wrapping, hit
+  testing and speed rules, and how to bring a new engine in beside the old
+  one.  Build to it, not to the old source.
 * Use a **different design**, which is the honest evidence that it is new:
   parse the document into a small tree of elements -> resolve styles ->
   lay out boxes (block, inline, table, list item) -> paint.  The JVCL code

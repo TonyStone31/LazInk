@@ -496,7 +496,11 @@ apply to different files; the complete package is not MIT-only.
 
 See [LICENSE](LICENSE), the [MIT text](LICENSES/MIT.txt), the
 [MPL 1.1 text](LICENSES/MPL-1.1.txt), and the
-[renderer modification record](docs/RENDERER_CHANGES.md).
+[renderer modification record](docs/RENDERER_CHANGES.md).  The plan for
+replacing that renderer with LazInk's own, so the whole package can move to
+a license with no conditions, is [ROADMAP.md](ROADMAP.md) section 4, and the
+behavior it has to reproduce is written down in
+[docs/RENDERER_SPEC.md](docs/RENDERER_SPEC.md).
 
 No JVCL package needs installing, but the adapted source still carries its
 license. Both licenses permit commercial use. Applications may use LazInk
