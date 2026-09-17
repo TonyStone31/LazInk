@@ -26,11 +26,10 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
   to be touched (touch input on GTK3, below), keep it small, behind
   `{$IFDEF}`, and do nothing on platforms that don't need it.
 * **No external dependencies** beyond Lazarus/LCL and FPC.  In particular
-  the package must **not** depend on SynEdit or any GPL code - see 5.
+  the package must **not** depend on SynEdit or any GPL code - see 6.
 * **No syntax highlighting of code, by decision.**  LazInk shows code
-  blocks well and hands them to the host to colour if it wants to - see
-  "Code blocks and syntax highlighting" below.  It does not ship
-  highlighters for programming languages.
+  blocks clearly and leaves colouring to SynEdit - see "Code blocks and
+  syntax highlighting" below.
 * **One renderer, two input formats.**  Markdown is converted to LazInk's
   markup and drawn by the same renderer.  Every display control has a
   `TextFormat` property (`itfHTML` / `itfMarkdown`) rather than a separate
@@ -42,8 +41,9 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 * **Tested.**  `tests/run.sh` must stay green, and new behaviour comes with
   checks.  Make sure a new check can actually fail.
 * **The licence boundary stays clean**: MIT for LazInk's own code, MPL 1.1
-  for the JVCL-derived renderer (`inkhtml.pas`, `inktables.inc`).  See
-  `LICENSE`.
+  for the JVCL-derived renderer (`inkhtml.pas`, `inktables.inc`), until
+  the renderer is replaced and the whole package moves to a no-conditions
+  licence - see 4.
 
 ---
 
@@ -247,7 +247,140 @@ Heckers Sketch will need when it gets there:
 
 ---
 
-## 4. After that - general purpose
+## 4. A renderer of our own, and a licence with no strings
+
+**Tony:** "eventually we want our own complete replacement... I want a
+license that is almost zero restrictions... do whatever you want with this
+code.  I still want to have jedi jcvhtml credited of course, maybe at least
+as inspiration and getting it off the ground for us."
+
+### Why
+
+LazInk's renderer, `inkhtml.pas` (with `inktables.inc`), is derived from
+Project JEDI's JVCL and stays under **MPL 1.1** - it still contains JVCL
+routines line for line (see `THIRD_PARTY_NOTICES.md`).  MPL is a fair
+licence, but it has conditions: the covered files keep their licence, and
+anyone shipping a program built with them owes recipients that source.  So
+LazInk cannot be "do anything you like" while those two files are in it,
+and relabelling them is not an option - **only code we wrote ourselves can
+be relicensed.**
+
+Replacing the renderer is also the natural moment to get HTML right: the
+JVCL code was an inline-markup drawer that has been stretched to tables and
+pages.  A renderer designed for documents from the start can be both leaner
+and more capable.
+
+### The licence to move to
+
+For "do whatever you want", in order of preference:
+
+1. **0BSD** (Zero-Clause BSD) - one paragraph, no conditions at all, not
+   even keeping the notice; OSI-approved, so companies' lawyers recognise
+   it.  **Recommended.**
+2. **MIT-0** - the MIT licence with the attribution condition removed; also
+   OSI-approved.
+3. **The Unlicense** - a public-domain dedication with a fallback licence
+   for countries without public domain.  Fine, but less widely accepted by
+   corporate policies than 0BSD.
+
+Avoid **WTFPL**: it says the right thing, but several large companies ban it
+because it is not a real legal instrument, which defeats the purpose.
+
+This is not legal advice - read the one you pick before switching.
+
+### How to do it without carrying JVCL code across
+
+The new renderer has to be **genuinely new code**, not `inkhtml.pas`
+rewritten line by line, or it is still derived.
+
+* Write it from a **behaviour specification**, not from the old source:
+  `docs/HELP_COMPATIBILITY.md`, the test suite, and a list of what each tag
+  and CSS property does (write that list first, in `docs/RENDERER_SPEC.md`).
+* Use a **different design**, which is the honest evidence that it is new:
+  parse the document into a small tree of elements -> resolve styles ->
+  lay out boxes (block, inline, table, list item) -> paint.  The JVCL code
+  draws while it parses; the new one should not.
+* New files and unit names (for example `inkdom.pas`, `inklayout.pas`,
+  `inkpaint.pas`).  Don't open `inkhtml.pas` while writing them; if you
+  have read it, work from the specification rather than from memory of the
+  code.
+* Keep the **public API** the controls use today (`HTMLDrawOpt`,
+  `HTMLTextExtentOpt`, `HTMLHitTest`, `HTMLPlainText`, `HTMLStringToColor`
+  and friends) as thin wrappers over the new engine, so `TInkLabel`,
+  `TInkMemo`, `TInkListBox`, `TInkPage` and `TInkRichEdit` switch over
+  without rewrites.  `HTMLStringToColor` is one of the routines still
+  matching JVCL exactly - write a new one.
+* Run **both renderers side by side** behind a switch while it is being
+  built, and compare their output on the test pages.
+
+### Then
+
+1. The new renderer passes every existing test, renders all of Heckers
+   Sketch's `docs/help` pages completely (`tests/run.sh pages.txt ...` and
+   `check_help_text.py`), and is at least as fast.
+2. Delete `inkhtml.pas` and `inktables.inc`.
+3. **Check provenance of every remaining file before relicensing.**  All of
+   them say MIT today, but `inklistbox.pas` grew out of wp's forum listbox
+   example - confirm what, if anything, of that example is still in it.
+   Relicense only files whose authors agree; anything uncertain gets
+   rewritten too.
+4. Switch `LICENSE` to the chosen licence, drop `LICENSES/MPL-1.1.txt`,
+   update the SPDX lines and `lazink.lpk`'s licence field.
+5. **Keep the credit.**  `THIRD_PARTY_NOTICES.md` and the README keep
+   saying that LazInk started from Project JEDI's JVCL HTML drawing code
+   (`JvHTControls`, `JvJVCLUtils`), by way of wp's Lazarus forum example,
+   and that it got the project off the ground - as history and
+   inspiration, with no JVCL code left in the package.  Keep
+   `docs/RENDERER_CHANGES.md` as a record of the old renderer.
+
+### What the new renderer should learn
+
+Kept lean and fast - no scripting, no full CSS - but enough for people to
+write good-looking documents.  Most of these are things Heckers Sketch's
+help pages already use and LazInk currently drops (see
+`HELP_COMPATIBILITY.md`):
+
+1. **The `style` attribute** - `<span style="color:#c00">`.  The most common
+   way people colour one thing.
+2. **`<span>` and `<div>` with classes**, styled from the stylesheet.
+3. **Simple descendant selectors** - `.sheet td`, `nav a` - and child
+   selectors.  Real stylesheets are written this way.
+4. **Proper whitespace rules** - collapsing in normal text, kept in `<pre>`,
+   `&nbsp;` respected.
+5. **Box model basics** - margin and padding shorthand (1 to 4 values),
+   `border` with width/style/colour, `border-radius`, `background-color`
+   on any block.
+6. **Text styling** - `line-height`, `text-align`, `font-weight`,
+   `font-style`, `text-decoration`, `text-transform`, `letter-spacing`,
+   `font-family` stacks with a monospace fallback, `em`/`rem`/`%` sizes.
+7. **Lists done properly** - hanging markers, nested lists, `decimal`,
+   `lower-alpha`, `upper-roman`, `none`, `<ol start>`.
+8. **Tables done properly** - `colspan`/`rowspan`, `<thead>`/`<tbody>`,
+   column widths from `width`, cell padding, `border-collapse`, header
+   backgrounds, zebra striping by class.
+9. **Images** - `width`/`height` attributes, `max-width: 100%`, alt text
+   when missing, float left/right with text wrapping round them.
+10. **More elements** - `<dl>`/`<dt>`/`<dd>`, `<blockquote>`, `<pre>`,
+    `<small>`, `<mark>`, `<del>`/`<ins>`, `<abbr title>` (tooltip),
+    `<details>`/`<summary>` (click to open), `<figure>`/`<figcaption>`.
+11. **Code blocks** - monospace, a background, whitespace kept, no wrapping,
+    long lines clipped or scrolled.  See below.
+12. **The full named-entity table** and correct UTF-8 everywhere, emoji
+    included.
+13. **Link titles as tooltips**, and anchors on any element with an `id`.
+14. **A simple flex row** (`display: flex` with wrapping) - enough for card
+    grids like the Heckers Sketch help index, instead of stacking them.
+15. **Hi-DPI** - everything scales with the control's font and the screen.
+16. **Speed** - lay a page out once per width and cache it; paint only
+    what is on screen; re-lay out only what changed.  Use the 38-page
+    Heckers Sketch manual as the benchmark and keep a timing for it.
+
+Not wanted: JavaScript, forms, video, web fonts, positioning, animations,
+media queries beyond maybe one width breakpoint.
+
+---
+
+## 5. After that - general purpose
 
 In rough order of value to other Lazarus developers:
 
@@ -257,70 +390,53 @@ In rough order of value to other Lazarus developers:
    Lazarus that **renders** Markdown natively, and nothing that **edits** it
    WYSIWYG.  HtmlViewer, LazRichView and RichMemo are the nearest, and none
    of them does Markdown.  This is where LazInk could be unique.
-2. **An editor-plus-preview component** (SynEdit + `TInkPage`) as a
-   **separate, optional package** (`lazink_synedit.lpk`), so the core
-   package stays free of SynEdit and GPL code.
-3. **Other widgetsets actually run** - win32, qt5/qt6, cocoa, gtk2 - with
+2. **Other widgetsets actually run** - win32, qt5/qt6, cocoa, gtk2 - with
    the results written into the README.
-4. **An Online Package Manager listing.**
-5. Nested and merged table cells, and more CSS only where a real document
-   needs it.
-6. The **code-highlighting hook** described below, and a demo of it
-   wired to SynEdit's highlighters in a **separate, optional** package, so
-   nobody has to write the glue themselves.
+3. **An Online Package Manager listing** - after the licence change, so it
+   goes out under the licence it will keep.
 
 ### Code blocks and syntax highlighting
 
 GitHub colours a fenced code block by the language named after the opening
-fence (` ```pascal `, ` ```python `), and people coming from GitHub will
-expect a Markdown component to do the same.  **LazInk will not do that
-itself** - a highlighter per language is a large, never-finished job, and
-SynEdit already does it well.  But it must not look like an oversight, so:
+fence (` ```pascal `).  **LazInk will not colour code** - that is what
+SynEdit is for, and anyone whose program is mainly about showing or
+editing code should use SynEdit.  LazInk is for documents that sometimes
+contain code: READMEs, release notes, help pages.
 
-* **Code blocks are shown well without colour**: monospace, a background
-  from CSS (`pre`, `code`), whitespace kept, no word wrapping, and a
-  horizontal scroll or clipping for long lines rather than a wrapped mess.
-* **The language is kept** (`class="language-pascal"`), so a host can see
-  it.
-* **A hook**: an event such as
+* **Code blocks look like code**: fixed-width font, a shaded background
+  from CSS (`pre`, `code`), whitespace kept, no word wrapping, long lines
+  clipped or scrolled rather than wrapped.  This is the feature.
+* **The language name is kept** (`class="language-pascal"`), as GitHub
+  does.  It costs nothing.
+* **The README says it once**, under Limits: "LazInk shows code blocks but
+  does not colour them - for that, use SynEdit."
+* A hook for a host to colour code itself is a **maybe, later, only if
+  somebody asks**.  No SynEdit glue, no add-on package.
 
-  ```pascal
-  TInkCodeBlockEvent = procedure(Sender: TObject; const Language,
-    Code: string; var Markup: string; var Handled: Boolean) of object;
-  ```
-
-  on `TInkPage` (and the other viewers): LazInk passes the language and the
-  plain code, and a host that wants colour returns LazInk markup with
-  `<font color=...>` spans.  Unhandled blocks are drawn plain.  A host can
-  drive SynEdit's highlighters from this, or its own tokenizer.
-* **Said plainly in the README**, under Limits: "LazInk does not colour
-  code.  Use `OnCodeBlock` to plug in a highlighter - SynEdit's work
-  well."
-* A small example of the hook in the demo - a handful of Pascal keywords
-  in bold is enough to show how it works, without becoming a highlighter.
-
-The one language LazInk *does* colour is Markdown itself, in the demo's
-source pane (P5), because that is LazInk's own business.
+The one thing LazInk colours as source is Markdown itself, in the demo's
+editor tab (P5), because Markdown is LazInk's own business.
 
 ---
 
-## 5. What not to do
+## 6. What not to do
 
 * **Don't build a browser** or chase CSS conformance.
 * **Don't use or depend on `TSynMarkdownSyn`** - not in the package, not
   in the demo.
-* **Don't ship syntax highlighters for programming languages.**  Provide the
-  hook; let hosts bring their own.
+* **Don't colour code** or build SynEdit glue - see "Code blocks and syntax
+  highlighting".
 * **Don't make the package depend on SynEdit** or on any GPL code.
 * **Don't make separate "Markdown" versions of each control** - use
   `TextFormat`.
 * **Don't put Heckers Sketch specifics in LazInk.**  If Heckers Sketch
   needs something, build the general version.
 * **Don't claim support that hasn't been run** (widgetsets, touch hardware).
+* **Don't port `inkhtml.pas` line by line** into the new renderer, and don't
+  relicense a file until its provenance is checked - see 4.
 
 ---
 
-## 6. Working on it
+## 7. Working on it
 
 * Build: open `lazink.lpk` in Lazarus, or `lazbuild lazink.lpk`.  The demo
   is `demo/lazinkdemo.lpi`.
@@ -348,7 +464,7 @@ source pane (P5), because that is LazInk's own business.
 
 ---
 
-## 7. History
+## 8. History
 
 * **August 2021** - started as an HTML-formatted list box from a Lazarus
   forum thread (see the README credits); the renderer comes from JVCL.
