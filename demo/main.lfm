@@ -53,10 +53,208 @@ object frmMain: TfrmMain
     Height = 726
     Top = 54
     Width = 1140
-    ActivePage = tabCredits
+    ActivePage = tabDocuments
     Align = alClient
-    TabIndex = 4
+    TabIndex = 0
     TabOrder = 1
+    object tabDocuments: TTabSheet
+      Caption = 'Documents'
+      object pnlDocTools: TPanel
+        Left = 0
+        Height = 42
+        Top = 0
+        Width = 1138
+        Align = alTop
+        BevelOuter = bvNone
+        TabOrder = 0
+        object btnDocOpen: TButton
+          Left = 8
+          Height = 28
+          Top = 7
+          Width = 92
+          Caption = 'Open...'
+          OnClick = DocOpen
+          TabOrder = 0
+        end
+        object btnDocBack: TButton
+          Left = 106
+          Height = 28
+          Top = 7
+          Width = 80
+          Caption = 'Back'
+          Enabled = False
+          OnClick = DocBack
+          TabOrder = 1
+        end
+        object btnDocForward: TButton
+          Left = 192
+          Height = 28
+          Top = 7
+          Width = 80
+          Caption = 'Forward'
+          Enabled = False
+          OnClick = DocForward
+          TabOrder = 2
+        end
+        object btnDocFind: TButton
+          Left = 278
+          Height = 28
+          Top = 7
+          Width = 80
+          Caption = 'Find'
+          OnClick = DocFind
+          TabOrder = 3
+        end
+        object cbDocTheme: TComboBox
+          Left = 372
+          Height = 28
+          Top = 7
+          Width = 180
+          ItemIndex = 0
+          Items.Strings = (
+            'The page''s own look'
+            'Dark'
+            'Sepia'
+          )
+          Style = csDropDownList
+          OnChange = DocThemeChange
+          TabOrder = 4
+        end
+        object lblDocHint: TInkLabel
+          Left = 566
+          Height = 18
+          Top = 12
+          Width = 400
+          Caption = '<font color="#7F8C8D">Drag to select, right-click to copy, Ctrl+F to find. The mouse''s back and forward buttons work.</font>'
+          SuperSubScriptRatio = 0.7
+          AutoSize = True
+          ParentColor = False
+        end
+      end
+      object pageDoc: TInkPage
+        Left = 0
+        Height = 656
+        Top = 42
+        Width = 1138
+        Align = alClient
+        TabStop = True
+        TabOrder = 1
+        OnLinkClick = DocLinkClick
+        OnNavigate = DocNavigate
+      end
+      object dlgDocOpen: TOpenDialog
+        Filter = 'Documents (HTML, Markdown)|*.html;*.htm;*.md;*.markdown|All files|*'
+        Left = 1000
+        Top = 60
+      end
+    end
+    object tabMarkdown: TTabSheet
+      Caption = 'Markdown editor'
+      object pnlMdTools: TPanel
+        Left = 0
+        Height = 42
+        Top = 0
+        Width = 1138
+        Align = alTop
+        BevelOuter = bvNone
+        TabOrder = 0
+        object btnMdOpen: TButton
+          Left = 8
+          Height = 28
+          Top = 7
+          Width = 92
+          Caption = 'Open...'
+          OnClick = MdOpen
+          TabOrder = 0
+        end
+        object btnMdSave: TButton
+          Left = 106
+          Height = 28
+          Top = 7
+          Width = 80
+          Caption = 'Save'
+          OnClick = MdSave
+          TabOrder = 1
+        end
+        object btnMdSaveAs: TButton
+          Left = 192
+          Height = 28
+          Top = 7
+          Width = 92
+          Caption = 'Save as...'
+          OnClick = MdSaveAs
+          TabOrder = 2
+        end
+        object chkMdRawHTML: TCheckBox
+          Left = 298
+          Height = 22
+          Top = 10
+          Width = 150
+          Caption = 'HTML in the source'
+          OnChange = MdRawHTMLChange
+          TabOrder = 3
+        end
+        object lblMdFile: TInkLabel
+          Left = 470
+          Height = 18
+          Top = 12
+          Width = 200
+          Caption = ' '
+          SuperSubScriptRatio = 0.7
+          AutoSize = True
+          ParentColor = False
+        end
+      end
+      object memMarkdown: TMemo
+        Left = 0
+        Height = 656
+        Top = 42
+        Width = 540
+        Align = alLeft
+        Font.Height = -13
+        OnChange = MdSourceChange
+        ParentFont = False
+        ScrollBars = ssAutoBoth
+        TabOrder = 1
+        WantTabs = True
+        WordWrap = False
+      end
+      object splMarkdown: TSplitter
+        Left = 540
+        Height = 656
+        Top = 42
+        Width = 6
+      end
+      object pageMdPreview: TInkPage
+        Left = 546
+        Height = 656
+        Top = 42
+        Width = 592
+        Align = alClient
+        TabStop = True
+        TabOrder = 2
+        OnLinkClick = DocLinkClick
+      end
+      object tmrMarkdown: TTimer
+        Enabled = False
+        Interval = 300
+        OnTimer = MdTimer
+        Left = 1000
+        Top = 60
+      end
+      object dlgMdOpen: TOpenDialog
+        Filter = 'Markdown|*.md;*.markdown|All files|*'
+        Left = 1040
+        Top = 60
+      end
+      object dlgMdSave: TSaveDialog
+        DefaultExt = '.md'
+        Filter = 'Markdown|*.md;*.markdown|All files|*'
+        Options = [ofOverwritePrompt, ofEnableSizing, ofViewDetail]
+        Left = 1080
+        Top = 60
+      end
+    end
     object tabEditor: TTabSheet
       Caption = 'WYSIWYG editor'
       ClientHeight = 698
@@ -440,7 +638,354 @@ object frmMain: TfrmMain
         end
       end
     end
-    object tabList: TTabSheet
+    object tabLabelEdit: TTabSheet
+      Caption = 'Label + Edit'
+      ClientHeight = 698
+      ClientWidth = 1138
+      object lblSection1: TInkLabel
+        Left = 20
+        Height = 21
+        Top = 16
+        Width = 79
+        Caption = '<font size="13"><b>TInkLabel</b></font>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblDemo1: TInkLabel
+        Left = 20
+        Height = 19
+        Top = 48
+        Width = 250
+        Caption = 'Status: <b><font color="#1E8449">connected</font></b> to <font face="DejaVu Sans Mono">db-01</font> — <i>14 ms</i>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblDemo2: TInkLabel
+        Left = 20
+        Height = 24
+        Top = 76
+        Width = 365
+        Caption = '<font size="15">Big</font>, <font size="8">small</font>, <u>underlined</u>, <s>struck</s>, <font bgcolor="#FBEEA8">highlighted</font>, H<sub>2</sub>O, E=mc<sup>2</sup>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblDemo3: TInkLabel
+        Left = 20
+        Height = 18
+        Top = 106
+        Width = 346
+        Caption = 'Links fire OnLinkClick: <a href="https://www.lazarus-ide.org/">lazarus-ide.org</a> and <a href="https://wiki.freepascal.org/">the wiki</a>.'
+        SuperSubScriptRatio = 0.7
+        LinkHoverStyle.Color = clRed
+        LinkHoverStyle.Underline = True
+        OnLinkClick = lblLinkClick
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblDemo4: TInkLabel
+        Left = 20
+        Height = 18
+        Top = 136
+        Width = 510
+        Caption = 'Entities: &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;copy; &amp;reg; &amp;trade; render as &amp; &lt; &gt; &quot; &copy; &reg; &trade;'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblWrapHdr: TInkLabel
+        Left = 20
+        Height = 18
+        Top = 174
+        Width = 386
+        Caption = '<font color="#7F8C8D">WordWrap = True — resize the window and this re-flows:</font>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblWrapDemo: TInkLabel
+        Left = 20
+        Height = 80
+        Top = 198
+        Width = 560
+        Caption = 'The renderer only ever broke a line where the markup said so, at a <b>&lt;br&gt;</b>. Word wrap works by re-writing the markup: measure the line, drop in a break at the last word that fits, and carry the still-open <b>tags</b> across so the second line stays <font color="#C0392B">exactly as formatted</font> as the first one was.'
+        SuperSubScriptRatio = 0.7
+        WordWrap = True
+        ParentColor = False
+      end
+      object lblSection2: TInkLabel
+        Left = 20
+        Height = 21
+        Top = 306
+        Width = 67
+        Caption = '<font size="13"><b>TInkEdit</b></font>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblEditHdr: TInkLabel
+        Left = 20
+        Height = 34
+        Top = 336
+        Width = 560
+        Caption = 'A single-line edit that hands you every character and asks how to draw it. The text itself stays plain — what you read back from <font face="DejaVu Sans Mono">Text</font> is exactly what was typed.'
+        SuperSubScriptRatio = 0.7
+        WordWrap = True
+        ParentColor = False
+      end
+      object edtPassword: TInkEdit
+        Cursor = crIBeam
+        Left = 20
+        Height = 34
+        Top = 382
+        Width = 380
+        Text = 'Tr0ub4dor&3'
+        SelStart = 11
+        SelLength = 0
+        OnChange = edtPasswordChange
+        OnGetCharAttrs = edtPasswordGetCharAttrs
+        Color = clWindow
+        Font.Color = clWindowText
+        Font.Height = -16
+        ParentFont = False
+        TabOrder = 0
+      end
+      object lblStrength: TInkLabel
+        Left = 412
+        Height = 18
+        Top = 390
+        Width = 3
+        Caption = ' '
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object rgCharMode: TRadioGroup
+        Left = 20
+        Height = 110
+        Top = 430
+        Width = 380
+        AutoFill = True
+        Caption = ' How OnGetCharAttrs colours it '
+        ChildSizing.LeftRightSpacing = 6
+        ChildSizing.EnlargeHorizontal = crsHomogenousChildResize
+        ChildSizing.EnlargeVertical = crsHomogenousChildResize
+        ChildSizing.ShrinkHorizontal = crsScaleChilds
+        ChildSizing.ShrinkVertical = crsScaleChilds
+        ChildSizing.Layout = cclLeftToRightThenTopToBottom
+        ChildSizing.ControlsPerLine = 1
+        ClientHeight = 91
+        ClientWidth = 378
+        ItemIndex = 0
+        Items.Strings = (
+          'By character class — digits, capitals, symbols'
+          'Rainbow by position'
+          'Every other character emphasised'
+        )
+        TabOrder = 1
+        OnClick = rgCharModeClick
+      end
+      object lblSection3: TInkLabel
+        Left = 620
+        Height = 21
+        Top = 16
+        Width = 60
+        Caption = '<font size="13"><b>Try it</b></font>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblLiveHint: TInkLabel
+        Left = 620
+        Height = 36
+        Top = 48
+        Width = 490
+        Caption = 'Type markup in the box - a <b>TInkEdit</b> colouring its own tags - and the <b>TInkLabel</b> under it draws it as you type.'
+        SuperSubScriptRatio = 0.7
+        WordWrap = True
+        Anchors = [akTop, akLeft, akRight]
+        ParentColor = False
+      end
+      object edtLive: TInkEdit
+        Cursor = crIBeam
+        Left = 620
+        Height = 32
+        Top = 92
+        Width = 490
+        Text = 'Say <b>hello</b> in <font color="#C0392B">red</font>, <i>lean</i> or <a href="https://www.lazarus-ide.org/">link</a> it'
+        OnChange = LiveChange
+        OnGetCharAttrs = edtMarkupGetCharAttrs
+        Anchors = [akTop, akLeft, akRight]
+        Color = clWindow
+        Font.Color = clWindowText
+        Font.Height = -14
+        ParentFont = False
+        TabOrder = 2
+      end
+      object chkLiveMarkdown: TCheckBox
+        Left = 620
+        Height = 22
+        Top = 132
+        Width = 200
+        Caption = 'Read it as Markdown'
+        OnChange = LiveMarkdownChange
+        TabOrder = 3
+      end
+      object lblLive: TInkLabel
+        Left = 620
+        Height = 70
+        Top = 164
+        Width = 490
+        Caption = ' '
+        SuperSubScriptRatio = 0.7
+        WordWrap = True
+        OnLinkClick = lblLinkClick
+        Anchors = [akTop, akLeft, akRight]
+        Font.Height = -18
+        ParentColor = False
+        ParentFont = False
+      end
+      object lblSection4: TInkLabel
+        Left = 620
+        Height = 21
+        Top = 256
+        Width = 170
+        Caption = '<font size="13"><b>Markdown in a label</b></font>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblMdDemo: TInkLabel
+        Left = 620
+        Height = 60
+        Top = 288
+        Width = 490
+        TextFormat = itfMarkdown
+        Caption = '`TextFormat = itfMarkdown` - **bold**, *emphasis*, ~~struck~~ and [links](https://wiki.freepascal.org/), the same Markdown the page reads.'
+        SuperSubScriptRatio = 0.7
+        WordWrap = True
+        OnLinkClick = lblLinkClick
+        Anchors = [akTop, akLeft, akRight]
+        ParentColor = False
+      end
+      object lblLabelCopy: TInkLabel
+        Left = 620
+        Height = 40
+        Top = 364
+        Width = 490
+        Caption = '<font color="#7F8C8D">Right-click any label on this tab: <b>Copy link address</b> over a link, <b>Copy all</b> anywhere.</font>'
+        SuperSubScriptRatio = 0.7
+        WordWrap = True
+        Anchors = [akTop, akLeft, akRight]
+        ParentColor = False
+      end
+    end
+    object tabMemo: TTabSheet
+      Caption = 'Memo'
+      ClientHeight = 698
+      ClientWidth = 1138
+      object pnlMemoSide: TPanel
+        Left = 878
+        Height = 698
+        Top = 0
+        Width = 260
+        Align = alRight
+        BevelOuter = bvNone
+        ClientHeight = 698
+        ClientWidth = 260
+        TabOrder = 0
+        object lblMemoHelp: TInkLabel
+          Left = 12
+          Height = 300
+          Top = 12
+          Width = 236
+          Caption = '<b>TInkMemo</b> is a viewer, not an editor — a log, a transcript, a help page. Each line of <font face="DejaVu Sans Mono">Lines</font> is one paragraph of markup, and lines may differ in height.<br><br>It rides on a variable-height owner-drawn listbox, so scrolling and invalidation come for free.<br><br><b>Copying:</b> click a line and press Ctrl+C, or Ctrl+A and then Ctrl+C for all of it. Right-click for the copy menu.'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          ParentColor = False
+        end
+        object chkMemoWrap: TCheckBox
+          Left = 12
+          Height = 22
+          Top = 324
+          Width = 97
+          Caption = 'WordWrap'
+          Checked = True
+          State = cbChecked
+          TabOrder = 0
+          OnChange = chkMemoWrapChange
+        end
+        object lblScale: TInkLabel
+          Left = 12
+          Height = 18
+          Top = 356
+          Width = 79
+          Caption = 'Scale: <b>100%</b>'
+          SuperSubScriptRatio = 0.7
+          AutoSize = True
+          ParentColor = False
+        end
+        object tbScale: TTrackBar
+          Left = 12
+          Height = 40
+          Top = 378
+          Width = 236
+          Frequency = 25
+          Max = 200
+          Min = 50
+          Position = 100
+          OnChange = tbScaleChange
+          TabOrder = 1
+        end
+      end
+      object memCheat: TInkMemo
+        Left = 0
+        Height = 698
+        Top = 0
+        Width = 878
+        Lines.Strings = (
+          '<font size="16"><b>The markup LazInk understands</b></font>'
+          '<b>&lt;b&gt;</b> <b>bold</b>   <b>&lt;i&gt;</b> <i>italic</i>   <b>&lt;u&gt;</b> <u>underline</u>   <b>&lt;s&gt;</b> <s>strikeout</s>'
+          '<b>&lt;font color="#RRGGBB"&gt;</b> — <font color="#C0392B">red</font>, <font color="#1E8449">green</font>, <font color="#2E86DE">blue</font>. Named colours work too: <font color="olive">olive</font>, <font color="clPurple">clPurple</font>.'
+          '<b>&lt;font bgcolor="#RRGGBB"&gt;</b> — <font bgcolor="#FBEEA8">a highlighter pen</font>, useful for search hits.'
+          '<b>&lt;font size="n"&gt;</b> — <font size="9">nine</font>, <font size="12">twelve</font>, <font size="18">eighteen</font>.'
+          '<b>&lt;font face="name"&gt;</b> — <font face="DejaVu Serif">a serif face</font>, <font face="DejaVu Sans Mono">a monospaced one</font>.'
+          '<b>&lt;sup&gt;</b> and <b>&lt;sub&gt;</b> — E=mc<sup>2</sup>, H<sub>2</sub>O, x<sup>n</sup>+y<sup>n</sup>.'
+          '<b>&lt;a href="..."&gt;</b> — <a href="https://wiki.lazarus.freepascal.org/">a link that fires OnLinkClick</a>. Run the mouse over it: LinkHoverStyle repaints just that one.'
+          '<b>&lt;img src="n"&gt;</b> — entry n of the Images list, sitting on the line like an oversized character: <img src="0"> info, <img src="2"> warning, <img src="3"> error, <img src="1"> done.'
+          '<b>&lt;br&gt;</b> breaks a line.<br>Like that.'
+          '<b>&lt;p&gt;...&lt;/p&gt;</b> is a paragraph: a break plus a blank line.<p>Like this one.</p>'
+          '<b>&lt;center&gt;</b> and <b>&lt;right&gt;</b> move a whole line:'
+          '<center>this line is centred</center>'
+          '<right>and this one is right aligned</right>'
+          '<b>&lt;hr&gt;</b> draws a rule:'
+          '<hr>'
+          '<b>&lt;table&gt;</b> makes a grid, sized to its words:<table><tr><th>Tag</th><th>Draws</th></tr><tr><td>&lt;b&gt;</td><td><b>bold</b></td></tr><tr><td>&lt;a href&gt;</td><td><a href="https://www.lazarus-ide.org/">a link</a>, still clickable</td></tr></table>'
+          '<b>Entities</b> — &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;nbsp; &amp;copy; &amp;reg; &amp;trade; &amp;euro; give &amp; &lt; &gt; &quot; &copy; &reg; &trade; &euro;'
+          '<b>Line breaking</b> — CJK has no spaces between words, so every character is somewhere a line may break. Without that this paragraph could not wrap at all: 日本語のテキストは空白で単語を区切らないため、どの文字の後ろでも折り返すことができます。句読点は行頭に来ないように前の文字と一緒に運ばれます。'
+          '<b>Borders</b> — this memo keeps 8 pixels clear at each side and 2 above and below every row, which is why the text is not jammed against the edge. In a memo or a listbox the top and bottom borders are row padding, because each row is drawn on its own; <b>LineSpacing</b> is what separates the lines <i>inside</i> one row.'
+          '<font color="#7F8C8D">Turn WordWrap off on the right and this paragraph will run off the edge instead of re-flowing, which is what the renderer did before wrapping existed. Drag the window narrower to watch it re-measure.</font>'
+        )
+        SuperSubScriptRatio = 0.7
+        Borders.Left = 8
+        Borders.Top = 7
+        Borders.Right = 8
+        Borders.Bottom = 7
+        Images = ilStatus
+        LinkHoverStyle.Color = clRed
+        LinkHoverStyle.BackColor = 14548991
+        LinkHoverStyle.Underline = True
+        WordWrap = True
+        OnLinkClick = memLinkClick
+        Align = alClient
+        Font.Height = -14
+        ParentFont = False
+        TabOrder = 1
+      end
+    end
+    object tabListBox: TTabSheet
       Caption = 'List box'
       ClientHeight = 698
       ClientWidth = 1138
@@ -570,6 +1115,16 @@ object frmMain: TfrmMain
           WordWrap = True
           ParentColor = False
         end
+        object lblListCopy: TInkLabel
+          Left = 12
+          Height = 60
+          Top = 430
+          Width = 296
+          Caption = '<font color="#7F8C8D">Right-click a line for <b>Copy this item</b> and <b>Copy all</b>; Ctrl+C copies the selected line.</font>'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          ParentColor = False
+        end
       end
       object lstLog: TInkListBox
         Left = 0
@@ -608,352 +1163,6 @@ object frmMain: TfrmMain
         TopIndex = -1
       end
     end
-    object tabLabelEdit: TTabSheet
-      Caption = 'Label + Edit'
-      ClientHeight = 698
-      ClientWidth = 1138
-      object lblSection1: TInkLabel
-        Left = 20
-        Height = 21
-        Top = 16
-        Width = 79
-        Caption = '<font size="13"><b>TInkLabel</b></font>'
-        SuperSubScriptRatio = 0.7
-        AutoSize = True
-        ParentColor = False
-      end
-      object lblDemo1: TInkLabel
-        Left = 20
-        Height = 19
-        Top = 48
-        Width = 250
-        Caption = 'Status: <b><font color="#1E8449">connected</font></b> to <font face="DejaVu Sans Mono">db-01</font> — <i>14 ms</i>'
-        SuperSubScriptRatio = 0.7
-        AutoSize = True
-        ParentColor = False
-      end
-      object lblDemo2: TInkLabel
-        Left = 20
-        Height = 24
-        Top = 76
-        Width = 365
-        Caption = '<font size="15">Big</font>, <font size="8">small</font>, <u>underlined</u>, <s>struck</s>, <font bgcolor="#FBEEA8">highlighted</font>, H<sub>2</sub>O, E=mc<sup>2</sup>'
-        SuperSubScriptRatio = 0.7
-        AutoSize = True
-        ParentColor = False
-      end
-      object lblDemo3: TInkLabel
-        Left = 20
-        Height = 18
-        Top = 106
-        Width = 346
-        Caption = 'Links fire OnLinkClick: <a href="https://www.lazarus-ide.org/">lazarus-ide.org</a> and <a href="https://wiki.freepascal.org/">the wiki</a>.'
-        SuperSubScriptRatio = 0.7
-        LinkHoverStyle.Color = clRed
-        LinkHoverStyle.Underline = True
-        OnLinkClick = lblLinkClick
-        AutoSize = True
-        ParentColor = False
-      end
-      object lblDemo4: TInkLabel
-        Left = 20
-        Height = 18
-        Top = 136
-        Width = 510
-        Caption = 'Entities: &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;copy; &amp;reg; &amp;trade; render as &amp; &lt; &gt; &quot; &copy; &reg; &trade;'
-        SuperSubScriptRatio = 0.7
-        AutoSize = True
-        ParentColor = False
-      end
-      object lblWrapHdr: TInkLabel
-        Left = 20
-        Height = 18
-        Top = 174
-        Width = 386
-        Caption = '<font color="#7F8C8D">WordWrap = True — resize the window and this re-flows:</font>'
-        SuperSubScriptRatio = 0.7
-        AutoSize = True
-        ParentColor = False
-      end
-      object lblWrapDemo: TInkLabel
-        Left = 20
-        Height = 80
-        Top = 198
-        Width = 566
-        Caption = 'The renderer only ever broke a line where the markup said so, at a <b>&lt;br&gt;</b>. Word wrap works by re-writing the markup: measure the line, drop in a break at the last word that fits, and carry the still-open <b>tags</b> across so the second line stays <font color="#C0392B">exactly as formatted</font> as the first one was.'
-        SuperSubScriptRatio = 0.7
-        WordWrap = True
-        Anchors = [akTop, akLeft, akRight]
-        ParentColor = False
-      end
-      object lblSection2: TInkLabel
-        Left = 20
-        Height = 21
-        Top = 306
-        Width = 67
-        Caption = '<font size="13"><b>TInkEdit</b></font>'
-        SuperSubScriptRatio = 0.7
-        AutoSize = True
-        ParentColor = False
-      end
-      object lblEditHdr: TInkLabel
-        Left = 20
-        Height = 34
-        Top = 336
-        Width = 566
-        Caption = 'A single-line edit that hands you every character and asks how to draw it. The text itself stays plain — what you read back from <font face="DejaVu Sans Mono">Text</font> is exactly what was typed.'
-        SuperSubScriptRatio = 0.7
-        WordWrap = True
-        Anchors = [akTop, akLeft, akRight]
-        ParentColor = False
-      end
-      object edtPassword: TInkEdit
-        Cursor = crIBeam
-        Left = 20
-        Height = 34
-        Top = 382
-        Width = 380
-        Text = 'Tr0ub4dor&3'
-        SelStart = 11
-        SelLength = 0
-        OnChange = edtPasswordChange
-        OnGetCharAttrs = edtPasswordGetCharAttrs
-        Color = clWindow
-        Font.Color = clWindowText
-        Font.Height = -16
-        ParentFont = False
-        TabOrder = 0
-      end
-      object lblStrength: TInkLabel
-        Left = 412
-        Height = 18
-        Top = 390
-        Width = 3
-        Caption = ' '
-        SuperSubScriptRatio = 0.7
-        AutoSize = True
-        ParentColor = False
-      end
-      object rgCharMode: TRadioGroup
-        Left = 20
-        Height = 110
-        Top = 430
-        Width = 380
-        AutoFill = True
-        Caption = ' How OnGetCharAttrs colours it '
-        ChildSizing.LeftRightSpacing = 6
-        ChildSizing.EnlargeHorizontal = crsHomogenousChildResize
-        ChildSizing.EnlargeVertical = crsHomogenousChildResize
-        ChildSizing.ShrinkHorizontal = crsScaleChilds
-        ChildSizing.ShrinkVertical = crsScaleChilds
-        ChildSizing.Layout = cclLeftToRightThenTopToBottom
-        ChildSizing.ControlsPerLine = 1
-        ClientHeight = 91
-        ClientWidth = 378
-        ItemIndex = 0
-        Items.Strings = (
-          'By character class — digits, capitals, symbols'
-          'Rainbow by position'
-          'Every other character emphasised'
-        )
-        TabOrder = 1
-        OnClick = rgCharModeClick
-      end
-    end
-    object tabHelpPage: TTabSheet
-      Caption = 'HTML help pages'
-      object pnlHelpTools: TPanel
-        Align = alTop
-        Height = 40
-        object btnHelpOpen: TButton
-          Left = 8
-          Top = 6
-          Width = 150
-          Height = 28
-          Caption = 'Open HTML help...'
-          OnClick = HelpOpen
-        end
-        object btnHelpBack: TButton
-          Left = 168
-          Top = 6
-          Width = 80
-          Height = 28
-          Caption = 'Back'
-          Enabled = False
-          OnClick = HelpBack
-        end
-        object btnHelpForward: TButton
-          Left = 258
-          Top = 6
-          Width = 80
-          Height = 28
-          Caption = 'Forward'
-          Enabled = False
-          OnClick = HelpForward
-        end
-        object btnHelpFind: TButton
-          Left = 348
-          Top = 6
-          Width = 80
-          Height = 28
-          Caption = 'Find'
-          OnClick = HelpFind
-        end
-      end
-      object helpPage: TInkPage
-        Align = alClient
-        TabStop = True
-        OnNavigate = HelpNavigate
-      end
-      object dlgHelp: TOpenDialog
-        Filter = 'HTML and Markdown pages|*.html;*.htm;*.md;*.markdown'
-      end
-    end
-    object tabTables: TTabSheet
-      Caption = 'Tables / Markdown'
-      object cbTableFormat: TComboBox
-        Align = alTop
-        Height = 32
-        Style = csDropDownList
-        ItemIndex = 0
-        Items.Strings = (
-          'HTML sample'
-          'Markdown sample'
-        )
-        OnChange = TableFormatChange
-        TabOrder = 0
-      end
-      object memTableSource: TMemo
-        Align = alLeft
-        Width = 420
-        ScrollBars = ssAutoBoth
-        OnChange = TableSourceChange
-        TabOrder = 1
-      end
-      object tablePreview: TInkMemo
-        Align = alClient
-        WordWrap = True
-        TabOrder = 2
-      end
-    end
-    object tabMemo: TTabSheet
-      Caption = 'Memo'
-      ClientHeight = 698
-      ClientWidth = 1138
-      object pnlMemoSide: TPanel
-        Left = 878
-        Height = 698
-        Top = 0
-        Width = 260
-        Align = alRight
-        BevelOuter = bvNone
-        ClientHeight = 698
-        ClientWidth = 260
-        TabOrder = 0
-        object lblMemoHelp: TInkLabel
-          Left = 12
-          Height = 190
-          Top = 12
-          Width = 236
-          Caption = '<b>TInkMemo</b> is a viewer, not an editor — a log, a transcript, a help page. Each line of <font face="DejaVu Sans Mono">Lines</font> is one paragraph of markup, and lines may differ in height.<br><br>It rides on a variable-height owner-drawn listbox, so scrolling and invalidation come for free.'
-          SuperSubScriptRatio = 0.7
-          WordWrap = True
-          ParentColor = False
-        end
-        object chkMemoWrap: TCheckBox
-          Left = 12
-          Height = 22
-          Top = 214
-          Width = 97
-          Caption = 'WordWrap'
-          Checked = True
-          State = cbChecked
-          TabOrder = 0
-          OnChange = chkMemoWrapChange
-        end
-        object lblScale: TInkLabel
-          Left = 12
-          Height = 18
-          Top = 246
-          Width = 79
-          Caption = 'Scale: <b>100%</b>'
-          SuperSubScriptRatio = 0.7
-          AutoSize = True
-          ParentColor = False
-        end
-        object tbScale: TTrackBar
-          Left = 12
-          Height = 40
-          Top = 268
-          Width = 236
-          Frequency = 25
-          Max = 200
-          Min = 50
-          Position = 100
-          OnChange = tbScaleChange
-          TabOrder = 1
-        end
-      end
-      object memCheat: TInkMemo
-        Left = 0
-        Height = 698
-        Top = 0
-        Width = 878
-        Lines.Strings = (
-          '<font size="16"><b>The markup LazInk understands</b></font>'
-          ''
-          '<b>&lt;b&gt;</b> <b>bold</b>   <b>&lt;i&gt;</b> <i>italic</i>   <b>&lt;u&gt;</b> <u>underline</u>   <b>&lt;s&gt;</b> <s>strikeout</s>'
-          ''
-          '<b>&lt;font color="#RRGGBB"&gt;</b> — <font color="#C0392B">red</font>, <font color="#1E8449">green</font>, <font color="#2E86DE">blue</font>. Named colours work too: <font color="olive">olive</font>, <font color="clPurple">clPurple</font>.'
-          ''
-          '<b>&lt;font bgcolor="#RRGGBB"&gt;</b> — <font bgcolor="#FBEEA8">a highlighter pen</font>, useful for search hits.'
-          ''
-          '<b>&lt;font size="n"&gt;</b> — <font size="9">nine</font>, <font size="12">twelve</font>, <font size="18">eighteen</font>.'
-          ''
-          '<b>&lt;font face="name"&gt;</b> — <font face="DejaVu Serif">a serif face</font>, <font face="DejaVu Sans Mono">a monospaced one</font>.'
-          ''
-          '<b>&lt;sup&gt;</b> and <b>&lt;sub&gt;</b> — E=mc<sup>2</sup>, H<sub>2</sub>O, x<sup>n</sup>+y<sup>n</sup>.'
-          ''
-          '<b>&lt;a href="..."&gt;</b> — <a href="https://wiki.lazarus.freepascal.org/">a link that fires OnLinkClick</a>. Run the mouse over it: LinkHoverStyle repaints just that one.'
-          ''
-          '<b>&lt;img src="n"&gt;</b> — entry n of the Images list, sitting on the line like an oversized character: <img src="0"> info, <img src="2"> warning, <img src="3"> error, <img src="1"> done.'
-          ''
-          '<b>&lt;br&gt;</b> breaks a line.<br>Like that.'
-          ''
-          '<b>&lt;p&gt;...&lt;/p&gt;</b> is a paragraph: a break plus a blank line.<p>Like this one.</p>'
-          ''
-          '<b>&lt;center&gt;</b> and <b>&lt;right&gt;</b> move a whole line:'
-          '<center>this line is centred</center>'
-          '<right>and this one is right aligned</right>'
-          ''
-          '<b>&lt;hr&gt;</b> draws a rule:'
-          '<hr>'
-          ''
-          '<b>Entities</b> — &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;nbsp; &amp;copy; &amp;reg; &amp;trade; &amp;euro; give &amp; &lt; &gt; &quot; &copy; &reg; &trade; &euro;'
-          ''
-          '<b>Line breaking</b> — CJK has no spaces between words, so every character is somewhere a line may break. Without that this paragraph could not wrap at all: 日本語のテキストは空白で単語を区切らないため、どの文字の後ろでも折り返すことができます。句読点は行頭に来ないように前の文字と一緒に運ばれます。'
-          ''
-          '<b>Borders</b> — this memo keeps 8 pixels clear at each side and 2 above and below every row, which is why the text is not jammed against the edge. In a memo or a listbox the top and bottom borders are row padding, because each row is drawn on its own; <b>LineSpacing</b> is what separates the lines <i>inside</i> one row.'
-          ''
-          '<font color="#7F8C8D">Turn WordWrap off on the right and this paragraph will run off the edge instead of re-flowing, which is what the renderer did before wrapping existed. Drag the window narrower to watch it re-measure.</font>'
-        )
-        SuperSubScriptRatio = 0.7
-        Borders.Left = 8
-        Borders.Top = 2
-        Borders.Right = 8
-        Borders.Bottom = 2
-        Images = ilStatus
-        LinkHoverStyle.Color = clRed
-        LinkHoverStyle.BackColor = 14548991
-        LinkHoverStyle.Underline = True
-        WordWrap = True
-        OnLinkClick = memLinkClick
-        Align = alClient
-        Font.Height = -14
-        ParentFont = False
-        TabOrder = 1
-      end
-    end
     object tabCredits: TTabSheet
       Caption = 'Credits'
       ClientHeight = 698
@@ -965,34 +1174,21 @@ object frmMain: TfrmMain
         Width = 1138
         Lines.Strings = (
           '<font size="17"><b>LazInk — credits and origins</b></font>'
-          ''
           'LazInk started with a Lazarus forum thread Tony Stone began in August 2021, <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">Memo Component that supports HTML markup</a>, asking for a simple way to decorate list box text with a little HTML.'
-          ''
           'wp suggested taking what was needed from the HTML drawing code in Project JEDI''s JVCL and helped make it happen, with a standalone unit and an owner-drawn list box example. Tony''s demo built on that example - the List box tab here - is where the idea for LazInk was born. The components have been LazInk''s own since.'
-          ''
           'AI assistants helped teach the component creation process and worked on design, implementation and debugging.'
-          ''
           '<font size="15"><b>Project JEDI / JVCL</b></font>'
-          ''
           'The HTML renderer still contains adapted JVCL code from JvHTControls and JvJVCLUtils. The plan is to replace it with a renderer written for LazInk, so the package can be released with essentially no conditions - the credit stays either way.'
           'JvHTControls: Andrei Prygounkov; contributors include Maciej Kaczkowski, Timo Tegtmeier, and Andreas Hausladen.'
           'JvJVCLUtils: Fedor Koshevnikov, Igor Pavluk, Serge Korolev, and SGB Software.'
           '<a href="https://github.com/project-jedi/jvcl">Project JEDI / JVCL</a>'
-          ''
           '<font size="15"><b>From the forum thread</b></font>'
-          ''
           '<b>wp</b> - the JVCL route, the standalone unit and the list box example.   <b>jamie</b> - TIpHtmlPanel, the first thing that rendered.   <b>skalogryz</b> - the Qt5 memo idea.   <b>avra</b> - RichMemo examples and IDE shortcuts.   <b>Jurassic Pork</b> - the off-screen demo report.   <b>tetrastes</b> and <b>denis.totoliciu</b> - centring lost windows.'
-          ''
           '<font size="15"><b>Ideas</b></font>'
-          ''
           'Digão Dalpiaz''s TDzHTMLText was a source of ideas - inline images, link hover styling, borders, line spacing and CJK line breaking. No code was taken from it.'
-          ''
           '<font size="15"><b>Lazarus and Free Pascal</b></font>'
-          ''
           'Thanks to the developers of the component framework, compiler, runtime, and image decoders used by LazInk.'
-          ''
           '<font size="15"><b>Licensing</b></font>'
-          ''
           'Independent LazInk component code is MIT. The adapted renderer (inkhtml.pas and inktables.inc) is MPL 1.1.'
           'The corresponding MPL renderer source is supplied alongside this demo in the LazInk source distribution. See LICENSE, LICENSES/MPL-1.1.txt, THIRD_PARTY_NOTICES.md, and docs/RENDERER_CHANGES.md.'
           'If distributing this executable separately, include the corresponding covered source or provide recipients its actual download location.'
@@ -1000,9 +1196,9 @@ object frmMain: TfrmMain
         )
         SuperSubScriptRatio = 0.7
         Borders.Left = 10
-        Borders.Top = 2
+        Borders.Top = 6
         Borders.Right = 10
-        Borders.Bottom = 2
+        Borders.Bottom = 6
         LinkHoverStyle.Color = clRed
         LinkHoverStyle.Underline = True
         WordWrap = True

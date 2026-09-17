@@ -315,6 +315,26 @@ demonstrate and maybe it opens the readme for the demo app."
 release, starts with `README.md` rendered, can edit and save a file, and
 the README has a screenshot of the tab.
 
+**Mostly done (16 September 2026)**, as part of a look over the whole
+demo.  The **Markdown editor** tab has the source (a `TMemo` in the
+monospace face) and a live `TInkPage` preview (300 ms after typing stops,
+keeping its scroll position), Open, Save, Save as, a "changed" mark, and
+"HTML in the source" for `MarkdownRawHTML`; it opens `README.md` at start
+and resolves the README's images beside it.  The README has its picture.
+Not yet: colouring the source (the `TInkCodeMemo` idea), keeping the two
+panes scrolled together, and a build on the current stable Lazarus - only
+trunk was run.
+
+The rest of the look-over: the demo now opens on a **Documents** tab
+(`demo/tour.md`, a Markdown tour linking to the README, with Back, Forward,
+Find and a theme list driving `StyleSheet`) instead of on Credits; the old
+empty "HTML help pages" and "Tables / Markdown" tabs are gone into it; the
+Label tab has a live markup playground and a Markdown label; the memo's
+cheat sheet gained a table and lost its blank rows; each tab says how to
+copy from it; and `--screenshots DIR` saves every tab for the README.
+The list box's "alternating" rows had been drawn black: `HTMLShadeColor`
+took the list's `clDefault` colour literally.
+
 ### P6. Heckers Sketch's help pages inside the program
 
 Mostly ready on LazInk's side (`TInkPage` renders the whole manual).  What
