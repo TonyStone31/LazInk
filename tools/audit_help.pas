@@ -1,3 +1,4 @@
+#!/usr/bin/env instantfpc
 program audit_help;
 
 { Inventory a local HTML help tree, or download a site's same-site linked
@@ -13,7 +14,13 @@ program audit_help;
   Pages are read with the FCL's HTML reader (sax_html), not LazInk's own
   parser, so the inventory is somebody else's reading of the files.
 
-  Build:  fpc tools/audit_help.pas    (https needs OpenSSL at run time) }
+  It is a script for instantfpc, which comes with Free Pascal: run it
+  directly, and it is compiled the first time and cached after that.
+
+      tools/audit_help.pas docs/help
+      instantfpc tools/audit_help.pas docs/help    if instantfpc is not on PATH
+
+  https needs OpenSSL at run time. }
 
 {$mode objfpc}{$H+}
 

@@ -151,8 +151,7 @@ existing `DefaultWndHandler` warning during the control tests.
 Reproduce the audit and content checks:
 
 ```sh
-fpc -FU/tmp/audit -FE/tmp/audit tools/audit_help.pas
-/tmp/audit/audit_help https://tonystone31.github.io/noella-etch-a-sketch/ \
+tools/audit_help.pas https://tonystone31.github.io/noella-etch-a-sketch/ \
   --download /tmp/lazink-help --output /tmp/help-audit.json
 find /tmp/lazink-help -name '*.html' | sort > /tmp/help-pages.txt
 mkdir -p /tmp/help-results
@@ -160,7 +159,9 @@ LAZARUS_DIR=/path/to/lazarus FPC=/path/to/fpc \
   tests/run.sh /tmp/help-pages.txt /tmp/help-results
 ```
 
-`tests/run.sh` checks the visible text as well when it is given a page list
+`tools/audit_help.pas` is a Pascal script for `instantfpc`, which comes with
+Free Pascal - run it directly, or as `instantfpc tools/audit_help.pas ...`
+when instantfpc is not on your PATH.  `tests/run.sh` checks the visible text as well when it is given a page list
 and a results folder.  Both tools read the pages with the FCL's own HTML
 reader, so they check LazInk against an independent reading of the same
 files.
