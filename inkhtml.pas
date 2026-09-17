@@ -46,6 +46,14 @@ type
   TInkVertAlign = (ivaTop, ivaCenter, ivaBottom);
   TInkHorzAlign = (ihaLeft, ihaCenter, ihaRight);
 
+  { Told about each run of text as it is laid out: the text as drawn, where
+    (ALeft, ATop is the top of the line it sits on), how big, which line of
+    its part it is on, and the font it is drawn in.  APart numbers the pieces
+    a text with tables in it is laid out in - the text around the tables and
+    each cell - from the options' RunPart on. }
+  THTMLRunEvent = procedure(const AText: string; ALeft, ATop, AWidth, AHeight,
+    ALine, APart: integer; AFont: TFont) of object;
+
   { Everything about a render beyond the text itself. Passed as one record so
     that adding a knob does not mean changing five overloads; DefaultHTMLOptions
     fills it with the behaviour the plain HTMLDrawText has always had. }
@@ -72,6 +80,11 @@ type
     HoverColor: TColor;
     HoverBackColor: TColor;
     HoverUnderline: Boolean;
+    { when set, told where every run of text goes - how a control finds
+      the character under the mouse.  Measuring calls made inside the
+      renderer do not report. }
+    OnRun: THTMLRunEvent;
+    RunPart: Integer;
   end;
 
   { What the mouse was over, filled in when CalcType is htmlHyperLink. }
@@ -597,6 +610,8 @@ begin
   Result.HoverColor := clBlue;
   Result.HoverBackColor := clNone;
   Result.HoverUnderline := True;
+  Result.OnRun := nil;
+  Result.RunPart := 0;
 end;
 
 { The old entry point, kept so that nothing outside this unit had to change. }
@@ -760,6 +775,10 @@ var
         if ScriptPosition = spSubscript then
           R.Top := R.Top + lineHeight - Height - 1;
 
+        if Assigned(AOpts.OnRun) then
+          AOpts.OnRun(M, R.Left, Rect.Top, Width, Height, vCount,
+            AOpts.RunPart, Canvas.Font);
+
         if IsLink then
         begin
           CurLinkText := CurLinkText + M;
@@ -850,6 +869,7 @@ begin
     ((AOpts.VertAlign <> ivaTop) or (AOpts.HorzAlign <> ihaLeft)) then
   begin
     PreOpts := AOpts;
+    PreOpts.OnRun := nil;
     PreOpts.VertAlign := ivaTop;
     PreOpts.HorzAlign := ihaLeft;
     PreOpts.Borders.Left := 0;

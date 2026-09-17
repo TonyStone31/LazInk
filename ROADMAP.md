@@ -51,10 +51,10 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 
 | Control | What it does now | Missing |
 |---|---|---|
-| `TInkLabel` | inline markup, HTML or Markdown | text selection / copy |
-| `TInkMemo` | lines of markup, whole-document Markdown | text selection / copy |
-| `TInkListBox` | markup items, in-place editor | text selection / copy |
-| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward, small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet | **touch on Linux**, **text selection / copy** |
+| `TInkLabel` | inline markup, HTML or Markdown, copy menu | character selection |
+| `TInkMemo` | lines of markup, whole-document Markdown, copy menu, Ctrl+A/Ctrl+C by line | character selection |
+| `TInkListBox` | markup items, in-place editor, copy menu, Ctrl+A/Ctrl+C by item | character selection |
+| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward, small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection and copy menu | hardware check of touch; find in page |
 | `TInkEdit` | single-line edit, per-character colours | - |
 | `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
 | `TInkScrollBar` | canvas scrollbar, coloured from CSS `scrollbar-color` / `scrollbar-width` | - |
@@ -150,6 +150,16 @@ That's sort of a shitty aspect of lazink."
 text copied into a text editor, and tests cover what lands on the
 clipboard.
 
+**Done (16 September 2026), together with P4.**  `inkcopymenu.pas` holds
+the menu the display controls share: Copy (the selection), Copy this
+paragraph / line / item (under the pointer), Copy link address (over a
+link), Copy all, Select all, with `CopyMenu` to turn it off, a program's
+own `PopupMenu` taking precedence, and `OnCopyMenu` to add items (the menu
+is rebuilt each time).  `TInkMemo` and `TInkListBox` copy their selected
+lines with Ctrl+C and everything after Ctrl+A; `TInkLabel`, which has no
+keyboard, gets the menu.  Tests click the menu items and read the
+clipboard.  Captions are resourcestrings.
+
 ### P3. Fuller Markdown
 
 **Problem.**  The Markdown converter is a basic subset.  Programmers write
@@ -231,6 +241,36 @@ inside a table cell shows its alt text.
 **Done when:** text on a Heckers Sketch help page can be selected with the
 mouse and pasted elsewhere, a finger still scrolls, and tests cover the hit
 test and the copied text.
+
+**Done for `TInkPage` (16 September 2026).**  The renderer reports each
+run of text it lays out (`THTMLOptions.OnRun`: text, position, line, part,
+font) - a few lines in the MPL renderer, and the one thing the new renderer
+must provide too.  `TInkPage` lays a block out once more with that hook
+(`htmlHyperLink` mode, so nothing is painted) and keeps the runs; a block's
+**words** are the runs joined by whatever lay between them in the source's
+plain text - a space where a line wrapped, a line break, a tab between
+cells.  `TInkRichEdit` was read first: it keeps its own per-character
+layout and never uses the HTML renderer, so the page could not borrow it.
+
+`PositionAt(X, Y)` finds the nearest line and run and the nearest gap
+between characters; `PositionPoint` goes back.  Positions are (block, byte
+offset) and survive a new layout.  Mouse: drag, double-click (words),
+triple-click (blocks), Shift+click, auto-scroll past the edges; Ctrl+A,
+Ctrl+C and Ctrl+Insert.  The selection goes to X11's primary selection on
+release.  Copy is plain text (list markers kept, tables as tab-separated
+rows) plus HTML through `Clipboard.SetAsHtml`.  `SelectionColor`, else
+`::selection`, else the system highlight blended into the page.
+`MouseDrag` (`imdSelect`, `imdScroll`): the mouse selects by default, a
+finger always scrolls - GTK3 touches through P1, Windows' marked mouse
+messages through `InkMouseIsTouch`.  Tests cover the hit test both ways,
+every selection gesture, the painted highlight, the copied text and HTML,
+the menu, and a finger that must still scroll.
+
+Not done: character selection in `TInkLabel`, `TInkMemo` and `TInkListBox`
+(they have the copy menu and line-level copying instead); inline code keeps
+its own background over the highlight; keyboard selection (Shift+arrows).
+On Qt and GTK2 a finger cannot be told from the mouse, so there it selects
+unless `MouseDrag := imdScroll`.
 
 **Why not just use `TInkRichEdit` read-only for What's New?**  It was
 considered: it has `ReadOnly`, selection and clipboard already.  But it has

@@ -3,7 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF,
-  InkTouch;
+  InkTouch, InkCopyMenu, Menus, Clipbrd;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
   List: TInkListBox; Page: TInkPage; CSS: TInkStyleSheet;
@@ -21,7 +21,12 @@ type
   TPageProbe = class(TInkPage)
   public
     Clicked: string;
-    procedure Press(X, Y: Integer);
+    Changes: Integer;
+    procedure Press(X, Y: Integer; Shift: TShiftState = []);
+    procedure Key(K: Word; Shift: TShiftState);
+    procedure SelChanged(Sender: TObject);
+    procedure AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: Integer);
+    procedure Tick;
     procedure MoveTo(X, Y: Integer);
     procedure Let(X, Y: Integer);
     procedure LinkHit(Sender: TObject; const URL: string);
@@ -30,9 +35,32 @@ type
     procedure Coast(Milliseconds: Integer);
   end;
 
-procedure TPageProbe.Press(X, Y: Integer);
+procedure TPageProbe.Press(X, Y: Integer; Shift: TShiftState);
 begin
-  MouseDown(mbLeft, [ssLeft], X, Y);
+  MouseDown(mbLeft, [ssLeft] + Shift, X, Y);
+end;
+
+procedure TPageProbe.Key(K: Word; Shift: TShiftState);
+begin
+  KeyDown(K, Shift);
+end;
+
+procedure TPageProbe.SelChanged(Sender: TObject);
+begin
+  Inc(Changes);
+end;
+
+procedure TPageProbe.AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: Integer);
+var Item: TMenuItem;
+begin
+  Item := TMenuItem.Create(Menu);
+  Item.Caption := 'Mine';
+  Menu.Items.Add(Item);
+end;
+
+procedure TPageProbe.Tick;
+begin
+  AutoScrollTimer(Self);
 end;
 
 procedure TPageProbe.MoveTo(X, Y: Integer);
@@ -129,6 +157,289 @@ end;
 
 var Probe: TPageProbe; Tall: string; J: Integer;
   Bar: TBarProbe; TR: TRect; Before: Integer; Shot: TBitmap;
+
+type
+  { protected members, reached as a descendant would }
+  TMemoAccess = class(TInkMemo);
+  TListAccess = class(TInkListBox);
+  TLabelAccess = class(TInkLabel);
+
+{ --- copying from the memo, the list box and the label --- }
+procedure ListCopyChecks(AMemo: TInkMemo; AList: TInkListBox; ALabel: TInkLabel);
+const
+  E = LineEnding;
+var
+  Menu: TPopupMenu;
+  R: TRect;
+  Handled: Boolean;
+  K: Word;
+begin
+  AMemo.TextFormat := itfHTML;
+  AMemo.SetBounds(0, 300, 300, 150);
+  AMemo.Lines.Text := '<b>first</b> line' + E + 'second <i>line</i>' + E + 'third';
+  Application.ProcessMessages;
+  AMemo.ItemIndex := 1;
+  Check(AMemo.SelectedText = 'second line', 'memo: the current line is the selection: ' + AMemo.SelectedText);
+  Clipboard.AsText := '';
+  K := VK_C; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
+  Check(Clipboard.AsText = 'second line', 'memo: Ctrl+C copies it');
+  K := VK_A; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
+  K := VK_C; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
+  Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third',
+    'memo: Ctrl+A then Ctrl+C copies everything: ' + Clipboard.AsText);
+  K := VK_DOWN; TMemoAccess(AMemo).KeyDown(K, []);
+  Check(AMemo.SelectedText <> AMemo.PlainText, 'memo: another key ends "everything"');
+  R := AMemo.ItemRect(2);
+  Menu := AMemo.BuildCopyMenu(R.Left + 5, R.Top + 2);
+  Check(Menu.Items[0].Caption = SInkCopy, 'memo menu: Copy');
+  Check(Menu.Items[1].Caption = SInkCopyLine, 'memo menu: Copy this line');
+  Menu.Items[1].Click;
+  Check(Clipboard.AsText = 'third', 'memo menu copies the line under the pointer: ' + Clipboard.AsText);
+  Menu.Items[2].Click;
+  Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third', 'memo menu: Copy all');
+  AMemo.CopyMenu := False;
+  Handled := False;
+  TMemoAccess(AMemo).DoContextPopup(Point(R.Left + 5, R.Top + 2), Handled);
+  Check(not Handled, 'memo: CopyMenu off shows no menu');
+  AMemo.CopyMenu := True;
+
+  AList.TextFormat := itfHTML;
+  AList.EditMode := emNone;
+  AList.SetBounds(300, 300, 200, 150);
+  AList.MultiSelect := True;
+  AList.Items.Text := 'alpha' + E + '<b>beta</b>' + E + 'gamma';
+  Application.ProcessMessages;
+  AList.Selected[0] := True;
+  AList.Selected[2] := True;
+  Check(AList.SelectedText = 'alpha' + E + 'gamma', 'list: every selected item: ' + AList.SelectedText);
+  Check(AList.PlainText = 'alpha' + E + 'beta' + E + 'gamma' + E, 'list: PlainText');
+  R := AList.ItemRect(1);
+  Menu := AList.BuildCopyMenu(R.Left + 5, R.Top + 2);
+  Check(Menu.Items[1].Caption = SInkCopyItem, 'list menu: Copy this item');
+  Menu.Items[1].Click;
+  Check(Clipboard.AsText = 'beta', 'list menu copies the item under the pointer');
+  Menu.Items[Menu.Items.Count - 1].Click;
+  Check(AList.Selected[1] and (AList.SelectedText = 'alpha' + E + 'beta' + E + 'gamma'),
+    'list menu: Select all');
+  AList.PopupMenu := Menu;
+  Handled := False;
+  TListAccess(AList).DoContextPopup(Point(R.Left + 5, R.Top + 2), Handled);
+  Check(not Handled, 'list: a PopupMenu of the program''s own wins');
+  AList.PopupMenu := nil;
+  AList.MultiSelect := False;
+
+  ALabel.TextFormat := itfMarkdown;
+  ALabel.Caption := '**hello** [there](http://x.org)';
+  Check(ALabel.PlainText = 'hello there', 'label: a Markdown caption''s plain text: ' + ALabel.PlainText);
+  Menu := ALabel.BuildCopyMenu(0, 0);
+  Check((Menu.Items.Count = 1) and (Menu.Items[0].Caption = SInkCopyAll), 'label menu: Copy all');
+  Menu.Items[0].Click;
+  Check(Clipboard.AsText = 'hello there', 'label menu copies the caption''s words');
+  ALabel.CopyMenu := False;
+  Handled := False;
+  TLabelAccess(ALabel).DoContextPopup(Point(0, 0), Handled);
+  Check(not Handled, 'label: CopyMenu off shows no menu');
+  ALabel.CopyMenu := True;
+end;
+
+function Pos2(ABlock, AOffset: Integer): TInkPagePosition;
+begin
+  Result.Block := ABlock;
+  Result.Offset := AOffset;
+end;
+
+{ --- selecting text with the mouse, and copying it --- }
+procedure SelectionChecks;
+var
+  K, B0, Wrong: Integer;
+  P, Q: TPoint;
+  At: TInkPagePosition;
+  Text, Words: string;
+  Shot: TBitmap;
+  Menu: TPopupMenu;
+  Tall2: string;
+begin
+  Tall2 := '<html><body>';
+  for K := 1 to 60 do Tall2 := Tall2 + '<p>Paragraph ' + IntToStr(K) + '</p>';
+  Tall2 := Tall2 + '</body></html>';
+  Probe.MouseDrag := imdSelect;
+  Probe.OnSelectionChange := @Probe.SelChanged;
+  Probe.LoadHTML('<html><body><p>Hello brave new world, and a second sentence that is long enough ' +
+    'to wrap onto another line of this narrow page.</p>' +
+    '<ul><li>item one</li></ul>' +
+    '<pre>code  line' + #10 + '  indented</pre>' +
+    '<table><tr><td>a1</td><td>b1</td></tr><tr><td>a2</td><td>b2</td></tr></table>' +
+    '<p>Last <a href="linked">link</a> here.</p></body></html>');
+  Probe.ScrollTo(0);
+  Check(not Probe.HasSelection, 'a new page has nothing selected');
+  Words := Probe.BlockText(0);
+  Check(Pos('Hello brave new world, and a second sentence', Words) = 1, 'block words: ' + Words);
+  Check(Pos('another line of this narrow page.', Words) > 0, 'a wrapped line''s words join with a space: ' + Words);
+  Check(Probe.BlockText(2) = 'code  line' + #10 + '  indented', 'code keeps its lines: ' + Probe.BlockText(2));
+  Check(Pos('a1'#9'b1', Probe.BlockText(3)) > 0, 'cells are apart by tabs: ' + Probe.BlockText(3));
+
+  { every place in the first block maps to a point and back }
+  Wrong := 0;
+  for K := 0 to Length(Words) do
+  begin
+    { only at character starts }
+    if (K < Length(Words)) and ((Ord(Words[K + 1]) and $C0) = $80) then Continue;
+    P := Probe.PositionPoint(Pos2(0, K));
+    At := Probe.PositionAt(P.X, P.Y + 2);
+    { the place at a wrap is both the end of one line and the start of the next }
+    if (At.Block <> 0) or ((At.Offset <> K) and not ((K > 0) and (Words[K] = ' ') and (At.Offset = K - 1))) then
+    begin
+      Inc(Wrong);
+      if Wrong < 8 then WriteLn('  k=', K, ' at=', At.Block, ':', At.Offset, ' pt=', P.X, ',', P.Y);
+    end;
+  end;
+  Check(Wrong = 0, Format('PositionAt(PositionPoint(k)) = k (%d wrong)', [Wrong]));
+  P := Probe.PositionPoint(Pos2(0, 6));
+  Q := Probe.PositionPoint(Pos2(0, 11));
+  Check((Q.X > P.X) and (Q.Y = P.Y), 'later on a line is further right');
+  P := Probe.PositionPoint(Pos2(0, Length(Words)));
+  Check(P.Y > Probe.PositionPoint(Pos2(0, 0)).Y, 'the end of a wrapped block is lower down');
+  At := Probe.PositionAt(-50, 0);
+  Check((At.Block = 0) and (At.Offset = 0), 'left of and above everything is the start');
+  At := Probe.PositionAt(Probe.ClientWidth + 50, Probe.ContentHeight + 50);
+  Check(At.Block = Probe.BlockCount - 1, 'below everything is the last block');
+
+  { press, drag, release: "brave new" }
+  Probe.Changes := 0;
+  P := Probe.PositionPoint(Pos2(0, 6));
+  Q := Probe.PositionPoint(Pos2(0, 15));
+  Probe.Press(P.X, P.Y + 3);
+  Probe.MoveTo((P.X + Q.X) div 2, P.Y + 3);
+  Probe.MoveTo(Q.X, Q.Y + 3);
+  Probe.Let(Q.X, Q.Y + 3);
+  Check(Probe.SelectedText = 'brave new', 'a mouse drag selects: "' + Probe.SelectedText + '"');
+  Check(Probe.Changes > 0, 'OnSelectionChange');
+  Check(Probe.ScrollY = 0, 'and does not scroll');
+  Check(Pos('<p>brave new</p>', Probe.SelectedHTML) > 0, 'selected HTML: ' + Probe.SelectedHTML);
+
+  { the selection is painted }
+  Shot := TBitmap.Create;
+  try
+    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+    Probe.RenderTo(Shot.Canvas);
+    Check(ColorToRGB(Shot.Canvas.Pixels[P.X + 1, P.Y + 1]) = ColorToRGB(Probe.SelectionBackground),
+      'selected text has the selection colour behind it');
+    Check(ColorToRGB(Shot.Canvas.Pixels[P.X - 3, P.Y + 1]) <> ColorToRGB(Probe.SelectionBackground),
+      'and the text before it does not');
+    Probe.SelectionColor := RGBToColor(1, 2, 3);
+    Probe.RenderTo(Shot.Canvas);
+    Check(ColorToRGB(Shot.Canvas.Pixels[P.X + 1, P.Y + 1]) = RGBToColor(1, 2, 3), 'SelectionColor');
+    Probe.SelectionColor := clDefault;
+  finally Shot.Free end;
+
+  { Ctrl+C }
+  Clipboard.AsText := 'before';
+  Probe.Key(VK_C, [ssCtrl]);
+  Check(Clipboard.AsText = 'brave new', 'Ctrl+C copies the selection: "' + Clipboard.AsText + '"');
+
+  { a click without moving clears it, and a click on a link still follows it }
+  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
+  Check(not Probe.HasSelection, 'a click clears the selection');
+  Probe.Clicked := '';
+  B0 := Probe.BlockCount - 1;
+  P := Probe.PositionPoint(Pos2(B0, 6));
+  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
+  Check(Probe.Clicked = 'linked', 'a click on a link follows it: ' + Probe.Clicked);
+
+  { double click takes a word, triple click the block, Shift extends }
+  P := Probe.PositionPoint(Pos2(0, 8));
+  Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.Let(P.X, P.Y + 3);
+  Check(Probe.SelectedText = 'brave', 'a double click selects a word: "' + Probe.SelectedText + '"');
+  Q := Probe.PositionPoint(Pos2(0, 18));
+  Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.MoveTo(Q.X, Q.Y + 3); Probe.Let(Q.X, Q.Y + 3);
+  Check(Probe.SelectedText = 'brave new world', 'dragging after a double click goes by words: "' + Probe.SelectedText + '"');
+  Probe.Press(P.X, P.Y + 3, [ssTriple]); Probe.Let(P.X, P.Y + 3);
+  Check(Probe.SelectedText = TrimRight(Words), 'a triple click selects the paragraph');
+  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
+  Probe.Press(Q.X, Q.Y + 3, [ssShift]); Probe.Let(Q.X, Q.Y + 3);
+  Check(not Probe.HasSelection, 'Shift+click with nothing selected just places');
+  Probe.Select(Pos2(0, 6), Pos2(0, 11));
+  Probe.Press(Q.X, Q.Y + 3, [ssShift]); Probe.Let(Q.X, Q.Y + 3);
+  Check(Probe.SelectedText = 'brave new wo', 'Shift+click extends, to the character: "' + Probe.SelectedText + '"');
+
+  { across blocks, in document order, with the list's marker }
+  P := Probe.PositionPoint(Pos2(0, Length(Words) - 5));
+  Q := Probe.PositionPoint(Pos2(2, 4));
+  Probe.Press(Q.X, Q.Y + 3); Probe.MoveTo(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
+  Text := Probe.SelectedText;
+  Check(Text = 'page.' + LineEnding + '• item one' + LineEnding + 'code',
+    'a selection across blocks, dragged backwards: "' + Text + '"');
+
+  { Ctrl+A }
+  Probe.Key(VK_A, [ssCtrl]);
+  Text := Probe.SelectedText;
+  Check(Pos('Hello brave', Text) = 1, 'Ctrl+A selects from the start');
+  Check(Pos('a1'#9'b1' + LineEnding + 'a2'#9'b2', Text) > 0, 'tables copy as tab-separated rows: ' + Text);
+  Check(Pos('code  line' + #10 + '  indented', Text) > 0, 'code copies as written');
+  Check(Copy(Text, Length(Text) - 9, 10) = 'link here.', 'to the end');
+
+  { it survives a new layout, and a new page clears it }
+  Probe.Select(Pos2(0, 6), Pos2(0, 15));
+  Probe.Width := 600; Probe.ScrollTo(0);
+  Check(Probe.SelectedText = 'brave new', 'the selection survives a resize');
+  Probe.Width := 400; Probe.ScrollTo(0);
+
+  { the copy menu }
+  P := Probe.PositionPoint(Pos2(1, 2));
+  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+  Check(Menu.Items.Count >= 4, Format('copy menu items (%d)', [Menu.Items.Count]));
+  Check(Menu.Items[0].Caption = SInkCopy, 'Copy first');
+  Check(Menu.Items[0].Enabled, 'enabled with a selection');
+  Clipboard.AsText := '';
+  Menu.Items[1].Click;
+  Check(Clipboard.AsText = '• item one', 'Copy this paragraph copies the block under the pointer: "' + Clipboard.AsText + '"');
+  Menu.Items[2].Click;
+  Check(Pos('Hello brave', Clipboard.AsText) = 1, 'Copy all');
+  Check(Clipboard.AsText = TrimRight(Probe.PlainText), 'Copy all is the page''s text');
+  Probe.ClearSelection;
+  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+  Check(not Menu.Items[0].Enabled, 'Copy is greyed with nothing selected');
+  Menu.Items[Menu.Items.Count - 1].Click;
+  Check(Probe.HasSelection, 'Select all');
+  B0 := Probe.BlockCount - 1;
+  P := Probe.PositionPoint(Pos2(B0, 6));
+  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+  Check(Menu.Items[1].Caption = SInkCopyLink, 'Copy link address, over a link');
+  Menu.Items[1].Click;
+  Check(Clipboard.AsText = 'linked', 'copies the link: ' + Clipboard.AsText);
+  Probe.OnCopyMenu := @Probe.AddToMenu;
+  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+  Check(Menu.Items[Menu.Items.Count - 1].Caption = 'Mine', 'OnCopyMenu adds items');
+  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+  Check(Menu.Items[Menu.Items.Count - 1].Caption = 'Mine', 'once, however often it opens');
+  Check(Menu.Items[Menu.Items.Count - 2].Caption <> 'Mine', 'not twice');
+  Probe.OnCopyMenu := nil;
+
+  { a finger scrolls, even when the mouse selects }
+  Probe.ClearSelection;
+  Probe.LoadHTML(Tall2);
+  Probe.ScrollTo(0);
+  Probe.FlickScroll := False;
+  Probe.Finger(itpBegin, 100, 150, 20000);
+  Probe.Finger(itpMove, 100, 50, 20300);
+  Probe.Finger(itpEnd, 100, 50, 20600);
+  Check(Probe.ScrollY = 100, 'a finger scrolls with MouseDrag = imdSelect');
+  Check(not Probe.HasSelection, 'and selects nothing');
+  Probe.FlickScroll := True;
+
+  { dragging below the page scrolls it and selects on }
+  Sleep(550);
+  Probe.ScrollTo(0);
+  Probe.Press(20, 30);
+  Probe.MoveTo(20, Probe.ClientHeight + 40);
+  for K := 1 to 10 do Probe.Tick;
+  Check(Probe.ScrollY > 0, 'a drag below the page scrolls it');
+  Probe.Let(20, Probe.ClientHeight + 40);
+  Check(Probe.SelectionEnd.Block > 1, 'and the selection follows');
+
+  Probe.OnSelectionChange := nil;
+  Probe.MouseDrag := imdScroll;
+end;
 
 { --- a finger on the page ---
   J is set by the mouse tap test before this: a release at (33, J + 3) is
@@ -590,6 +901,7 @@ begin
     Check(Pos('A''s › B',Page.PlainText)>0,'HTML numeric and named entities');
     Check(Pos('hidden',Page.PlainText)=0,'Scripts do not paint');
     F.Show; Application.ProcessMessages;
+    ListCopyChecks(M, List, L);
     Page.JumpToAnchor('target');
     MarkdownPageChecks(Page);
 
@@ -598,6 +910,8 @@ begin
       that barely moves is still a click; a drag that ends on a link is not. }
     Probe := TPageProbe.Create(F); Probe.Parent := F; Probe.SetBounds(0,0,400,200);
     Probe.OnLinkClick := @Probe.LinkHit;
+    { the mouse scrolls in these; it selects by default, tested further on }
+    Probe.MouseDrag := imdScroll;
     Tall := '<html><body><p><a href="top">top link</a></p>';
     for J := 1 to 80 do Tall := Tall + '<p>Line ' + IntToStr(J) + '</p>';
     Tall := Tall + '</body></html>';
@@ -631,6 +945,7 @@ begin
     Check(Probe.ScrollY = 0, 'DragScroll off leaves the page where it is');
     Probe.DragScroll := True;
     TouchChecks;
+    SelectionChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

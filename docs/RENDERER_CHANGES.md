@@ -41,6 +41,11 @@ or date.
   again, and `CanvasMaxTextHeight` remembers the text metrics of recent
   fonts; together they cut the layout of a 118 KB Markdown document from
   0.9 s to 0.19 s.
+- **September 16, 2026:** `THTMLOptions.OnRun` / `RunPart`: the renderer
+  reports each run of text it lays out (text, position, line, part, font),
+  so a control can find the character under the mouse and paint a
+  selection. Table layout numbers its parts and does not report while
+  measuring.
 
 Independent Markdown, page-viewer, CSS and animation helper units are covered
 by the project's MIT license, not represented as upstream JVCL implementations.

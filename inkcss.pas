@@ -16,6 +16,8 @@ type
     function Value(const Tag, Classes, Prop, Fallback: string): string;
     function Color(const Tag, Classes, Prop: string; Fallback: TColor): TColor;
     function Pixels(const Tag, Classes, Prop: string; Fallback: Integer): Integer;
+    { a property of one selector exactly as written - '::selection' }
+    function RuleValue(const Selector, Prop, Fallback: string): string;
   end;
 implementation
 uses InkHtml;
@@ -123,6 +125,18 @@ begin
     if V<>'' then V := Resolve(V);
     if (V<>'') and (Score>=Best) then begin Result := V; Best := Score end;
   end;
+end;
+function TInkStyleSheet.RuleValue(const Selector, Prop, Fallback: string): string;
+var I: Integer; V: string;
+begin
+  Result := Fallback;
+  for I := 0 to FRules.Count-1 do
+    if SameText(FRules[I],Selector) then
+    begin
+      V := TStringList(FRules.Objects[I]).Values[Prop];
+      if V<>'' then V := Resolve(V);
+      if V<>'' then Result := V;
+    end;
 end;
 function TInkStyleSheet.Color(const Tag, Classes, Prop: string; Fallback: TColor): TColor;
 begin Result := HTMLStringToColor(Value(Tag,Classes,Prop,''),Fallback) end;
