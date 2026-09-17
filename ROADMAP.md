@@ -406,6 +406,71 @@ cards were enough for the contents page.  Notes from the first use:
 * A form with `KeyPreview` must leave Esc/Enter alone while
   `FindBarVisible` - done in both windows.
 
+### P7. Tables that look like a page, and pictures you can see properly
+
+Found on 17 September, once Heckers Sketch's manual was in the program.
+Tony: "a real web browser renders the help index better with the look of
+multiple tools per row where our renderer is a long list of 1 item per
+row... so we need better rendering... but this is pretty fucking good!"
+
+Heckers Sketch's index was a CSS grid of cards, which LazInk stacks into one
+long column.  It is now tables of three (`table.cards` in its `style.css`),
+which LazInk draws as a grid - a big improvement - but the tables show what
+the table renderer still lacks.  Heckers Sketch's `docs/help/index.html` and
+`style.css` are the test page for all of this.
+
+**Tables - what is needed, in order:**
+1. **`width: 100%` on a table**, and **equal columns** from
+   `table-layout: fixed` or `td { width: 33% }`.  Today each table sizes its
+   columns to its own content, so three tables on one page are three
+   different widths and the columns do not line up down the page.
+2. **Cell padding** from CSS (`td { padding: 10px 12px }`).  Text sits
+   against the border now.
+3. **`border-spacing`** with `border-collapse: separate` - gaps between
+   cells, which is what turns a table into cards.
+4. **Cell background and border colour** from CSS (`td { background: ...;
+   border: 1px solid ... }`), instead of a hard border in the text colour.
+   And **no border at all** when CSS says `border: none` (the index's
+   `td.empty` filler cells).
+5. **Rounded cell corners** (`border-radius`).
+6. **`vertical-align: top`** in cells of different heights.
+7. **`<small>`** - smaller text - and a way to colour it: `table.cards
+   small { color: ... }` is a descendant selector, which the CSS reader does
+   not take yet (item 3 in section 4's list).  Until then a simple
+   `small { color: ... }` would do.  The index uses `<small>` for each
+   card's one-line description.
+8. Longer term, **`display: flex` with wrapping** (section 4, item 14), so
+   a page written as a card grid lays out in rows of however many fit
+   rather than a fixed three.  That is what the browser does with the old
+   index, and it copes with narrow windows.
+
+**Pictures you can see properly.**  Tony: "for the gif files... be able to
+click them and see a larger image... I prefer not to get that package any
+bulkier... maybe we need to support open in new window hrefs and then we
+have a larger zoomable window for image or something... we will have to
+think it out."
+
+The idea, kept small on LazInk's side:
+* A page wraps a picture in a link to itself -
+  `<a href="shots/x.gif" target="_blank"><img src="shots/x.gif"></a>`.  A
+  browser opens it full size in a new tab with no help from anybody.
+* **LazInk needs very little:** an image inside a link must be clickable
+  (check it is - the link hit test was written for text), and `OnLinkClick`
+  should say what kind of link it was - the `target` attribute, and whether
+  the link wraps an image - so a host can open a picture its own way.
+  Perhaps a `TInkLinkInfo` record passed alongside the URL.
+* **The zoom window belongs to the host**, not to LazInk: Heckers Sketch
+  can open a second window with a `TInkPage` holding just that one image.
+  `TInkPage` already shrinks a picture to fit; what it does not do is
+  **enlarge** one.  An option to scale an image *up* to the width (or
+  "fit to window") is the only rendering change this needs.
+* On the Heckers Sketch side, the animations should be recorded larger
+  than they are shown (they are recorded at 700 pixels wide today), so the
+  page shows them shrunk and the zoom window shows them at full size - which
+  needs no upscaling at all.  That costs download size; worth measuring.
+* Maybe later: mouse-wheel zoom and drag-to-pan in that window.  Not in the
+  package unless another program wants it too.
+
 ---
 
 ## 4. A renderer of our own, and a license with no strings
