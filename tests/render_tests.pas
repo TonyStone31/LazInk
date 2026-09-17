@@ -980,7 +980,18 @@ begin
   APage.LoadFromFile(ExpandFileName('README.md'));
   Check(APage.TextFormat = itfMarkdown, 'a .md file is read as Markdown');
   Check(APage.DocumentTitle = 'LazInk', 'README title');
-  Check(APage.ImageCount = 3, Format('README''s images load relative to it (%d)', [APage.ImageCount]));
+  { every picture on a line of its own - the ones in table cells show as
+    their alt text - counted from the file, so a new picture needs no edit
+    here }
+  Styles := TStringList.Create;
+  try
+    Styles.LoadFromFile('README.md');
+    Rules := 0;
+    for K := 0 to Styles.Count - 1 do
+      if Copy(Styles[K], 1, 2) = '![' then Inc(Rules);
+  finally Styles.Free end;
+  Check((Rules > 0) and (APage.ImageCount = Rules),
+    Format('README''s images load relative to it (%d of %d)', [APage.ImageCount, Rules]));
   Check(Pos('Credits and origins', APage.PlainText) > 0, 'README text');
   Check(Pos('```', APage.PlainText) = 0, 'no fence marks are left in the README');
   Check((Pos('Status: 0.9.', APage.PlainText) > 0) and (Pos('**Status', APage.PlainText) = 0),
