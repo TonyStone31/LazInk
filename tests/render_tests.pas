@@ -1,6 +1,6 @@
 program RenderTests;
 {$mode objfpc}{$H+}
-uses Interfaces, Forms, Classes, SysUtils, Graphics, Types,
+uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types,
   InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
@@ -8,6 +8,40 @@ var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   TextOutput: TStringList;
   Files: TStringList; I, Images, Pass: Integer; GIF: TInkGIF; GIFStream: TFileStream;
   Source: TStringList; Tags: string; K, Wanted: Integer;
+type
+  { the mouse handlers are protected; a test reaches them the way a
+    descendant would }
+  TPageProbe = class(TInkPage)
+  public
+    Clicked: string;
+    procedure Press(X, Y: Integer);
+    procedure MoveTo(X, Y: Integer);
+    procedure Let(X, Y: Integer);
+    procedure LinkHit(Sender: TObject; const URL: string);
+  end;
+
+procedure TPageProbe.Press(X, Y: Integer);
+begin
+  MouseDown(mbLeft, [ssLeft], X, Y);
+end;
+
+procedure TPageProbe.MoveTo(X, Y: Integer);
+begin
+  MouseMove([ssLeft], X, Y);
+end;
+
+procedure TPageProbe.Let(X, Y: Integer);
+begin
+  MouseUp(mbLeft, [], X, Y);
+end;
+
+procedure TPageProbe.LinkHit(Sender: TObject; const URL: string);
+begin
+  Clicked := URL;
+end;
+
+var Probe: TPageProbe; Tall: string; J: Integer;
+
 procedure Check(OK: Boolean; const MessageText: string);
 begin
   if not OK then raise Exception.Create(MessageText);
@@ -82,6 +116,43 @@ begin
     Check(Pos('hidden',Page.PlainText)=0,'Scripts do not paint');
     F.Show; Application.ProcessMessages;
     Page.JumpToAnchor('target');
+
+    { Dragging the page scrolls it - a touch screen has no wheel, and on
+      Windows a finger arrives as a press, moves and a release.  A press
+      that barely moves is still a click; a drag that ends on a link is not. }
+    Probe := TPageProbe.Create(F); Probe.Parent := F; Probe.SetBounds(0,0,400,200);
+    Probe.OnLinkClick := @Probe.LinkHit;
+    Tall := '<html><body><p><a href="top">top link</a></p>';
+    for J := 1 to 80 do Tall := Tall + '<p>Line ' + IntToStr(J) + '</p>';
+    Tall := Tall + '</body></html>';
+    Probe.LoadHTML(Tall); Probe.ScrollTo(0);  { lays the page out }
+    Check(Probe.ContentHeight > 600, 'A page long enough to scroll');
+    Check(Probe.ScrollY = 0, 'Starts at the top');
+    Probe.Press(100,150); Probe.MoveTo(100,120); Probe.MoveTo(100,50); Probe.Let(100,50);
+    Check(Probe.ScrollY = 100, Format('Dragging up 100 px scrolls down 100 px (%d)', [Probe.ScrollY]));
+    Probe.Press(100,50); Probe.MoveTo(100,150); Probe.Let(100,150);
+    Check(Probe.ScrollY = 0, 'Dragging back down scrolls back');
+    Probe.Press(100,150); Probe.MoveTo(100,-5000); Probe.Let(100,-5000);
+    Check(Probe.ScrollY = Probe.ContentHeight - Probe.ClientHeight,
+      'A long drag stops at the bottom');
+    Probe.ScrollTo(0);
+    { find the link, then tap it with a wobble smaller than the slop }
+    Probe.Clicked := '';
+    for J := 0 to 60 do
+    begin
+      Probe.Press(30, J); Probe.MoveTo(33, J + 3); Probe.Let(33, J + 3);
+      if Probe.Clicked <> '' then Break;
+    end;
+    Check(Probe.Clicked <> '', 'A tap that wobbles a few pixels still follows the link');
+    Check(Probe.ScrollY = 0, 'and does not scroll');
+    { a drag that happens to finish on the link is a scroll, not a click }
+    Probe.Clicked := '';
+    Probe.Press(30, 180); Probe.MoveTo(30, 100); Probe.MoveTo(30, J + 3); Probe.Let(30, J + 3);
+    Check(Probe.Clicked = '', 'A drag that ends on a link does not follow it');
+    Probe.DragScroll := False;
+    Probe.ScrollTo(0);
+    Probe.Press(100,150); Probe.MoveTo(100,50); Probe.Let(100,50);
+    Check(Probe.ScrollY = 0, 'DragScroll off leaves the page where it is');
     if ParamCount>0 then
     begin
       Files := TStringList.Create; Images := 0; Wanted := 0;
