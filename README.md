@@ -245,8 +245,10 @@ survived into the rendered page.
 ## Where it is going
 
 [ROADMAP.md](ROADMAP.md) is the plan: touch scrolling on Linux, copying and
-selecting text, fuller Markdown, a Markdown editor in the demo, and a
-WYSIWYG Markdown editor after that - with what "done" means for each.
+selecting text, fuller Markdown, a Markdown editor in the demo; then a
+renderer of LazInk's own, replacing the JVCL-derived one so the whole
+package can move to a no-conditions licence; and a WYSIWYG Markdown editor
+after that - with what "done" means for each.
 
 ## Credits and origins
 
