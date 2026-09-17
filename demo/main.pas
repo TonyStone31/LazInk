@@ -1,13 +1,22 @@
-{ LazInk demo — a WYSIWYG editor for the LazInk markup subset, side by side
-  with the markup it produces, plus a tab for each of the other controls.
+{ LazInk demo - a tour of the package, a tab for each control.
+
+  Documents opens on tour.md, a Markdown page about LazInk shown by
+  TInkPage, which links on to the README.  Markdown editor is the source
+  and its live preview side by side, and opens the README too.  Then the
+  WYSIWYG editor, the labels and edit boxes, the memo, the list box the
+  package grew out of, and the credits.
 
   Everything here is built at design time. Open main.lfm in the Lazarus form
   designer and every control, panel and event handler is there to be pushed
-  around — nothing is conjured up in code at run time, because a demo you
+  around - nothing is conjured up in code at run time, because a demo you
   cannot open and poke at is not much of a demo.
 
-  There are deliberately no File/Open/Save actions: this is about what the
-  controls can do, not about being a text editor you would actually ship.
+  The Documents and Markdown tabs open files, and the Markdown tab saves
+  them; the rest is about what the controls can do, not about being an
+  application you would ship.
+
+  lazinkdemo FILE opens FILE on the Documents tab.
+  lazinkdemo --screenshots DIR saves a picture of every tab and quits.
 }
 unit Main;
 
@@ -63,7 +72,7 @@ type
     lblEditStatus: TInkLabel;
 
     { ---- tab: list box ---- }
-    tabList: TTabSheet;
+    tabListBox: TTabSheet;
     lstLog: TInkListBox;
     pnlListSide: TPanel;
     lblListHelp: TInkLabel;
@@ -77,6 +86,7 @@ type
     chkRawEdit: TCheckBox;
     chkStripes: TCheckBox;
     lblListStatus: TInkLabel;
+    lblListCopy: TInkLabel;
     tmrLog: TTimer;
 
     { ---- tab: label + edit ---- }
@@ -93,6 +103,14 @@ type
     edtPassword: TInkEdit;
     lblStrength: TInkLabel;
     rgCharMode: TRadioGroup;
+    lblSection3: TInkLabel;
+    lblLiveHint: TInkLabel;
+    edtLive: TInkEdit;
+    chkLiveMarkdown: TCheckBox;
+    lblLive: TInkLabel;
+    lblSection4: TInkLabel;
+    lblMdDemo: TInkLabel;
+    lblLabelCopy: TInkLabel;
 
     { ---- tab: memo ---- }
     tabMemo: TTabSheet;
@@ -103,15 +121,27 @@ type
     tbScale: TTrackBar;
     lblMemoHelp: TInkLabel;
 
-    tabHelpPage: TTabSheet;
-    helpPage: TInkPage;
-    pnlHelpTools: TPanel;
-    btnHelpOpen, btnHelpBack, btnHelpForward, btnHelpFind: TButton;
-    dlgHelp: TOpenDialog;
-    tabTables: TTabSheet;
-    cbTableFormat: TComboBox;
-    memTableSource: TMemo;
-    tablePreview: TInkMemo;
+    { ---- tab: documents ---- }
+    tabDocuments: TTabSheet;
+    pnlDocTools: TPanel;
+    btnDocOpen, btnDocBack, btnDocForward, btnDocFind: TButton;
+    cbDocTheme: TComboBox;
+    lblDocHint: TInkLabel;
+    pageDoc: TInkPage;
+    dlgDocOpen: TOpenDialog;
+
+    { ---- tab: Markdown editor ---- }
+    tabMarkdown: TTabSheet;
+    pnlMdTools: TPanel;
+    btnMdOpen, btnMdSave, btnMdSaveAs: TButton;
+    chkMdRawHTML: TCheckBox;
+    lblMdFile: TInkLabel;
+    memMarkdown: TMemo;
+    splMarkdown: TSplitter;
+    pageMdPreview: TInkPage;
+    tmrMarkdown: TTimer;
+    dlgMdOpen: TOpenDialog;
+    dlgMdSave: TSaveDialog;
 
     { ---- tab: credits ---- }
     tabCredits: TTabSheet;
@@ -122,13 +152,21 @@ type
     ilStatus: TImageList;
 
     procedure FormCreate(Sender: TObject);
-    procedure HelpOpen(Sender: TObject);
-    procedure HelpBack(Sender: TObject);
-    procedure HelpForward(Sender: TObject);
-    procedure HelpFind(Sender: TObject);
-    procedure HelpNavigate(Sender: TObject);
-    procedure TableFormatChange(Sender: TObject);
-    procedure TableSourceChange(Sender: TObject);
+    { documents }
+    procedure DocOpen(Sender: TObject);
+    procedure DocBack(Sender: TObject);
+    procedure DocForward(Sender: TObject);
+    procedure DocFind(Sender: TObject);
+    procedure DocNavigate(Sender: TObject);
+    procedure DocThemeChange(Sender: TObject);
+    procedure DocLinkClick(Sender: TObject; const URL: string);
+    { Markdown editor }
+    procedure MdOpen(Sender: TObject);
+    procedure MdSave(Sender: TObject);
+    procedure MdSaveAs(Sender: TObject);
+    procedure MdRawHTMLChange(Sender: TObject);
+    procedure MdSourceChange(Sender: TObject);
+    procedure MdTimer(Sender: TObject);
     { editor }
     procedure reMainChange(Sender: TObject);
     procedure reMainSelectionChange(Sender: TObject);
@@ -166,6 +204,8 @@ type
     procedure edtPasswordGetCharAttrs(Sender: TObject; AIndex: Integer;
       const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
     procedure rgCharModeClick(Sender: TObject);
+    procedure LiveChange(Sender: TObject);
+    procedure LiveMarkdownChange(Sender: TObject);
     procedure lblLinkClick(Sender: TObject; const LinkName: string);
     { memo }
     procedure chkMemoWrapChange(Sender: TObject);
@@ -177,10 +217,20 @@ type
     { one entry per character of edtMarkup: 0 plain, 1 tag, 2 attribute value.
       Worked out once when the text changes rather than per character, because
       OnGetCharAttrs is handed a character with no idea what surrounds it. }
-    FTagMask: array of Byte;
+    FTagMask, FLiveMask: TBytes;
+    FMdFile: string;
     procedure UpdateSource;
+    function TagMask(const S: string): TBytes;
+    function DemoFile(const AName: string): string;
+    procedure OpenDocument(const AFileName: string);
+    procedure LoadMarkdownFile(const AFileName: string);
+    procedure ShowMdFile;
     procedure UpdateToolbar;
     procedure SetStatus(const AMarkup: string);
+  public
+    { every tab as a PNG in ADir, named after the tab - how the README's
+      pictures are made: lazinkdemo --screenshots images }
+    procedure SaveScreenshots(const ADir: string);
   end;
 
 var
@@ -191,18 +241,96 @@ implementation
 {$R *.lfm}
 
 uses
-  LazUTF8;
+  LazUTF8, URIParser;
 
 const
   FORUM_URL = 'https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html';
 
 { ------------------------------------------------------------------ startup }
 
+procedure TfrmMain.SaveScreenshots(const ADir: string);
+var
+  I: Integer;
+  Shot: TBitmap;
+  Png: TPortableNetworkGraphic;
+  TabName: string;
+  DC: HDC;
+begin
+  ForceDirectories(ADir);
+  Shot := TBitmap.Create;
+  Png := TPortableNetworkGraphic.Create;
+  try
+    for I := 0 to pcMain.PageCount - 1 do
+    begin
+      pcMain.ActivePageIndex := I;
+      Application.ProcessMessages;
+      Sleep(150);
+      Application.ProcessMessages;
+      { the window as it is on screen, which draws native widgets properly;
+        where that cannot be had, the form paints itself }
+      Shot.SetSize(ClientWidth, ClientHeight);
+      DC := GetDC(Handle);
+      try
+        Shot.LoadFromDevice(DC);
+      finally
+        ReleaseDC(Handle, DC);
+      end;
+      if (Shot.Width <> ClientWidth) or (Shot.Height <> ClientHeight) then
+      begin
+        Shot.SetSize(ClientWidth, ClientHeight);
+        PaintTo(Shot.Canvas, 0, 0);
+      end;
+      Png.Assign(Shot);
+      TabName := LowerCase(pcMain.Pages[I].Name);
+      if Copy(TabName, 1, 3) = 'tab' then Delete(TabName, 1, 3);
+      Png.SaveToFile(IncludeTrailingPathDelimiter(ADir) + 'demo-' + TabName + '.png');
+    end;
+  finally
+    Png.Free;
+    Shot.Free;
+  end;
+end;
+
+
+{ tour.md and the README sit beside the program or a folder up from it, as
+  they do in the source tree; the working folder is tried last }
+function TfrmMain.DemoFile(const AName: string): string;
+var
+  Dir, Candidate: string;
+begin
+  Dir := ExtractFilePath(ParamStr(0));
+  for Candidate in [Dir + AName, Dir + '..' + PathDelim + AName,
+    Dir + 'demo' + PathDelim + AName, AName] do
+    if FileExists(Candidate) then Exit(ExpandFileName(Candidate));
+  Result := '';
+end;
+
 procedure TfrmMain.FormCreate(Sender: TObject);
+var
+  S: string;
 begin
   Randomize;
-  TableFormatChange(nil);
-  if ParamCount > 0 then helpPage.LoadFromFile(ParamStr(1));
+  memMarkdown.Font.Name := InkMonoFace;
+  if (ParamCount > 0) and (ParamStr(1) <> '--screenshots') then
+    OpenDocument(ParamStr(1))
+  else
+  begin
+    S := DemoFile('tour.md');
+    if S <> '' then OpenDocument(S)
+    else
+      pageDoc.LoadMarkdown('# LazInk' + LineEnding + LineEnding +
+        '`tour.md` was not found next to the program. **Open...** shows ' +
+        'any HTML or Markdown page.');
+  end;
+  S := DemoFile('README.md');
+  if S <> '' then LoadMarkdownFile(S)
+  else
+  begin
+    memMarkdown.Text := '# A heading' + LineEnding + LineEnding +
+      'Type **Markdown** on the left and watch it on the right.' + LineEnding;
+    ShowMdFile;
+  end;
+  LiveChange(nil);
   chkStripesChange(chkStripes);
   cbSize.ItemIndex := 0;
   cbFace.ItemIndex := 0;
@@ -213,44 +341,174 @@ begin
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
 
-procedure TfrmMain.HelpOpen(Sender: TObject);
+{ -------------------------------------------------------------- documents }
+
+procedure TfrmMain.OpenDocument(const AFileName: string);
 begin
-  if dlgHelp.Execute then helpPage.LoadFromFile(dlgHelp.FileName);
+  try
+    pageDoc.LoadFromFile(AFileName);
+  except
+    on E: Exception do
+      pageDoc.LoadMarkdown('# Could not open that' + LineEnding + LineEnding +
+        '`' + AFileName + '`' + LineEnding + LineEnding + E.Message);
+  end;
 end;
-procedure TfrmMain.HelpBack(Sender: TObject);
-begin helpPage.Back end;
-procedure TfrmMain.HelpForward(Sender: TObject);
-begin helpPage.Forward end;
-procedure TfrmMain.HelpFind(Sender: TObject);
-begin helpPage.ShowFindBar end;
+
+procedure TfrmMain.DocOpen(Sender: TObject);
+begin
+  if dlgDocOpen.Execute then OpenDocument(dlgDocOpen.FileName);
+end;
+
+procedure TfrmMain.DocBack(Sender: TObject);
+begin
+  pageDoc.Back;
+end;
+
+procedure TfrmMain.DocForward(Sender: TObject);
+begin
+  pageDoc.Forward;
+end;
+
+procedure TfrmMain.DocFind(Sender: TObject);
+begin
+  pageDoc.ShowFindBar;
+end;
+
 { the buttons follow the page's history, whether it moved by a button, a
   link, the mouse's own back and forward buttons or Alt+arrow }
-procedure TfrmMain.HelpNavigate(Sender: TObject);
+procedure TfrmMain.DocNavigate(Sender: TObject);
 begin
-  btnHelpBack.Enabled := helpPage.CanGoBack;
-  btnHelpForward.Enabled := helpPage.CanGoForward;
-end;
-
-procedure TfrmMain.TableFormatChange(Sender: TObject);
-begin
-  tablePreview.TextFormat := TInkTextFormat(cbTableFormat.ItemIndex);
-  if tablePreview.TextFormat = itfMarkdown then
-    memTableSource.Text := '# Tables in Markdown' + LineEnding +
-      'Edit this source to update the preview.' + LineEnding + LineEnding +
-      '| Control | Purpose |' + LineEnding + '| --- | --- |' + LineEnding +
-      '| **TInkLabel** | Captions and formatted help |' + LineEnding +
-      '| TInkMemo | Scrollable text with [links](https://www.freepascal.org/) |' + LineEnding
+  btnDocBack.Enabled := pageDoc.CanGoBack;
+  btnDocForward.Enabled := pageDoc.CanGoForward;
+  if pageDoc.DocumentTitle <> '' then
+    tabDocuments.Caption := 'Documents - ' + pageDoc.DocumentTitle
   else
-    memTableSource.Text := '<b>Tables in HTML</b><br>' + LineEnding +
-      '<table><tr><th>Control</th><th>Purpose</th></tr>' + LineEnding +
-      '<tr><td><b>TInkLabel</b></td><td>Captions and formatted help</td></tr>' + LineEnding +
-      '<tr><td>TInkMemo</td><td>Scrollable text with <a href="https://www.freepascal.org/">links</a></td></tr></table>';
-  TableSourceChange(nil);
+    tabDocuments.Caption := 'Documents';
 end;
 
-procedure TfrmMain.TableSourceChange(Sender: TObject);
+{ StyleSheet dresses a page from outside: here, the program's own themes.
+  A page with a stylesheet of its own keeps its rules where both speak. }
+procedure TfrmMain.DocThemeChange(Sender: TObject);
 begin
-  tablePreview.LoadDocument(memTableSource.Text);
+  case cbDocTheme.ItemIndex of
+    1: pageDoc.StyleSheet.Text :=
+         'body { background: #1e2127; color: #c8ccd4 } ' +
+         'h1, h2 { color: #61afef } h3 { color: #e5c07b } a { color: #56b6c2 } ' +
+         'code, pre { background: #2c313a } blockquote { color: #8a9099 } ' +
+         'html { scrollbar-color: #61afef #1e2127; scrollbar-width: thin }';
+    2: pageDoc.StyleSheet.Text :=
+         'body { background: #f4ecd8; color: #433422 } ' +
+         'h1, h2, h3 { color: #7a4a1c } a { color: #8b3a1a } ' +
+         'code, pre { background: #e8dcc0 } ' +
+         'html { scrollbar-color: #b89b72 #f4ecd8 }';
+  else
+    pageDoc.StyleSheet.Clear;
+  end;
+end;
+
+{ web addresses go to the browser; everything else stays in the page it
+  was clicked in }
+procedure TfrmMain.DocLinkClick(Sender: TObject; const URL: string);
+var
+  Page: TInkPage;
+begin
+  if (Pos('http://', URL) = 1) or (Pos('https://', URL) = 1) or
+    (Pos('mailto:', URL) = 1) then
+  begin
+    OpenURL(URL);
+    Exit;
+  end;
+  Page := Sender as TInkPage;
+  if Page = pageMdPreview then
+  begin
+    { the preview is the editor's; a link to another page opens it in
+      Documents, an anchor scrolls the preview }
+    if Pos('#', URL) = 1 then Page.JumpToAnchor(Copy(URL, 2, MaxInt))
+    else
+    begin
+      pcMain.ActivePage := tabDocuments;
+      try pageDoc.LoadFromURL(URL) except on E: Exception do ShowMessage(E.Message) end;
+    end;
+    Exit;
+  end;
+  try
+    Page.LoadFromURL(URL);
+  except
+    on E: Exception do ShowMessage(E.Message);
+  end;
+end;
+
+{ -------------------------------------------------------- Markdown editor }
+
+procedure TfrmMain.LoadMarkdownFile(const AFileName: string);
+begin
+  memMarkdown.Lines.LoadFromFile(AFileName);
+  FMdFile := AFileName;
+  memMarkdown.Modified := False;
+  ShowMdFile;
+  MdTimer(nil);
+end;
+
+procedure TfrmMain.ShowMdFile;
+var
+  FileName: string;
+begin
+  if FMdFile = '' then FileName := 'untitled' else FileName := ExtractFileName(FMdFile);
+  if memMarkdown.Modified then
+    lblMdFile.Caption := '<b>' + HTMLEscape(FileName) + '</b> <font color="#C0392B">(changed)</font>'
+  else
+    lblMdFile.Caption := '<b>' + HTMLEscape(FileName) + '</b>';
+end;
+
+procedure TfrmMain.MdOpen(Sender: TObject);
+begin
+  if dlgMdOpen.Execute then LoadMarkdownFile(dlgMdOpen.FileName);
+end;
+
+procedure TfrmMain.MdSave(Sender: TObject);
+begin
+  if FMdFile = '' then
+  begin
+    MdSaveAs(Sender);
+    Exit;
+  end;
+  memMarkdown.Lines.SaveToFile(FMdFile);
+  memMarkdown.Modified := False;
+  ShowMdFile;
+end;
+
+procedure TfrmMain.MdSaveAs(Sender: TObject);
+begin
+  if FMdFile <> '' then dlgMdSave.FileName := FMdFile;
+  if not dlgMdSave.Execute then Exit;
+  FMdFile := dlgMdSave.FileName;
+  MdSave(Sender);
+end;
+
+procedure TfrmMain.MdRawHTMLChange(Sender: TObject);
+begin
+  pageMdPreview.MarkdownRawHTML := chkMdRawHTML.Checked;
+end;
+
+{ the preview follows the typing, a moment after it stops }
+procedure TfrmMain.MdSourceChange(Sender: TObject);
+begin
+  tmrMarkdown.Enabled := False;
+  tmrMarkdown.Enabled := True;
+  ShowMdFile;
+end;
+
+procedure TfrmMain.MdTimer(Sender: TObject);
+var
+  Y: Integer;
+  Base: string;
+begin
+  tmrMarkdown.Enabled := False;
+  Y := pageMdPreview.ScrollY;
+  { relative images and links are found beside the file }
+  if FMdFile <> '' then Base := FilenameToURI(FMdFile) else Base := '';
+  pageMdPreview.LoadMarkdown(memMarkdown.Text, Base);
+  pageMdPreview.ScrollTo(Y);
 end;
 
 { ----------------------------------------------------------- WYSIWYG editor }
@@ -465,16 +723,15 @@ end;
 { Colour the markup as it is typed. TInkEdit keeps the text plain and asks
   per character how to draw it, so this is syntax highlighting without the
   text ever containing anything but what the user typed. }
-procedure TfrmMain.edtMarkupChange(Sender: TObject);
+function TfrmMain.TagMask(const S: string): TBytes;
 var
-  S: string;
   i, N: Integer;
   InTag, InQuote: Boolean;
   Ch: string;
 begin
-  S := edtMarkup.Text;
   N := UTF8Length(S);
-  SetLength(FTagMask, N);
+  Result := nil;
+  SetLength(Result, N);
   InTag := False;
   InQuote := False;
   for i := 1 to N do
@@ -485,26 +742,35 @@ begin
     if InTag then
     begin
       if InQuote or (Ch = '"') then
-        FTagMask[i - 1] := 2
+        Result[i - 1] := 2
       else
-        FTagMask[i - 1] := 1;
+        Result[i - 1] := 1;
     end
     else
-      FTagMask[i - 1] := 0;
+      Result[i - 1] := 0;
     if Ch = '>' then
     begin
       InTag := False;
       InQuote := False;
     end;
   end;
+end;
+
+procedure TfrmMain.edtMarkupChange(Sender: TObject);
+begin
+  FTagMask := TagMask(edtMarkup.Text);
   edtMarkup.Invalidate;
 end;
 
 procedure TfrmMain.edtMarkupGetCharAttrs(Sender: TObject; AIndex: Integer;
   const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+var
+  Mask: TBytes;
 begin
-  if (AIndex < 1) or (AIndex > Length(FTagMask)) then Exit;
-  case FTagMask[AIndex - 1] of
+  { both markup boxes share this; each has its own mask }
+  if Sender = edtLive then Mask := FLiveMask else Mask := FTagMask;
+  if (AIndex < 1) or (AIndex > Length(Mask)) then Exit;
+  case Mask[AIndex - 1] of
     1: begin AColor := $00A05A2C; AStyle := [fsBold]; end;   // the tag itself
     2: AColor := $002080108;                                 // quoted value
   else
@@ -688,6 +954,26 @@ end;
 procedure TfrmMain.rgCharModeClick(Sender: TObject);
 begin
   edtPassword.Invalidate;
+end;
+
+procedure TfrmMain.LiveChange(Sender: TObject);
+begin
+  FLiveMask := TagMask(edtLive.Text);
+  edtLive.Invalidate;
+  lblLive.Caption := edtLive.Text;
+end;
+
+procedure TfrmMain.LiveMarkdownChange(Sender: TObject);
+begin
+  if chkLiveMarkdown.Checked then
+  begin
+    lblLive.TextFormat := itfMarkdown;
+    if Pos('<', edtLive.Text) > 0 then
+      edtLive.Text := 'Say **hello** in *Markdown*, with `code` and a [link](https://www.lazarus-ide.org/)';
+  end
+  else
+    lblLive.TextFormat := itfHTML;
+  LiveChange(nil);
 end;
 
 { ------------------------------------------------------------------- memo  }

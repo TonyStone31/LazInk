@@ -267,18 +267,37 @@ This change has been built and tested with FPC 3.3.1 and Lazarus trunk on GTK3.
 
 ## The demo
 
-`demo/lazinkdemo.lpi` — a WYSIWYG editor side by side with the markup it
-produces, plus a tab for each control. Everything is built at design time, so
-you can open `demo/main.lfm` in the form designer and push it around; nothing is
-conjured up at run time. There are deliberately no File/Open/Save actions.
+`demo/lazinkdemo.lpi` - a tour of the package, a tab for each control.
+Everything is built at design time, so you can open `demo/main.lfm` in the form
+designer and push it around; nothing is conjured up at run time.
+
+**Documents** opens on `demo/tour.md`, a Markdown page about LazInk shown by a
+`TInkPage`: select text, right-click to copy, Ctrl+F to find, follow the link
+to this README and come back with the mouse's back button. The list above the
+page switches its look through `StyleSheet`.
+
+![The Documents tab](images/demo-documents.png)
+
+**Markdown editor** is the source and its live preview side by side, and opens
+this README when the demo starts. It opens and saves files; the other tabs
+only show what the controls can do.
+
+![The Markdown editor tab](images/demo-markdown.png)
+
+**WYSIWYG editor** is `TInkRichEdit` with the markup it would be saved as:
 
 ![The WYSIWYG editor tab](images/demo-editor.png)
 
-The **List box** tab is the demo this whole package grew out of — a simulated
-log arriving into an owner-drawn listbox, with an editor that floats into place
-over the item you click:
+**Label + Edit**, **Memo** and **List box** show the smaller controls - the
+list box is the demo this whole package grew out of, a simulated log arriving
+into an owner-drawn list with an editor that floats into place over the item
+you click:
 
 ![The list box tab](images/demo-listbox.png)
+
+`lazinkdemo FILE` opens a page on the Documents tab, and
+`lazinkdemo --screenshots DIR` saves a picture of every tab and quits - which is
+how the pictures here are made.
 
 ## Installing
 

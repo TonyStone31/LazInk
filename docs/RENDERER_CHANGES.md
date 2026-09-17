@@ -46,6 +46,9 @@ or date.
   so a control can find the character under the mouse and paint a
   selection. Table layout numbers its parts and does not report while
   measuring.
+- **September 16, 2026:** `HTMLShadeColor` and `HTMLContrastColor` read
+  `clDefault` as the window colour; it had turned a list box's stripes
+  black.
 
 Independent Markdown, page-viewer, CSS and animation helper units are covered
 by the project's MIT license, not represented as upstream JVCL implementations.

@@ -334,6 +334,9 @@ function HTMLContrastColor(ABackground: TColor): TColor;
 var
   RGB: LongInt;
 begin
+  // a control left at clDefault is painted in the window colour; taken
+  // literally, clDefault comes out black
+  if ABackground = clDefault then ABackground := clWindow;
   RGB := ColorToRGB(ABackground);
   // Rec. 601 luma, which is close enough to how bright a colour looks
   if (Red(RGB) * 299 + Green(RGB) * 587 + Blue(RGB) * 114) div 1000 >= 140 then
@@ -347,6 +350,7 @@ var
   RGB: LongInt;
   R, G, B, D: Integer;
 begin
+  if AColor = clDefault then AColor := clWindow;
   RGB := ColorToRGB(AColor);
   R := Red(RGB); G := Green(RGB); B := Blue(RGB);
   if HTMLContrastColor(AColor) = clBlack then
