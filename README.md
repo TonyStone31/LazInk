@@ -463,34 +463,15 @@ else was written for LazInk.
 
 The plan ([ROADMAP.md](ROADMAP.md), section 4) is to replace that renderer
 with one written for LazInk, so the whole package can be released with
-essentially no conditions.  That is not a judgment on JVCL or on anyone
-who helped - it is a different view of how this particular code should be
-shared, and it can only be done with code written for it.  The credit below
-stays either way: JVCL and wp's example are what got LazInk off the ground.
+essentially no conditions.  The credit stays either way.
 
 ### Thanks
 
-* **Project JEDI's JVCL** - the HTML drawing code LazInk grew from
-  (`JvHTControls`, `JvJVCLUtils`).  Andrei Prygounkov, Fedor Koshevnikov,
-  Igor Pavluk, Serge Korolev, SGB Software, Maciej Kaczkowski, Timo
-  Tegtmeier, Andreas Hausladen and the JEDI contributors.
-* **wp** - suggested the JVCL route, extracted the routines into a
-  standalone unit, and wrote the list box example LazInk started from.
-* **jamie** - suggested `TIpHtmlPanel` on the IPro tab, the first thing that
-  actually rendered.
-* **skalogryz** - pointed out that a Qt5 memo could do it with low-level
-  widget access.
-* **avra** - the RichMemo wiki examples for mixed-color text, and the IDE
-  shortcuts for finding lost forms.
-* **Jurassic Pork** - reported that the original demo opened off-screen on a
-  single-monitor machine; the demo centers itself because of that.
-* **tetrastes** and **denis.totoliciu** - the *Window / Center lost window*
-  discussion that came out of it.
-* **Digão Dalpiaz**, whose `TDzHTMLText` label was a source of **ideas** -
-  inline images, link hover styling, borders, line spacing and CJK line
-  breaking.  No code was taken from it.
-* **Lazarus and Free Pascal** - the component framework, the compiler, the
-  runtime and the image decoders.
+* **Project JEDI's JVCL** - the HTML drawing code LazInk grew from; the full
+  notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+* **wp** - suggested the JVCL route and wrote the list box example LazInk
+  started from.
+* **Lazarus and Free Pascal**.
 
 ## License
 
