@@ -3,6 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
+  LResources, LazInkReg,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
@@ -1296,6 +1297,32 @@ begin
   Probe.SetBounds(0, 0, 400, 200);
 end;
 
+{ --- the palette icons the IDE shows --- }
+procedure IconChecks;
+const
+  Components: array[0..5] of string =
+    ('TInkLabel', 'TInkEdit', 'TInkRichEdit', 'TInkMemo', 'TInkListBox', 'TInkPage');
+var
+  I: Integer; Res: TLResource; Stream: TStringStream; Png: TPortableNetworkGraphic;
+begin
+  for I := Low(Components) to High(Components) do
+  begin
+    { a component with no resource of its own gets Lazarus's default icon,
+      which is how TInkPage looked until its own was drawn }
+    Res := LazarusResources.Find(Components[I]);
+    Check(Res <> nil, Components[I] + ' has a palette icon');
+    if Res = nil then Continue;
+    Check(Res.ValueType = 'PNG', Components[I] + ': the icon is a PNG');
+    Stream := TStringStream.Create(Res.Value);
+    Png := TPortableNetworkGraphic.Create;
+    try
+      Png.LoadFromStream(Stream);
+      Check((Png.Width = 24) and (Png.Height = 24),
+        Format('%s: the icon is 24x24 (%dx%d)', [Components[I], Png.Width, Png.Height]));
+    finally Png.Free; Stream.Free end;
+  end;
+end;
+
 { --- find in page --- }
 procedure FindChecks;
 var Current, Total, K: Integer; Key: Word; Doc: string;
@@ -1879,6 +1906,7 @@ begin
     NarrowChecks;
     TagChecks;
     CodeChecks;
+    IconChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
