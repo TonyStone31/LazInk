@@ -56,6 +56,10 @@ type
       changes when any of them does - '' when there are none }
     function MediaState(AWidth: Integer): string;
   end;
+{ One declaration out of a style attribute - StyleValue('color: red; margin: 0',
+  'color') is 'red' - trimmed, with its case kept.  The last of a repeated
+  property wins, as in a stylesheet.  '' when it is not there. }
+function StyleValue(const AStyle, AProp: string): string;
 { #rgb, #rrggbb, rgb()/rgba(), a color name, "none"/"transparent" (clNone),
   or Fallback }
 function CSSColor(const S: string; Fallback: TColor): TColor;
@@ -69,6 +73,29 @@ function TInkRule.Applies(AWidth: Integer): Boolean;
 begin
   Result := not Never and ((MinWidth <= 0) or (AWidth >= MinWidth)) and
     ((MaxWidth <= 0) or (AWidth <= MaxWidth));
+end;
+
+function StyleValue(const AStyle, AProp: string): string;
+var P,Start,Depth,Colon: Integer; Decl,Name,Wanted: string;
+begin
+  Result := ''; Wanted := LowerCase(Trim(AProp));
+  Start := 1; Depth := 0;
+  for P := 1 to Length(AStyle)+1 do
+  begin
+    if P<=Length(AStyle) then
+    begin
+      if AStyle[P]='(' then Inc(Depth)
+      else if AStyle[P]=')' then Dec(Depth);
+      { a semicolon inside rgb(...) or url(...) does not end a declaration }
+      if (AStyle[P]<>';') or (Depth>0) then Continue;
+    end;
+    Decl := Copy(AStyle,Start,P-Start); Start := P+1;
+    Colon := Pos(':',Decl);
+    if Colon=0 then Continue;
+    Name := LowerCase(Trim(Copy(Decl,1,Colon-1)));
+    { the last one written wins, as a stylesheet's declarations do }
+    if Name=Wanted then Result := Trim(Copy(Decl,Colon+1,MaxInt));
+  end;
 end;
 
 function CSSColor(const S: string; Fallback: TColor): TColor;

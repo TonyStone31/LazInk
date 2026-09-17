@@ -66,6 +66,14 @@ type
     ImageRect: TRect;
     { the target of each text link in the block, in order }
     LinkTargets: array of string;
+    { the title of each text link, in the same order: its tooltip }
+    LinkTitles: array of string;
+    { what a style attribute on the block's own element asked for }
+    StyleAttr: string;
+    { A <details>: the fold the block is inside (-1 outside every fold), and
+      for a <summary>, the fold it opens and closes (-1 for anything else).
+      A summary sits in its details' parent fold, so it stays visible. }
+    FoldGroup, FoldHead: Integer;
     { how links in this block look, when CSS says so for where it is }
     LinkColor: TColor;
     NoLinkUnderline: Boolean;
@@ -229,7 +237,15 @@ type
     FListWidth, FQuoteWidth, FLayoutBase, FLayoutWidth, FLayoutFrom: Integer;
     FBodyText, FPageBack, FQuoteText, FBarDefault, FCodeBack: TColor;
     FColumnWidth: Integer;
+    { <details>: whether each fold is open, and the fold each one sits in
+      (-1 for an outermost one), by fold number }
+    FFoldOpen: array of Boolean;
+    FFoldParent: array of Integer;
     procedure ClearBlocks;
+    { another <details>: its number, given the fold it is inside }
+    function AddFold(AParent: Integer; AOpen: Boolean): Integer;
+    { a block inside a fold that is shut, or inside one that is }
+    function BlockHidden(B: TInkPageBlock): Boolean;
     { no blocks, no styles, no selection: what Parse starts from }
     procedure BeginDocument;
     procedure AddBlock(B: TInkPageBlock);
@@ -288,6 +304,13 @@ type
     { the blocks the page was read into, in document order }
     function BlockCount: Integer;
     function Block(Index: Integer): TInkPageBlock;
+    { A <details>: whether what is under its <summary> is showing, and a
+      click on the summary to open or shut it.  Index is the summary's
+      block; ToggleFold on any other block does nothing. }
+    function FoldOpen(Index: Integer): Boolean;
+    procedure ToggleFold(Index: Integer);
+    { is this block showing, or is it folded away inside a shut <details> }
+    function BlockVisible(Index: Integer): Boolean;
     { Through the pages visited by links and LoadFromFile / LoadFromURL.
       The mouse's back and forward buttons, Alt+Left / Alt+Right and a
       keyboard's Back / Forward keys do the same. }
@@ -673,7 +696,10 @@ begin
   Result := Format('#%.2x%.2x%.2x',[Red(C),Green(C),Blue(C)]);
 end;
 constructor TInkPageBlock.Create;
-begin inherited; Picture := TPicture.Create; LinkColor := clNone end;
+begin
+  inherited; Picture := TPicture.Create; LinkColor := clNone;
+  FoldGroup := -1; FoldHead := -1;
+end;
 destructor TInkPageBlock.Destroy;
 begin Animation.Free; Picture.Free; inherited end;
 constructor TInkCustomPage.Create(AOwner: TComponent);
@@ -715,7 +741,49 @@ begin
 end;
 procedure TInkCustomPage.ClearBlocks;
 var I: Integer;
-begin for I := 0 to FBlocks.Count-1 do TObject(FBlocks[I]).Free; FBlocks.Clear end;
+begin
+  for I := 0 to FBlocks.Count-1 do TObject(FBlocks[I]).Free;
+  FBlocks.Clear;
+  SetLength(FFoldOpen,0); SetLength(FFoldParent,0);
+end;
+function TInkCustomPage.AddFold(AParent: Integer; AOpen: Boolean): Integer;
+begin
+  Result := Length(FFoldOpen);
+  SetLength(FFoldOpen,Result+1); SetLength(FFoldParent,Result+1);
+  FFoldOpen[Result] := AOpen; FFoldParent[Result] := AParent;
+end;
+function TInkCustomPage.BlockHidden(B: TInkPageBlock): Boolean;
+var G: Integer;
+begin
+  Result := False;
+  G := B.FoldGroup;
+  { shut anywhere up the chain of details and the block is away }
+  while (G>=0) and (G<Length(FFoldOpen)) do
+  begin
+    if not FFoldOpen[G] then Exit(True);
+    G := FFoldParent[G];
+  end;
+end;
+function TInkCustomPage.FoldOpen(Index: Integer): Boolean;
+var B: TInkPageBlock;
+begin
+  B := TInkPageBlock(FBlocks[Index]);
+  Result := (B.FoldHead>=0) and (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead];
+end;
+procedure TInkCustomPage.ToggleFold(Index: Integer);
+var B: TInkPageBlock;
+begin
+  if (Index<0) or (Index>=FBlocks.Count) then Exit;
+  B := TInkPageBlock(FBlocks[Index]);
+  if (B.FoldHead<0) or (B.FoldHead>=Length(FFoldOpen)) then Exit;
+  FFoldOpen[B.FoldHead] := not FFoldOpen[B.FoldHead];
+  { everything from the summary down moves }
+  InvalidateLayout(Index);
+end;
+function TInkCustomPage.BlockVisible(Index: Integer): Boolean;
+begin
+  Result := not BlockHidden(TInkPageBlock(FBlocks[Index]));
+end;
 procedure TInkCustomPage.AddBlock(B: TInkPageBlock);
 begin FBlocks.Add(B) end;
 procedure TInkCustomPage.InvalidateLayout(FromIndex: Integer);
@@ -931,7 +999,7 @@ end;
 procedure TInkCustomPage.Parse;
 var
   S, Raw, Element, Cls, Buffer, BlockTag, BlockClass, PendingAnchor, PendingMarker,
-    Prefix, URL, Nest, Box, Kind: string;
+    Prefix, URL, Nest, Box, Kind, PendingAlign: string;
   P,Q,I,Level,TableDepth,SkipDepth,PreDepth,Depth: Integer;
   Closing: Boolean;
   B: TInkPageBlock;
@@ -942,6 +1010,23 @@ var
     and the targets of the links in the buffer, in order }
   OpenHref, OpenTarget: string;
   Targets: TStringList;
+  { the tooltip of each of those links, in the same order }
+  Titles: TStringList;
+  { The style attributes of the inline elements open here, innermost last,
+    each "element=the markup that closes it"; and the one on the block
+    element being read, which the block keeps. }
+  StyleStack: TStringList;
+  PendingStyle: string;
+  { <center>, and <div align=center> around several blocks }
+  CenterDepth, RightDepth: Integer;
+  { the <details> the parser is inside, innermost last, and the fold each
+    block being made belongs to }
+  Folds: array of Integer;
+  FoldSeen: array of Boolean;
+  CurFold, PendingHead: Integer;
+  { a table's <caption>: its words, kept out of the table's own markup }
+  CaptionDepth: Integer;
+  CaptionText: string;
   { the table being read: its classes as a CSS context }
   TableCtx: string;
   Margins: TRect;
@@ -977,8 +1062,22 @@ var
     end
     else Result := BlockTag+DotClasses(BlockClass);
   end;
+  { center or right, from the block's style attribute, its align attribute,
+    the stylesheet, or a <center> it sits in }
+  function BlockAlign: string;
+  begin
+    Result := LowerCase(StyleValue(PendingStyle,'text-align'));
+    if Result='' then Result := LowerCase(PendingAlign);
+    if Result='' then
+      Result := LowerCase(FStyles.Value(BlockTag,BlockClass,'text-align','',Context));
+    if Result='' then
+    begin
+      if CenterDepth>0 then Result := 'center'
+      else if RightDepth>0 then Result := 'right';
+    end;
+  end;
   procedure Flush;
-  var Text: string; K: Integer;
+  var Text, Align: string; K: Integer;
   begin
     Text := Buffer;
     if BlockTag='pre' then
@@ -992,14 +1091,30 @@ var
       a buffer of tags alone, like the <a> before a picture }
     if (Text='') or ((BlockTag<>'table') and (Trim(HTMLPlainText(Text))='')) then
     begin
-      Buffer := ''; Targets.Clear;
+      Buffer := ''; Targets.Clear; Titles.Clear;
       Exit;
+    end;
+    { a block the page says is centered or right-aligned says so in its
+      markup, from where the words start }
+    if BlockTag<>'table' then
+    begin
+      Align := BlockAlign;
+      if Align='center' then Text := '<center>'+Text
+      else if Align='right' then Text := '<right>'+Text;
     end;
     B := TInkPageBlock.Create;
     B.LinkTargets := nil;
     SetLength(B.LinkTargets,Targets.Count);
     for K := 0 to Targets.Count-1 do B.LinkTargets[K] := Targets[K];
-    Targets.Clear;
+    SetLength(B.LinkTitles,Titles.Count);
+    for K := 0 to Titles.Count-1 do B.LinkTitles[K] := Titles[K];
+    Targets.Clear; Titles.Clear;
+    B.StyleAttr := PendingStyle; B.FoldGroup := CurFold;
+    if PendingHead>=0 then
+    begin
+      B.FoldHead := PendingHead; B.FoldGroup := FFoldParent[PendingHead];
+      PendingHead := -1;
+    end;
     B.Source := Text; B.Tag := BlockTag; B.CSSClass := BlockClass;
     B.Anchor := PendingAnchor; B.Nest := Nest; B.Pre := BlockTag='pre';
     { links take their look from where they are: table.cards a }
@@ -1123,7 +1238,56 @@ var
     else if A='right' then Result := '<right>'
     else Result := '';
   end;
-  function InlineTag: string;
+  { What a style attribute asks for, as markup, and in AClose the markup
+    that puts it back.  Colors, size, weight, slant and decoration: the
+    things people write a style attribute for. }
+  function StyleMarkup(const AStyle: string; out AClose: string): string;
+  var V, FG, BG, Sz: string; C: TColor; K: Integer;
+  begin
+    Result := ''; AClose := '';
+    if Pos(':',AStyle)=0 then Exit;
+    FG := ''; BG := ''; Sz := '';
+    V := StyleValue(AStyle,'color');
+    if V<>'' then
+    begin
+      C := CSSColor(FStyles.Resolve(V),clNone);
+      if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
+    end;
+    V := StyleValue(AStyle,'background-color');
+    if V='' then V := StyleValue(AStyle,'background');
+    if V<>'' then
+    begin
+      C := CSSColor(FStyles.Resolve(V),clNone);
+      if C<>clNone then BG := ' bgcolor="'+ColorAttr(C)+'"';
+    end;
+    { a size in pixels, as CSS writes it, is three quarters of it in points }
+    K := CSSPixels(StyleValue(AStyle,'font-size'),-1);
+    if K>0 then Sz := ' size="'+IntToStr(Max(1,K*3 div 4))+'"';
+    if (FG<>'') or (BG<>'') or (Sz<>'') then
+    begin
+      Result := '<font'+Sz+FG+BG+'>'; AClose := '</font>';
+    end;
+    V := LowerCase(StyleValue(AStyle,'font-weight'));
+    if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
+    begin
+      Result := Result+'<b>'; AClose := '</b>'+AClose;
+    end;
+    V := LowerCase(StyleValue(AStyle,'font-style'));
+    if (V='italic') or (V='oblique') then
+    begin
+      Result := Result+'<i>'; AClose := '</i>'+AClose;
+    end;
+    V := LowerCase(StyleValue(AStyle,'text-decoration'));
+    if Pos('underline',V)>0 then
+    begin
+      Result := Result+'<u>'; AClose := '</u>'+AClose;
+    end;
+    if Pos('line-through',V)>0 then
+    begin
+      Result := Result+'<s>'; AClose := '</s>'+AClose;
+    end;
+  end;
+  function InlineMarkup: string;
   var BG, FG: string; C: TColor; K: Integer;
   begin
     Result := '';
@@ -1144,7 +1308,7 @@ var
       if Attribute(Raw,'href')='' then Exit;
       Result := StringReplace(HTMLEscape(Attribute(Raw,'href')),'"','&quot;',[rfReplaceAll]);
       OpenHref := Result; OpenTarget := Attribute(Raw,'target');
-      Targets.Add(OpenTarget);
+      Targets.Add(OpenTarget); Titles.Add(Attribute(Raw,'title'));
       Exit('<a href="'+Result+'">');
     end;
     if (Element='code') or (Element='kbd') or (Element='tt') or (Element='samp') then
@@ -1177,7 +1341,35 @@ var
       if Closing then Exit('</font>');
       Exit('<font bgcolor="'+ColorAttr(FStyles.Color('mark',Cls,'background',RGBToColor($FF,$F3,$A0)))+'">');
     end;
+    if Element='q' then
+    begin
+      { a quotation inside a sentence wears its quotation marks }
+      if Closing then Exit('”') else Exit('“');
+    end;
     if Element='font' then Exit(Raw);
+  end;
+  { an inline element, with whatever its own style attribute asks for
+    wrapped round it }
+  function InlineTag: string;
+  var Open, Close: string; K: Integer;
+  begin
+    Result := InlineMarkup;
+    if IsVoidElement(Element) or (Element='') then Exit;
+    if Closing then
+    begin
+      { the style of the element this closes, innermost first }
+      for K := StyleStack.Count-1 downto 0 do
+        if StyleStack.Names[K]=Element then
+        begin
+          Result := StyleStack.ValueFromIndex[K]+Result;
+          StyleStack.Delete(K);
+          Break;
+        end;
+      Exit;
+    end;
+    Open := StyleMarkup(Attribute(Raw,'style'),Close);
+    StyleStack.Add(Element+'='+Close);
+    Result := Result+Open;
   end;
   { a length from a list of them, like gap: 10px 12px, or flex: 1 1 220px }
   function FirstPixels(const V: string; Last: Boolean): Integer;
@@ -1345,7 +1537,8 @@ begin
     still reads as code }
   PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
   CodeBack := HTMLShadeColor(PageBack,7);
-  Targets := TStringList.Create;
+  Targets := TStringList.Create; Titles := TStringList.Create;
+  StyleStack := TStringList.Create;
   try
   OpenHref := ''; OpenTarget := '';
   HideDepth := 0; FlexDepth := 0; ItemDepth := 0; ItemCtx := ''; ItemIsLink := False;
@@ -1353,6 +1546,9 @@ begin
   FlexItems := TStringList.Create;
   P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := ''; Nest := '';
   PendingAnchor := ''; PendingMarker := ''; TableDepth := 0; SkipDepth := 0; PreDepth := 0;
+  PendingStyle := ''; PendingAlign := ''; CenterDepth := 0; RightDepth := 0;
+  CaptionDepth := 0; CaptionText := ''; CurFold := -1; PendingHead := -1;
+  SetLength(Folds,0); SetLength(FoldSeen,0);
   SetLength(Containers,0);
   while P<=Length(S) do
   begin
@@ -1360,6 +1556,11 @@ begin
     begin
       Q := P; while (P<=Length(S)) and (S[P]<>'<') do Inc(P);
       if (SkipDepth>0) or (HideDepth>0) then Continue;
+      if CaptionDepth>0 then
+      begin
+        CaptionText := CaptionText+TextMarkup(Copy(S,Q,P-Q));
+        Continue;
+      end;
       if (FlexDepth>0) and (ItemDepth=0) then
       begin
         { words straight inside a flex container are an item of their own }
@@ -1379,9 +1580,14 @@ begin
     Q := P; while (Q<=Length(S)) and (S[Q]<>'>') do Inc(Q);
     Raw := Copy(S,P,Q-P+1); P := Q+1; Element := TagName(Raw);
     Closing := Copy(Raw,1,2)='</'; Cls := Attribute(Raw,'class');
-    if (Element='head') or (Element='script') or (Element='style') then
+    if (Element='head') or (Element='script') or (Element='style') or
+      (Element='template') or (Element='svg') then
     begin
-      if Closing then SkipDepth := Max(0,SkipDepth-1) else Inc(SkipDepth);
+      { a drawing or a template holds nothing the page should read out - an
+        <svg> keeps its <title> inside it.  One written <svg ... /> holds
+        nothing at all. }
+      if Copy(Raw,Length(Raw)-1,2)<>'/>' then
+        if Closing then SkipDepth := Max(0,SkipDepth-1) else Inc(SkipDepth);
       Continue;
     end;
     if SkipDepth>0 then Continue;
@@ -1475,6 +1681,30 @@ begin
         end
         else Buffer := '<table>';
       end;
+      Continue;
+    end;
+    { a table's caption is a line of its own above the table }
+    if Element='caption' then
+    begin
+      if Closing then
+      begin
+        CaptionDepth := Max(0,CaptionDepth-1);
+        if Trim(HTMLPlainText(CaptionText))<>'' then
+        begin
+          B := TInkPageBlock.Create;
+          B.Tag := 'caption'; B.Source := '<center>'+Trim(CaptionText);
+          B.Nest := Nest; B.FoldGroup := CurFold;
+          FBlocks.Add(B);
+        end;
+        CaptionText := '';
+      end
+      else Inc(CaptionDepth);
+      Continue;
+    end;
+    if CaptionDepth>0 then
+    begin
+      { markup inside a caption decorates the caption's own line }
+      CaptionText := CaptionText+InlineTag;
       Continue;
     end;
     if TableDepth>0 then
@@ -1617,17 +1847,69 @@ begin
       end;
       Continue;
     end;
+    if Element='center' then
+    begin
+      Flush;
+      if Closing then CenterDepth := Max(0,CenterDepth-1) else Inc(CenterDepth);
+      BlockTag := ContainerTag; BlockClass := ''; PendingStyle := ''; PendingAlign := '';
+      Continue;
+    end;
+    { <details>: everything in it belongs to a fold that its <summary>
+      opens and shuts }
+    if Element='details' then
+    begin
+      Flush;
+      if Closing then
+      begin
+        if Length(Folds)>0 then
+        begin
+          { a fold with no summary has nothing to open it: leave it open }
+          if not FoldSeen[High(Folds)] then FFoldOpen[Folds[High(Folds)]] := True;
+          SetLength(Folds,Length(Folds)-1); SetLength(FoldSeen,Length(Folds));
+        end;
+        if Length(Folds)>0 then CurFold := Folds[High(Folds)] else CurFold := -1;
+      end
+      else
+      begin
+        CurFold := AddFold(CurFold,HasAttribute(Raw,'open'));
+        SetLength(Folds,Length(Folds)+1); Folds[High(Folds)] := CurFold;
+        SetLength(FoldSeen,Length(Folds)); FoldSeen[High(FoldSeen)] := False;
+      end;
+      BlockTag := ContainerTag; BlockClass := ''; PendingStyle := ''; PendingAlign := '';
+      Continue;
+    end;
+    if Element='summary' then
+    begin
+      Flush;
+      if Closing then begin BlockTag := ContainerTag; BlockClass := ''; PendingHead := -1 end
+      else
+      begin
+        BlockTag := 'summary'; BlockClass := Cls;
+        PendingStyle := Attribute(Raw,'style'); PendingAlign := '';
+        { the first summary is the one that works the fold, as in a browser }
+        if (Length(Folds)>0) and not FoldSeen[High(FoldSeen)] then
+        begin
+          PendingHead := CurFold; FoldSeen[High(FoldSeen)] := True;
+        end;
+      end;
+      Continue;
+    end;
     if (Element='p') or (Element='div') or (Element='header') or (Element='footer') or
       (Element='nav') or (Element='figure') or (Element='figcaption') or (Element='li') or
       (Element='section') or (Element='article') or (Element='main') or (Element='aside') or
-      (Element='address') or (Element='details') or (Element='summary') or (Element='dt') or
+      (Element='address') or (Element='dt') or
       IsHeadingTag(Element) then
     begin
       Flush;
-      if Closing then begin BlockTag := ContainerTag; BlockClass := '' end
+      if Closing then
+      begin
+        BlockTag := ContainerTag; BlockClass := '';
+        PendingStyle := ''; PendingAlign := '';
+      end
       else
       begin
         BlockTag := Element; BlockClass := Cls;
+        PendingStyle := Attribute(Raw,'style'); PendingAlign := Attribute(Raw,'align');
         if Element='li' then
         begin
           Level := High(Containers);
@@ -1653,7 +1935,7 @@ begin
     EndFlex;
   end;
   Flush;
-  finally Targets.Free; FlexItems.Free end;
+  finally Targets.Free; Titles.Free; StyleStack.Free; FlexItems.Free end;
   if PendingAnchor<>'' then
   begin
     { ids at the very end still lead somewhere: the end }
@@ -1783,7 +2065,7 @@ begin
   if FImageFit=iifWindow then Result := 8 else Result := 24;
 end;
 procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
-var J,X,K: Integer; BorderSpec: string; Base: Integer;
+var J,X,K: Integer; BorderSpec,V: string; Base: Integer; C: TColor;
   function Defaulted(const Prop: string; Fallback: Integer): Integer;
   begin
     Result := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,Prop,Fallback));
@@ -1804,7 +2086,15 @@ begin
   else if B.Tag='h3' then B.PointSize := Round(Base*1.15)
   else if (B.Tag='h5') or (B.Tag='h6') then B.PointSize := Max(1,Round(Base*0.9));
   B.PointSize := Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',B.PointSize*4 div 3)*3 div 4);
+  { a table's caption is a smaller line above it }
+  if B.Tag='caption' then
+    B.PointSize := Max(1,FStyles.Pixels('caption',B.CSSClass,'font-size',
+      Round(Base*0.92)*4 div 3)*3 div 4);
   B.Bold := IsHeadingTag(B.Tag) or (B.Tag='dt') or (B.Tag='summary');
+  { a <summary> wears the triangle that says which way it goes }
+  if B.FoldHead>=0 then
+    if (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead] then B.Marker := '▾'
+    else B.Marker := '▸';
   if B.Pre then B.FaceName := InkMonoFace else B.FaceName := '';
   B.NoWrap := B.Pre;
   if Length(B.Bars)>0 then
@@ -1828,6 +2118,31 @@ begin
     FStyles.Color(B.Tag,B.CSSClass,'background-color',clNone));
   if B.Pre and (B.BackColor=clNone) then B.BackColor := FCodeBack;
   B.BarColor := FBarDefault;
+  if B.StyleAttr<>'' then
+  begin
+    { what the element's own style attribute says wins: it is the page's
+      last word on that one block }
+    V := StyleValue(B.StyleAttr,'color');
+    if V<>'' then
+    begin
+      C := CSSColor(FStyles.Resolve(V),clNone);
+      if C<>clNone then B.TextColor := C;
+    end;
+    V := StyleValue(B.StyleAttr,'background-color');
+    if V='' then V := StyleValue(B.StyleAttr,'background');
+    if V<>'' then B.BackColor := CSSColor(FStyles.Resolve(V),B.BackColor);
+    K := CSSPixels(StyleValue(B.StyleAttr,'font-size'),-1);
+    if K>0 then B.PointSize := Max(1,K*3 div 4);
+    V := LowerCase(StyleValue(B.StyleAttr,'font-weight'));
+    if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then B.Bold := True
+    else if (V='normal') or (V='400') then B.Bold := False;
+    K := CSSPixels(StyleValue(B.StyleAttr,'margin-top'),-1);
+    if K>=0 then B.GapBefore := K;
+    K := CSSPixels(StyleValue(B.StyleAttr,'margin-bottom'),-1);
+    if K>=0 then B.GapAfter := K;
+    K := CSSPixels(StyleValue(B.StyleAttr,'padding'),-1);
+    if K>=0 then B.Padding := K;
+  end;
   if B.Tag='hr' then
     { a rule: its color from color, border-color or background, in that
       order }
@@ -1881,6 +2196,13 @@ begin
     B := TInkPageBlock(FBlocks[I]);
     B.RunsReady := False;
     StyleBlock(B);
+    { folded away inside a shut <details>: no room, nothing drawn }
+    if BlockHidden(B) then
+    begin
+      B.Bounds := Rect(BlockLeft,Y,BlockLeft,Y); B.TextBounds := B.Bounds;
+      B.ImageRect := B.Bounds; B.Wrapped := ''; B.MarkerWidth := 0;
+      Continue;
+    end;
     Inc(Y,B.GapBefore);
     BlockFont(Canvas,B);
     B.MarkerWidth := 0;
@@ -1910,6 +2232,8 @@ begin
     begin
       if B.Marker<>'' then
         B.MarkerWidth := Canvas.TextWidth(B.Marker+' ');
+      { a summary's triangle sits in front of its words, not out in the margin }
+      if B.FoldHead>=0 then Inc(B.Indent,B.MarkerWidth);
       TextW := Max(20,W-B.Indent-B.Padding*2-B.MarginLeft-B.MarginRight);
       if B.Flex then
       begin
@@ -1963,6 +2287,7 @@ begin
   begin
     B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
     if (R.Bottom+B.GapAfter<0) or (R.Top-B.GapBefore>ClientHeight) then Continue;
+    if BlockHidden(B) then Continue;
     { a quote's bar runs on through the gap to the next block in the same
       quote, so a quote of several paragraphs has one bar }
     if Length(B.Bars)>0 then
@@ -2142,7 +2467,13 @@ procedure TInkCustomPage.ClickAt(X,Y: Integer);
 var B: Integer; Hit: THTMLHitInfo; Info: TInkLinkInfo; Blk: TInkPageBlock;
 begin
   if CanFocus then SetFocus;
-  if not HitTestLink(X,Y,B,Hit) then Exit;
+  if not HitTestLink(X,Y,B,Hit) then
+  begin
+    { not a link: a click on a <summary> opens or shuts its <details> }
+    B := BlockAt(X,Y);
+    if (B>=0) and (TInkPageBlock(FBlocks[B]).FoldHead>=0) then ToggleFold(B);
+    Exit;
+  end;
   Blk := TInkPageBlock(FBlocks[B]);
   Info.Href := LinkHref(Hit);
   Info.URL := ResolveURL(Info.Href);
@@ -2282,7 +2613,7 @@ begin
 end;
 
 procedure TInkCustomPage.MouseMove(Shift: TShiftState; X,Y: Integer);
-var I: Integer; B: TInkPageBlock; OnText: Boolean; R: TRect;
+var I,Fold: Integer; B: TInkPageBlock; OnText: Boolean; R: TRect; Tip: string;
   HoverBlock: Integer; HoverHit: THTMLHitInfo;
 begin
   inherited;
@@ -2311,7 +2642,24 @@ begin
     FHoverBlock := HoverBlock; FHoverLinkIndex := HoverHit.LinkIndex;
     HoverChanged(HoverBlock,HoverHit);
   end;
-  if FHoverLink<>'' then Cursor := crHandPoint
+  { a link's title, or a summary's, is the tooltip - as a browser shows it }
+  Tip := '';
+  if HoverHit.OnLink and (HoverBlock>=0) then
+  begin
+    B := TInkPageBlock(FBlocks[HoverBlock]);
+    if (HoverHit.LinkIndex>=1) and (HoverHit.LinkIndex<=Length(B.LinkTitles)) then
+      Tip := B.LinkTitles[HoverHit.LinkIndex-1];
+  end;
+  if Tip<>Hint then
+  begin
+    Hint := Tip; ShowHint := Tip<>'';
+    { a tooltip already showing is for the link the pointer has left }
+    Application.CancelHint;
+  end;
+  Fold := BlockAt(X,Y);
+  if (Fold>=0) and (TInkPageBlock(FBlocks[Fold]).FoldHead>=0) and (FHoverLink='') then
+    Cursor := crHandPoint
+  else if FHoverLink<>'' then Cursor := crHandPoint
   else
   begin
     OnText := False;
