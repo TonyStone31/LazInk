@@ -5,6 +5,24 @@ interface
 uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
+  { Everything about a clicked link. }
+  TInkLinkInfo = record
+    { resolved against the page, and as written }
+    URL, Href: string;
+    { the link's target attribute - "_blank" asks for a new window }
+    Target: string;
+    { the picture the link wraps, resolved; '' for a text link }
+    Image: string;
+    { the block it is in }
+    Block: Integer;
+  end;
+  { Handled stops the page from doing anything more with the click. }
+  TInkLinkActivateEvent = procedure(Sender: TObject; const Link: TInkLinkInfo;
+    var Handled: Boolean) of object;
+  { How a picture is sized: never larger than it is (the default), always as
+    wide as the column, or as large as fits in the window - for a window that
+    shows one picture. }
+  TInkImageFit = (iifShrink, iifWidth, iifWindow);
   { Applications may supply remote/cached content here. Return True on success. }
   TInkPageResourceEvent = procedure(Sender: TObject; const URL: string;
     Destination: TStream; var Handled: Boolean) of object;
@@ -42,6 +60,12 @@ type
     Nest: string;
     Picture: TPicture;
     Animation: TInkGIF;
+    { a picture: where it came from, where it is drawn, and the link around
+      it, if any (href as in markup) }
+    ImageSrc, LinkHref, LinkTarget: string;
+    ImageRect: TRect;
+    { the target of each text link in the block, in order }
+    LinkTargets: array of string;
     { the block, and the part of it the words are drawn in; page coordinates }
     Bounds, TextBounds: TRect;
     Indent, PointSize, Padding, GapBefore, GapAfter, MarkerWidth: Integer;
@@ -77,9 +101,13 @@ type
     FScroll: TInkScrollBar;
     FTimer: TTimer;
     procedure Animate(Sender: TObject);
+    procedure SetImageFit(AValue: TInkImageFit);
   private
     FSource, FLocation, FTitle, FHoverLink: string;
     FHoverBlock, FHoverLinkIndex: Integer;
+    FClickedLink: TInkLinkInfo;
+    FOnLinkActivate: TInkLinkActivateEvent;
+    FImageFit: TInkImageFit;
     FHistory: TStringList;
     FHistoryIndex: Integer;
     FTextFormat: TInkTextFormat;
@@ -178,7 +206,10 @@ type
     procedure SetSource(const AValue: string);
     function ReadResource(const URL: string; Destination: TStream): Boolean;
     function ReadText(const URL: string): string;
-    procedure Navigate(const URL: string; AddHistory: Boolean);
+    procedure Navigate(const URL: string; ARemember: Boolean);
+    procedure AddHistory(const URL: string; ADoc: TObject);
+    procedure AddTextHistory;
+    procedure GoHistory(Index: Integer);
   protected
     { layout, worked out once per layout and shared by the blocks }
     FListWidth, FQuoteWidth, FLayoutBase, FLayoutWidth, FLayoutFrom: Integer;
@@ -203,8 +234,8 @@ type
     function BlockOptions(Index: Integer): THTMLOptions; virtual;
     function HitLink(X,Y: Integer): string;
     function HitTestLink(X,Y: Integer; out ABlock: Integer; out AHit: THTMLHitInfo): Boolean;
-    { a link was clicked: Href as written, URL resolved against the page }
-    procedure LinkClicked(ABlock: Integer; const Href, URL: string); virtual;
+    { a link was clicked }
+    procedure LinkClicked(const Link: TInkLinkInfo); virtual;
     { the pointer moved onto another link, or off one (ABlock -1) }
     procedure HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo); virtual;
     { the copy menu's name for the block under the pointer }
@@ -248,6 +279,8 @@ type
       keyboard's Back / Forward keys do the same. }
     procedure Back;
     procedure Forward;
+    { forgets where Back and Forward would go; what is showing stays }
+    procedure ClearHistory;
     procedure ScrollTo(Y: Integer);
     procedure JumpToAnchor(const Anchor: string);
     { A finger on the page, in client coordinates.  The page hooks the
@@ -301,6 +334,9 @@ type
     { for Back and Forward buttons }
     property CanGoBack: Boolean read GetCanGoBack;
     property CanGoForward: Boolean read GetCanGoForward;
+    { the link being followed, while OnLinkClick runs - its target, and the
+      picture it wraps }
+    property ClickedLink: TInkLinkInfo read FClickedLink;
     { the selection's first and last places, in document order }
     property SelectionStart: TInkPagePosition read GetSelectionStart;
     property SelectionEnd: TInkPagePosition read GetSelectionEnd;
@@ -327,6 +363,10 @@ type
       text.  Only for documents you trust. }
     property MarkdownRawHTML: Boolean read FMarkdownRawHTML write SetMarkdownRawHTML default False;
     property OnLinkClick: TInkPageLinkEvent read FOnLinkClick write FOnLinkClick;
+    { Before OnLinkClick, with everything about the link: its target, and the
+      picture it wraps.  Set Handled to stop there. }
+    property OnLinkActivate: TInkLinkActivateEvent read FOnLinkActivate write FOnLinkActivate;
+    property ImageFit: TInkImageFit read FImageFit write SetImageFit default iifShrink;
     property OnResource: TInkPageResourceEvent read FOnResource write FOnResource;
     { drag the page with the left button - or a finger - to scroll it; a
       press that moves less than a few pixels is still a click }
@@ -363,6 +403,8 @@ type
     property StyleSheet;
     property MarkdownRawHTML;
     property OnLinkClick;
+    property OnLinkActivate;
+    property ImageFit;
     property OnResource;
     property DragScroll;
     property FlickScroll;
@@ -594,7 +636,7 @@ begin
   FHoverBlock := -1;
   FBlocks := TList.Create; FStyles := TInkStyleSheet.Create;
   FStyleSheet := TStringList.Create; FStyleSheet.OnChange := @StyleSheetChanged;
-  FHistory := TStringList.Create; FHistoryIndex := -1;
+  FHistory := TStringList.Create; FHistory.OwnsObjects := True; FHistoryIndex := -1;
   FScroll := TInkScrollBar.Create(Self); FScroll.Parent := Self;
   FScroll.Align := alRight; FScroll.Width := 18;
   FScroll.OnChange := @ScrollChanged; FLayoutDirty := True; FLayoutFrom := 0;
@@ -638,9 +680,20 @@ begin
 end;
 function TInkCustomPage.BlockOptions(Index: Integer): THTMLOptions;
 begin Result := Options end;
-procedure TInkCustomPage.LinkClicked(ABlock: Integer; const Href, URL: string);
+procedure TInkCustomPage.LinkClicked(const Link: TInkLinkInfo);
+var Handled: Boolean;
 begin
-  if Assigned(FOnLinkClick) then FOnLinkClick(Self,URL) else LoadFromURL(URL);
+  FClickedLink := Link;
+  Handled := False;
+  if Assigned(FOnLinkActivate) then FOnLinkActivate(Self,Link,Handled);
+  if Handled then Exit;
+  if Assigned(FOnLinkClick) then FOnLinkClick(Self,Link.URL) else LoadFromURL(Link.URL);
+end;
+procedure TInkCustomPage.SetImageFit(AValue: TInkImageFit);
+begin
+  if FImageFit=AValue then Exit;
+  FImageFit := AValue;
+  InvalidateLayout(0);
 end;
 procedure TInkCustomPage.HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo);
 begin
@@ -702,9 +755,9 @@ begin
   finally S.Free end;
 end;
 procedure TInkCustomPage.LoadHTML(const HTML: string; const BaseURL: string);
-begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse; Navigated end;
+begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse; AddTextHistory; Navigated end;
 procedure TInkCustomPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
-begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse; Navigated end;
+begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse; AddTextHistory; Navigated end;
 procedure TInkCustomPage.Navigated;
 begin
   if Assigned(FOnNavigate) then FOnNavigate(Self);
@@ -717,27 +770,31 @@ procedure TInkCustomPage.LoadFromFile(const FileName: string);
 begin Navigate(FilenameToURI(ExpandFileName(FileName)),True) end;
 procedure TInkCustomPage.LoadFromURL(const URL: string);
 begin Navigate(ResolveURL(URL),True) end;
-procedure TInkCustomPage.Navigate(const URL: string; AddHistory: Boolean);
+procedure TInkCustomPage.Navigate(const URL: string; ARemember: Boolean);
 var P: Integer; PageURL,Anchor,NewSource,Ext: string;
 begin
   PageURL := URL; Anchor := ''; P := Pos('#',PageURL);
   if P>0 then begin Anchor := Copy(PageURL,P+1,MaxInt); Delete(PageURL,P,MaxInt) end;
   if PageURL<>FLocation then
   begin
-    NewSource := ReadText(PageURL);
+    Ext := LowerCase(ExtractFileExt(PageURL));
+    if (Ext='.png') or (Ext='.gif') or (Ext='.jpg') or (Ext='.jpeg') or
+      (Ext='.bmp') or (Ext='.ico') then
+      { a picture on its own is a page with just the picture, as in a
+        browser }
+      NewSource := '<html><head><title>'+HTMLEscape(Copy(PageURL,LastDelimiter('/',PageURL)+1,MaxInt))+
+        '</title></head><body><img src="'+
+        StringReplace(HTMLEscape(PageURL),'"','&quot;',[rfReplaceAll])+'" alt=""></body></html>'
+    else
+      NewSource := ReadText(PageURL);
     FLocation := PageURL; FSource := NewSource;
     { a .md file is Markdown, whatever the page before it was }
-    Ext := LowerCase(ExtractFileExt(PageURL));
     if (Ext='.md') or (Ext='.markdown') then FTextFormat := itfMarkdown
-    else if (Ext='.html') or (Ext='.htm') then FTextFormat := itfHTML;
+    else FTextFormat := itfHTML;
     Parse;
   end;
   if Anchor<>'' then JumpToAnchor(Anchor) else FScroll.Position := 0;
-  if AddHistory then
-  begin
-    while FHistory.Count>FHistoryIndex+1 do FHistory.Delete(FHistory.Count-1);
-    FHistory.Add(URL); FHistoryIndex := FHistory.Count-1;
-  end;
+  if ARemember then AddHistory(URL,nil);
   Navigated;
 end;
 { a table's plain text ends each cell with a tab; the last one on a row is
@@ -772,17 +829,52 @@ function TInkCustomPage.BlockCount: Integer;
 begin Result := FBlocks.Count end;
 function TInkCustomPage.Block(Index: Integer): TInkPageBlock;
 begin Layout; Result := TInkPageBlock(FBlocks[Index]) end;
+type
+  { a page that was handed over as text, kept so Back can show it again }
+  TInkHistoryDoc = class
+    Source, Base: string;
+    Format: TInkTextFormat;
+  end;
+procedure TInkCustomPage.AddHistory(const URL: string; ADoc: TObject);
+begin
+  while FHistory.Count>FHistoryIndex+1 do FHistory.Delete(FHistory.Count-1);
+  FHistory.AddObject(URL,ADoc); FHistoryIndex := FHistory.Count-1;
+end;
+procedure TInkCustomPage.AddTextHistory;
+var Doc: TInkHistoryDoc;
+begin
+  Doc := TInkHistoryDoc.Create;
+  Doc.Source := FSource; Doc.Base := FLocation; Doc.Format := FTextFormat;
+  AddHistory(FLocation,Doc);
+end;
+procedure TInkCustomPage.GoHistory(Index: Integer);
+var Doc: TInkHistoryDoc;
+begin
+  FHistoryIndex := Index;
+  if FHistory.Objects[Index] is TInkHistoryDoc then
+  begin
+    Doc := TInkHistoryDoc(FHistory.Objects[Index]);
+    FLocation := Doc.Base; FSource := Doc.Source; FTextFormat := Doc.Format;
+    Parse;
+    Navigated;
+  end
+  else Navigate(FHistory[Index],False);
+end;
+procedure TInkCustomPage.ClearHistory;
+begin
+  FHistory.Clear; FHistoryIndex := -1;
+  { what is showing stays, as the only entry }
+  if FSource<>'' then AddTextHistory;
+end;
 procedure TInkCustomPage.Back;
 begin
   if FHistoryIndex<=0 then Exit;
-  Dec(FHistoryIndex);
-  Navigate(FHistory[FHistoryIndex],False);
+  GoHistory(FHistoryIndex-1);
 end;
 procedure TInkCustomPage.Forward;
 begin
   if FHistoryIndex+1>=FHistory.Count then Exit;
-  Inc(FHistoryIndex);
-  Navigate(FHistory[FHistoryIndex],False);
+  GoHistory(FHistoryIndex+1);
 end;
 procedure TInkCustomPage.Parse;
 var
@@ -794,8 +886,12 @@ var
   ImageData: TMemoryStream;
   Containers: array of TPageContainer;
   CodeBack, PageBack: TColor;
+  { the link open where the parser is, so a picture inside it is clickable,
+    and the targets of the links in the buffer, in order }
+  OpenHref, OpenTarget: string;
+  Targets: TStringList;
   procedure Flush;
-  var Text: string;
+  var Text: string; K: Integer;
   begin
     Text := Buffer;
     if BlockTag='pre' then
@@ -805,9 +901,18 @@ var
       while Copy(Text,Length(Text)-3,4)='<br>' do Text := TrimRight(Copy(Text,1,Length(Text)-4));
     end
     else Text := Trim(Text);
-    { an id with nothing yet to show waits for the block that has }
-    if Text='' then begin Buffer := ''; Exit end;
+    { an id with nothing yet to show waits for the block that has; so does
+      a buffer of tags alone, like the <a> before a picture }
+    if (Text='') or ((BlockTag<>'table') and (Trim(HTMLPlainText(Text))='')) then
+    begin
+      Buffer := ''; Targets.Clear;
+      Exit;
+    end;
     B := TInkPageBlock.Create;
+    B.LinkTargets := nil;
+    SetLength(B.LinkTargets,Targets.Count);
+    for K := 0 to Targets.Count-1 do B.LinkTargets[K] := Targets[K];
+    Targets.Clear;
     B.Source := Text; B.Tag := BlockTag; B.CSSClass := BlockClass;
     B.Anchor := PendingAnchor; B.Nest := Nest; B.Pre := BlockTag='pre';
     { an item's marker goes on its first words, not on an anchor before them }
@@ -865,9 +970,15 @@ var
     if Element='br' then Exit('<br>');
     if Element='a' then
     begin
-      if Closing then Exit('</a>');
+      if Closing then
+      begin
+        OpenHref := ''; OpenTarget := '';
+        Exit('</a>');
+      end;
       if Attribute(Raw,'href')='' then Exit;
       Result := StringReplace(HTMLEscape(Attribute(Raw,'href')),'"','&quot;',[rfReplaceAll]);
+      OpenHref := Result; OpenTarget := Attribute(Raw,'target');
+      Targets.Add(OpenTarget);
       Exit('<a href="'+Result+'">');
     end;
     if (Element='code') or (Element='kbd') or (Element='tt') or (Element='samp') then
@@ -929,6 +1040,9 @@ begin
     still reads as code }
   PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
   CodeBack := HTMLShadeColor(PageBack,7);
+  Targets := TStringList.Create;
+  try
+  OpenHref := ''; OpenTarget := '';
   P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := ''; Nest := '';
   PendingAnchor := ''; PendingMarker := ''; TableDepth := 0; SkipDepth := 0; PreDepth := 0;
   SetLength(Containers,0);
@@ -1069,6 +1183,8 @@ begin
     begin
       Flush; B := TInkPageBlock.Create; B.Tag := 'img'; B.Source := Attribute(Raw,'alt');
       B.Nest := Nest;
+      B.ImageSrc := ResolveURL(Attribute(Raw,'src'));
+      B.LinkHref := OpenHref; B.LinkTarget := OpenTarget;
       B.Anchor := PendingAnchor; PendingAnchor := ''; ImageData := TMemoryStream.Create;
       try
         try
@@ -1083,8 +1199,25 @@ begin
           end;
         except on E: Exception do B.Picture.Clear end;
       finally ImageData.Free end;
-      if B.Picture.Graphic=nil then B.Source := '[Image: '+HTMLEscape(B.Source)+']';
-      FBlocks.Add(B); Continue;
+      if B.Picture.Graphic=nil then
+      begin
+        { a picture that did not load is its alt text - still a link }
+        B.Source := '[Image: '+HTMLEscape(B.Source)+']';
+        if B.LinkHref<>'' then
+        begin
+          B.Source := '<a href="'+B.LinkHref+'">'+B.Source+'</a>';
+          SetLength(B.LinkTargets,1); B.LinkTargets[0] := B.LinkTarget;
+          B.LinkHref := '';
+        end;
+      end;
+      FBlocks.Add(B);
+      { the words after the picture are still inside the link }
+      if OpenHref<>'' then
+      begin
+        Buffer := '<a href="'+OpenHref+'">';
+        Targets.Add(OpenTarget);
+      end;
+      Continue;
     end;
     if (Element='p') or (Element='div') or (Element='header') or (Element='footer') or
       (Element='nav') or (Element='figure') or (Element='figcaption') or (Element='li') or
@@ -1117,6 +1250,7 @@ begin
     Buffer := Buffer+InlineTag;
   end;
   Flush;
+  finally Targets.Free end;
   if PendingAnchor<>'' then
   begin
     { ids at the very end still lead somewhere: the end }
@@ -1230,12 +1364,21 @@ end;
 procedure TInkCustomPage.LayoutColumn(out ALeft, AWidth: Integer);
 var MaxWidth: Integer;
 begin
+  if FImageFit=iifWindow then
+  begin
+    { a window for pictures uses all of itself }
+    ALeft := 8;
+    AWidth := Max(40,ClientWidth-FScroll.Width-16);
+    Exit;
+  end;
   MaxWidth := FStyles.Pixels('div','wrap','max-width',820);
   AWidth := Max(40,Min(ClientWidth-FScroll.Width-40,MaxWidth));
   ALeft := Max(20,(ClientWidth-FScroll.Width-AWidth) div 2);
 end;
 function TInkCustomPage.LayoutTop: Integer;
-begin Result := 24 end;
+begin
+  if FImageFit=iifWindow then Result := 8 else Result := 24;
+end;
 procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
 var J,X,K: Integer; BorderSpec: string; Base: Integer;
   function Defaulted(const Prop: string; Fallback: Integer): Integer;
@@ -1289,7 +1432,7 @@ begin
       FStyles.Color('hr',B.CSSClass,'background',MixColor(FBodyText,FPageBack,0.7))));
 end;
 procedure TInkCustomPage.Layout;
-var I,Y,W,BlockLeft,ImageH,TextW,Thick,Start: Integer;
+var I,Y,W,BlockLeft,ImageW,ImageH,ImageX,TextW,Thick,Start: Integer;
   B,Prev: TInkPageBlock; Sz: TSize; O: THTMLOptions;
 begin
   if not FLayoutDirty then Exit;
@@ -1336,11 +1479,20 @@ begin
       Sz.cx := W-B.Indent; Sz.cy := Thick;
       B.Wrapped := '';
     end
-    else if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
+    else if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) and (B.Picture.Height>0) then
     begin
       TextW := W-B.Indent;
-      ImageH := Max(1,Round(B.Picture.Height * Min(TextW,B.Picture.Width)/B.Picture.Width));
-      Sz.cx := Min(TextW,B.Picture.Width); Sz.cy := ImageH;
+      case FImageFit of
+        iifWidth: ImageW := TextW;
+        iifWindow:
+          ImageW := Min(TextW,Round(B.Picture.Width*
+            (Max(1,ClientHeight-2*LayoutTop-B.GapBefore-B.GapAfter-2*B.Padding)/B.Picture.Height)));
+      else
+        ImageW := Min(TextW,B.Picture.Width);
+      end;
+      ImageW := Max(1,ImageW);
+      ImageH := Max(1,Round(B.Picture.Height*ImageW/B.Picture.Width));
+      Sz.cx := ImageW; Sz.cy := ImageH;
       B.Wrapped := '';
     end
     else
@@ -1355,6 +1507,10 @@ begin
     B.Bounds := Rect(BlockLeft+B.Indent,Y,BlockLeft+W,Y+Sz.cy+B.Padding*2);
     B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.Padding,
       B.Bounds.Right-B.Padding,B.Bounds.Bottom-B.Padding);
+    { a picture sits at the block's top; one fitted to the window, centered }
+    ImageX := B.Bounds.Left;
+    if FImageFit=iifWindow then ImageX := B.Bounds.Left+Max(0,(W-B.Indent-Sz.cx) div 2);
+    B.ImageRect := Rect(ImageX,Y,ImageX+Sz.cx,Y+Sz.cy);
     Inc(Y,Sz.cy+B.Padding*2+B.GapAfter);
   end;
   if (Start>0) and (Start>=FBlocks.Count) and (FBlocks.Count>0) then
@@ -1411,7 +1567,7 @@ begin
     if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
     if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
     begin
-      R.Right := R.Left+Min(R.Right-R.Left,B.Picture.Width); Dec(R.Bottom,B.Padding*2);
+      R := B.ImageRect; OffsetRect(R,0,-FScroll.Position);
       ACanvas.StretchDraw(R,B.Picture.Graphic);
       Continue;
     end;
@@ -1455,7 +1611,18 @@ begin
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
-    if not PtInRect(R,Point(X,Y)) or (B.Wrapped='') then Continue;
+    if not PtInRect(R,Point(X,Y)) then Continue;
+    { a picture in a link is the link, all of it }
+    if (B.LinkHref<>'') and (B.Picture.Graphic<>nil) then
+    begin
+      R := B.ImageRect; OffsetRect(R,0,-FScroll.Position);
+      if not PtInRect(R,Point(X,Y)) then Continue;
+      AHit.OnLink := True; AHit.LinkName := B.LinkHref;
+      AHit.LinkText := B.Source; AHit.LinkIndex := 1;
+      ABlock := I;
+      Exit(True);
+    end;
+    if B.Wrapped='' then Continue;
     BlockFont(Canvas,B);
     R := B.TextBounds; OffsetRect(R,0,-FScroll.Position);
     AHit := HTMLHitTest(Canvas,R,B.Wrapped,Options,X,Y);
@@ -1548,12 +1715,23 @@ begin
 end;
 
 procedure TInkCustomPage.ClickAt(X,Y: Integer);
-var B: Integer; Hit: THTMLHitInfo; Href: string;
+var B: Integer; Hit: THTMLHitInfo; Info: TInkLinkInfo; Blk: TInkPageBlock;
 begin
   if CanFocus then SetFocus;
   if not HitTestLink(X,Y,B,Hit) then Exit;
-  Href := LinkHref(Hit);
-  LinkClicked(B,Href,ResolveURL(Href));
+  Blk := TInkPageBlock(FBlocks[B]);
+  Info.Href := LinkHref(Hit);
+  Info.URL := ResolveURL(Info.Href);
+  Info.Block := B;
+  Info.Target := ''; Info.Image := '';
+  if Blk.LinkHref<>'' then
+  begin
+    Info.Target := Blk.LinkTarget;
+    Info.Image := Blk.ImageSrc;
+  end
+  else if (Hit.LinkIndex>=1) and (Hit.LinkIndex<=Length(Blk.LinkTargets)) then
+    Info.Target := Blk.LinkTargets[Hit.LinkIndex-1];
+  LinkClicked(Info);
 end;
 
 procedure TInkCustomPage.StopFlick;
