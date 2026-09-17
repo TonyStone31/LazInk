@@ -107,6 +107,31 @@ on a secondary modal form, taps follow links, and Windows still works.
 The non-hardware logic has tests; the hardware check is written down with
 the machine and distro it was done on.
 
+**Built (16 September 2026); the hardware check is still to do.**
+`inktouch.pas`: `InkHookTouch(Control, Handler)` connects to `touch-event`
+on the control's own GDK window (`GetContainerWidget`) from `CreateWnd`, one
+hook per window, freed with it, first finger only, coordinates converted to
+the control's client area.  `InkHookTouchAsMouse` sends touches on as LCL
+mouse messages, used by `TInkEdit`, `TInkRichEdit` and `TInkScrollBar`.
+`InkMouseIsTouch` reads Windows' pen/touch signature from the current
+message, for P4.  Everything is `{$IFDEF LCLGTK3}` / `{$IFDEF WINDOWS}`; qt5
+and qt6 need nothing, since no LCL widget there accepts raw touch and Qt
+turns fingers into mouse events.  The package's output folder now includes
+`$(LCLWidgetType)`, because this unit is widgetset-specific.
+
+`TInkPage` feeds touches and mouse into the same grab (`GrabBegin` /
+`GrabMove` / `GrabEnd`, same slop and link rules) and remembers whether a
+finger made it (`FGrabFinger`); mouse events within half a second of a
+touch are ignored, in case a platform sends both.  A quick finger drag
+flicks (`FlickScroll`); a mouse drag does not.  `TInkPage.Touch` is public.
+
+Tested: finger drag, tap, cancel, drag ending on a link, flick both ways,
+stopping a flick, and the real GTK path - `gtk_widget_event` with GDK touch
+events made in the test, including a second finger that must be ignored,
+and a tap on the scrollbar.  Not yet done: the check on Tony's wife's Linux
+Mint machine, and a Windows run.  `TInkLabel` is a graphic control with no
+window, so on GTK3 a finger does not reach its links.
+
 ### P2. Copy text out - the quick version
 
 **Problem.**  Tony: "you cannot select text to copy and paste it elsewhere.

@@ -1,13 +1,20 @@
 program RenderTests;
 {$mode objfpc}{$H+}
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType,
-  InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF;
+  {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
+  InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF,
+  InkTouch;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
   List: TInkListBox; Page: TInkPage; CSS: TInkStyleSheet;
   TextOutput: TStringList;
   Files: TStringList; I, Images, Pass: Integer; GIF: TInkGIF; GIFStream: TFileStream;
   Source: TStringList; Tags: string; K, Wanted: Integer;
+procedure Check(OK: Boolean; const MessageText: string);
+begin
+  if not OK then raise Exception.Create(MessageText);
+end;
+
 type
   { the mouse handlers are protected; a test reaches them the way a
     descendant would }
@@ -18,6 +25,9 @@ type
     procedure MoveTo(X, Y: Integer);
     procedure Let(X, Y: Integer);
     procedure LinkHit(Sender: TObject; const URL: string);
+    { a finger, at a time of the test's choosing }
+    procedure Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
+    procedure Coast(Milliseconds: Integer);
   end;
 
 procedure TPageProbe.Press(X, Y: Integer);
@@ -39,6 +49,40 @@ procedure TPageProbe.LinkHit(Sender: TObject; const URL: string);
 begin
   Clicked := URL;
 end;
+
+procedure TPageProbe.Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
+begin
+  TouchAt(Phase, X, Y, Time);
+end;
+
+procedure TPageProbe.Coast(Milliseconds: Integer);
+begin
+  FlickStep(Milliseconds);
+end;
+
+{$IFDEF LCLGTK3}
+{ A touch event made the way GDK makes one, sent to the control's window the
+  way GTK sends it - so the hook in InkTouch is what gets tested. }
+procedure SendTouch(Control: TWinControl; Kind: TGdkEventType; Sequence: Pointer; X, Y: Integer);
+var
+  Event: PGdkEvent;
+  Widget: PGtkWidget;
+  P: TPoint;
+begin
+  Widget := TGtk3Widget(Control.Handle).GetContainerWidget;
+  Event := gdk_event_new(Kind);
+  P := Control.ClientToScreen(Point(X, Y));
+  Event^.touch.window := PGdkWindow(g_object_ref(gtk_widget_get_window(Widget)));
+  Event^.touch.x := X;
+  Event^.touch.y := Y;
+  Event^.touch.x_root := P.X;
+  Event^.touch.y_root := P.Y;
+  Event^.touch.sequence := Sequence;
+  Event^.touch.time := GetTickCount64 and $FFFFFFFF;
+  gtk_widget_event(Widget, Event);
+  gdk_event_free(Event);
+end;
+{$ENDIF}
 
 type
   { the scrollbar's mouse handlers, reached the same way }
@@ -86,6 +130,116 @@ end;
 var Probe: TPageProbe; Tall: string; J: Integer;
   Bar: TBarProbe; TR: TRect; Before: Integer; Shot: TBitmap;
 
+{ --- a finger on the page ---
+  J is set by the mouse tap test before this: a release at (33, J + 3) is
+  on Probe's first line, a link. }
+procedure TouchChecks;
+var K, Before, LinkY: Integer;
+begin
+  LinkY := J;
+  Probe.ScrollTo(0);
+  Probe.Finger(itpBegin, 100, 150, 1000);
+  Probe.Finger(itpMove, 100, 120, 1300);
+  Probe.Finger(itpMove, 100, 50, 1600);
+  Probe.Finger(itpEnd, 100, 50, 1900);
+  Check(Probe.ScrollY = 100, Format('a finger dragged up 100 px scrolls down 100 px (%d)', [Probe.ScrollY]));
+  Check(not Probe.Flicking, 'a slow drag does not coast');
+  { some platforms send a touch again as mouse events; that copy must not
+    move the page a second time }
+  Probe.Press(100, 50); Probe.MoveTo(100, 150); Probe.Let(100, 150);
+  Check(Probe.ScrollY = 100, 'the mouse copy of a touch is ignored');
+
+  Probe.ScrollTo(0);
+  Probe.Clicked := '';
+  Probe.Finger(itpBegin, 30, LinkY, 5000);
+  Probe.Finger(itpMove, 33, LinkY + 3, 5050);
+  Probe.Finger(itpEnd, 33, LinkY + 3, 5100);
+  Check(Probe.Clicked <> '', 'a tap with a finger follows a link');
+  Probe.Clicked := '';
+  Probe.Finger(itpBegin, 30, 180, 5200);
+  Probe.Finger(itpMove, 30, 100, 5500);
+  Probe.Finger(itpEnd, 30, LinkY, 6100);
+  Check(Probe.Clicked = '', 'a finger drag that ends on a link does not follow it');
+  Probe.ScrollTo(0);
+  Probe.Finger(itpBegin, 30, LinkY, 6200);
+  Probe.Finger(itpCancel, 30, LinkY, 6250);
+  Check(Probe.Clicked = '', 'a cancelled touch is not a tap');
+  Probe.Finger(itpMove, 30, LinkY - 100, 6300);
+  Check(Probe.ScrollY = 0, 'nor is anything after it');
+
+  { a flick: 70 px in 60 ms is over a thousand pixels a second }
+  Probe.ScrollTo(0);
+  Probe.Finger(itpBegin, 100, 190, 7000);
+  Probe.Finger(itpMove, 100, 170, 7020);
+  Probe.Finger(itpMove, 100, 140, 7040);
+  Probe.Finger(itpEnd, 100, 120, 7060);
+  Before := Probe.ScrollY;
+  Check(Before = 70, Format('the flick''s own drag (%d)', [Before]));
+  Check(Probe.Flicking, 'a quick flick coasts');
+  Probe.Coast(50);
+  Check(Probe.ScrollY > Before, 'onwards, the way the finger went');
+  K := 0;
+  while Probe.Flicking and (K < 1000) do begin Probe.Coast(16); Inc(K) end;
+  Check(not Probe.Flicking, 'and comes to a stop');
+  Check(Probe.ScrollY > Before + 100, Format('having gone a fair way (%d)', [Probe.ScrollY - Before]));
+  Check(Probe.ScrollY < Probe.ContentHeight - Probe.ClientHeight, 'but not to the end');
+
+  { a flick up the page goes up, and stops at the top }
+  Probe.Finger(itpBegin, 100, 50, 8000);
+  Probe.Finger(itpMove, 100, 150, 8040);
+  Probe.Finger(itpEnd, 100, 180, 8060);
+  Check(Probe.Flicking, 'a flick the other way');
+  K := 0;
+  while Probe.Flicking and (K < 1000) do begin Probe.Coast(16); Inc(K) end;
+  Check(Probe.ScrollY = 0, 'stops at the top');
+
+  { a finger on the page stops it coasting }
+  Probe.Finger(itpBegin, 100, 190, 9000);
+  Probe.Finger(itpEnd, 100, 120, 9050);
+  Check(Probe.Flicking, 'flicking again');
+  Probe.Finger(itpBegin, 100, 100, 9100);
+  Check(not Probe.Flicking, 'a touch catches the page');
+  Probe.Finger(itpEnd, 100, 100, 9150);
+
+  Probe.FlickScroll := False;
+  Probe.Finger(itpBegin, 100, 190, 10000);
+  Probe.Finger(itpEnd, 100, 120, 10050);
+  Check(not Probe.Flicking, 'FlickScroll off: no coasting');
+  Probe.FlickScroll := True;
+
+  { a mouse is a mouse: once the touch is well over, it drags again, and a
+    quick mouse drag does not coast }
+  Sleep(550);
+  Probe.ScrollTo(0);
+  Probe.Press(100, 190); Probe.MoveTo(100, 150); Probe.MoveTo(100, 100); Probe.Let(100, 100);
+  Check(Probe.ScrollY = 90, Format('the mouse drags after a touch (%d)', [Probe.ScrollY]));
+  Check(not Probe.Flicking, 'a mouse drag does not coast');
+
+  {$IFDEF LCLGTK3}
+  { the real thing: GTK touch events, through the hook.  They carry the
+    real time, so flicking is off to keep the page where the drag left it. }
+  Probe.FlickScroll := False;
+  Probe.ScrollTo(0);
+  Application.ProcessMessages;
+  SendTouch(Probe, GDK_TOUCH_BEGIN, Pointer(1), 100, 150);
+  SendTouch(Probe, GDK_TOUCH_UPDATE, Pointer(1), 100, 100);
+  { a second finger is not followed }
+  SendTouch(Probe, GDK_TOUCH_BEGIN, Pointer(2), 200, 150);
+  SendTouch(Probe, GDK_TOUCH_UPDATE, Pointer(2), 200, 0);
+  SendTouch(Probe, GDK_TOUCH_UPDATE, Pointer(1), 100, 50);
+  SendTouch(Probe, GDK_TOUCH_END, Pointer(1), 100, 50);
+  Check(Probe.ScrollY = 100, Format('GTK3 touch events scroll the page (%d)', [Probe.ScrollY]));
+  { and a tap through GTK follows a link }
+  Probe.ScrollTo(0);
+  Probe.Clicked := '';
+  SendTouch(Probe, GDK_TOUCH_BEGIN, Pointer(3), 33, LinkY + 3);
+  SendTouch(Probe, GDK_TOUCH_END, Pointer(3), 33, LinkY + 3);
+  Check(Probe.Clicked <> '', 'a GTK3 tap follows a link');
+  Probe.FlickScroll := True;
+  {$ENDIF}
+  Sleep(550);
+end;
+
 { what the page's scrollbar comes out as, for a given style block }
 procedure StyledBar(const CSSText: string);
 begin
@@ -94,10 +248,6 @@ begin
   Probe.ScrollTo(0);
 end;
 
-procedure Check(OK: Boolean; const MessageText: string);
-begin
-  if not OK then raise Exception.Create(MessageText);
-end;
 
 { Markdown to HTML contains Wanted }
 procedure HasHTML(const MD, Wanted, What: string);
@@ -480,6 +630,7 @@ begin
     Probe.Press(100,150); Probe.MoveTo(100,50); Probe.Let(100,50);
     Check(Probe.ScrollY = 0, 'DragScroll off leaves the page where it is');
     Probe.DragScroll := True;
+    TouchChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;
@@ -579,6 +730,13 @@ begin
     Check(Bar.Position = 0, 'nothing to scroll: stays at the top');
     Bar.Press(9, 150); Bar.Let(9, 150);
     Check(Bar.Position = 0, 'and a click does nothing');
+    {$IFDEF LCLGTK3}
+    { a finger on the bar is a click, through InkHookTouchAsMouse }
+    Bar.SetParams(0, 0, 1000, 200);
+    SendTouch(Bar, GDK_TOUCH_BEGIN, Pointer(4), 9, 190);
+    SendTouch(Bar, GDK_TOUCH_END, Pointer(4), 9, 190);
+    Check(Bar.Position = 200, Format('a tap below the thumb pages down (%d)', [Bar.Position]));
+    {$ENDIF}
     if ParamCount>0 then
     begin
       Files := TStringList.Create; Images := 0; Wanted := 0;

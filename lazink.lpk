@@ -7,7 +7,7 @@
     <CompilerOptions>
       <Version Value="11"/>
       <SearchPaths>
-        <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
+        <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)/$(LCLWidgetType)"/>
       </SearchPaths>
       <Parsing>
         <SyntaxOptions>
@@ -20,6 +20,7 @@
     <Version Major="1"/>
     <Files>
       <Item><Filename Value="inkscrollbar.pas"/><UnitName Value="InkScrollBar"/></Item>
+      <Item><Filename Value="inktouch.pas"/><UnitName Value="InkTouch"/></Item>
       <Item><Filename Value="inkgif.pas"/><UnitName Value="InkGIF"/></Item>
       <Item><Filename Value="inkcss.pas"/><UnitName Value="InkCSS"/></Item>
       <Item><Filename Value="inkpage.pas"/><UnitName Value="InkPage"/></Item>

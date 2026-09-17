@@ -71,6 +71,7 @@ type
     procedure DeleteSelection;
     procedure Changed;
   protected
+    procedure CreateWnd; override;
     procedure Paint; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
@@ -131,10 +132,20 @@ type
 
 implementation
 
+uses
+  InkTouch;
+
 const
   cTextMargin = 4;
 
 { TInkEdit }
+
+procedure TInkEdit.CreateWnd;
+begin
+  inherited CreateWnd;
+  { a finger places the caret and selects, as the mouse does }
+  InkHookTouchAsMouse(Self);
+end;
 
 constructor TInkEdit.Create(AOwner: TComponent);
 begin

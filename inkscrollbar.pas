@@ -13,6 +13,7 @@ type
     procedure SetPosition(AValue: Integer);
     function LastPosition: Integer;
   protected
+    procedure CreateWnd; override;
     procedure Paint; override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X,Y: Integer); override;
@@ -34,7 +35,13 @@ type
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
 implementation
-uses Math, LCLType;
+uses Math, LCLType, InkTouch;
+procedure TInkScrollBar.CreateWnd;
+begin
+  inherited CreateWnd;
+  { a finger drags the thumb as the mouse does }
+  InkHookTouchAsMouse(Self);
+end;
 constructor TInkScrollBar.Create(AOwner: TComponent);
 begin
   inherited; Width := 18; Height := 100; TabStop := True;
