@@ -20,13 +20,28 @@ LazInk reads a document in three layers.  Only the third is being replaced.
 
 | Layer | Where | License | Job |
 |---|---|---|---|
-| Document | `inkpage.pas`, `inkmarkdown.pas`, `inkcss.pas` | MIT, ours | HTML or Markdown, plus CSS, into **blocks**: a paragraph, a heading, a list item, a code block, a picture, a table, a card grid.  Each block is a short string of **LazInk markup**. |
+| Document | `inkpage.pas`, `inkmarkdown.pas`, `inkcss.pas`, `inkcode.pas` | MIT, ours | **All the parsing**: HTML tags and attributes, Markdown, entities, stylesheets, media queries, code coloring - into **blocks**: a paragraph, a heading, a list item, a code block, a picture, a table, a card grid.  Each block is a short string of **LazInk markup**. |
 | Controls | `inklabel.pas`, `inkmemo.pas`, `inklistbox.pas`, `inkpage.pas`, `inkrichedit.pas` | MIT, ours | Where blocks go on screen, scrolling, selection, find, history, clipboard, touch. |
 | **Renderer** | `inkhtml.pas`, `inktables.inc` | **MPL 1.1** | Given a canvas, a rectangle and one string of LazInk markup: **measure it, wrap it, paint it, and say what is under a point.** |
 
 So the new renderer does **not** read HTML, does not read CSS, and does not
 know about documents, scrolling or selection.  It is a canvas text engine
 for one small markup language.  Everything else already belongs to us.
+
+**"Don't we have to write the HTML and Markdown parsing as well?"**  No -
+that is already done and it is already ours.  `inkpage.pas` reads HTML,
+`inkmarkdown.pas` reads Markdown and converts it, `inkcss.pas` reads the
+CSS, `inkcode.pas` colors code, and all four are MIT.  Every feature since
+September 2026 - style attributes, folding `<details>`, tables built from
+CSS, flex and grid, media queries, code coloring - went in there, not in
+the MPL code.
+
+The JVCL-derived code does parse *something*, which is where the confusion
+comes from: it scans the **markup string we hand it** for `<b>`, `<font>`,
+`<a>` and the table tags.  It has never seen a document.  It does not know
+what `<h1>`, `<ul>`, `<blockquote>`, a class, a stylesheet or a fence is;
+by the time a string reaches it, entities are already characters, headings
+are already font sizes, and CSS is already colors and attributes.
 
 That markup language is section 3, and it is the whole contract.
 
@@ -214,6 +229,39 @@ function HTMLShadeColor(AColor: TColor; APercent: Integer): TColor;
 function HTMLIsCJK(const AChar: string): Boolean;
 ```
 
+**Audited on 17 September 2026** - this is every routine and type our code
+actually uses from the MPL unit, with how many call sites each has:
+
+| Used | What |
+|---|---|
+| `HTMLPlainText` (17) | markup to copyable text |
+| `HTMLEscape` (13), `HTMLUnescape` (4) | text to markup and back |
+| `HTMLDrawOpt` (9) | draw |
+| `HTMLTextExtentOpt` (6) | measure |
+| `HTMLStringToColor` (6) | a color name or hex to a `TColor` |
+| `InkOptions` (4), `DefaultHTMLOptions` (2) | build an options record |
+| `HTMLHitTest` (4) | what is under a point |
+| `HTMLShadeColor` (3), `HTMLContrastColor` (2) | theme-aware colors |
+| `HTMLWordWrap` (2) | re-flow markup to a width |
+| `HTMLIsCJK` (1) | may a line break here |
+| `HTMLDrawTextEx3` (1) | `inkpage.pas` line 2839, hit testing that also wants the text's width and height back.  The new engine should answer this with a proper call of its own, and `TJvHTMLCalcType` - a JVCL name - should not survive into it. |
+
+`HTMLTextHeightOpt`, `HTMLPrepareText`, `HTMLDrawText`, `HTMLDrawTextHL`,
+`HTMLTextExtent`, `HTMLTextWidth`, `HTMLTextHeight`, `HTMLDrawTextEx` and
+`HTMLDrawTextEx2` are **not called by LazInk at all** - they are JVCL's old
+entry points, and the new engine need not have them.
+
+**Types that come with it.**  These live in the MPL unit today and are
+**published properties on our MIT controls**: `TInkBorders` and
+`TInkLinkStyle` (both `TPersistent`, on `TInkLabel`, `TInkMemo`,
+`TInkListBox`), `TInkVertAlign`, `TInkHorzAlign`, `THTMLOptions`,
+`THTMLHitInfo` and `THTMLRunEvent`.  They are LazInk's own additions, not
+JVCL's - the `Ink` prefix is the clue - so **moving them into a small MIT
+unit of their own is worth doing before the engine is written**: it is a
+mechanical change, it can be done any day, and it means the switch-over does
+not have to move published properties at the same time as everything else.
+Check each one's history before relicensing it, as with every other file.
+
 Notes that are part of the contract:
 
 * **`THTMLOptions`** carries: `SuperSubScriptRatio` (how much smaller a
@@ -242,6 +290,21 @@ Notes that are part of the contract:
 * **`HTMLStringToColor`** must be written fresh - the old one is JVCL's line
   for line.  It takes `#rgb`, `#rrggbb`, `clXxx` names, and plain color
   names, and returns `ADefColor` for anything else.
+* **The ampersand marker.**  Between preparing text and drawing it, the old
+  engine parks a literal ampersand as `#1` so that `&amp;lt;` comes back as
+  the text `&lt;` rather than being unescaped twice, and turns it back into
+  `&` at draw time.  It leaks: a href reported by `HTMLHitTest` can still
+  carry the marker, and `inkpage.pas`'s `LinkHref` (line 509) strips it.  A
+  new engine may keep the convention or drop it, but **whichever it does,
+  `LinkHref` changes with it** - and the hrefs the controls see must end up
+  with a real ampersand either way.
+* **`TOwnerDrawState`** is not decoration: `TInkListBox` passes the real
+  owner-draw state (every other control passes `[]`).  `odSelected` or
+  `odDisabled` means draw the text in the selection colors rather than the
+  markup's own; `odDisabled` also draws `<hr>` in the font color; and
+  `odReserved1` means an `<ind=N>` indent is scaled by `Scale` like
+  everything else.  Keep those three, or change the list box with the
+  engine.
 
 ---
 
@@ -354,7 +417,19 @@ What is still open, with what each would cost:
    pixel or two, link ordinals and hit tests exactly.
 3. `tests/run.sh` must pass against the new engine with no test rewritten to
    suit it.  A test that has to change is a behavior change, and needs to be
-   argued for here first.
+   argued for here first.  What covers what, in `tests/render_tests.pas`:
+
+   | Test | What it pins down |
+   |---|---|
+   | `MarkdownChecks`, `MarkdownPageChecks` | the markup the document layer emits - in other words, everything the engine must accept |
+   | `SelectionChecks` | `OnRun` reporting, run rectangles, hit testing, what a selection copies |
+   | `NavigationChecks`, `FindChecks` | link ordinals, hrefs, `HTMLPlainText` |
+   | `CardTableChecks`, `NarrowChecks` | table attributes, column widths, cells as blocks, wrapping at a width |
+   | `PictureChecks` | pictures and their links, extents |
+   | `TagChecks`, `CodeChecks` | `<font>`, `<b>`, `<i>`, `<u>`, `<s>`, `<center>`, `<right>`, and that markup round-trips back to text |
+   | `ListEditChecks`, `ListCopyChecks` | the owner-draw path and `TOwnerDrawState` |
+   | `TouchChecks`, `IconChecks` | nothing to do with the engine; they must keep passing anyway |
+   | the help-page run (`tests/run.sh pages.txt results/`) | 38 real pages: every visible text fragment must survive, at three widths |
 4. Then delete `inkhtml.pas` and `inktables.inc`, check the provenance of
    every remaining file (ROADMAP section 4, step 3), and change the license.
 5. Keep `docs/RENDERER_CHANGES.md` as the record of the old engine, and keep
