@@ -34,6 +34,39 @@ on the current item (except with `emNone`), `OnBeforeEdit` can refuse, and
 the item's markup or its plain text; `Editing` and `CancelEdit` do what they
 say.
 
+### Which one?
+
+Two questions decide it: **who writes the text**, and **what shape it is**.
+
+| You want to show... | Who writes it | Use |
+|---|---|---|
+| a caption, a status, one formatted sentence | the program | `TInkLabel` |
+| one line the user types, colored as they type | the user | `TInkEdit` |
+| a growing stream of separate lines - a log, a chat, a history of events | the program, a line at a time | `TInkMemo` |
+| a whole document - a help page, release notes, a README - with headings, lists, code, pictures and links to other pages | an author, ahead of time | `TInkPage` |
+| a list of things to pick from, and maybe rename in place | the program, and the user edits single items | `TInkListBox` |
+| formatted text the user writes, with a caret and bold/italic/color buttons | the user | `TInkRichEdit` |
+
+The ones that are easy to mix up:
+
+* **`TInkMemo` or `TInkPage`?** Both are scrolling, read-only and selectable,
+  and share one engine. A memo is made of **lines you add** with `Append` -
+  each line is small inline markup, lines never merge into lists or tables,
+  there is no stylesheet, and the view follows new lines as they arrive. A
+  page is **one document you load** - it is laid out as a whole, with
+  headings, nested lists, code blocks, CSS and navigation between pages.
+  If you would call `Append`, it is a memo; if you would call
+  `LoadFromFile`, it is a page.
+* **`TInkMemo` or `TInkRichEdit`?** The memo is what the **program** says;
+  the user can read, select and copy it but not change it. The rich editor is
+  what the **user** writes: a caret, typing, formatting buttons, undo, and
+  markup coming out of `Markup` at the end.
+* **`TInkMemo` or `TInkListBox`?** In a list box a line is a **thing**: it is
+  selected as a whole, it has an index, it can be edited in place, and the
+  program reacts to which one is chosen. In a memo a line is **text**: you
+  select words across lines and copy them, and nothing happens when you click
+  one, apart from its links.
+
 `TInkLabel`, `TInkMemo` and `TInkListBox` also share: an `Images` list for
 `<img src="n">`, `Borders` and `LineSpacing`, a `LinkStyle` / `LinkHoverStyle`
 pair so links light up under the mouse, `AutoOpenLink`, and the full set of link
