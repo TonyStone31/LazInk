@@ -142,6 +142,7 @@ type
     procedure RestartCaretBlink;
     procedure CMWantSpecialKey(var Message: TCMWantSpecialKey); message CM_WANTSPECIALKEY;
   protected
+    procedure CreateWnd; override;
     procedure Paint; override;
     procedure Resize; override;
     procedure FontChanged(Sender: TObject); override;
@@ -250,7 +251,7 @@ function SameInkAttr(const A, B: TInkAttr): Boolean;
 implementation
 
 uses
-  InkHtml;
+  InkHtml, InkTouch;
 
 const
   cMargin = 3;
@@ -307,6 +308,13 @@ begin
 end;
 
 { TInkRichEdit }
+
+procedure TInkRichEdit.CreateWnd;
+begin
+  inherited CreateWnd;
+  { a finger places the caret and selects, as the mouse does }
+  InkHookTouchAsMouse(Self);
+end;
 
 constructor TInkRichEdit.Create(AOwner: TComponent);
 begin

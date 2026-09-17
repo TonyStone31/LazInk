@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar, InkTouch;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Applications may supply remote/cached content here. Return True on success. }
@@ -54,11 +54,28 @@ type
     FContentHeight, FColumnLeft: Integer;
     FOnLinkClick: TInkPageLinkEvent;
     FOnResource: TInkPageResourceEvent;
-    { dragging the page, which is how a finger scrolls: on Windows a touch
-      screen delivers a finger as a mouse press, moves and a release, and a
-      page with only a wheel and a scrollbar cannot be moved by one }
-    FDragScroll, FGrab, FDragged: Boolean;
+    { dragging the page, which is how a finger scrolls.  A finger arrives as
+      a touch (GTK3, through InkTouch) or as mouse events (everywhere else);
+      both end up in the Grab* methods, and FGrabFinger remembers which it
+      was, so a finger and a mouse can be told apart. }
+    FDragScroll, FGrab, FDragged, FGrabFinger: Boolean;
     FGrabY, FGrabAt: Integer;
+    FLastTouchEnd: QWord;
+    { a flick: the page coasts on after a quick drag and slows down }
+    FFlickScroll: Boolean;
+    FFlickTimer: TTimer;
+    FVelocity: Double;
+    FFlickLast: QWord;
+    FSampleY: array[0..15] of Integer;
+    FSampleTime: array[0..15] of QWord;
+    FSampleCount: Integer;
+    procedure GrabBegin(X,Y: Integer; Finger: Boolean; Time: QWord);
+    procedure GrabMove(X,Y: Integer; Time: QWord);
+    procedure GrabEnd(X,Y: Integer; Time: QWord);
+    procedure Click(X,Y: Integer);
+    procedure StopFlick;
+    procedure FlickTimer(Sender: TObject);
+    function GetFlicking: Boolean;
     function GetScrollY: Integer;
     function GetStyleSheet: TStrings;
     procedure SetStyleSheet(AValue: TStrings);
@@ -78,6 +95,11 @@ type
     function Options: THTMLOptions;
     procedure BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
   protected
+    procedure CreateWnd; override;
+    { a finger at client X, Y; Time in milliseconds, as GetTickCount64 }
+    procedure TouchAt(Phase: TInkTouchPhase; X,Y: Integer; Time: QWord); virtual;
+    { moves a flick on by Milliseconds and slows it down }
+    procedure FlickStep(Milliseconds: Integer);
     procedure Paint; override;
     procedure Resize; override;
     procedure FontChanged(Sender: TObject); override;
@@ -105,6 +127,12 @@ type
     procedure Forward;
     procedure ScrollTo(Y: Integer);
     procedure JumpToAnchor(const Anchor: string);
+    { A finger on the page, in client coordinates.  The page hooks the
+      platform's touches itself where it has to (GTK3); a program with a
+      touch source of its own can feed it here. }
+    procedure Touch(Phase: TInkTouchPhase; X,Y: Integer);
+    { whether the page is still coasting after a flick }
+    property Flicking: Boolean read GetFlicking;
     function ResolveURL(const Reference: string): string;
     property Location: string read FLocation;
     { the page's <title>, or its first heading when it has none }
@@ -133,6 +161,8 @@ type
     { drag the page with the left button - or a finger - to scroll it; a
       press that moves less than a few pixels is still a click }
     property DragScroll: Boolean read FDragScroll write FDragScroll default True;
+    { a quick drag with a finger leaves the page coasting, slowing down }
+    property FlickScroll: Boolean read FFlickScroll write FFlickScroll default True;
     property Align; property Anchors; property Color; property Font;
     property ParentFont; property TabStop; property TabOrder; property Visible;
   end;
@@ -344,12 +374,14 @@ begin
   FScroll.Align := alRight; FScroll.Width := 18;
   FScroll.OnChange := @ScrollChanged; FLayoutDirty := True;
   FTimer := TTimer.Create(Self); FTimer.Interval := 20; FTimer.OnTimer := @Animate;
-  FDragScroll := True;
+  FDragScroll := True; FFlickScroll := True;
+  FFlickTimer := TTimer.Create(Self); FFlickTimer.Enabled := False;
+  FFlickTimer.Interval := 16; FFlickTimer.OnTimer := @FlickTimer;
   Color := clWindow; Font.Color := clWindowText; Font.Size := 11;
 end;
 destructor TInkPage.Destroy;
 begin
-  FTimer.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free;
+  FTimer.Enabled := False; FFlickTimer.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   inherited;
 end;
@@ -1111,44 +1143,170 @@ begin
   Result := FScroll.Position;
 end;
 
-procedure TInkPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
+procedure TInkPage.CreateWnd;
 begin
-  inherited;
-  if (Button<>mbLeft) or not FDragScroll then Exit;
-  FGrab := True; FDragged := False; FGrabY := Y; FGrabAt := FScroll.Position;
+  inherited CreateWnd;
+  InkHookTouch(Self,@Touch);
 end;
 
-procedure TInkPage.MouseMove(Shift: TShiftState; X,Y: Integer);
 const
   { A press that wanders less than this is still a click.  Wider than a
     mouse needs, because a fingertip rolls a little as it taps, and a tap on
     a link that scrolled the page by three pixels instead would read as the
     link being dead. }
   SLOP = 8;
+  { how far back a flick's speed is measured from the moment it lets go }
+  FLICK_WINDOW = 100;
+  { pixels a second: slower than this is a drag that stopped, not a flick }
+  FLICK_MIN = 150;
+  FLICK_MAX = 8000;
+  { what is left of the speed after a second of coasting }
+  FLICK_FRICTION = 0.05;
+
+procedure TInkPage.GrabBegin(X,Y: Integer; Finger: Boolean; Time: QWord);
 begin
-  inherited;
-  if FGrab and (FDragged or (Abs(Y-FGrabY)>SLOP)) then
+  StopFlick;
+  FGrab := True; FDragged := False; FGrabFinger := Finger;
+  FGrabY := Y; FGrabAt := FScroll.Position;
+  FSampleCount := 0;
+  GrabMove(X,Y,Time);
+end;
+
+procedure TInkPage.GrabMove(X,Y: Integer; Time: QWord);
+var K: Integer;
+begin
+  if not FGrab then Exit;
+  if FSampleCount=Length(FSampleY) then
+  begin
+    for K := 1 to High(FSampleY) do
+    begin FSampleY[K-1] := FSampleY[K]; FSampleTime[K-1] := FSampleTime[K] end;
+    Dec(FSampleCount);
+  end;
+  FSampleY[FSampleCount] := Y; FSampleTime[FSampleCount] := Time; Inc(FSampleCount);
+  if not FDragScroll then Exit;
+  if FDragged or (Abs(Y-FGrabY)>SLOP) then
   begin
     { the page follows the finger: drag down and the words come down }
     FDragged := True;
     FScroll.Position := EnsureRange(FGrabAt-(Y-FGrabY),0,Max(0,FContentHeight-ClientHeight));
-    Exit;
+  end;
+end;
+
+procedure TInkPage.GrabEnd(X,Y: Integer; Time: QWord);
+var WasDrag: Boolean; K: Integer; DT: Int64;
+begin
+  if not FGrab then Exit;
+  GrabMove(X,Y,Time);
+  WasDrag := FDragged; FGrab := False; FDragged := False;
+  if not WasDrag then begin Click(X,Y); Exit end;
+  { a drag that happened to end over a link was a scroll, not a click; a
+    quick one with a finger carries on }
+  if not (FGrabFinger and FFlickScroll) then Exit;
+  K := FSampleCount-1;
+  while (K>0) and (Time-FSampleTime[K-1]<=FLICK_WINDOW) do Dec(K);
+  DT := Int64(Time)-Int64(FSampleTime[K]);
+  if (DT<=0) or (K>=FSampleCount-1) then Exit;
+  FVelocity := (FSampleY[K]-Y)*1000/DT;
+  if Abs(FVelocity)<FLICK_MIN then begin FVelocity := 0; Exit end;
+  FVelocity := EnsureRange(FVelocity,-FLICK_MAX,FLICK_MAX);
+  FFlickLast := GetTickCount64;
+  FFlickTimer.Enabled := True;
+end;
+
+procedure TInkPage.Click(X,Y: Integer);
+var URL: string;
+begin
+  if CanFocus then SetFocus;
+  URL := HitLink(X,Y); if URL='' then Exit;
+  if Assigned(FOnLinkClick) then FOnLinkClick(Self,URL) else LoadFromURL(URL);
+end;
+
+procedure TInkPage.StopFlick;
+begin
+  FVelocity := 0;
+  FFlickTimer.Enabled := False;
+end;
+
+function TInkPage.GetFlicking: Boolean;
+begin
+  Result := FVelocity<>0;
+end;
+
+procedure TInkPage.FlickStep(Milliseconds: Integer);
+var Last, Next: Integer;
+begin
+  if FVelocity=0 then Exit;
+  Last := Max(0,FContentHeight-ClientHeight);
+  Next := EnsureRange(FScroll.Position+Round(FVelocity*Milliseconds/1000),0,Last);
+  FScroll.Position := Next;
+  FVelocity := FVelocity*Power(FLICK_FRICTION,Milliseconds/1000);
+  { it stops when it has slowed right down, or reached an end }
+  if (Abs(FVelocity)<20) or ((Next=0) and (FVelocity<0)) or ((Next=Last) and (FVelocity>0)) then
+    StopFlick;
+end;
+
+procedure TInkPage.FlickTimer(Sender: TObject);
+var Now_: QWord;
+begin
+  Now_ := GetTickCount64;
+  FlickStep(Min(100,Integer(Now_-FFlickLast)));
+  FFlickLast := Now_;
+end;
+
+procedure TInkPage.Touch(Phase: TInkTouchPhase; X,Y: Integer);
+begin
+  TouchAt(Phase,X,Y,GetTickCount64);
+end;
+
+procedure TInkPage.TouchAt(Phase: TInkTouchPhase; X,Y: Integer; Time: QWord);
+begin
+  case Phase of
+    itpBegin: GrabBegin(X,Y,True,Time);
+    itpMove: if FGrabFinger then GrabMove(X,Y,Time);
+    itpEnd:
+      if FGrab and FGrabFinger then
+      begin
+        GrabEnd(X,Y,Time);
+        FLastTouchEnd := GetTickCount64;
+      end;
+    itpCancel:
+      if FGrabFinger then
+      begin
+        FGrab := False; FDragged := False;
+        FLastTouchEnd := GetTickCount64;
+      end;
+  end;
+end;
+
+procedure TInkPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
+begin
+  inherited;
+  StopFlick;
+  if Button<>mbLeft then Exit;
+  { a platform that sends a copy of a touch as mouse events as well must not
+    move the page twice }
+  if (FGrab and FGrabFinger) or (GetTickCount64-FLastTouchEnd<500) then Exit;
+  GrabBegin(X,Y,InkMouseIsTouch,GetTickCount64);
+end;
+
+procedure TInkPage.MouseMove(Shift: TShiftState; X,Y: Integer);
+begin
+  inherited;
+  if FGrab then
+  begin
+    if not FGrabFinger or InkMouseIsTouch then GrabMove(X,Y,GetTickCount64);
+    if FDragged then Exit;
   end;
   FHoverLink := HitLink(X,Y);
   if FHoverLink<>'' then Cursor := crHandPoint else Cursor := crDefault;
 end;
 
 procedure TInkPage.MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
-var URL: string; WasDrag: Boolean;
 begin
   inherited;
   if Button<>mbLeft then Exit;
-  WasDrag := FDragged; FGrab := False; FDragged := False;
-  SetFocus;
-  { a drag that happened to end over a link was a scroll, not a click }
-  if WasDrag then Exit;
-  URL := HitLink(X,Y); if URL='' then Exit;
-  if Assigned(FOnLinkClick) then FOnLinkClick(Self,URL) else LoadFromURL(URL);
+  if FGrab and FGrabFinger and not InkMouseIsTouch then Exit;
+  GrabEnd(X,Y,GetTickCount64);
 end;
 
 function TInkPage.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;

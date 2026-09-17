@@ -133,10 +133,23 @@ that and the text colour, so a dark page gets a dark bar with no CSS at all.
 `InkPage1.ScrollBar` reaches it from code.
 
 **Touch screens:** drag the page with a finger (or the left mouse button) to
-scroll it - on Windows a finger arrives as a mouse press, moves and a release,
-and a touch screen has no wheel.  A tap that wobbles a few pixels is still a
-click, and a drag that ends on a link does not follow it.  `DragScroll := False`
-turns it off.  `ScrollY` reads where the page is.
+scroll it; a quick flick leaves it coasting (`FlickScroll`).  A tap that
+wobbles a few pixels is still a click, and a drag that ends on a link does not
+follow it.  `DragScroll := False` turns dragging off.  `ScrollY` reads where
+the page is.
+
+Most platforms hand a finger to a program as mouse events, and there nothing
+more is needed. GTK3 does not: the Lazarus GTK3 backend asks for raw touch
+events and ignores them, and GDK then stops turning fingers into mouse events.
+The `InkTouch` unit hooks those touch events on each control's own window -
+`TInkPage` follows the finger itself, and `TInkEdit`, `TInkRichEdit` and the
+page's scrollbar take a finger as the left mouse button - so a program does
+nothing, and any number of controls on any number of forms can be touched.
+`InkHookTouch` and `InkHookTouchAsMouse` are there for your own controls, and
+`TInkPage.Touch` takes touches from a source of your own.  Only the first
+finger is followed. `TInkLabel` has no window of its own, so on GTK3 a finger
+does not reach it. The GTK3 path is tested with GDK touch events made by the
+test suite; it has not yet been run on a touch screen.
 
 Try the demo's **HTML help pages** tab, or pass an HTML filename on its command
 line. Keep the help folder's relative image and stylesheet paths intact.

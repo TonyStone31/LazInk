@@ -8,7 +8,7 @@ unit LazInk;
 interface
 
 uses
-  InkScrollBar, InkGIF, InkCSS, InkPage, InkMarkdown, InkHtml, InkLabel, 
+  InkScrollBar, InkTouch, InkGIF, InkCSS, InkPage, InkMarkdown, InkHtml, InkLabel, 
   InkEdit, InkMemo, InkListBox, InkRichEdit, LazInkReg, LazarusPackageIntf;
 
 implementation
