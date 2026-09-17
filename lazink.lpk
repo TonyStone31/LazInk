@@ -24,6 +24,7 @@
       <Item><Filename Value="inkcopymenu.pas"/><UnitName Value="InkCopyMenu"/></Item>
       <Item><Filename Value="inkgif.pas"/><UnitName Value="InkGIF"/></Item>
       <Item><Filename Value="inkcss.pas"/><UnitName Value="InkCSS"/></Item>
+      <Item><Filename Value="inkcode.pas"/><UnitName Value="InkCode"/></Item>
       <Item><Filename Value="inkpage.pas"/><UnitName Value="InkPage"/></Item>
       <Item>
         <Filename Value="inkmarkdown.pas"/>
