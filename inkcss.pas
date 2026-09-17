@@ -74,13 +74,31 @@ begin
   end;
 end;
 function TInkStyleSheet.Resolve(const S: string): string;
-var I: Integer;
+var I,P,Q,Depth,Comma: Integer; Expr,Replacement: string;
 begin
   Result := Trim(S);
-  for I := 1 to 8 do
-    if (Copy(Result,1,4)='var(') and (Result[Length(Result)]=')') then
-      Result := FVars.Values[Trim(Copy(Result,5,Length(Result)-5))]
-    else Break;
+  for I := 1 to 32 do
+  begin
+    P := Pos('var(',Result); if P=0 then Exit;
+    Q := P+4; Depth := 1;
+    while (Q<=Length(Result)) and (Depth>0) do
+    begin
+      if Result[Q]='(' then Inc(Depth) else if Result[Q]=')' then Dec(Depth);
+      Inc(Q);
+    end;
+    if Depth<>0 then Exit('');
+    Expr := Copy(Result,P+4,Q-P-5); Comma := Pos(',',Expr);
+    if Comma>0 then
+    begin
+      Replacement := FVars.Values[LowerCase(Trim(Copy(Expr,1,Comma-1)))];
+      if Replacement='' then Replacement := Trim(Copy(Expr,Comma+1,MaxInt));
+    end
+    else Replacement := FVars.Values[LowerCase(Trim(Expr))];
+    if Replacement='' then Exit('');
+    Delete(Result,P,Q-P); Insert(Replacement,Result,P);
+  end;
+  { Cyclic custom properties invalidate the value, rather than looping. }
+  if Pos('var(',Result)>0 then Result := '';
 end;
 function TInkStyleSheet.Value(const Tag, Classes, Prop, Fallback: string): string;
 var I,P,Score,Best: Integer; Sel,T,C,V: string;
@@ -89,13 +107,21 @@ begin
   for I := 0 to FRules.Count-1 do
   begin
     Sel := FRules[I]; Score := 0;
+    if Sel=':root' then
+    begin
+      if Tag<>'html' then Continue;
+      Sel := 'html'; Score := 10;
+    end;
     if (Pos(' ',Sel)>0) or (Pos(':',Sel)>0) or (Pos('>',Sel)>0) then Continue;
     P := Pos('.',Sel); T := Sel; C := '';
     if P>0 then begin T := Copy(Sel,1,P-1); C := Copy(Sel,P+1,MaxInt); Inc(Score,10) end;
     if (T<>'') and (T<>'*') then begin if T<>Tag then Continue; Inc(Score) end;
     if (C<>'') and (Pos(' '+C+' ',' '+Classes+' ')=0) then Continue;
     V := TStringList(FRules.Objects[I]).Values[Prop];
-    if (V<>'') and (Score>=Best) then begin Result := Resolve(V); Best := Score end;
+    { a value whose var() cannot be resolved is invalid, and an invalid
+      declaration is dropped - it does not wipe out one that was valid }
+    if V<>'' then V := Resolve(V);
+    if (V<>'') and (Score>=Best) then begin Result := V; Best := Score end;
   end;
 end;
 function TInkStyleSheet.Color(const Tag, Classes, Prop: string; Fallback: TColor): TColor;

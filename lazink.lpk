@@ -19,6 +19,7 @@
     <License Value="Independent component code: MIT. Renderer inkhtml.pas and inktables.inc: MPL 1.1. See LICENSE and THIRD_PARTY_NOTICES.md."/>
     <Version Major="1"/>
     <Files>
+      <Item><Filename Value="inkscrollbar.pas"/><UnitName Value="InkScrollBar"/></Item>
       <Item><Filename Value="inkgif.pas"/><UnitName Value="InkGIF"/></Item>
       <Item><Filename Value="inkcss.pas"/><UnitName Value="InkCSS"/></Item>
       <Item><Filename Value="inkpage.pas"/><UnitName Value="InkPage"/></Item>
