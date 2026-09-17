@@ -2,7 +2,7 @@ program RenderTests;
 {$mode objfpc}{$H+}
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
-  InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF,
+  InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
@@ -74,6 +74,7 @@ type
     procedure MoveTo(X, Y: Integer);
     procedure Let(X, Y: Integer);
     procedure LinkHit(Sender: TObject; const URL: string);
+    procedure Highlight(Sender: TObject; const ACode, ALanguage: string; var AMarkup: string);
     { a finger, at a time of the test's choosing }
     procedure Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
     procedure Coast(Milliseconds: Integer);
@@ -143,6 +144,14 @@ end;
 procedure TPageProbe.LinkHit(Sender: TObject; const URL: string);
 begin
   Clicked := URL;
+end;
+
+procedure TPageProbe.Highlight(Sender: TObject; const ACode, ALanguage: string;
+  var AMarkup: string);
+begin
+  { a host with its own highlighter - SynEdit's, one day - answers like this }
+  Clicked := ALanguage;
+  AMarkup := '<font color="#123456">' + HTMLEscape(ACode) + '</font>';
 end;
 
 procedure TPageProbe.Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
@@ -1162,6 +1171,131 @@ begin
   Probe.SetBounds(0, 0, 400, 200);
 end;
 
+{ --- coloring code blocks --- }
+procedure CodeChecks;
+const
+  Pas =
+    '```pascal'#10 +
+    'procedure Go;'#10 +
+    'begin'#10 +
+    '  { a comment }'#10 +
+    '  S := ''text'';'#10 +
+    '  N := 42;'#10 +
+    'end;'#10 +
+    '```'#10;
+  Bare =
+    '```'#10 +
+    'function f(n) {'#10 +
+    '  // a line comment'#10 +
+    '  if (n > 7) return "big";'#10 +
+    '}'#10 +
+    '```'#10;
+var
+  Colors: TInkCodeColors; Markup, Code: string; I, Block: Integer;
+
+  function Lower(const S: string): string;
+  begin
+    Result := LowerCase(S);
+  end;
+
+  { the first <pre> block of the page }
+  function CodeBlock: Integer;
+  var K: Integer;
+  begin
+    Result := -1;
+    for K := 0 to Probe.BlockCount - 1 do
+      if Probe.Block(K).Tag = 'pre' then Exit(K);
+  end;
+
+begin
+  { --- the highlighter on its own --- }
+  Check(InkCodeLanguage('language-Pascal') = 'pascal', 'a class names the language');
+  Check(InkCodeLanguage('PY') = 'python', 'and so does a short name');
+  Check(InkCodeLanguage('pascal {.numberLines}') = 'pascal', 'a fence may say more than the language');
+  Check(InkCodeLanguage('') = '', 'nothing said is nothing');
+  Check(InkCodeKnown('pascal') and InkCodeKnown('go'), 'languages we have rules for');
+  Check(not InkCodeKnown(''), 'a block that names none is colored by the common rules');
+
+  Colors := InkCodeColors(clWhite);
+  Check(Colors.Comment <> Colors.Keyword, 'the colors differ from each other');
+  Check(InkCodeColors(clBlack).Comment <> Colors.Comment, 'and a dark page gets its own set');
+
+  Markup := Lower(InkHighlight('procedure Go; { why } S := ''text''; N := 42;' + #10 +
+    'Total := Total + 1;', 'pascal', Colors));
+  Check(Pos('<font color="' + Lower(ColorToString(Colors.Keyword)) + '">', Markup) = 0,
+    'colors are written as hex, not as names');
+  Check(Pos('>procedure</font>', Markup) > 0, 'a keyword is colored');
+  Check(Pos('>begin</font>', Markup) = 0, 'a word that is not there is not');
+  Check(Pos('>{ why }</font>', Markup) > 0, 'a Pascal comment in braces');
+  Check(Pos('>''text''</font>', Markup) > 0, 'a string in its quotes');
+  Check(Pos('>42</font>', Markup) > 0, 'a number');
+  Check(Pos('<br>', Markup) > 0, 'a line break stays a line break');
+  Check(Pos('go;', Markup) > 0, 'and everything else is left as it was');
+
+  { a comment runs to the end of its line, and a string does not swallow the line }
+  Markup := InkHighlight('x = 1; // set it' + #10 + 'y = 2;', 'c', Colors);
+  Check(Pos('>// set it</font>', Markup) > 0, 'a line comment stops at the line');
+  Check(Pos('>2</font>', Markup) > 0, 'the next line is code again');
+
+  { a block that says nothing still gets the words most languages share }
+  Markup := InkHighlight('if (n > 7) begin end // done', '', Colors);
+  Check(Pos('>if</font>', Markup) > 0, 'a common keyword is colored without a language');
+  Check(Pos('>begin</font>', Markup) > 0, 'begin counts as one of those');
+  Check(Pos('>// done</font>', Markup) > 0, 'and // is a comment everywhere');
+
+  { prose is not code }
+  Markup := InkHighlight('It is 42 degrees, and "quoted" text.', 'markdown', Colors);
+  Check(Pos('<font', Markup) = 0, 'a Markdown block is left alone');
+
+  { --- and through a page --- }
+  Probe.SetBounds(0, 0, 500, 400);
+  Probe.HighlightCode := True;
+  Probe.LoadMarkdown(Pas);
+  Block := CodeBlock;
+  Check(Block >= 0, 'the fence made a code block');
+  Check(Probe.Block(Block).CodeLanguage = 'pascal', 'which kept its language');
+  Check(Pos('<font color=', Probe.Block(Block).Source) > 0, 'and was colored');
+  Code := Probe.BlockText(Block);
+  Check(Pos('procedure Go;', Code) > 0, 'the code copies out as it was written');
+  Check(Pos('{ a comment }', Code) > 0, 'comment and all');
+  Check(Pos('<font', Code) = 0, 'with no markup in it');
+  Check(Probe.Block(Block).Code = Code, 'and the block keeps the same text');
+
+  Probe.HighlightCode := False;
+  Block := CodeBlock;
+  Check(Pos('<font color=', Probe.Block(Block).Source) = 0, 'HighlightCode off leaves it plain');
+  Check(Pos('procedure Go;', Probe.BlockText(Block)) > 0, 'and the code is still all there');
+  Probe.HighlightCode := True;
+
+  { a block with no language is colored by the common rules }
+  Probe.LoadMarkdown(Bare);
+  Block := CodeBlock;
+  Check(Probe.Block(Block).CodeLanguage = '', 'the fence named no language');
+  Check(Pos('<font color=', Probe.Block(Block).Source) > 0, 'it is colored anyway');
+
+  { a page that colored its own code keeps its colors }
+  Probe.LoadHTML('<html><body><pre><code class="language-pascal">' +
+    '<span style="color: #ff00ff">begin</span> end;</code></pre></body></html>');
+  Block := CodeBlock;
+  Check(Pos('#FF00FF', UpperCase(Probe.Block(Block).Source)) > 0, 'the page''s own coloring is kept');
+  I := 0; Code := Probe.Block(Block).Source;
+  while Pos('<font color=', Code) > 0 do
+  begin
+    Inc(I); Delete(Code, 1, Pos('<font color=', Code) + 11);
+  end;
+  Check(I = 1, Format('and ours is not painted over the top of it (%d font tags)', [I]));
+
+  { a host highlighter answers first }
+  Probe.OnHighlightCode := @Probe.Highlight;
+  Probe.Clicked := '';
+  Probe.LoadMarkdown(Pas);
+  Block := CodeBlock;
+  Check(Probe.Clicked = 'pascal', 'the host is told which language it is');
+  Check(Pos('#123456', Probe.Block(Block).Source) > 0, 'and its markup is what gets drawn');
+  Probe.OnHighlightCode := nil;
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 { --- find in page --- }
 procedure FindChecks;
 var Current, Total, K: Integer; Key: Word; Doc: string;
@@ -1744,6 +1878,7 @@ begin
     CardTableChecks;
     NarrowChecks;
     TagChecks;
+    CodeChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }

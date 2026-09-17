@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkHtml, InkMarkdown, InkCSS, InkCode, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Everything about a clicked link. }
@@ -47,9 +47,20 @@ type
     FontStyle: TFontStyles;
     FontColor: TColor;
   end;
+  { A code block, for a host that would rather color it itself - SynEdit's
+    highlighters, say.  ACode is the code as plain text and ALanguage what
+    the fence or the class said (lower case, '' when nothing did).  Answer
+    with LazInk markup in AMarkup - escaped text with <font color="...">
+    round it - and the page draws that instead of its own coloring; leave
+    AMarkup empty and the page colors the block itself. }
+  TInkHighlightEvent = procedure(Sender: TObject; const ACode, ALanguage: string;
+    var AMarkup: string) of object;
   TInkPageBlock = class
   public
     Source, Wrapped, Tag, CSSClass: string;
+    { a code block: the code as plain text, and the language the fence or
+      the class named ('' when it named none) }
+    Code, CodeLanguage: string;
     { the ids that lead to this block, separated by spaces }
     Anchor: string;
     { a list item's bullet, number or task box, drawn hanging to the left of
@@ -139,6 +150,8 @@ type
     FContentHeight, FColumnLeft: Integer;
     FOnLinkClick: TInkPageLinkEvent;
     FOnResource: TInkPageResourceEvent;
+    FOnHighlightCode: TInkHighlightEvent;
+    FHighlightCode: Boolean;
     { dragging the page, which is how a finger scrolls.  A finger arrives as
       a touch (GTK3, through InkTouch) or as mouse events (everywhere else);
       both end up in the Grab* methods, and FGrabFinger remembers which it
@@ -241,6 +254,9 @@ type
       (-1 for an outermost one), by fold number }
     FFoldOpen: array of Boolean;
     FFoldParent: array of Integer;
+    procedure SetHighlightCode(AValue: Boolean);
+    { a code block's markup: the host's coloring, or the page's own }
+    function CodeMarkup(const ACode, ALanguage: string): string;
     procedure ClearBlocks;
     { another <details>: its number, given the fold it is inside }
     function AddFold(AParent: Integer; AOpen: Boolean): Integer;
@@ -405,6 +421,16 @@ type
     property OnLinkActivate: TInkLinkActivateEvent read FOnLinkActivate write FOnLinkActivate;
     property ImageFit: TInkImageFit read FImageFit write SetImageFit default iifShrink;
     property OnResource: TInkPageResourceEvent read FOnResource write FOnResource;
+    { Colors a code block's comments, strings, numbers and keywords.  The
+      language comes from the fence (```pascal) or from
+      class="language-x"; a block that names none is colored by rules most
+      languages agree on, so every block gets something.  The colors
+      themselves suit the page's background, and CSS may name them:
+      a :root rule may name them - --ink-code-comment, --ink-code-string,
+      --ink-code-number, --ink-code-keyword. }
+    property HighlightCode: Boolean read FHighlightCode write SetHighlightCode default True;
+    { a host that would rather color code itself - see TInkHighlightEvent }
+    property OnHighlightCode: TInkHighlightEvent read FOnHighlightCode write FOnHighlightCode;
     { drag the page with the left button - or a finger - to scroll it; a
       press that moves less than a few pixels is still a click }
     property DragScroll: Boolean read FDragScroll write FDragScroll default True;
@@ -443,6 +469,8 @@ type
     property OnLinkActivate;
     property ImageFit;
     property OnResource;
+    property HighlightCode;
+    property OnHighlightCode;
     property DragScroll;
     property FlickScroll;
     property MouseDrag;
@@ -574,7 +602,7 @@ end;
 { Text between tags as renderer markup.  Collapse: white space is one space,
   as in running HTML; otherwise it is kept, tabs become spaces and line
   breaks become <br>, as in <pre>. }
-function TextMarkup(const S: string; Collapse: Boolean = True): string;
+function TextMarkup(const S: string; Collapse: Boolean; out APlain: string): string;
 var P,Q,N,Column: Integer; E,T: string; Space: Boolean;
 begin
   T := ''; P := 1; Space := False; Column := 0;
@@ -630,8 +658,14 @@ begin
     else begin T := T+S[P]; Space := False end;
     Inc(P);
   end;
+  APlain := T;
   Result := HTMLEscape(T);
   if not Collapse then Result := StringReplace(Result,#10,'<br>',[rfReplaceAll]);
+end;
+function TextMarkup(const S: string; Collapse: Boolean = True): string;
+var Plain: string;
+begin
+  Result := TextMarkup(S,Collapse,Plain);
 end;
 function RomanNumeral(N: Integer): string;
 const
@@ -705,7 +739,7 @@ begin Animation.Free; Picture.Free; inherited end;
 constructor TInkCustomPage.Create(AOwner: TComponent);
 begin
   inherited; Width := 640; Height := 480; TabStop := True;
-  FHoverBlock := -1;
+  FHoverBlock := -1; FHighlightCode := True;
   FBlocks := TList.Create; FStyles := TInkStyleSheet.Create;
   FStyleSheet := TStringList.Create; FStyleSheet.OnChange := @StyleSheetChanged;
   FHistory := TStringList.Create; FHistory.OwnsObjects := True; FHistoryIndex := -1;
@@ -738,6 +772,35 @@ begin
     FSelAnchor.Block := 0; FSelAnchor.Offset := 0; FSelCaret := FSelAnchor;
     if Assigned(FOnSelectionChange) then FOnSelectionChange(Self);
   end;
+end;
+function TInkCustomPage.CodeMarkup(const ACode, ALanguage: string): string;
+var Colors: TInkCodeColors;
+  function Named(const AVar: string; ADefault: TColor): TColor;
+  var V: string;
+  begin
+    Result := ADefault;
+    V := FStyles.Value('html','',AVar,'');
+    if V<>'' then Result := CSSColor(FStyles.Resolve(V),ADefault);
+  end;
+begin
+  Result := '';
+  { a host with a real highlighter answers first }
+  if Assigned(FOnHighlightCode) then FOnHighlightCode(Self,ACode,ALanguage,Result);
+  if (Result<>'') or not FHighlightCode then Exit;
+  Colors := InkCodeColors(FStyles.Color('body','','background',
+    FStyles.Color('body','','background-color',Color)));
+  Colors.Comment := Named('--ink-code-comment',Colors.Comment);
+  Colors.Quoted := Named('--ink-code-string',Colors.Quoted);
+  Colors.Number := Named('--ink-code-number',Colors.Number);
+  Colors.Keyword := Named('--ink-code-keyword',Colors.Keyword);
+  Result := InkHighlight(ACode,ALanguage,Colors);
+end;
+procedure TInkCustomPage.SetHighlightCode(AValue: Boolean);
+begin
+  if FHighlightCode=AValue then Exit;
+  FHighlightCode := AValue;
+  { the coloring is in the blocks' markup, so they have to be read again }
+  Parse;
 end;
 procedure TInkCustomPage.ClearBlocks;
 var I: Integer;
@@ -1027,6 +1090,10 @@ var
   { a table's <caption>: its words, kept out of the table's own markup }
   CaptionDepth: Integer;
   CaptionText: string;
+  { the code block being read: its text, the language it named, whether the
+    page had already colored it itself, and each piece as it arrives }
+  CodeRaw, CodeLang, Piece, Marked: string;
+  CodeMarked: Boolean;
   { the table being read: its classes as a CSS context }
   TableCtx: string;
   Margins: TRect;
@@ -1116,6 +1183,15 @@ var
       PendingHead := -1;
     end;
     B.Source := Text; B.Tag := BlockTag; B.CSSClass := BlockClass;
+    if (BlockTag='pre') and (Trim(CodeRaw)<>'') then
+    begin
+      B.Code := TrimRight(CodeRaw); B.CodeLanguage := CodeLang;
+      if not CodeMarked then
+      begin
+        Marked := CodeMarkup(B.Code,CodeLang);
+        if Marked<>'' then B.Source := Marked;
+      end;
+    end;
     B.Anchor := PendingAnchor; B.Nest := Nest; B.Pre := BlockTag='pre';
     { links take their look from where they are: table.cards a }
     B.NoLinkUnderline := LowerCase(FStyles.Value('a','','text-decoration','',Context))='none';
@@ -1548,6 +1624,7 @@ begin
   PendingAnchor := ''; PendingMarker := ''; TableDepth := 0; SkipDepth := 0; PreDepth := 0;
   PendingStyle := ''; PendingAlign := ''; CenterDepth := 0; RightDepth := 0;
   CaptionDepth := 0; CaptionText := ''; CurFold := -1; PendingHead := -1;
+  CodeRaw := ''; CodeLang := ''; CodeMarked := False;
   SetLength(Folds,0); SetLength(FoldSeen,0);
   SetLength(Containers,0);
   while P<=Length(S) do
@@ -1568,7 +1645,14 @@ begin
           FlexItems.Add('<td>'+TextMarkup(Copy(S,Q,P-Q))+'</td>');
         Continue;
       end;
-      Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q),PreDepth=0);
+      if PreDepth>0 then
+      begin
+        { code is kept as text as well, for the highlighter to read }
+        Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q),False,Piece);
+        CodeRaw := CodeRaw+Piece;
+        Continue;
+      end;
+      Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q));
       Continue;
     end;
     if Copy(S,P,4)='<!--' then
@@ -1739,6 +1823,8 @@ begin
       else
       begin
         Inc(PreDepth); BlockTag := 'pre'; BlockClass := Cls;
+        CodeRaw := ''; CodeMarked := False;
+        CodeLang := InkCodeLanguage(Cls);
         { a line break straight after <pre> is not part of the code }
         if (P<=Length(S)) and (S[P]=#13) then Inc(P);
         if (P<=Length(S)) and (S[P]=#10) then Inc(P);
@@ -1749,12 +1835,17 @@ begin
     begin
       { <pre><code> - the newline GitHub-style HTML puts after <code> is
         not code either }
+      if CodeLang='' then CodeLang := InkCodeLanguage(Cls);
       if (P<=Length(S)) and (S[P]=#10) then Inc(P);
       Continue;
     end;
     if PreDepth>0 then
     begin
-      Buffer := Buffer+InlineTag;
+      Piece := InlineTag;
+      { a page that colored its own code keeps its colors: ours would be
+        drawn over the top of them }
+      if Piece<>'' then CodeMarked := True;
+      Buffer := Buffer+Piece;
       Continue;
     end;
     if (Element='ul') or (Element='ol') or (Element='menu') then

@@ -302,11 +302,19 @@ Code blocks are the one place where the current behavior is a decision
 rather than a limitation, and Tony wants to settle it before the new engine
 is built, because it changes what the renderer has to support.
 
+**Settled on 17 September 2026:** LazInk colors code itself, a little.
+`inkcode.pas` (ours, MIT) marks comments, strings, numbers and keywords, by
+the language a fence or a class named, and by rules most languages share
+when it named none - so every block gets something, at the price of being
+wrong here and there.  `HighlightCode` turns it off; `OnHighlightCode` hands
+the block to a host highlighter instead.  The highlighter emits nothing the
+drawing engine does not already understand: escaped text and
+`<font color="...">`.  **A new engine therefore needs no highlighting code
+of its own** - it only has to keep `<font color>` working.
+
 **Today:** a `<pre>` block is drawn in the monospace face, on a shaded
 background, with its whitespace kept, **not wrapped**, and long lines are
-**clipped** at the block's right edge.  The language from
-`class="language-pascal"` is kept but does nothing.  LazInk does not color
-code, by decision - that is SynEdit's job.
+**clipped** at the block's right edge.
 
 What is still open, with what each would cost:
 

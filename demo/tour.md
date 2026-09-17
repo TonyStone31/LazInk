@@ -69,7 +69,9 @@ begin
 end;
 ```
 
-LazInk shows code but does not color it - for that, use SynEdit.
+LazInk colors comments, strings, numbers and keywords - a little coloring,
+not a real highlighter. `HighlightCode` turns it off, and `OnHighlightCode`
+hands the block to a program that would rather color it itself.
 
 ### Quotes, rules and the rest
 

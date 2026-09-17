@@ -29,7 +29,10 @@ Supported content in this site:
   Back and Forward. Browser history scroll restoration is not implemented.
 - HTML or Markdown as input (see the README for the Markdown read).
 - Code blocks (`<pre>`): whitespace kept, fixed face, shaded background, long
-  lines cut off at the block's edge.
+  lines cut off at the block's edge, and a little coloring - comments,
+  strings, numbers and keywords, from the language in `class="language-x"`
+  or, when there is none, by rules most languages share. A page that colored
+  its own code with spans keeps its own colors.
 - Blockquotes with a bar, horizontal rules, `<dl>`/`<dt>`/`<dd>`,
   `<del>`/`<ins>`/`<mark>`, task-list checkboxes, `<q>` (quotation marks).
 - `<details>`/`<summary>`: what a `<details>` holds is folded away behind its

@@ -118,6 +118,8 @@ type
   published
     property TextFormat;
     property Lines: TStrings read GetLines write SetLines;
+    property HighlightCode;
+    property OnHighlightCode;
     { the text's size, in percent of Font }
     property HTMLScale: Integer read FHTMLScale write SetHTMLScale default 100;
     property SuperSubScriptRatio: Double read FSuperSubScriptRatio write SetSuperSubScriptRatio;

@@ -396,7 +396,11 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 * The Markdown is GitHub's, as documents use it, not CommonMark-complete:
   emphasis follows simpler rules than the specification, a link reference
   definition has to fit on one line, and footnotes are not read.
-* LazInk shows code blocks but does not color them - for that, use SynEdit.
+* LazInk colors code blocks a little - comments, strings, numbers and
+  keywords, from the language the fence or the class named, or by rules most
+  languages share when it named none.  It is not a real highlighter and will
+  not always be right; `HighlightCode` turns it off, and `OnHighlightCode`
+  lets a program color the block itself (with SynEdit, say).
 * No built-in HTTP downloads - a host supplies remote content through
   `OnResource`.
 

@@ -27,9 +27,11 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
   `{$IFDEF}`, and do nothing on platforms that don't need it.
 * **No external dependencies** beyond Lazarus/LCL and FPC.  In particular
   the package must **not** depend on SynEdit or any GPL code - see 6.
-* **No syntax highlighting of code, by decision.**  LazInk shows code
-  blocks clearly and leaves coloring to SynEdit - see "Code blocks and
-  syntax highlighting" below.
+* **A small code highlighter, not a real one** (changed 17 September 2026;
+  it used to say no coloring at all).  LazInk colors comments, strings,
+  numbers and keywords and nothing else, and a host that wants a proper
+  highlighter answers `OnHighlightCode` - see "Code blocks and syntax
+  highlighting" below.
 * **One renderer, two input formats.**  Markdown is converted to LazInk's
   markup and drawn by the same renderer.  Every display control has a
   `TextFormat` property (`itfHTML` / `itfMarkdown`) rather than a separate
@@ -708,21 +710,44 @@ In rough order of value to other Lazarus developers:
 
 ### Code blocks and syntax highlighting
 
-GitHub colors a fenced code block by the language named after the opening
-fence (` ```pascal `).  **LazInk will not color code** - that is what
-SynEdit is for, and anyone whose program is mainly about showing or
-editing code should use SynEdit.  LazInk is for documents that sometimes
-contain code: READMEs, release notes, help pages.
+**This decision changed on 17 September 2026.**  It used to say LazInk
+would not color code at all.  Tony: "cant we do our own basic syntax
+highlighting... like the bare minimum of one... i think i have seen bare
+minimums in other programs", and "we will parse and syntax highlight
+everything the same and yes knowing we will mostly get it wrong but at
+least there will be some sort of highlighting".
 
-* **Code blocks look like code**: fixed-width font, a shaded background
-  from CSS (`pre`, `code`), whitespace kept, no word wrapping, long lines
-  clipped or scrolled rather than wrapped.  This is the feature.
-* **The language name is kept** (`class="language-pascal"`), as GitHub
-  does.  It costs nothing.
-* **The README says it once**, under Limits: "LazInk shows code blocks but
-  does not color them - for that, use SynEdit."
-* A hook for a host to color code itself is a **maybe, later, only if
-  somebody asks**.  No SynEdit glue, no add-on package.
+So LazInk has **a small highlighter of its own** (`inkcode.pas`, ours, MIT),
+and it stays small:
+
+* **Four kinds of token, and no more**: comments, strings, numbers,
+  keywords.  Types, functions, operators and brackets stay plain - that is
+  where a small highlighter starts being wrong more often than right.
+* **Comment and string rules come in families** (C-like, Pascal, hash,
+  dash, semicolon, markup).  Only the keyword list is per language, 25 to
+  60 words each.
+* **Every block gets colored**, named language or not.  A block that names
+  none is read by rules most languages agree on, with a keyword list of the
+  words that turn up everywhere (`if`, `else`, `for`, `while`, `return`,
+  `begin`, `end`, `class`, `true`).  It will be wrong here and there; that
+  is the deal, and naming the language in the fence makes it right.
+* **A page that colored its own code keeps its colors** - LazInk does not
+  paint over markup that is already there.
+* **`HighlightCode`** turns it off, and **`OnHighlightCode`** hands a block
+  to the host instead: the code, its language, and markup back.  That is
+  the plumbing a SynEdit highlighter would plug into one day - deliberately
+  left empty, in the package, as the reminder that it is possible.  No
+  SynEdit glue and no dependency ever goes in the package itself.
+* **Code blocks still look like code**: fixed-width font, a shaded
+  background from CSS (`pre`, `code`), whitespace kept, no word wrapping,
+  long lines clipped at the block's edge.
+* **Colors follow the page**: a light set on a light page, a lighter set on
+  a dark one, and a `:root` rule may name them
+  (`--ink-code-comment`, `--ink-code-string`, `--ink-code-number`,
+  `--ink-code-keyword`).
+
+What has **not** changed: no highlighter engine, no grammars, no per-token
+CSS classes, and no SynEdit dependency.
 
 The one thing LazInk colors as source is Markdown itself, in the demo's
 editor tab (P5), because Markdown is LazInk's own business.
@@ -734,7 +759,9 @@ editor tab (P5), because Markdown is LazInk's own business.
 * **Don't build a browser** or chase CSS conformance.
 * **Don't use or depend on `TSynMarkdownSyn`** - not in the package, not
   in the demo.
-* **Don't color code** or build SynEdit glue - see "Code blocks and syntax
+* **Don't grow the highlighter into a real one** - four token kinds, word
+  lists, nothing else - and don't build SynEdit glue inside the package;
+  that is what `OnHighlightCode` is for.  See "Code blocks and syntax
   highlighting".
 * **Don't make the package depend on SynEdit** or on any GPL code.
 * **Don't make separate "Markdown" versions of each control** - use
