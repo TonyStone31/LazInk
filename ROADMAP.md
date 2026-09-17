@@ -33,6 +33,92 @@ Most of the list below was built the same day, in a session of its own:
 
 The rest of this file is the original list, kept for the reasoning.
 
+## Next: two gaps found in real use (16 September, notes only - no code yet)
+
+### 1. Touch does not scroll a page on Linux
+
+Tony: on his wife's Linux Mint machine, dragging a finger on Heckers Sketch's
+What's New window does nothing.  It works on Windows.
+
+**Why - read from the code, not yet run on a touchscreen here:**
+`TInkPage`'s drag-scroll (`MouseDown`/`MouseMove`/`MouseUp`, added this week)
+only ever sees the mouse.  On Windows a finger arrives as mouse messages, so
+it works.  On GTK3 it does not: the Lazarus GTK3 backend asks GDK for raw
+touch events on every window it creates and then ignores them - and once a
+window has asked for touch, **GDK stops turning fingers into mouse events for
+it**.  So a finger on a `TInkPage` on Linux produces nothing at all.
+
+Heckers Sketch already hit this for its drawing area and worked round it in
+its own `uTouch.pas`: it connects to the form's GTK `touch-event` signal
+(`g_signal_connect_data(..., 'touch-event', ...)`) and turns
+`GDK_TOUCH_BEGIN / UPDATE / END / CANCEL` into its own events.  Two limits of
+that as it stands: it is hooked on the **main window only** (What's New is a
+separate form, so it gets nothing), and it keeps **one global handler**, so a
+second hook would replace the first.
+
+**What LazInk needs:**
+
+* Its own touch hook, in LazInk, so every LazInk control scrolls by finger
+  without the host doing anything.  On GTK3: connect to `touch-event` on the
+  control's own widget (or its form's, and route by position), and feed
+  begin/update/end into the same grab-and-drag code the mouse uses.
+  `{$IFDEF LCLGTK3}` like `uTouch`; nothing needed on Windows.  Per-control,
+  not one global handler.
+* A decision on **mouse drag vs touch drag**.  Once touch is its own path, a
+  mouse drag could be freed up for selecting text (below) - which is what a
+  browser does: finger drags scroll, mouse drags select.
+* Momentum ("flick") scrolling would be nice, not essential.
+* Test on real hardware - nothing in the nested X server here has fingers.
+  Worth checking qt5/qt6 too, which may deliver touch differently again.
+* Once LazInk has it, Heckers Sketch's `uTouch` could perhaps use the same
+  code rather than keeping its own.
+
+### 2. Text cannot be selected or copied
+
+Tony: "you cannot select text to copy and paste it elsewhere.  That's sort
+of a shitty aspect of lazink for sure."
+
+**Where things are:** `TInkEdit` and `TInkRichEdit` have a caret, selection
+and clipboard.  The viewers - `TInkLabel`, `TInkMemo`, `TInkListBox`,
+`TInkPage` - have none.  `TInkMemo`/`TInkListBox` can highlight whole
+*lines* (`ShowSelection`) but not text inside them.  The renderer's hit test
+(`HTMLHitTest` / `THTMLHitInfo` in `inkhtml.pas`) only answers "is this over
+a link"; it cannot say **which character** is under the pointer, and that is
+the piece everything else needs.  `PlainText` already exists on `TInkPage`.
+
+**Options, cheapest first:**
+
+1. **Copy without selecting** - a right-click menu on the viewers with *Copy
+   all* (from `PlainText`) and *Copy this paragraph* (the block under the
+   pointer, via `HTMLPlainText` of its source); Ctrl+A then Ctrl+C for the
+   whole page.  A day's work, no renderer changes, and it covers "get the
+   text out" for help pages and release notes.
+2. **Real selection** - press, drag, highlight, Ctrl+C, like a browser:
+   * the renderer needs a character-level hit test: given X,Y in a drawn
+     block, return the character offset (and the reverse, offset to
+     position, to paint the highlight).  `TInkRichEdit` already lays out
+     text per character for its caret - read how it does that before
+     writing a second way;
+   * selection has to run **across blocks** on `TInkPage` (paragraph to
+     table cell to list item), in document order;
+   * painting the highlight behind the text, in a colour from CSS
+     (`::selection` is the browser's way; a `SelectionColor` property is
+     enough);
+   * copy as plain text, and ideally as HTML too for pasting into a word
+     processor;
+   * double-click selects a word, triple-click a paragraph;
+   * **conflicts with drag-to-scroll** - see the touch note above: on a
+     mouse, drag should select; on a finger, drag should scroll.  That is
+     only possible once touch arrives separately from the mouse, so the two
+     gaps want solving together.
+3. **Use `TInkRichEdit` read-only as the viewer** - selection for free, but
+   it is an inline editor without tables, images or the page layout, so it
+   would not render the manual.  Not a real answer for `TInkPage`.
+
+**Suggested order:** option 1 now for the viewers (quick win); then the
+touch hook; then real selection on top of the character hit test, with mouse
+drag = select and touch drag = scroll.
+
 ## What Heckers Sketch needs from it
 
 Heckers Sketch has two places that could use LazInk.  Today it has its own
