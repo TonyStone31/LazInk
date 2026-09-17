@@ -395,6 +395,17 @@ Heckers Sketch will need when it gets there:
 Still for Heckers Sketch to decide: a contents list in place of the card
 grid - the cards already stack into a list, which may be enough.
 
+**In use (17 September 2026).**  Heckers Sketch's manual window is a
+`TInkPage` on a designed form (`uHelpView.lfm`), with Back/Forward wired to
+`CanGoBack`/`CanGoForward` through `OnNavigate`, Find from a toolbar button,
+and `OnLinkClick` sending external links to the browser.  Its What's New
+window hands LazInk Markdown directly with a `StyleSheet`.  The stacked
+cards were enough for the contents page.  Notes from the first use:
+* `TBCButton` (BGRA) has no `ParentShowHint`; an `.lfm` copied from LCL
+  habits fails to load.  Not LazInk's, but worth knowing next to it.
+* A form with `KeyPreview` must leave Esc/Enter alone while
+  `FindBarVisible` - done in both windows.
+
 ---
 
 ## 4. A renderer of our own, and a license with no strings
