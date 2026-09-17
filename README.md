@@ -242,6 +242,12 @@ python3 tests/check_help_text.py pages.txt results/
 The second command checks that every visible piece of text in the source pages
 survived into the rendered page.
 
+## Where it is going
+
+[ROADMAP.md](ROADMAP.md) is the plan: touch scrolling on Linux, copying and
+selecting text, fuller Markdown, a Markdown editor in the demo, and a
+WYSIWYG Markdown editor after that - with what "done" means for each.
+
 ## Credits and origins
 
 LazInk grew from a small HTML-formatted listbox example into reusable Lazarus

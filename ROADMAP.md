@@ -1,265 +1,317 @@
-# LazInk roadmap
+# LazInk - direction
 
-Notes for future work on LazInk, written 16 September 2026 while looking at
-what Heckers Sketch would need from it.  LazInk stays its own project;
-Heckers Sketch would just be one of its users.
+Written 16 September 2026, for whoever works on LazInk next.  It says what
+LazInk is for, what is done, what Heckers Sketch needs **now** (in order,
+each with what "done" means), where the package goes after that, and what
+not to do.
 
-## Where it stands (updated the same evening)
+---
 
-Most of the list below was built the same day, in a session of its own:
+## 1. What LazInk is
 
-* **Done:** `TInkPage` (a full-page viewer), tables, headings, lists,
-  `<code>` and `<kbd>`, images by file name including animated GIFs, a small
-  CSS reader, `MarkdownToInk` and a `TextFormat` switch on the viewers, a
-  test suite, and the license files (`LICENSE`, `LICENSES/`,
-  `THIRD_PARTY_NOTICES.md`, `docs/RENDERER_CHANGES.md`).
-* **Checked against Heckers Sketch's own help folder:** all 38 pages load
-  and render at 360, 700 and 1100 pixels wide, all 12 images decode, and all
-  2,205 visible text fragments survive.  The test used to expect exactly nine
-  images - true of the site on the day it was written - and now counts the
-  `<img>` tags in the pages it is given.
-* **Published** on GitHub as `TonyStone31/LazInk`.
-* **First real use:** Heckers Sketch's release-notes window is a `TInkPage`
-  now.  Before the swap, `TInkPage` learned to scroll when the page is
-  dragged, which that window needed for Windows touch screens.
-* **Still open:**
-  * ~~A themed scrollbar~~ - **done** 16 September: `TInkScrollBar`,
-    coloured from the page's CSS `scrollbar-color` / `scrollbar-width`, with
-    tests for the CSS, the colours it is painted in, and the bar's clicks,
-    drag, keys and wheel.  Heckers Sketch's release notes use it.
-  * Trying the other widgetsets - only GTK3 has been run.
-  * Heckers Sketch's help pages inside the program, which will be the second
-    real use.
+A general-purpose Lazarus package of **formatted-text controls drawn
+entirely on a `TCanvas`** - labels, memos, list boxes, a page viewer and a
+rich editor - that read **HTML or Markdown**.  It should be the package a
+Lazarus developer reaches for when they want decorated text, release notes,
+a help viewer or a Markdown document, without a browser engine.
 
-The rest of this file is the original list, kept for the reasoning.
+Heckers Sketch (https://github.com/TonyStone31/noella-etch-a-sketch) is its
+first real user and is driving the next round of work.  Its needs come
+first, but every one of them should be solved in a way any other program
+can use.  Nothing in LazInk may know about Heckers Sketch.
 
-## Next: two gaps found in real use (16 September, notes only - no code yet)
+### Principles
 
-### 1. Touch does not scroll a page on Linux
+* **Canvas-drawn, no widgetset-specific rendering.**  Where the platform has
+  to be touched (touch input on GTK3, below), keep it small, behind
+  `{$IFDEF}`, and do nothing on platforms that don't need it.
+* **No external dependencies** beyond Lazarus/LCL and FPC.  In particular
+  the package must **not** depend on SynEdit or any GPL code - see 5.
+* **One renderer, two input formats.**  Markdown is converted to LazInk's
+  markup and drawn by the same renderer.  Every display control has a
+  `TextFormat` property (`itfHTML` / `itfMarkdown`) rather than a separate
+  "Markdown" twin of each control.  New Markdown features go in the
+  converter, once.
+* **A subset, on purpose.**  Not a browser, not CSS conformance, not
+  CommonMark-complete.  Add what real documents need, and say plainly what
+  is not supported (`docs/HELP_COMPATIBILITY.md`, README "Limits").
+* **Tested.**  `tests/run.sh` must stay green, and new behaviour comes with
+  checks.  Make sure a new check can actually fail.
+* **The licence boundary stays clean**: MIT for LazInk's own code, MPL 1.1
+  for the JVCL-derived renderer (`inkhtml.pas`, `inktables.inc`).  See
+  `LICENSE`.
 
-Tony: on his wife's Linux Mint machine, dragging a finger on Heckers Sketch's
-What's New window does nothing.  It works on Windows.
+---
 
-**Why - read from the code, not yet run on a touchscreen here:**
-`TInkPage`'s drag-scroll (`MouseDown`/`MouseMove`/`MouseUp`, added this week)
-only ever sees the mouse.  On Windows a finger arrives as mouse messages, so
-it works.  On GTK3 it does not: the Lazarus GTK3 backend asks GDK for raw
-touch events on every window it creates and then ignores them - and once a
-window has asked for touch, **GDK stops turning fingers into mouse events for
-it**.  So a finger on a `TInkPage` on Linux produces nothing at all.
+## 2. Where it stands
 
-Heckers Sketch already hit this for its drawing area and worked round it in
-its own `uTouch.pas`: it connects to the form's GTK `touch-event` signal
-(`g_signal_connect_data(..., 'touch-event', ...)`) and turns
-`GDK_TOUCH_BEGIN / UPDATE / END / CANCEL` into its own events.  Two limits of
-that as it stands: it is hooked on the **main window only** (What's New is a
-separate form, so it gets nothing), and it keeps **one global handler**, so a
-second hook would replace the first.
+| Control | What it does now | Missing |
+|---|---|---|
+| `TInkLabel` | inline markup, HTML or Markdown | text selection / copy |
+| `TInkMemo` | lines of markup, whole-document Markdown | text selection / copy |
+| `TInkListBox` | markup items, in-place editor | text selection / copy |
+| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward, small CSS reader, themed scrollbar, drag-to-scroll | **touch on Linux**, **text selection / copy**, fuller Markdown |
+| `TInkEdit` | single-line edit, per-character colours | - |
+| `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
+| `TInkScrollBar` | canvas scrollbar, coloured from CSS `scrollbar-color` / `scrollbar-width` | - |
 
-**What LazInk needs:**
+Checked against the Heckers Sketch manual (38 pages, 14 images, 2,209 text
+fragments all render).  Only **GTK3 on Linux** has been run.
 
-* Its own touch hook, in LazInk, so every LazInk control scrolls by finger
-  without the host doing anything.  On GTK3: connect to `touch-event` on the
-  control's own widget (or its form's, and route by position), and feed
-  begin/update/end into the same grab-and-drag code the mouse uses.
-  `{$IFDEF LCLGTK3}` like `uTouch`; nothing needed on Windows.  Per-control,
-  not one global handler.
-* A decision on **mouse drag vs touch drag**.  Once touch is its own path, a
-  mouse drag could be freed up for selecting text (below) - which is what a
-  browser does: finger drags scroll, mouse drags select.
-* Momentum ("flick") scrolling would be nice, not essential.
-* Test on real hardware - nothing in the nested X server here has fingers.
-  Worth checking qt5/qt6 too, which may deliver touch differently again.
-* Once LazInk has it, Heckers Sketch's `uTouch` could perhaps use the same
-  code rather than keeping its own.
+Heckers Sketch already uses `TInkPage` for its "What's new" window.
 
-### 2. Text cannot be selected or copied
+---
 
-Tony: "you cannot select text to copy and paste it elsewhere.  That's sort
-of a shitty aspect of lazink for sure."
+## 3. What Heckers Sketch needs now - in this order
 
-**Where things are:** `TInkEdit` and `TInkRichEdit` have a caret, selection
-and clipboard.  The viewers - `TInkLabel`, `TInkMemo`, `TInkListBox`,
-`TInkPage` - have none.  `TInkMemo`/`TInkListBox` can highlight whole
-*lines* (`ShowSelection`) but not text inside them.  The renderer's hit test
-(`HTMLHitTest` / `THTMLHitInfo` in `inkhtml.pas`) only answers "is this over
-a link"; it cannot say **which character** is under the pointer, and that is
-the piece everything else needs.  `PlainText` already exists on `TInkPage`.
+Each item: the problem, exactly what to build, and what "done" means.
 
-**Options, cheapest first:**
+### P1. Touch scrolls a page on Linux (GTK3)
 
-1. **Copy without selecting** - a right-click menu on the viewers with *Copy
-   all* (from `PlainText`) and *Copy this paragraph* (the block under the
-   pointer, via `HTMLPlainText` of its source); Ctrl+A then Ctrl+C for the
-   whole page.  A day's work, no renderer changes, and it covers "get the
-   text out" for help pages and release notes.
-2. **Real selection** - press, drag, highlight, Ctrl+C, like a browser:
-   * the renderer needs a character-level hit test: given X,Y in a drawn
-     block, return the character offset (and the reverse, offset to
-     position, to paint the highlight).  `TInkRichEdit` already lays out
-     text per character for its caret - read how it does that before
-     writing a second way;
-   * selection has to run **across blocks** on `TInkPage` (paragraph to
-     table cell to list item), in document order;
-   * painting the highlight behind the text, in a colour from CSS
-     (`::selection` is the browser's way; a `SelectionColor` property is
-     enough);
-   * copy as plain text, and ideally as HTML too for pasting into a word
-     processor;
-   * double-click selects a word, triple-click a paragraph;
-   * **conflicts with drag-to-scroll** - see the touch note above: on a
-     mouse, drag should select; on a finger, drag should scroll.  That is
-     only possible once touch arrives separately from the mouse, so the two
-     gaps want solving together.
-3. **Use `TInkRichEdit` read-only as the viewer** - selection for free, but
-   it is an inline editor without tables, images or the page layout, so it
-   would not render the manual.  Not a real answer for `TInkPage`.
+**Problem.**  On Tony's wife's Linux Mint machine, a finger dragged on
+Heckers Sketch's What's New window does nothing.  It works on Windows.
 
-**Suggested order:** option 1 now for the viewers (quick win); then the
-touch hook; then real selection on top of the character hit test, with mouse
-drag = select and touch drag = scroll.
+**Why** (read from the code; not yet reproduced on a touchscreen): the
+Lazarus GTK3 backend asks GDK for raw touch events on every window and then
+ignores them, and once a window has asked for touch, **GDK stops turning
+fingers into mouse events for it**.  `TInkPage`'s drag-to-scroll only
+listens to the mouse, so on GTK3 a finger never reaches it.  On Windows a
+finger arrives as mouse messages, which is why it works there.
 
-## What Heckers Sketch needs from it
+Heckers Sketch hit the same thing for its drawing area and worked round it
+in its own `uTouch.pas`: `g_signal_connect_data(widget, 'touch-event', ...)`
+on the form, turning `GDK_TOUCH_BEGIN / UPDATE / END / CANCEL` into its own
+begin/move/end calls.  That version is hooked on the main window only and
+keeps one global handler - neither is good enough for a package.
 
-Heckers Sketch has two places that could use LazInk.  Today it has its own
-hand-written code for both.
+**Build:**
+* A touch hook **inside LazInk**, used by `TInkPage` (and by `TInkMemo`,
+  `TInkListBox` if they scroll), so a host does nothing.
+* Per control, not one global handler: several LazInk controls, on several
+  forms (What's New is a separate modal form), must all work.
+* `{$IFDEF LCLGTK3}` for the GDK code; nothing on Windows, where the
+  existing mouse path already works.  Look at qt5/qt6 as well.
+* Touch begin/update/end feed the **same** grab-and-drag logic the mouse
+  uses now (`FGrab`, `FGrabY`, `FGrabAt`, the 8-pixel slop, "a drag that
+  ends on a link is not a click", a tap follows a link).
+* Keep touch and mouse **distinguishable** inside the control - P4 needs a
+  finger drag to scroll and a mouse drag to select.
+* Optional: momentum ("flick") scrolling.
 
-### 1. The "What's New" window - the small job
+**Done when:** on a real Linux touchscreen, a finger scrolls a `TInkPage`
+on a secondary modal form, taps follow links, and Windows still works.
+The non-hardware logic has tests; the hardware check is written down with
+the machine and distro it was done on.
 
-`uWhatsNew.pas` in Heckers Sketch is about 600 lines of its own parser and
-painter for the release notes.  It handles headings, bullets and bold, and
-not much else.  A bug on 16 September showed raw `<kbd>` tags in the window,
-because that code doesn't understand them.  A LazInk control would have
-rendered them properly.
+### P2. Copy text out - the quick version
 
-The notes come from `WHATS_NEW.md`, which is Markdown.  Right now it has 145
-release headings, 195 section headings, 342 bullets, bold on 295 lines,
-backticks on 71 lines, and some indented sub-bullets.
+**Problem.**  Tony: "you cannot select text to copy and paste it elsewhere.
+That's sort of a shitty aspect of lazink."
 
-**What LazInk needs to add for this:**
+**Build (before real selection):**
+* A right-click menu on the display controls with **Copy all** (from
+  `PlainText`) and **Copy this paragraph** (the block under the pointer, via
+  `HTMLPlainText` of its source).  On `TInkPage`, the block is the one in
+  `FBlocks` whose `Bounds` contain the point.
+* **Ctrl+A** then **Ctrl+C** copies everything.
+* A property to turn the menu off (`CopyMenu: Boolean`), and an event so a
+  host can add its own items.
 
-* **Headings.**  `<h1>`, `<h2>`, `<h3>` - or at least a documented way to do
-  them with `<font size>` and `<b>` that looks right.  There are no heading
-  tags yet.
-* **Bullet lists.**  `<ul>` and `<li>`, with the text wrapping under the
-  first word rather than under the bullet, and one level of nesting.  There
-  are no list tags yet; `<ind>` gets close but doesn't draw the bullet or
-  hang the wrapped lines.
-* **Code and keys.**  `<code>` (monospace, faint background) and `<kbd>`
-  (monospace, a small box around it).  Neither exists yet.
-* **Theme colors.**  Heckers Sketch has light and dark themes, so the
-  control's text, link, rule and background colors must be settable from code
-  and must not assume a white background.  Check that `TInkMemo` does this
-  cleanly.
-* **A Markdown-to-markup helper.**  Something like
-  `function MarkdownToInk(const S: string): string` that handles headings,
-  bullets, `**bold**`, `*italic*` and `` `code` ``.  This could live in
-  LazInk as an optional unit, or in Heckers Sketch.  In LazInk it would be
-  useful to other people too.
+**Done when:** Heckers Sketch's What's New and a help page can have their
+text copied into a text editor, and tests cover what lands on the
+clipboard.
 
-Once those exist, Heckers Sketch swaps its window's painting for a
-`TInkMemo` (or a scrolling `TInkLabel`) and deletes most of `uWhatsNew.pas`.
-It keeps the part that decides *which* releases to show.
+### P3. Fuller Markdown
 
-### 2. The help manual inside the program - the big job
+**Problem.**  The Markdown converter is a basic subset.  Programmers write
+GitHub-flavoured Markdown, and Heckers Sketch wants to hand its
+`WHATS_NEW.md` straight to LazInk instead of converting it to HTML itself
+(which it does today, in `uWhatsNew.pas`, `ReleaseNotesHTML`).
 
-The manual is web pages in `docs/help/` (38 pages).  Today `/manual` opens
-them in the web browser.  Showing them inside the program would be nice, but
-the pages use a lot more HTML than LazInk handles.  Counted across all 38
-pages:
+**Build, in `inkmarkdown.pas`:**
+* Headings `#` to `######` (and the `===` / `---` underline form).
+* Paragraphs joined across wrapped lines; a blank line ends one.
+* **Bullet lists with wrapped continuation lines** - `WHATS_NEW.md` wraps
+  every bullet onto indented lines - and **nested lists** by indentation,
+  `-`, `*`, `+`, and numbered `1.` lists.
+* `**bold**`, `*italic*`, `_italic_`, `__bold__`, `~~strike~~`,
+  `` `code` ``, fenced code blocks with a language tag (ignored for now, or
+  kept as a CSS class for later).
+* Links `[text](url)`, autolinks `<https://...>`, images `![alt](path)`
+  (relative to the document, the way `TInkPage` already handles HTML).
+* Blockquotes `>`.
+* Horizontal rules `---` / `***`.
+* Pipe tables (already there) with alignment markers honoured.
+* Task lists `- [ ]` / `- [x]`.
+* HTML comments `<!-- -->` dropped (Heckers Sketch's `WHATS_NEW.md` starts
+  with one).
+* Raw HTML stays escaped by default, as now; an option to pass it through
+  for trusted documents.
+* Hanging list markers in the renderer - wrapped lines line up under the
+  first word, not the bullet (listed as missing in
+  `HELP_COMPATIBILITY.md`).
 
-| Used in the manual | Count | LazInk today |
-| --- | --- | --- |
-| `<table>`, `<tr>`, `<td>`, `<th>` | 19 tables, 469 cells | no |
-| `<code>` | 271 | no |
-| `<kbd>` | 248 | no |
-| `<ul>`, `<ol>`, `<li>` | 84 lists, 239 items | no |
-| `<h1>`, `<h2>` | 227 | no |
-| `<p>`, `<b>`, `<i>`, `<br>`, `<a>` | many | yes |
-| `<img src="file.png">` with `<figure>` / `<figcaption>` | 27 figures | images only by list index, not by file name |
-| `<div class="card">`, `.grid` layout on the index page | 37 cards | no |
-| A shared stylesheet (`style.css`) | every page | no CSS |
-| Links between pages, and to `#anchors` | 191 links | links fire an event; loading the next page and jumping to an anchor would be up to the program |
+**Done when:** LazInk's own `README.md` and Heckers Sketch's
+`WHATS_NEW.md` render correctly in `TInkPage` with
+`TextFormat := itfMarkdown`, with a test for each construct above.
 
-**What LazInk would need for this, roughly in order of value:**
+### P4. Real text selection
 
-1. Everything from the What's New list above (headings, lists, code, kbd).
-2. **Tables** - simple ones: rows, cells, a header row, column widths worked
-   out from the content.  This is the biggest single piece of work.
-3. **Images by file name**, relative to the page, so `<img src="shots/x.png">`
-   works.
-4. **A page viewer control** - something like `TInkPage`: load a file, scroll
-   the whole document as one piece (not line by line like `TInkMemo`),
-   follow links to other files, jump to `#anchors`, and go back.
-5. **A tiny bit of style** - not real CSS, but a way to set heading sizes,
-   code background, table borders and link colors once for the whole
-   control, so pages don't need `<font>` everywhere.
-6. Simply ignoring the tags it doesn't know (`<nav>`, `<header>`, `<footer>`,
-   `<meta>`, `<div>`) instead of showing them as text.  Check what the
-   parser does with unknown tags now.
+**Build:**
+* A **character-level hit test** in the renderer: given X,Y inside a drawn
+  block, the character offset; and the reverse, offset to position, to
+  paint the highlight.  Today `HTMLHitTest` / `THTMLHitInfo` only answers
+  "is this over a link".  `TInkRichEdit` already lays text out per
+  character for its caret - read how before writing a second way.
+* Press, drag, highlight, **Ctrl+C**, as in a browser.  Double-click
+  selects a word, triple-click a paragraph, Shift+click extends.
+* Selection runs **across blocks** on `TInkPage` - paragraph, list item,
+  table cell - in document order.
+* The highlight colour from CSS (`::selection`) or a `SelectionColor`
+  property.
+* Copy as plain text; also as HTML where the platform clipboard takes it.
+* **Mouse drag selects, finger drag scrolls** - which needs P1.  Until then,
+  keep drag-to-scroll for the mouse and select with Shift+drag, or add a
+  `DragMode` property.
+* Then the same for `TInkLabel`, `TInkMemo`, `TInkListBox`.
 
-The card grid on the manual's index page is probably not worth supporting.
-It's easier to give the in-program viewer a plain contents list.
+**Done when:** text on a Heckers Sketch help page can be selected with the
+mouse and pasted elsewhere, a finger still scrolls, and tests cover the hit
+test and the copied text.
 
-**The honest alternative:** keep opening the manual in the browser.  It works
-today, it looks right, and there is only one copy to maintain.  Writing a
-second, simpler copy of the manual just for LazInk would be a mistake - two
-copies of a manual means one of them goes stale.  So the in-program manual
-only makes sense once LazInk can render the real pages.
+**Why not just use `TInkRichEdit` read-only for What's New?**  It was
+considered: it has `ReadOnly`, selection and clipboard already.  But it has
+no headings, lists, tables or images, and cannot show the help pages, so
+selection has to exist in the viewers anyway.  Once P4 is done, What's New
+gets it for free.
 
-## The order that makes sense
+### P5. A Markdown editor in the demo
 
-1. Publish LazInk (commit, GitHub, `LICENSE`).
-2. Add headings, lists, `<code>` and `<kbd>`.  These help everyone, and they
-   are all that the What's New window needs.
-3. Swap Heckers Sketch's What's New window over to LazInk and delete its
-   hand-written painter.  This is the first real-world use, and it will show
-   what else is missing.
-4. Tables, file images, and a page viewer - then decide whether the manual
-   moves into the program.
+**Tony:** "I also want a mark down editor in the demo application... to
+demonstrate and maybe it opens the readme for the demo app."
 
-## README ideas
+**Build, in `demo/`:**
+* A new tab, **Markdown editor**: source on the left, a live `TInkPage`
+  preview on the right (`TextFormat := itfMarkdown`), updating as you type
+  (debounced, about 300 ms).
+* It **opens LazInk's own `README.md`** when the demo starts, so the first
+  thing a visitor sees is the package describing itself, rendered by
+  itself.  Look for it next to the demo's executable, then one folder up.
+* **Open** and **Save** on this tab.  The README currently says the demo has
+  "deliberately no File/Open/Save actions" - update it to say this tab is
+  the exception.
+* Source pane: **SynEdit with `TSynMarkdownSyn`** where available.  It is in
+  Lazarus trunk (`components/synedit/synhighlightermarkdown.pas`), colours
+  headings, bold, italic, code, links, lists and quotes, and folds.
+  **But its header says GPL only.**  So:
+  * the **demo** may use it; the **package** must never;
+  * say so in the demo's source and in the README;
+  * it may not be in the stable Lazarus release yet - if it is not
+    available, fall back to plain SynEdit or a `TMemo`, so the demo still
+    builds.
+* Keeping the source and the preview scrolled together is nice, not
+  essential.
 
-The README is already in good shape: it has screenshots, the markup list,
-examples and proper credits.  A few things worth adding when it goes public:
+**Done when:** the demo builds on Lazarus trunk and on the current stable
+release, starts with `README.md` rendered, can edit and save a file, and
+the README has a screenshot of the tab.
 
-* **A "Limits" section** saying plainly that the markup is a small subset of
-  HTML - no tables, lists, headings or CSS yet - so nobody expects a web
-  browser.  Update it as those land.
-* **Requirements**: which Lazarus and FPC versions it has been tested with,
-  and which widgetsets have actually been tried (the README claims all of
-  them, including cocoa - say which ones were really run).
-* **Status**: "0.9, usable, API may still change".
-* **A link to the forum thread** is already there; add the GitHub URL once
-  the repository exists.
-* **A `LICENSE` file**, as above, and a line in the README pointing to it.
+### P6. Heckers Sketch's help pages inside the program
 
-## Implementation update: tables and Markdown
+Mostly ready on LazInk's side (`TInkPage` renders the whole manual).  What
+Heckers Sketch will need when it gets there:
 
-The display controls now have an HTML/Markdown `TextFormat` property, a small
-Markdown converter, and shared rendering of basic HTML tables. The demo includes
-a source/preview tab and `tests/run.sh` exercises conversion, wrapping, cell
-links, malformed input, and control integration. These changes supersede the
-"no tables" and "Markdown helper needed" descriptions above for display controls.
+* P1 and P4, so the pages can be scrolled by finger and copied from.
+* **Loading a folder of pages beside the executable** - already works with
+  `LoadFromFile` and relative paths.  Remote fetching stays the host's job
+  (`OnResource`).
+* A **contents list** in place of the site's CSS card grid (the grid is
+  deliberately not supported).
+* **Back/Forward buttons** a host can wire to `Back`/`Forward`, with
+  `CanGoBack`/`CanGoForward` so they can be enabled and disabled.
+* **Find in page** (Ctrl+F) - nice to have, after P4, since it reuses the
+  highlight.
 
-`TInkPage` now provides native whole-document scrolling, local-file loading,
-relative images and stylesheets, page navigation, anchors, and history. It has
-minimal CSS palette/typography support and animated GIF playback. The published
-38-page help site has been audited and tested; see `docs/HELP_COMPATIBILITY.md`
-for the precise boundary between readable native rendering and browser styling.
-Remote resource retrieval has an event hook but no built-in HTTP client.
+---
 
-Still needed: editable tables and Markdown serialization in the rich editor;
-nested/merged cells; hanging list markers; more CSS only where a demonstrated
-help-page requirement justifies it. The lightweight inline controls remain
-separate from the page viewer's HTML normalization.
+## 4. After that - general purpose
 
-## Licensing update: September 16, 2026
+In rough order of value to other Lazarus developers:
 
-The missing-license-file items above are now resolved: LICENSE defines the
-MIT/MPL boundary, LICENSES contains both full texts, THIRD_PARTY_NOTICES.md
-records upstream attribution and the original-attachment comparison, and
-docs/RENDERER_CHANGES.md records renderer modifications. Public-facing credits
-now emphasize JVCL, Lazarus/Free Pascal, and AI-assisted learning rather than
-retelling the forum discussion. Separate binary releases still need their
-actual corresponding-source distribution or download location.
+1. **A WYSIWYG Markdown editor** - `TInkRichEdit` reading and writing
+   Markdown: headings, lists, links, code, then tables.  A search of the
+   Online Package Manager's catalogue (16 September 2026) found nothing for
+   Lazarus that **renders** Markdown natively, and nothing that **edits** it
+   WYSIWYG.  HtmlViewer, LazRichView and RichMemo are the nearest, and none
+   of them does Markdown.  This is where LazInk could be unique.
+2. **An editor-plus-preview component** (SynEdit + `TInkPage`) as a
+   **separate, optional package** (`lazink_synedit.lpk`), so the core
+   package stays free of SynEdit and GPL code.
+3. **Other widgetsets actually run** - win32, qt5/qt6, cocoa, gtk2 - with
+   the results written into the README.
+4. **An Online Package Manager listing.**
+5. Nested and merged table cells, and more CSS only where a real document
+   needs it.
+6. Syntax colouring inside fenced code blocks - a small, pluggable
+   tokenizer, not SynEdit.
+
+---
+
+## 5. What not to do
+
+* **Don't build a browser** or chase CSS conformance.
+* **Don't write another Markdown syntax highlighter** - SynEdit has one.
+  LazInk's job is rendering and WYSIWYG editing.
+* **Don't make the package depend on SynEdit** or on any GPL code.
+* **Don't make separate "Markdown" versions of each control** - use
+  `TextFormat`.
+* **Don't put Heckers Sketch specifics in LazInk.**  If Heckers Sketch
+  needs something, build the general version.
+* **Don't claim support that hasn't been run** (widgetsets, touch hardware).
+
+---
+
+## 6. Working on it
+
+* Build: open `lazink.lpk` in Lazarus, or `lazbuild lazink.lpk`.  The demo
+  is `demo/lazinkdemo.lpi`.
+* Test:
+
+  ```sh
+  LAZARUS_DIR=/path/to/lazarus FPC=/path/to/fpc tests/run.sh
+  ```
+
+  and, to check that a folder of HTML pages renders completely:
+
+  ```sh
+  ls /path/to/help/*.html > pages.txt
+  LAZARUS_DIR=... FPC=... tests/run.sh pages.txt results/
+  python3 tests/check_help_text.py pages.txt results/
+  ```
+
+  Heckers Sketch's manual is a good folder for this: `docs/help` in its
+  repository.
+* Heckers Sketch builds against LazInk from `../LazInk/lazink.lpk`, so a
+  change here reaches it on its next build.  Keep `tests/run.sh` green
+  before pushing.
+* Update `README.md`, `docs/HELP_COMPATIBILITY.md` and this file as items
+  land.  Commit finished work; don't leave it uncommitted.
+
+---
+
+## 7. History
+
+* **August 2021** - started as an HTML-formatted list box from a Lazarus
+  forum thread (see the README credits); the renderer comes from JVCL.
+* **1 September 2026** - LazInk 0.9: `TInkLabel`, `TInkEdit`, `TInkMemo`,
+  `TInkListBox`; the renderer renamed `InkHtml`.
+* **16 September 2026**
+  * `TInkRichEdit`, `TInkPage`, tables, Markdown input, the CSS reader,
+    animated GIFs, the test suite, and the MIT/MPL licence files.
+  * Published at https://github.com/TonyStone31/LazInk.
+  * First real use: Heckers Sketch's What's New window.  `TInkPage` learned
+    drag-to-scroll for Windows touch screens first.
+  * `TInkScrollBar`, coloured from CSS `scrollbar-color` /
+    `scrollbar-width`; `var()` fallbacks and nesting.
+  * Found in real use: touch does not scroll on Linux (P1), and text cannot
+    be copied (P2, P4).
