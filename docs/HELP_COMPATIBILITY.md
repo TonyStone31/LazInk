@@ -81,10 +81,21 @@ The bar keeps its width whether or not the page overflows, like
 
 This is **not CSS conformance**. In particular:
 
-- A CSS grid of cards stacks vertically; a table of cards is a grid. CSS grid,
-  flexbox, positioning and media queries are ignored, so a fixed three-column
-  table stays three columns in a narrow window. Content still wraps and images
-  shrink with the control.
+- `display: flex` and `display: grid` containers lay their children out as
+  cards in rows: `flex-wrap: wrap` and `grid-template-columns` with
+  `auto-fill`/`auto-fit` and `minmax(Npx, ...)` fit as many to a row as the
+  width allows (the item width from `flex-basis`, `flex`, `min-width`,
+  `width` or `minmax`, the gap from `gap`/`column-gap`); `repeat(N, ...)` or
+  a list of tracks gives N columns; a row that does not wrap sizes its items
+  to their content. Items keep their background, border, radius and padding;
+  inside an item, headings are bold lines and blocks are line breaks.
+  Justification, alignment, ordering, growing and shrinking are not read.
+- `@media` blocks with `min-width` / `max-width` apply against the page's own
+  width, and the page is read again when a resize crosses one; other media
+  (print, color schemes, orientation) never apply. `display: none` hides any
+  element, and `display: block` on table cells stacks them one to a row -
+  Heckers Sketch's index does both below 600 pixels, as in a browser.
+  Positioning is ignored.
 - Descendant selectors only match inside tables (the one place the page keeps
   its ancestors); pseudo-classes (`:first-child`, `:hover`), inline `style`
   attributes, and general CSS inheritance are not implemented.
@@ -125,7 +136,8 @@ Built with FPC 3.3.1 and Lazarus trunk on GTK3/Linux x86-64. Tests covered:
 - HTML/Markdown conversion and tables, malformed input, escaping, table link
   ordinals and hit testing, and changes of control input format.
 - All 38 published pages at 360, 700, and 1100 pixel control widths.
-- All nine image references decode; the animated GIF contains 90 frames.
+- Every image reference decodes; the animated GIF's frame count matches a
+  count taken by walking the file's own blocks.
 - Every one of 2,134 visible HTML text fragments survives page parsing.
 - Initial GIF frames match Pillow's independent compositing result pixel for
   pixel. This is not an exhaustive comparison of all animation frames.

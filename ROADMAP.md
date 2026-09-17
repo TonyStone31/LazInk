@@ -486,9 +486,19 @@ Heckers Sketch's index now looks like the browser's (rounded cards, three
 to a row, dim descriptions, no underlines) and its keys table has the
 browser's bottom rules and accent headings.  `vertical-align: top` is how
 cells already sat.  Table blocks now have no padding of their own by
-default.  Item 8 (flex wrapping) is still to do: a fixed three-column table
-stays three columns in a narrow window, and a long word can poke out of
-its cell.
+default.
+**Item 8, narrow windows: done (17 September 2026).**  Two parts.
+`@media` blocks with `min-width`/`max-width` now apply, judged against the
+page's width, and the page is read again when a resize crosses one;
+`display: none` hides any element; `display: block` on table cells stacks
+them one to a row.  So Heckers Sketch's index, whose own stylesheet says
+to stack the cards under 600 pixels, does exactly that.  And `display:
+flex` (with `flex-wrap: wrap`) or `display: grid` (with `auto-fill`/
+`auto-fit` and `minmax()`, or a fixed number of tracks) lays a container's
+children out as cards, as many to a row as fit - kept as a block whose
+table markup is rebuilt when the number per row changes.  A row that does
+not wrap sizes its items to their content.  Not read: justify/align,
+order, grow/shrink ratios.
 
 **Pictures: done (17 September 2026).**  A picture inside `<a>` is
 clickable over its drawn rectangle (the parser no longer leaves empty

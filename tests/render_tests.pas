@@ -10,6 +10,43 @@ var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   TextOutput: TStringList;
   Files: TStringList; I, Images, Pass: Integer; GIF: TInkGIF; GIFStream: TFileStream;
   Source: TStringList; Tags: string; K, Wanted: Integer;
+{ how many images a GIF holds, by walking its blocks - independent of the
+  decoder being tested }
+function GIFFrames(AStream: TStream): Integer;
+var Head: array[0..12] of Byte; B, Size: Byte; Packed_: Byte;
+  procedure SkipSubBlocks;
+  begin
+    repeat
+      AStream.ReadBuffer(Size, 1);
+      AStream.Seek(Size, soCurrent);
+    until Size = 0;
+  end;
+begin
+  Result := 0;
+  AStream.Position := 0;
+  AStream.ReadBuffer(Head, 13);
+  if (Head[10] and $80) <> 0 then AStream.Seek(3 * (1 shl ((Head[10] and 7) + 1)), soCurrent);
+  while AStream.Position < AStream.Size do
+  begin
+    AStream.ReadBuffer(B, 1);
+    case B of
+      $21: begin AStream.Seek(1, soCurrent); SkipSubBlocks end;
+      $2C:
+        begin
+          Inc(Result);
+          AStream.Seek(8, soCurrent);
+          AStream.ReadBuffer(Packed_, 1);
+          if (Packed_ and $80) <> 0 then AStream.Seek(3 * (1 shl ((Packed_ and 7) + 1)), soCurrent);
+          AStream.Seek(1, soCurrent);
+          SkipSubBlocks;
+        end;
+    else
+      Break;
+    end;
+  end;
+  AStream.Position := 0;
+end;
+
 procedure Check(OK: Boolean; const MessageText: string);
 begin
   if not OK then raise Exception.Create(MessageText);
@@ -346,12 +383,12 @@ begin
   AMemo.Select(Pos2(1, 0), Pos2(1, MaxInt));
   Check(AMemo.SelectedText = 'second line', 'memo: a selected line: ' + AMemo.SelectedText);
   Clipboard.AsText := '';
-  K := VK_C; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
+  K := VK_C; TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
   Check(Clipboard.AsText = 'second line', 'memo: Ctrl+C copies it');
   AMemo.Select(Pos2(0, 6), Pos2(1, 6));
   Check(AMemo.SelectedText = 'line' + E + 'second', 'memo: a selection across lines: ' + AMemo.SelectedText);
-  K := VK_A; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
-  K := VK_C; TMemoAccess(AMemo).KeyDown(K, [ssCtrl]);
+  K := VK_A; TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
+  K := VK_C; TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
   Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third',
     'memo: Ctrl+A then Ctrl+C copies everything: ' + Clipboard.AsText);
   P := AMemo.PositionPoint(Pos2(2, 1));
@@ -364,7 +401,7 @@ begin
   Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third', 'memo menu: Copy all');
   AMemo.CopyMenu := False;
   Handled := False;
-  TMemoAccess(AMemo).DoContextPopup(Point(P.X, P.Y + 2), Handled);
+  TMemoAccess(TInkMemo(AMemo)).DoContextPopup(Point(P.X, P.Y + 2), Handled);
   Check(not Handled, 'memo: CopyMenu off shows no menu');
   AMemo.CopyMenu := True;
 
@@ -389,8 +426,8 @@ begin
   AMemo.Lines.Text := 'a <a href="x&amp;y">link</a> here';
   AMemo.ScrollTo(0);
   P := AMemo.PositionPoint(Pos2(0, 3));
-  TMemoAccess(AMemo).MouseDown(mbLeft, [ssLeft], P.X, P.Y + 3);
-  TMemoAccess(AMemo).MouseUp(mbLeft, [], P.X, P.Y + 3);
+  TMemoAccess(TInkMemo(AMemo)).MouseDown(mbLeft, [ssLeft], P.X, P.Y + 3);
+  TMemoAccess(TInkMemo(AMemo)).MouseUp(mbLeft, [], P.X, P.Y + 3);
   Check(AMemo.Clicked = '0:x&y', 'memo: OnLinkClick has the line and href: ' + AMemo.Clicked);
   AMemo.OnLinkClick := nil;
   AMemo.WordWrap := False;
@@ -895,6 +932,109 @@ begin
     Check(ColorToRGB(Shot.Canvas.Pixels[X0 + Col div 2, R.Top + 9]) = clBlack,
       'the first card starts one spacing down');
   finally Shot.Free end;
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
+{ --- narrow windows: width queries, hidden things, wrapping --- }
+procedure NarrowChecks;
+const
+  Doc =
+    '<html><head><style>' +
+    'body { background: #000000; color: #ffffff } ' +
+    'p.note { color: #00ff00 } ' +
+    '@media (max-width: 600px) { p.note { color: #ff0000 } ' +
+    '  table.cards td { display: block; margin: 0 0 8px } table.cards td.empty { display: none } } ' +
+    '@media print { p.note { color: #0000ff } } ' +
+    'table.cards { width: 100%; border-spacing: 10px; table-layout: fixed } ' +
+    'nav { display: flex; gap: 6px } ' +
+    '.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px } ' +
+    '.card { background: #102030; padding: 4px 6px; text-decoration: none } ' +
+    '.gone { display: none } ' +
+    '</style></head><body>' +
+    '<nav><a href="a.html">Home</a><a href="b.html">Tools</a></nav>' +
+    '<p class="note">note</p>' +
+    '<table class="cards"><tr><td>one</td><td>two</td><td class="empty"></td></tr></table>' +
+    '<div class="grid">' +
+    '<a class="card" href="1.html"><b>One</b><br><small>first</small></a>' +
+    '<a class="card" href="2.html"><b>Two</b></a>' +
+    '<div class="card"><h3>Three</h3><p>third</p></div>' +
+    '<a class="card gone" href="x.html">hidden card</a>' +
+    '</div><p>after <span class="gone">secret</span>words</p></body></html>';
+var
+  CSS: TInkStyleSheet;
+  Nav, Note, Cards, Grid: TInkPageBlock;
+  K, Rows: Integer;
+
+  function CountOf(const Needle, Hay: string): Integer;
+  var Q: Integer;
+  begin
+    Result := 0;
+    Q := Pos(Needle, Hay);
+    while Q > 0 do
+    begin
+      Inc(Result);
+      Q := Pos(Needle, Hay, Q + 1);
+    end;
+  end;
+
+  procedure Blocks;
+  var I: Integer;
+  begin
+    Nav := nil; Note := nil; Cards := nil; Grid := nil;
+    for I := 0 to Probe.BlockCount - 1 do
+      with Probe.Block(I) do
+        if Flex and (Pos('Home', Source) > 0) then Nav := Probe.Block(I)
+        else if Flex then Grid := Probe.Block(I)
+        else if Tag = 'table' then Cards := Probe.Block(I)
+        else if Pos('note', Source) > 0 then Note := Probe.Block(I);
+    Check((Nav <> nil) and (Note <> nil) and (Cards <> nil) and (Grid <> nil), 'the blocks are all there');
+  end;
+
+begin
+  CSS := TInkStyleSheet.Create;
+  try
+    CSS.Add('p { color: #111111 } @media (max-width: 600px) { p { color: #222222 } } ' +
+      '@media screen and (min-width: 900px) { p { color: #333333 } } @media print { p { color: #444444 } } ' +
+      '@media (prefers-color-scheme: dark) { p { color: #555555 } }');
+    CSS.MediaWidth := 1024;
+    Check(CSS.Value('p', '', 'color', '') = '#333333', 'min-width query at 1024');
+    CSS.MediaWidth := 700;
+    Check(CSS.Value('p', '', 'color', '') = '#111111', 'no query at 700');
+    CSS.MediaWidth := 500;
+    Check(CSS.Value('p', '', 'color', '') = '#222222', 'max-width query at 500');
+    Check(CSS.MediaState(500) <> CSS.MediaState(1024), 'the media state changes across a breakpoint');
+    Check(CSS.MediaState(700) = CSS.MediaState(800), 'and not between them');
+  finally CSS.Free end;
+
+  Probe.SetBounds(0, 0, 900, 300);
+  Probe.LoadHTML(Doc);
+  Probe.ScrollTo(0);
+  Blocks;
+  Check(Pos('secret', Probe.PlainText) = 0, 'display: none hides an inline element');
+  Check(Pos('hidden card', Probe.PlainText) = 0, 'and a flex item');
+  Check(Pos('afterwords', StringReplace(Probe.PlainText, ' ', '', [rfReplaceAll])) > 0, 'the words around it stay');
+  Check(ColorToRGB(Note.TextColor) = RGBToColor(0, 255, 0), 'wide: the plain rule');
+  Check(CountOf('<tr>', Cards.Source) = 1, 'wide: the cards are one row');
+  Check(Length(Grid.FlexCells) = 3, Format('three grid items (%d)', [Length(Grid.FlexCells)]));
+  Check(Grid.FlexCols = 3, Format('wide: three to a row (%d)', [Grid.FlexCols]));
+  Check(Grid.NoLinkUnderline, 'a card that is a link is not underlined');
+  Check(Nav.FlexCols = 2, 'a flex row that does not wrap');
+  Check(Pos('width="100%"', Nav.Source) = 0, 'is as wide as its items');
+
+  Probe.SetBounds(0, 0, 360, 300);
+  Probe.ScrollTo(0);
+  Blocks;
+  Check(ColorToRGB(Note.TextColor) = RGBToColor(255, 0, 0), 'narrow: the max-width rule');
+  Rows := CountOf('<tr>', Cards.Source);
+  Check(Rows = 2, Format('narrow: a card to a row, the empty one gone (%d)', [Rows]));
+  Check(Grid.FlexCols < 3, Format('narrow: fewer to a row (%d)', [Grid.FlexCols]));
+  Check(CountOf('<tr>', Grid.Source) = (3 + Grid.FlexCols - 1) div Grid.FlexCols, 'in as many rows as that takes');
+  K := Grid.FlexCols;
+  Probe.SetBounds(0, 0, 900, 300);
+  Probe.ScrollTo(0);
+  Blocks;
+  Check((Grid.FlexCols = 3) and (K < 3), 'and back when it widens');
+  Check(ColorToRGB(Note.TextColor) = RGBToColor(0, 255, 0), 'wide again: the plain rule');
   Probe.SetBounds(0, 0, 400, 200);
 end;
 
@@ -1478,6 +1618,7 @@ begin
     NavigationChecks;
     PictureChecks;
     CardTableChecks;
+    NarrowChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
@@ -1633,7 +1774,8 @@ begin
             try
               GIF := TInkGIF.Create(GIFStream);
               try
-                Check(GIF.FrameCount=90,'Decode all animation frames');
+                Check((GIF.FrameCount>1) and (GIF.FrameCount=GIFFrames(GIFStream)),
+                  Format('Decode all animation frames (%d)',[GIF.FrameCount]));
                 if ParamCount>1 then GIF.Bitmap.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2))+'gif-0.bmp');
                 Sleep(2000);
                 Check(GIF.Advance,'Animation advances');
