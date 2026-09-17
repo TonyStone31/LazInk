@@ -46,6 +46,15 @@ pixel `padding`, pixel `margin-top`/`margin-bottom`, the colour from a simple
 `border` declaration, and `.wrap`'s pixel `max-width`. Code/key font selection is
 semantic. The control's Font supplies the base font.
 
+The scrollbar is LazInk's own and takes `scrollbar-color` (thumb and track:
+hex, colour names, `rgb()`/`rgba()`, `currentcolor`, `var()`) and
+`scrollbar-width` (`auto`, `thin`, `none`) from `html`/`:root`, falling back
+to `body`.  `var()` takes a fallback - `var(--x, #fff)` - and nests; a value
+whose variable cannot be resolved is dropped rather than overriding an
+earlier valid one, and a variable that refers to itself resolves to nothing.
+The bar keeps its width whether or not the page overflows, like
+`scrollbar-gutter: stable`.
+
 This is **not CSS conformance**. In particular:
 
 - Cards stack vertically. CSS grid, flexbox, positioning and media queries are

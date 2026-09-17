@@ -98,6 +98,22 @@ CSS grid cards become a vertical list. No browser engine is added.
 InkPage1.LoadFromFile('/path/to/help/index.html');
 ```
 
+**Its scrollbar** is drawn by LazInk (`TInkScrollBar`), so it can wear the
+page's colours instead of the platform's grey.  It reads the same CSS a
+browser does:
+
+```css
+html { scrollbar-color: #4ab3e8 #1b1e24; scrollbar-width: thin; }
+```
+
+`scrollbar-color` is the thumb, then the track - `#rgb`, `#rrggbb`, a colour
+name, `rgb()`/`rgba()`, `currentcolor`, or a `var()` holding any of those.
+`scrollbar-width` is `auto`, `thin` or `none` (none hides the bar; the page
+still scrolls).  Both are read from `html` or `:root`, then `body`.  Without
+them, the track is the page background and the thumb sits halfway between
+that and the text colour, so a dark page gets a dark bar with no CSS at all.
+`InkPage1.ScrollBar` reaches it from code.
+
 **Touch screens:** drag the page with a finger (or the left mouse button) to
 scroll it - on Windows a finger arrives as a mouse press, moves and a release,
 and a touch screen has no wheel.  A tap that wobbles a few pixels is still a

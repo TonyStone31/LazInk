@@ -1,7 +1,7 @@
 program RenderTests;
 {$mode objfpc}{$H+}
-uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types,
-  InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF;
+uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType,
+  InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
   List: TInkListBox; Page: TInkPage; CSS: TInkStyleSheet;
@@ -40,7 +40,59 @@ begin
   Clicked := URL;
 end;
 
+type
+  { the scrollbar's mouse handlers, reached the same way }
+  TBarProbe = class(TInkScrollBar)
+  public
+    Changes: Integer;
+    procedure Press(X, Y: Integer);
+    procedure MoveTo(X, Y: Integer);
+    procedure Let(X, Y: Integer);
+    procedure Key(K: Word);
+    procedure Wheel(Delta: Integer);
+    procedure Changed(Sender: TObject);
+  end;
+
+procedure TBarProbe.Press(X, Y: Integer);
+begin
+  MouseDown(mbLeft, [ssLeft], X, Y);
+end;
+
+procedure TBarProbe.MoveTo(X, Y: Integer);
+begin
+  MouseMove([ssLeft], X, Y);
+end;
+
+procedure TBarProbe.Let(X, Y: Integer);
+begin
+  MouseUp(mbLeft, [], X, Y);
+end;
+
+procedure TBarProbe.Key(K: Word);
+begin
+  KeyDown(K, []);
+end;
+
+procedure TBarProbe.Wheel(Delta: Integer);
+begin
+  DoMouseWheel([], Delta, Point(0, 0));
+end;
+
+procedure TBarProbe.Changed(Sender: TObject);
+begin
+  Inc(Changes);
+end;
+
 var Probe: TPageProbe; Tall: string; J: Integer;
+  Bar: TBarProbe; TR: TRect; Before: Integer; Shot: TBitmap;
+
+{ what the page's scrollbar comes out as, for a given style block }
+procedure StyledBar(const CSSText: string);
+begin
+  Probe.LoadHTML('<html><head><style>' + CSSText + '</style></head><body>' +
+    Tall + '</body></html>');
+  Probe.ScrollTo(0);
+end;
 
 procedure Check(OK: Boolean; const MessageText: string);
 begin
@@ -153,6 +205,106 @@ begin
     Probe.ScrollTo(0);
     Probe.Press(100,150); Probe.MoveTo(100,50); Probe.Let(100,50);
     Check(Probe.ScrollY = 0, 'DragScroll off leaves the page where it is');
+    Probe.DragScroll := True;
+
+    { --- CSS for the scrollbar, and the var() it may be written with --- }
+    CSS := TInkStyleSheet.Create;
+    try
+      CSS.Add(':root { --Accent: #102030; --loop: var(--loop) } ' +
+        'p { color: var(--missing, #405060) } ' +
+        'h1 { color: var(--accent) } ' +
+        'h2 { color: #111111 } h2 { color: var(--nothing) } ' +
+        'h3 { color: var(--loop) }');
+      Check(CSS.Value('p','','color','')='#405060', 'var() falls back to its second part');
+      Check(CSS.Value('h1','','color','')='#102030', 'var() names are not case-sensitive in the lookup');
+      Check(CSS.Value('h2','','color','')='#111111',
+        'an unresolvable var() does not wipe out an earlier valid value');
+      Check(CSS.Value('h3','','color','x')='x', 'a var() that refers to itself resolves to nothing');
+      Check(CSS.Value('html','','--accent','')='#102030', ':root declarations are the html element''s');
+    finally CSS.Free end;
+
+    Tall := '';
+    for J := 1 to 80 do Tall := Tall + '<p>Line ' + IntToStr(J) + '</p>';
+
+    StyledBar('html { scrollbar-color: #ff0000 #00ff00 }');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(255,0,0), 'scrollbar-color sets the thumb');
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(0,255,0), 'and the track');
+    Check(Probe.ScrollBar.Visible and (Probe.ScrollBar.Width = Probe.Scale96ToFont(18)),
+      'auto width is the full bar');
+
+    StyledBar(':root { --t: #123; --k: rgb(10, 20, 30) } ' +
+      'html { scrollbar-color: var(--t) var(--k); scrollbar-width: thin }');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor($11,$22,$33),
+      'short hex, through a variable');
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(10,20,30),
+      'rgb() with commas, through a variable');
+    Check(Probe.ScrollBar.Width = Probe.Scale96ToFont(10), 'scrollbar-width: thin is narrower');
+
+    StyledBar('body { color: #0000ff; scrollbar-color: currentcolor rgba(1 2 3 / 50%) }');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(0,0,255),
+      'currentcolor is the text colour, and body is read when html says nothing');
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(1,2,3), 'rgba() with spaces');
+
+    StyledBar('html { scrollbar-color: #ff0000 #00ff00 } body { scrollbar-color: #0000ff #0000ff }');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(255,0,0), 'html wins over body');
+
+    StyledBar('body { background: #000000; color: #ffffff; scrollbar-color: bogus #00ff00 }');
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(0,0,0),
+      'an unreadable pair is ignored: the track is the page background');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(127,127,127),
+      'and the thumb is halfway to the text colour');
+
+    StyledBar('html { scrollbar-width: none }');
+    Check(not Probe.ScrollBar.Visible, 'scrollbar-width: none hides it');
+    Probe.Press(100,150); Probe.MoveTo(100,50); Probe.Let(100,50);
+    Check(Probe.ScrollY = 100, 'and the page still scrolls without it');
+
+    { the bar is drawn in its colours, where it says it is }
+    StyledBar('html { scrollbar-color: #ff0000 #00ff00 }');
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+      Probe.RenderTo(Shot.Canvas);
+      TR := Probe.ScrollBar.ThumbRect;
+      J := Probe.ClientWidth - Probe.ScrollBar.Width;
+      Check(ColorToRGB(Shot.Canvas.Pixels[J + (TR.Left + TR.Right) div 2,
+        (TR.Top + TR.Bottom) div 2]) = RGBToColor(255,0,0), 'the thumb is painted in its colour');
+      Check(ColorToRGB(Shot.Canvas.Pixels[J + 1, Probe.ClientHeight - 3]) = RGBToColor(0,255,0),
+        'the track is painted in its colour');
+    finally Shot.Free end;
+
+    { --- the scrollbar on its own --- }
+    Bar := TBarProbe.Create(F); Bar.Parent := F; Bar.SetBounds(500, 0, 18, 200);
+    Bar.OnChange := @Bar.Changed;
+    Bar.SetParams(0, 0, 1000, 200);
+    Check(Bar.Position = 0, 'starts at the top');
+    Bar.Position := 5000;
+    Check(Bar.Position = 800, Format('clamps to the last page (%d)', [Bar.Position]));
+    Bar.Position := -5;
+    Check(Bar.Position = 0, 'and to the first');
+    TR := Bar.ThumbRect;
+    Check((TR.Bottom - TR.Top) = (200 - 4) * 200 div 1000,
+      Format('the thumb is the visible share of the track (%d)', [TR.Bottom - TR.Top]));
+    Before := Bar.Changes;
+    Bar.Press(9, TR.Bottom + 20); Bar.Let(9, TR.Bottom + 20);
+    Check(Bar.Position = 200, 'a click below the thumb pages down');
+    Check(Bar.Changes = Before + 1, 'and says so once');
+    TR := Bar.ThumbRect;
+    Bar.Press(9, TR.Top - 5); Bar.Let(9, TR.Top - 5);
+    Check(Bar.Position = 0, 'a click above it pages up');
+    TR := Bar.ThumbRect;
+    Bar.Press(9, TR.Top + 5); Bar.MoveTo(9, TR.Top + 5 + (200 - 4 - (TR.Bottom - TR.Top)));
+    Bar.Let(9, TR.Top + 5 + (200 - 4 - (TR.Bottom - TR.Top)));
+    Check(Bar.Position = 800, Format('dragging the thumb the length of the track reaches the end (%d)', [Bar.Position]));
+    Bar.Key(VK_HOME); Check(Bar.Position = 0, 'Home');
+    Bar.Key(VK_NEXT); Check(Bar.Position = 200, 'Page Down');
+    Bar.Key(VK_DOWN); Check(Bar.Position = 232, 'Down');
+    Bar.Key(VK_END); Check(Bar.Position = 800, 'End');
+    Bar.Wheel(120); Check(Bar.Position = 760, 'the wheel');
+    Bar.SetParams(0, 0, 100, 200);
+    Check(Bar.Position = 0, 'nothing to scroll: stays at the top');
+    Bar.Press(9, 150); Bar.Let(9, 150);
+    Check(Bar.Position = 0, 'and a click does nothing');
     if ParamCount>0 then
     begin
       Files := TStringList.Create; Images := 0; Wanted := 0;

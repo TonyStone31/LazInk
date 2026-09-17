@@ -23,10 +23,10 @@ Most of the list below was built the same day, in a session of its own:
   now.  Before the swap, `TInkPage` learned to scroll when the page is
   dragged, which that window needed for Windows touch screens.
 * **Still open:**
-  * A **themed scrollbar.**  `TInkPage` uses the stock `TScrollBar`, which is
-    light grey on a dark page.  Heckers Sketch's old window drew its own in
-    the theme colours, and a canvas-drawn control ought to be able to.  A
-    drawn one, coloured from properties, with the same drag behavior.
+  * ~~A themed scrollbar~~ - **done** 16 September: `TInkScrollBar`,
+    coloured from the page's CSS `scrollbar-color` / `scrollbar-width`, with
+    tests for the CSS, the colours it is painted in, and the bar's clicks,
+    drag, keys and wheel.  Heckers Sketch's release notes use it.
   * Trying the other widgetsets - only GTK3 has been run.
   * Heckers Sketch's help pages inside the program, which will be the second
     real use.

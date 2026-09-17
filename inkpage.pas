@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Applications may supply remote/cached content here. Return True on success. }
@@ -24,7 +24,7 @@ type
   private
     FBlocks: TList;
     FStyles: TInkStyleSheet;
-    FScroll: TScrollBar;
+    FScroll: TInkScrollBar;
     FTimer: TTimer;
     procedure Animate(Sender: TObject);
   private
@@ -45,6 +45,7 @@ type
     procedure ClearBlocks;
     procedure Parse;
     procedure Layout;
+    procedure StyleScrollBar;
     procedure ScrollChanged(Sender: TObject);
     procedure SetTextFormat(AValue: TInkTextFormat);
     procedure SetSource(const AValue: string);
@@ -81,6 +82,12 @@ type
     property ContentHeight: Integer read FContentHeight;
     { how far down the page is scrolled, in pixels }
     property ScrollY: Integer read GetScrollY;
+    { The page's own scrollbar, drawn by LazInk and coloured from the page's
+      CSS: scrollbar-color (thumb, then track) and scrollbar-width (auto,
+      thin or none), read from html or :root, falling back to body.  Without
+      them the track is the page background and the thumb sits halfway
+      between that and the text colour. }
+    property ScrollBar: TInkScrollBar read FScroll;
   published
     property Source: string read FSource write SetSource;
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
@@ -168,8 +175,8 @@ begin
   inherited; Width := 640; Height := 480; TabStop := True;
   FBlocks := TList.Create; FStyles := TInkStyleSheet.Create;
   FHistory := TStringList.Create; FHistoryIndex := -1;
-  FScroll := TScrollBar.Create(Self); FScroll.Parent := Self;
-  FScroll.Kind := sbVertical; FScroll.Align := alRight; FScroll.Width := 18;
+  FScroll := TInkScrollBar.Create(Self); FScroll.Parent := Self;
+  FScroll.Align := alRight; FScroll.Width := 18;
   FScroll.OnChange := @ScrollChanged; FLayoutDirty := True;
   FTimer := TTimer.Create(Self); FTimer.Interval := 20; FTimer.OnTimer := @Animate;
   FDragScroll := True;
@@ -438,12 +445,86 @@ begin
   Result.LinkColor := FStyles.Color('a','','color',clBlue);
   Result.LinkUnderline := True;
 end;
+procedure TInkPage.StyleScrollBar;
+var Track,Thumb,TextColor,C1,C2: TColor; Colors,SizeValue: string;
+  Tokens: TStringList; P,Q,Depth,NewWidth: Integer;
+  { #rgb, #rrggbb, a colour name, currentcolor, or rgb()/rgba() with the
+    three numbers separated by commas or spaces (alpha is ignored - the
+    control has nothing behind it to show through) }
+  function ParseColor(const S: string): TColor;
+  var V, Inner: string; Parts: TStringList; R,G,B: Integer;
+  begin
+    V := Trim(S);
+    if LowerCase(V)='currentcolor' then Exit(TextColor);
+    if (LowerCase(Copy(V,1,4))='rgb(') or (LowerCase(Copy(V,1,5))='rgba(') then
+    begin
+      Result := clNone;
+      if V[Length(V)]<>')' then Exit;
+      Inner := Copy(V,Pos('(',V)+1,Length(V)-Pos('(',V)-1);
+      Inner := StringReplace(Inner,',',' ',[rfReplaceAll]);
+      Inner := StringReplace(Inner,'/',' ',[rfReplaceAll]);
+      Parts := TStringList.Create;
+      try
+        Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+        Parts.DelimitedText := Inner;
+        if Parts.Count<3 then Exit;
+        R := StrToIntDef(Parts[0],-1); G := StrToIntDef(Parts[1],-1);
+        B := StrToIntDef(Parts[2],-1);
+        if (R<0) or (G<0) or (B<0) or (R>255) or (G>255) or (B>255) then Exit;
+        Result := RGBToColor(R,G,B);
+      finally Parts.Free end;
+      Exit;
+    end;
+    if (Length(V)=4) and (V[1]='#') then
+      V := '#'+V[2]+V[2]+V[3]+V[3]+V[4]+V[4];
+    Result := HTMLStringToColor(V,clNone);
+  end;
+begin
+  Track := ColorToRGB(FStyles.Color('body','','background',Color));
+  TextColor := ColorToRGB(FStyles.Color('body','','color',Font.Color));
+  Thumb := RGBToColor((Red(Track)+Red(TextColor)) div 2,
+    (Green(Track)+Green(TextColor)) div 2,(Blue(Track)+Blue(TextColor)) div 2);
+  { Root declarations take priority. Body is a native-viewer convenience
+    fallback, not browser viewport propagation. }
+  Colors := FStyles.Value('html','','scrollbar-color',
+    FStyles.Value('body','','scrollbar-color','auto'));
+  Tokens := TStringList.Create;
+  try
+    P := 1;
+    while P<=Length(Colors) do
+    begin
+      while (P<=Length(Colors)) and (Colors[P] in [' ',#9,#10,#13]) do Inc(P);
+      Q := P; Depth := 0;
+      while P<=Length(Colors) do
+      begin
+        if (Depth=0) and (Colors[P] in [' ',#9,#10,#13]) then Break;
+        if Colors[P]='(' then Inc(Depth) else if Colors[P]=')' then Dec(Depth);
+        Inc(P);
+      end;
+      if P>Q then Tokens.Add(Copy(Colors,Q,P-Q));
+    end;
+    if Tokens.Count=2 then
+    begin
+      C1 := ParseColor(Tokens[0]); C2 := ParseColor(Tokens[1]);
+      if (C1<>clNone) and (C2<>clNone) then begin Thumb := C1; Track := C2 end;
+    end;
+  finally Tokens.Free end;
+  FScroll.SetColors(Thumb,Track);
+  SizeValue := LowerCase(FStyles.Value('html','','scrollbar-width',
+    FStyles.Value('body','','scrollbar-width','auto')));
+  NewWidth := Scale96ToFont(18);
+  if SizeValue='thin' then NewWidth := Scale96ToFont(10)
+  else if SizeValue='none' then NewWidth := 0;
+  FScroll.Visible := NewWidth>0;
+  FScroll.Width := NewWidth;
+end;
 procedure TInkPage.Layout;
 var I,Y,W,BlockLeft,MaxWidth,ImageH,K: Integer; BorderSpec: string; B: TInkPageBlock; Sz: TSize; O: THTMLOptions;
 begin
   if not FLayoutDirty then Exit;
   FLayoutDirty := False; Y := 24;
   MaxWidth := FStyles.Pixels('div','wrap','max-width',820);
+  StyleScrollBar;
   W := Max(40,Min(ClientWidth-FScroll.Width-40,MaxWidth));
   BlockLeft := Max(20,(ClientWidth-FScroll.Width-W) div 2);
   O := Options;
@@ -486,8 +567,7 @@ begin
     Inc(Y,Sz.cy+B.Padding*2+B.GapAfter);
   end;
   FContentHeight := Y;
-  FScroll.PageSize := Max(1,ClientHeight);
-  FScroll.SetParams(Min(FScroll.Position,Max(0,Y-ClientHeight)),0,Max(ClientHeight,Y),FScroll.PageSize);
+  FScroll.SetParams(Min(FScroll.Position,Max(0,Y-ClientHeight)),0,Max(ClientHeight,Y),Max(1,ClientHeight));
 end;
 procedure TInkPage.Paint;
 begin RenderTo(Canvas) end;
@@ -513,6 +593,8 @@ begin
     end
     else begin Inc(R.Left,B.Padding); Inc(R.Top,B.Padding); Dec(R.Right,B.Padding); HTMLDrawOpt(ACanvas,R,[],B.Wrapped,O) end;
   end;
+  if FScroll.Visible then
+    FScroll.RenderTo(ACanvas,Rect(ClientWidth-FScroll.Width,0,ClientWidth,ClientHeight));
 end;
 procedure TInkPage.Resize;
 begin inherited; FLayoutDirty := True; Invalidate end;
