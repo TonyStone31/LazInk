@@ -2,12 +2,29 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar, InkTouch;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Applications may supply remote/cached content here. Return True on success. }
   TInkPageResourceEvent = procedure(Sender: TObject; const URL: string;
     Destination: TStream; var Handled: Boolean) of object;
+  { A place in the page's words: a block, and a byte offset into its
+    Words, from 0.  An Offset past the end means the block's end. }
+  TInkPagePosition = record
+    Block, Offset: Integer;
+  end;
+  { what dragging with the left mouse button does; a finger always scrolls }
+  TInkMouseDrag = (imdSelect, imdScroll);
+  { a run of text as the renderer laid it out, in page coordinates }
+  TInkPageRun = record
+    Text: string;
+    { where Text begins in the block's Words, from 0 }
+    Start: Integer;
+    Left, Top, Width, Height, LineHeight, Line, Part: Integer;
+    FontName: string;
+    FontSize: Integer;
+    FontStyle: TFontStyles;
+  end;
   TInkPageBlock = class
   public
     Source, Wrapped, Tag, CSSClass: string;
@@ -33,6 +50,12 @@ type
     Bars: array of Integer;
     BorderColor: TColor;
     TextColor, BackColor, BarColor: TColor;
+    { where each run of its text was drawn, and its words as they are
+      copied - filled in when first needed, after each layout }
+    Runs: array of TInkPageRun;
+    RunCount: Integer;
+    Words: string;
+    RunsReady: Boolean;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -76,6 +99,37 @@ type
     procedure StopFlick;
     procedure FlickTimer(Sender: TObject);
     function GetFlicking: Boolean;
+  private
+    { selection }
+    FSelAnchor, FSelCaret, FUnitFrom, FUnitTo: TInkPagePosition;
+    FSelecting, FSelMoved: Boolean;
+    { what a drag extends by: 0 characters, 1 words, 2 blocks }
+    FSelectUnit: Integer;
+    FPressX, FPressY, FDragX, FDragY: Integer;
+    FMouseDrag: TInkMouseDrag;
+    FSelectionColor: TColor;
+    FAutoScroll: TTimer;
+    FRunBlock: TInkPageBlock;
+    FOnSelectionChange: TNotifyEvent;
+    FCopyMenu: Boolean;
+    FCopyMenuHost: TInkCopyMenu;
+    FOnCopyMenu: TInkCopyMenuEvent;
+    procedure CollectRun(const AText: string; ALeft, ATop, AWidth, AHeight,
+      ALine, APart: Integer; AFont: TFont);
+    procedure PrepareRuns(B: TInkPageBlock);
+    procedure RunFont(ACanvas: TCanvas; const R: TInkPageRun);
+    function RunX(const R: TInkPageRun; Offset: Integer): Integer;
+    function Clamp(const P: TInkPagePosition): TInkPagePosition;
+    function WordAt(const P: TInkPagePosition; out AFrom, ATo: TInkPagePosition): Boolean;
+    procedure ExtendTo(const P: TInkPagePosition);
+    procedure SelectionChanged;
+    procedure PaintSelection(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock;
+      const AFrom, ATo: TInkPagePosition);
+    function GetSelectionStart: TInkPagePosition;
+    function GetSelectionEnd: TInkPagePosition;
+    procedure SetSelectionColor(AValue: TColor);
+    procedure DoSelectAll(Sender: TObject);
+    function BlockAt(X,Y: Integer): Integer;
     function GetScrollY: Integer;
     function GetStyleSheet: TStrings;
     procedure SetStyleSheet(AValue: TStrings);
@@ -96,6 +150,9 @@ type
     procedure BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
   protected
     procedure CreateWnd; override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    { scrolls on while a selection is dragged beyond the top or bottom }
+    procedure AutoScrollTimer(Sender: TObject);
     { a finger at client X, Y; Time in milliseconds, as GetTickCount64 }
     procedure TouchAt(Phase: TInkTouchPhase; X,Y: Integer; Time: QWord); virtual;
     { moves a flick on by Milliseconds and slows it down }
@@ -133,6 +190,33 @@ type
     procedure Touch(Phase: TInkTouchPhase; X,Y: Integer);
     { whether the page is still coasting after a flick }
     property Flicking: Boolean read GetFlicking;
+
+    { The character under client X, Y: the nearest place between two
+      characters, in the nearest line of the nearest block. }
+    function PositionAt(X,Y: Integer): TInkPagePosition;
+    { and back: the top left of that place, in client coordinates }
+    function PositionPoint(const APosition: TInkPagePosition): TPoint;
+    { a block's words, as they are copied: the text as drawn, with a space
+      where a line was wrapped, a line break where the source had one, and a
+      tab between table cells }
+    function BlockText(Index: Integer): string;
+    procedure Select(const AFrom, ATo: TInkPagePosition);
+    procedure SelectAll;
+    procedure ClearSelection;
+    function HasSelection: Boolean;
+    { the selection as plain text - list markers included for items whose
+      start is selected - and as HTML }
+    function SelectedText: string;
+    function SelectedHTML: string;
+    { the selection to the clipboard, as text and as HTML }
+    procedure CopyToClipboard;
+    { what is painted behind selected text }
+    function SelectionBackground: TColor;
+    { fills the copy menu for client X, Y without opening it }
+    function BuildCopyMenu(X,Y: Integer): TPopupMenu;
+    { the selection's first and last places, in document order }
+    property SelectionStart: TInkPagePosition read GetSelectionStart;
+    property SelectionEnd: TInkPagePosition read GetSelectionEnd;
     function ResolveURL(const Reference: string): string;
     property Location: string read FLocation;
     { the page's <title>, or its first heading when it has none }
@@ -163,11 +247,28 @@ type
     property DragScroll: Boolean read FDragScroll write FDragScroll default True;
     { a quick drag with a finger leaves the page coasting, slowing down }
     property FlickScroll: Boolean read FFlickScroll write FFlickScroll default True;
+    { What a left-button drag with the mouse does: select text (as in a
+      browser) or scroll the page.  A finger always scrolls - on GTK3 its
+      touches are told apart, and on Windows the mouse events a finger
+      makes are marked.  Where the platform cannot tell (Qt, GTK2), choose
+      imdScroll for a touch screen. }
+    property MouseDrag: TInkMouseDrag read FMouseDrag write FMouseDrag default imdSelect;
+    { behind selected text; clDefault is the system highlight blended into
+      the page, so the words stay readable.  A page's ::selection
+      background wins. }
+    property SelectionColor: TColor read FSelectionColor write SetSelectionColor default clDefault;
+    property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
+    { the right-click menu: Copy, Copy this paragraph, Copy link address,
+      Copy all, Select all.  Not shown when off or when PopupMenu is set. }
+    property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
+    { lets a program add its own items to that menu as it opens }
+    property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
+    property PopupMenu;
     property Align; property Anchors; property Color; property Font;
     property ParentFont; property TabStop; property TabOrder; property Visible;
   end;
 implementation
-uses Math, URIParser, LCLType, LCLIntf, LazUTF8, Forms;
+uses Math, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
 
 type
   { a list, a quote or a definition the parser is inside }
@@ -377,11 +478,16 @@ begin
   FDragScroll := True; FFlickScroll := True;
   FFlickTimer := TTimer.Create(Self); FFlickTimer.Enabled := False;
   FFlickTimer.Interval := 16; FFlickTimer.OnTimer := @FlickTimer;
+  FAutoScroll := TTimer.Create(Self); FAutoScroll.Enabled := False;
+  FAutoScroll.Interval := 40; FAutoScroll.OnTimer := @AutoScrollTimer;
+  FSelectionColor := clDefault; FCopyMenu := True;
+  FCopyMenuHost := TInkCopyMenu.Create(Self);
+  Cursor := crIBeam;
   Color := clWindow; Font.Color := clWindowText; Font.Size := 11;
 end;
 destructor TInkPage.Destroy;
 begin
-  FTimer.Enabled := False; FFlickTimer.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free;
+  FTimer.Enabled := False; FFlickTimer.Enabled := False; FAutoScroll.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   inherited;
 end;
@@ -472,6 +578,16 @@ begin
     FHistory.Add(URL); FHistoryIndex := FHistory.Count-1;
   end;
 end;
+{ a table's plain text ends each cell with a tab; the last one on a row is
+  not wanted }
+function TidyCopy(const S: string): string;
+begin
+  Result := StringReplace(S,#9#13#10,#13#10,[rfReplaceAll]);
+  Result := StringReplace(Result,#9#10,#10,[rfReplaceAll]);
+  while (Result<>'') and (Result[Length(Result)] in [#9,#10,#13]) do
+    SetLength(Result,Length(Result)-1);
+end;
+
 function TInkPage.PlainText: string;
 var I: Integer; B: TInkPageBlock;
 begin
@@ -480,7 +596,7 @@ begin
   begin
     B := TInkPageBlock(FBlocks[I]);
     if B.Marker<>'' then Result := Result + B.Marker + ' ';
-    Result := Result + HTMLPlainText(B.Source) + LineEnding;
+    Result := Result + TidyCopy(HTMLPlainText(B.Source)) + LineEnding;
   end;
 end;
 function TInkPage.ImageCount: Integer;
@@ -606,7 +722,13 @@ var
   end;
 begin
   if FBlocks=nil then Exit;
-  ClearBlocks; FStyles.Clear; FTitle := ''; FHoverLink := ''; Cursor := crDefault;
+  ClearBlocks; FStyles.Clear; FTitle := ''; FHoverLink := '';
+  FSelecting := False;
+  if HasSelection then
+  begin
+    FSelAnchor.Block := 0; FSelAnchor.Offset := 0; FSelCaret := FSelAnchor;
+    if Assigned(FOnSelectionChange) then FOnSelectionChange(Self);
+  end;
   if FTextFormat=itfMarkdown then
   begin
     if FMarkdownRawHTML then S := MarkdownToHTML(FSource,[imoRawHTML])
@@ -973,6 +1095,7 @@ begin
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]);
+    B.RunsReady := False;
     X := 0; SetLength(B.Bars,0);
     for J := 1 to Length(B.Nest) do
       if B.Nest[J]='q' then
@@ -1060,8 +1183,11 @@ procedure TInkPage.Paint;
 begin RenderTo(Canvas) end;
 procedure TInkPage.RenderTo(ACanvas: TCanvas);
 var I,J,BarTop,BarBottom,Saved: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
+  SelFrom, SelTo: TInkPagePosition; Selected: Boolean;
 begin
   Layout;
+  Selected := HasSelection;
+  SelFrom := SelectionStart; SelTo := SelectionEnd;
   ACanvas.Brush.Color := FStyles.Color('body','','background',
     FStyles.Color('body','','background-color',Color));
   ACanvas.Brush.Style := bsSolid;
@@ -1094,6 +1220,11 @@ begin
       Continue;
     end;
     if B.BackColor<>clNone then begin ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid; ACanvas.FillRect(R) end;
+    if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) and (B.Wrapped<>'') then
+    begin
+      PaintSelection(ACanvas,I,B,SelFrom,SelTo);
+      BlockFont(ACanvas,B);
+    end;
     ACanvas.Brush.Style := bsClear;
     if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
     if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
@@ -1279,6 +1410,7 @@ begin
 end;
 
 procedure TInkPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
+var P, WordFrom, WordTo: TInkPagePosition;
 begin
   inherited;
   StopFlick;
@@ -1286,10 +1418,45 @@ begin
   { a platform that sends a copy of a touch as mouse events as well must not
     move the page twice }
   if (FGrab and FGrabFinger) or (GetTickCount64-FLastTouchEnd<500) then Exit;
-  GrabBegin(X,Y,InkMouseIsTouch,GetTickCount64);
+  if InkMouseIsTouch or (FMouseDrag=imdScroll) then
+  begin
+    GrabBegin(X,Y,InkMouseIsTouch,GetTickCount64);
+    Exit;
+  end;
+  { the mouse selects, as in a browser: a click places, a drag selects,
+    a double click takes a word and a triple click a block; Shift extends }
+  if CanFocus then SetFocus;
+  P := PositionAt(X,Y);
+  FSelecting := True; FSelMoved := False;
+  FPressX := X; FPressY := Y; FDragX := X; FDragY := Y;
+  if ssTriple in Shift then
+  begin
+    FSelectUnit := 2; FSelMoved := True;
+    FUnitFrom.Block := P.Block; FUnitFrom.Offset := 0;
+    FUnitTo.Block := P.Block; FUnitTo.Offset := MaxInt;
+    Select(FUnitFrom,FUnitTo);
+  end
+  else if ssDouble in Shift then
+  begin
+    FSelectUnit := 1; FSelMoved := True;
+    if not WordAt(P,WordFrom,WordTo) then begin WordFrom := P; WordTo := P end;
+    FUnitFrom := WordFrom; FUnitTo := WordTo;
+    Select(WordFrom,WordTo);
+  end
+  else if (ssShift in Shift) and HasSelection then
+  begin
+    FSelectUnit := 0; FSelMoved := True;
+    FSelCaret := P; SelectionChanged;
+  end
+  else
+  begin
+    FSelectUnit := 0;
+    Select(P,P);
+  end;
 end;
 
 procedure TInkPage.MouseMove(Shift: TShiftState; X,Y: Integer);
+var I: Integer; B: TInkPageBlock; OnText: Boolean; R: TRect;
 begin
   inherited;
   if FGrab then
@@ -1297,16 +1464,486 @@ begin
     if not FGrabFinger or InkMouseIsTouch then GrabMove(X,Y,GetTickCount64);
     if FDragged then Exit;
   end;
+  if FSelecting then
+  begin
+    FDragX := X; FDragY := Y;
+    if not FSelMoved and ((Abs(X-FPressX)>3) or (Abs(Y-FPressY)>3)) then FSelMoved := True;
+    if FSelMoved then
+    begin
+      ExtendTo(PositionAt(X,EnsureRange(Y,0,ClientHeight-1)));
+      { beyond the top or bottom, the page scrolls on its own }
+      FAutoScroll.Enabled := (Y<0) or (Y>=ClientHeight);
+      Exit;
+    end;
+  end;
   FHoverLink := HitLink(X,Y);
-  if FHoverLink<>'' then Cursor := crHandPoint else Cursor := crDefault;
+  if FHoverLink<>'' then Cursor := crHandPoint
+  else
+  begin
+    OnText := False;
+    for I := 0 to FBlocks.Count-1 do
+    begin
+      B := TInkPageBlock(FBlocks[I]);
+      R := B.TextBounds; OffsetRect(R,0,-FScroll.Position);
+      if (B.Wrapped<>'') and PtInRect(R,Point(X,Y)) then begin OnText := True; Break end;
+    end;
+    if OnText and (FMouseDrag=imdSelect) then Cursor := crIBeam else Cursor := crDefault;
+  end;
 end;
 
 procedure TInkPage.MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
 begin
   inherited;
   if Button<>mbLeft then Exit;
+  if FSelecting then
+  begin
+    FSelecting := False;
+    FAutoScroll.Enabled := False;
+    { a press that did not move is a click: on a link, it is followed }
+    if not FSelMoved then Click(X,Y)
+    else if HasSelection then
+      { X11's other clipboard: what is selected is ready for a middle click }
+      Clipboard(ctPrimarySelection).AsText := SelectedText;
+    Exit;
+  end;
   if FGrab and FGrabFinger and not InkMouseIsTouch then Exit;
   GrabEnd(X,Y,GetTickCount64);
+end;
+
+procedure TInkPage.AutoScrollTimer(Sender: TObject);
+var Delta: Integer;
+begin
+  if not FSelecting then begin FAutoScroll.Enabled := False; Exit end;
+  if FDragY<0 then Delta := Max(-60,FDragY) div 2 - 4
+  else if FDragY>=ClientHeight then Delta := Min(60,FDragY-ClientHeight) div 2 + 4
+  else Exit;
+  FScroll.Position := EnsureRange(FScroll.Position+Delta,0,Max(0,FContentHeight-ClientHeight));
+  ExtendTo(PositionAt(FDragX,EnsureRange(FDragY,0,ClientHeight-1)));
+end;
+
+procedure TInkPage.CollectRun(const AText: string; ALeft, ATop, AWidth, AHeight,
+  ALine, APart: Integer; AFont: TFont);
+var B: TInkPageBlock;
+begin
+  B := FRunBlock;
+  if B=nil then Exit;
+  if B.RunCount=Length(B.Runs) then SetLength(B.Runs,Max(8,B.RunCount*2));
+  with B.Runs[B.RunCount] do
+  begin
+    Text := AText; Left := ALeft; Top := ATop; Width := AWidth; Height := AHeight;
+    Line := ALine; Part := APart; LineHeight := AHeight;
+    FontName := AFont.Name; FontSize := AFont.Size; FontStyle := AFont.Style;
+  end;
+  Inc(B.RunCount);
+end;
+
+procedure TInkPage.PrepareRuns(B: TInkPageBlock);
+var O: THTMLOptions; W,H,I,J,K,P,Q,Tallest: Integer; Hit: THTMLHitInfo; Plain: string;
+begin
+  Layout;
+  if B.RunsReady then Exit;
+  B.RunsReady := True; B.RunCount := 0; SetLength(B.Runs,0); B.Words := '';
+  if B.Wrapped='' then Exit;
+  BlockFont(Canvas,B);
+  O := Options; O.OnRun := @CollectRun; O.RunPart := 0;
+  FRunBlock := B;
+  try
+    { the same layout the block is drawn with, measured instead of painted }
+    HTMLDrawTextEx3(Canvas,B.TextBounds,[],B.Wrapped,O,htmlHyperLink,-1,-1,W,H,Hit);
+  finally FRunBlock := nil end;
+  SetLength(B.Runs,B.RunCount);
+  { every run on a line is as tall as the line }
+  I := 0;
+  while I<B.RunCount do
+  begin
+    J := I; Tallest := 0;
+    while (J<B.RunCount) and (B.Runs[J].Line=B.Runs[I].Line) and (B.Runs[J].Part=B.Runs[I].Part) do
+    begin Tallest := Max(Tallest,B.Runs[J].Height); Inc(J) end;
+    for K := I to J-1 do B.Runs[K].LineHeight := Tallest;
+    I := J;
+  end;
+  { The words are the runs in order, with whatever lay between them in the
+    source's own plain text: the space a wrap took away, a line break, the
+    tab between two cells. }
+  Plain := HTMLPlainText(B.Source);
+  P := 1;
+  for I := 0 to B.RunCount-1 do
+  begin
+    Q := Pos(B.Runs[I].Text,Plain,P);
+    if Q>0 then
+    begin
+      B.Words := B.Words+Copy(Plain,P,Q-P);
+      P := Q+Length(B.Runs[I].Text);
+    end
+    else if (I>0) and ((B.Runs[I].Line<>B.Runs[I-1].Line) or (B.Runs[I].Part<>B.Runs[I-1].Part)) then
+      B.Words := B.Words+' ';
+    B.Runs[I].Start := Length(B.Words);
+    B.Words := B.Words+B.Runs[I].Text;
+  end;
+end;
+
+procedure TInkPage.RunFont(ACanvas: TCanvas; const R: TInkPageRun);
+begin
+  ACanvas.Font.Name := R.FontName;
+  ACanvas.Font.Size := R.FontSize;
+  ACanvas.Font.Style := R.FontStyle;
+end;
+
+function TInkPage.RunX(const R: TInkPageRun; Offset: Integer): Integer;
+var K: Integer;
+begin
+  K := EnsureRange(Offset-R.Start,0,Length(R.Text));
+  if K=0 then Exit(R.Left);
+  if K=Length(R.Text) then Exit(R.Left+R.Width);
+  RunFont(Canvas,R);
+  Result := R.Left+Canvas.TextWidth(Copy(R.Text,1,K));
+end;
+
+function TInkPage.BlockAt(X,Y: Integer): Integer;
+var I,DocY: Integer; B: TInkPageBlock;
+begin
+  Layout;
+  Result := -1;
+  DocY := Y+FScroll.Position;
+  for I := 0 to FBlocks.Count-1 do
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    if (DocY>=B.Bounds.Top) and (DocY<B.Bounds.Bottom) then Exit(I);
+  end;
+end;
+
+function TInkPage.PositionAt(X,Y: Integer): TInkPagePosition;
+var I,K,DocY,Best,BestDY,BestDX,DY,DX,Prev,W,Len: Integer; B: TInkPageBlock; R: TInkPageRun;
+begin
+  Layout;
+  Result.Block := 0; Result.Offset := 0;
+  if FBlocks.Count=0 then Exit;
+  DocY := Y+FScroll.Position;
+  { the block, or the one after the gap the point is in }
+  I := 0;
+  while (I<FBlocks.Count-1) and
+    (DocY>=TInkPageBlock(FBlocks[I]).Bounds.Bottom+TInkPageBlock(FBlocks[I]).GapAfter) do Inc(I);
+  B := TInkPageBlock(FBlocks[I]);
+  Result.Block := I;
+  PrepareRuns(B);
+  if B.RunCount=0 then Exit;
+  if DocY<B.Bounds.Top then Exit;
+  if DocY>=B.Bounds.Bottom+B.GapAfter then begin Result.Offset := Length(B.Words); Exit end;
+  { the nearest line, then the nearest run on it }
+  Best := 0; BestDY := MaxInt; BestDX := MaxInt;
+  for K := 0 to B.RunCount-1 do
+  begin
+    R := B.Runs[K];
+    if DocY<R.Top then DY := R.Top-DocY
+    else if DocY>=R.Top+R.LineHeight then DY := DocY-(R.Top+R.LineHeight)+1
+    else DY := 0;
+    if X<R.Left then DX := R.Left-X
+    else if X>R.Left+R.Width then DX := X-(R.Left+R.Width)
+    else DX := 0;
+    if (DY<BestDY) or ((DY=BestDY) and (DX<BestDX)) then
+    begin Best := K; BestDY := DY; BestDX := DX end;
+  end;
+  R := B.Runs[Best];
+  Result.Offset := R.Start;
+  if X<=R.Left then Exit;
+  if X>=R.Left+R.Width then begin Result.Offset := R.Start+Length(R.Text); Exit end;
+  { between the two characters whose middle it is nearest }
+  RunFont(Canvas,R);
+  K := 1; Prev := 0;
+  while K<=Length(R.Text) do
+  begin
+    Len := Max(1,UTF8CodepointSize(@R.Text[K]));
+    W := Canvas.TextWidth(Copy(R.Text,1,K+Len-1));
+    if X-R.Left<(Prev+W) div 2 then Break;
+    Result.Offset := R.Start+K+Len-1;
+    Prev := W; Inc(K,Len);
+  end;
+end;
+
+function TInkPage.PositionPoint(const APosition: TInkPagePosition): TPoint;
+var P: TInkPagePosition; B: TInkPageBlock; K,Found: Integer;
+begin
+  P := Clamp(APosition);
+  Result := Point(0,0);
+  if FBlocks.Count=0 then Exit;
+  B := TInkPageBlock(FBlocks[P.Block]);
+  PrepareRuns(B);
+  Result := Point(B.TextBounds.Left,B.TextBounds.Top-FScroll.Position);
+  Found := -1;
+  for K := 0 to B.RunCount-1 do
+  begin
+    if B.Runs[K].Start>P.Offset then Break;
+    Found := K;
+    if P.Offset<B.Runs[K].Start+Length(B.Runs[K].Text) then Break;
+  end;
+  if Found<0 then Exit;
+  Result := Point(RunX(B.Runs[Found],P.Offset),B.Runs[Found].Top-FScroll.Position);
+end;
+
+function TInkPage.BlockText(Index: Integer): string;
+begin
+  PrepareRuns(TInkPageBlock(FBlocks[Index]));
+  Result := TInkPageBlock(FBlocks[Index]).Words;
+end;
+
+function TInkPage.Clamp(const P: TInkPagePosition): TInkPagePosition;
+var B: TInkPageBlock;
+begin
+  Result := P;
+  if FBlocks.Count=0 then begin Result.Block := 0; Result.Offset := 0; Exit end;
+  Result.Block := EnsureRange(P.Block,0,FBlocks.Count-1);
+  B := TInkPageBlock(FBlocks[Result.Block]);
+  PrepareRuns(B);
+  Result.Offset := EnsureRange(P.Offset,0,Length(B.Words));
+end;
+
+function ComparePositions(const A, B: TInkPagePosition): Integer;
+begin
+  if A.Block<>B.Block then Result := A.Block-B.Block
+  else if A.Offset<B.Offset then Result := -1
+  else if A.Offset>B.Offset then Result := 1
+  else Result := 0;
+end;
+
+function IsWordByte(C: Char): Boolean;
+begin
+  Result := (C in ['a'..'z','A'..'Z','0'..'9','_']) or (Ord(C)>=$80);
+end;
+
+function TInkPage.WordAt(const P: TInkPagePosition; out AFrom, ATo: TInkPagePosition): Boolean;
+var Words: string; A,Z: Integer; Kind: Boolean;
+begin
+  AFrom := Clamp(P); ATo := AFrom;
+  Words := TInkPageBlock(FBlocks[AFrom.Block]).Words;
+  Result := Words<>'';
+  if not Result then Exit;
+  A := AFrom.Offset;
+  if A>=Length(Words) then A := Length(Words)-1;
+  { the character after the place, as a browser takes it; a word, or a run
+    of the same kind of not-word }
+  Kind := IsWordByte(Words[A+1]);
+  if not Kind and (Words[A+1] in [' ',#9]) and (A>0) and IsWordByte(Words[A]) then
+  begin Dec(A); Kind := True end;
+  Z := A+1;
+  while (A>0) and (IsWordByte(Words[A])=Kind) and not (Words[A] in [#10,#13]) do Dec(A);
+  while (Z<Length(Words)) and (IsWordByte(Words[Z+1])=Kind) and not (Words[Z+1] in [#10,#13]) do Inc(Z);
+  if not Kind then
+  begin
+    { punctuation on its own is taken one character at a time }
+    A := EnsureRange(AFrom.Offset,0,Length(Words)-1);
+    Z := A+1;
+  end;
+  AFrom.Offset := A; ATo.Offset := Z;
+end;
+
+procedure TInkPage.ExtendTo(const P: TInkPagePosition);
+var WordFrom, WordTo: TInkPagePosition;
+begin
+  case FSelectUnit of
+    1:
+      begin
+        if not WordAt(P,WordFrom,WordTo) then begin WordFrom := P; WordTo := P end;
+        if ComparePositions(WordFrom,FUnitFrom)<0 then
+        begin FSelAnchor := FUnitTo; FSelCaret := WordFrom end
+        else
+        begin FSelAnchor := FUnitFrom; FSelCaret := WordTo end;
+      end;
+    2:
+      if P.Block<FUnitFrom.Block then
+      begin
+        FSelAnchor := FUnitTo; FSelCaret.Block := P.Block; FSelCaret.Offset := 0;
+      end
+      else
+      begin
+        FSelAnchor := FUnitFrom; FSelCaret.Block := P.Block; FSelCaret.Offset := MaxInt;
+      end;
+  else
+    FSelCaret := P;
+  end;
+  SelectionChanged;
+end;
+
+procedure TInkPage.SelectionChanged;
+begin
+  Invalidate;
+  if Assigned(FOnSelectionChange) then FOnSelectionChange(Self);
+end;
+
+procedure TInkPage.Select(const AFrom, ATo: TInkPagePosition);
+begin
+  FSelAnchor := Clamp(AFrom); FSelCaret := Clamp(ATo);
+  SelectionChanged;
+end;
+
+procedure TInkPage.SelectAll;
+begin
+  FSelAnchor.Block := 0; FSelAnchor.Offset := 0;
+  FSelCaret.Block := Max(0,FBlocks.Count-1); FSelCaret.Offset := MaxInt;
+  SelectionChanged;
+end;
+
+procedure TInkPage.DoSelectAll(Sender: TObject);
+begin
+  SelectAll;
+end;
+
+procedure TInkPage.ClearSelection;
+begin
+  if not HasSelection then Exit;
+  FSelAnchor := FSelCaret;
+  SelectionChanged;
+end;
+
+function TInkPage.HasSelection: Boolean;
+begin
+  Result := (FBlocks<>nil) and (FBlocks.Count>0) and
+    (ComparePositions(FSelAnchor,FSelCaret)<>0);
+end;
+
+function TInkPage.GetSelectionStart: TInkPagePosition;
+begin
+  if ComparePositions(FSelAnchor,FSelCaret)<=0 then Result := FSelAnchor else Result := FSelCaret;
+end;
+
+function TInkPage.GetSelectionEnd: TInkPagePosition;
+begin
+  if ComparePositions(FSelAnchor,FSelCaret)<=0 then Result := FSelCaret else Result := FSelAnchor;
+end;
+
+function TInkPage.SelectedText: string;
+var I,A,Z: Integer; B: TInkPageBlock; SelFrom,SelTo: TInkPagePosition; Part: string;
+begin
+  Result := '';
+  if not HasSelection then Exit;
+  SelFrom := SelectionStart; SelTo := SelectionEnd;
+  for I := SelFrom.Block to Min(SelTo.Block,FBlocks.Count-1) do
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    if I=SelFrom.Block then A := SelFrom.Offset else A := 0;
+    if I=SelTo.Block then Z := SelTo.Offset else Z := MaxInt;
+    PrepareRuns(B);
+    Z := Min(Z,Length(B.Words));
+    if A>=Z then
+    begin
+      if I>SelFrom.Block then Result := Result+LineEnding;
+      Continue;
+    end;
+    Part := TidyCopy(Copy(B.Words,A+1,Z-A));
+    if (A=0) and (B.Marker<>'') then Part := B.Marker+' '+Part;
+    if I>SelFrom.Block then Result := Result+LineEnding;
+    Result := Result+Part;
+  end;
+end;
+
+function TInkPage.SelectedHTML: string;
+var I,A,Z: Integer; B: TInkPageBlock; SelFrom,SelTo: TInkPagePosition; Element,Part: string;
+begin
+  Result := '';
+  if not HasSelection then Exit;
+  SelFrom := SelectionStart; SelTo := SelectionEnd;
+  for I := SelFrom.Block to Min(SelTo.Block,FBlocks.Count-1) do
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    if I=SelFrom.Block then A := SelFrom.Offset else A := 0;
+    if I=SelTo.Block then Z := SelTo.Offset else Z := MaxInt;
+    PrepareRuns(B);
+    Z := Min(Z,Length(B.Words));
+    if A>=Z then Continue;
+    Element := B.Tag;
+    if (Element='li') or (Element='dt') or (Element='dd') or (Element='blockquote') or (Element='') then Element := 'p';
+    { a whole block keeps its formatting; part of one is its words }
+    if (A=0) and (Z=Length(B.Words)) and not B.Pre then Part := B.Source
+    else Part := StringReplace(HTMLEscape(TidyCopy(Copy(B.Words,A+1,Z-A))),#10,'<br>',[rfReplaceAll]);
+    if B.Pre then Part := StringReplace(Part,'<br>',#10,[rfReplaceAll]);
+    if (A=0) and (B.Marker<>'') then Part := HTMLEscape(B.Marker)+' '+Part;
+    Result := Result+'<'+Element+'>'+Part+'</'+Element+'>'+LineEnding;
+  end;
+  Result := '<html><body>'+LineEnding+Result+'</body></html>';
+end;
+
+procedure TInkPage.CopyToClipboard;
+begin
+  if HasSelection then InkCopyText(SelectedText,SelectedHTML);
+end;
+
+function TInkPage.SelectionBackground: TColor;
+var PageBack: TColor;
+begin
+  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
+  if FSelectionColor<>clDefault then Result := FSelectionColor
+  else Result := MixColor(PageBack,clHighlight,0.45);
+  Result := HTMLStringToColor(FStyles.RuleValue('::selection','background',
+    FStyles.RuleValue('::selection','background-color','')),Result);
+end;
+
+procedure TInkPage.SetSelectionColor(AValue: TColor);
+begin
+  if FSelectionColor=AValue then Exit;
+  FSelectionColor := AValue;
+  Invalidate;
+end;
+
+procedure TInkPage.PaintSelection(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock;
+  const AFrom, ATo: TInkPagePosition);
+var K,A,Z,SelA,SelZ,X1,X2,RunEnd: Integer; R: TInkPageRun; Space: Boolean;
+begin
+  PrepareRuns(B);
+  if Index=AFrom.Block then SelA := AFrom.Offset else SelA := 0;
+  if Index=ATo.Block then SelZ := ATo.Offset else SelZ := MaxInt;
+  ACanvas.Brush.Style := bsSolid;
+  ACanvas.Brush.Color := SelectionBackground;
+  for K := 0 to B.RunCount-1 do
+  begin
+    R := B.Runs[K];
+    RunEnd := R.Start+Length(R.Text);
+    A := Max(SelA,R.Start); Z := Min(SelZ,RunEnd);
+    if A>=Z then Continue;
+    X1 := RunX(R,A); X2 := RunX(R,Z);
+    { a selection that runs on past the end of a line shows a little of
+      the space it takes with it }
+    Space := (Z=RunEnd) and (SelZ>RunEnd) and
+      ((K=B.RunCount-1) or (B.Runs[K+1].Line<>R.Line) or (B.Runs[K+1].Part<>R.Part));
+    if Space then begin RunFont(Canvas,R); Inc(X2,Canvas.TextWidth(' ')) end;
+    ACanvas.FillRect(Rect(X1,R.Top-FScroll.Position,X2,R.Top+R.LineHeight-FScroll.Position));
+  end;
+end;
+
+function TInkPage.BuildCopyMenu(X,Y: Integer): TPopupMenu;
+var Texts: TInkCopyTexts; I: Integer; B: TInkPageBlock;
+begin
+  Texts := Default(TInkCopyTexts);
+  Texts.CanSelect := True;
+  if HasSelection then
+  begin
+    Texts.Selection := SelectedText;
+    Texts.SelectionHTML := SelectedHTML;
+  end;
+  I := BlockAt(X,Y);
+  if I>=0 then
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    Texts.Block := TidyCopy(BlockText(I));
+    if (Texts.Block<>'') and (B.Marker<>'') then Texts.Block := B.Marker+' '+Texts.Block;
+  end;
+  Texts.Link := HitLink(X,Y);
+  Texts.All := TrimRight(PlainText);
+  Texts.SelectAll := @DoSelectAll;
+  FCopyMenuHost.Build(Self,Texts,X,Y,FOnCopyMenu);
+  Result := FCopyMenuHost.Menu;
+end;
+
+procedure TInkPage.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+var P: TPoint;
+begin
+  inherited DoContextPopup(MousePos,Handled);
+  if Handled or not FCopyMenu or Assigned(PopupMenu) then Exit;
+  { from the keyboard's menu key the place is unknown: the page's corner }
+  if (MousePos.X<0) and (MousePos.Y<0) then MousePos := Point(8,8);
+  BuildCopyMenu(MousePos.X,MousePos.Y);
+  if FCopyMenuHost.Menu.Items.Count=0 then Exit;
+  P := ClientToScreen(MousePos);
+  FCopyMenuHost.Menu.PopUp(P.X,P.Y);
+  Handled := True;
 end;
 
 function TInkPage.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
@@ -1318,6 +1955,11 @@ procedure TInkPage.KeyDown(var Key: Word; Shift: TShiftState);
 var Delta: Integer;
 begin
   inherited; Delta := 0;
+  if ssCtrl in Shift then
+    case Key of
+      VK_A: begin SelectAll; Key := 0; Exit end;
+      VK_C, VK_INSERT: begin CopyToClipboard; Key := 0; Exit end;
+    end;
   case Key of
     VK_UP: Delta := -32;
     VK_DOWN: Delta := 32;

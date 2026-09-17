@@ -30,7 +30,7 @@ var
   Cols, MinCols: array of Integer;
   S, Lower, Body, Tag, Cell, Part: string;
   P, Q, E, R, C, N, X, Y, W, H, RH, Total, Avail, Offset, MinTotal, Spare: Integer;
-  O: THTMLOptions;
+  O, Measure: THTMLOptions;
   Hit: THTMLHitInfo;
   Box: TRect;
   InCell: Boolean;
@@ -47,6 +47,7 @@ var
   begin
     O.HoverIndex := AOpts.HoverIndex - Offset;
     HTMLDrawTextEx3(Canvas, Bounds, State, A, O, CalcType, MouseX, MouseY,W,H,Hit);
+    Inc(O.RunPart);
     if Hit.OnLink then begin AHit := Hit; Inc(AHit.LinkIndex, Offset) end;
     Inc(Offset, LinkCount(A));
   end;
@@ -60,6 +61,8 @@ begin
   Width := 0; Y := Rect.Top + AOpts.Borders.Top; Offset := 0;
   O := AOpts; O.Borders := Types.Rect(0,0,0,0);
   O.VertAlign := ivaTop; O.HorzAlign := ihaLeft;
+  { measuring a cell is not laying it out: no runs reported }
+  Measure := O; Measure.OnRun := nil;
   Inc(Rect.Left,AOpts.Borders.Left); Dec(Rect.Right,AOpts.Borders.Right);
   SavedPen := TPen.Create; SavedBrush := TBrush.Create;
   SavedPen.Assign(Canvas.Pen); SavedBrush.Assign(Canvas.Brush);
@@ -155,7 +158,7 @@ begin
         for C := 0 to High(Rows[R]) do
         begin
           Rows[R][C] := HTMLWordWrap(Canvas,Rows[R][C],Max(1,Cols[C]-12),O.SuperSubScriptRatio,O.Scale);
-          RH := Max(RH,HTMLTextHeightOpt(Canvas,Rows[R][C],O)+12);
+          RH := Max(RH,HTMLTextHeightOpt(Canvas,Rows[R][C],Measure)+12);
         end;
         X := Rect.Left;
         for C := 0 to High(Cols) do

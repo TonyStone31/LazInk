@@ -151,6 +151,35 @@ finger is followed. `TInkLabel` has no window of its own, so on GTK3 a finger
 does not reach it. The GTK3 path is tested with GDK touch events made by the
 test suite; it has not yet been run on a touch screen.
 
+**Selecting and copying:** the mouse selects text on a page the way it does in
+a browser - drag, double-click for a word, triple-click for a paragraph,
+Shift+click to extend, dragging past the top or bottom scrolls - across
+paragraphs, list items, code and table cells. Ctrl+C copies it as plain text
+and as HTML; Ctrl+A selects everything. A finger still scrolls
+(`MouseDrag := imdScroll` makes the mouse scroll too, for platforms that
+cannot tell a finger from a mouse). The highlight is `SelectionColor`, or a
+page's `::selection { background: ... }`. From code: `SelectAll`, `Select`,
+`SelectedText`, `SelectedHTML`, `CopyToClipboard`, and the character-level
+hit test `PositionAt(X, Y)` with its reverse `PositionPoint`.
+
+**The copy menu:** right-click any display control for **Copy**, **Copy this
+paragraph** (or line, or item), **Copy link address** over a link, **Copy
+all** and **Select all**. `TInkMemo` and `TInkListBox` copy their selected
+lines with Ctrl+C, and everything after Ctrl+A; `TInkLabel` offers its words
+and links. `CopyMenu := False` turns the menu off, a `PopupMenu` of your own
+replaces it, and `OnCopyMenu` lets you add items as it opens:
+
+```pascal
+procedure TForm1.PageCopyMenu(Sender: TObject; Menu: TPopupMenu; X, Y: Integer);
+var Item: TMenuItem;
+begin
+  Item := TMenuItem.Create(Menu);
+  Item.Caption := 'Search the web';
+  Item.OnClick := @SearchSelection;
+  Menu.Items.Add(Item);
+end;
+```
+
 Try the demo's **HTML help pages** tab, or pass an HTML filename on its command
 line. Keep the help folder's relative image and stylesheet paths intact.
 Remote content can be supplied through `OnResource`; HTTP transport is not

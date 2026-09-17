@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, StdCtrls, ImgList, LCLType, LCLIntf,
-  Types, InkHtml, InkMarkdown;
+  Types, Menus, InkHtml, InkMarkdown, InkCopyMenu;
 
 type
   TInkMemoLinkEvent = procedure(Sender: TObject; LineIndex: Integer;
@@ -59,6 +59,14 @@ type
     FOnLinkEnter: TInkMemoLinkEvent;
     FOnLinkLeave: TInkMemoLinkEvent;
     FOnLinkRightClick: TInkMemoLinkEvent;
+  private
+    { the copy menu, and Ctrl+A / Ctrl+C }
+    FCopyMenu: Boolean;
+    FCopyMenuHost: TInkCopyMenu;
+    FOnCopyMenu: TInkCopyMenuEvent;
+    { Ctrl+A was the last thing done: Ctrl+C copies everything }
+    FAllChosen: Boolean;
+    procedure DoSelectAll(Sender: TObject);
     procedure SetLineSpacing(AValue: Integer);
     procedure SetBorders(AValue: TInkBorders);
     procedure SetImages(AValue: TCustomImageList);
@@ -89,6 +97,9 @@ type
     procedure MouseLeave; override;
     procedure Resize; override;
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -102,9 +113,20 @@ type
     function PlainText: string;
     procedure SaveAsPlain(const FileName: string);
     procedure SaveAsHTML(const FileName: string);
+    { the selected lines as plain text - every one after Ctrl+A }
+    function SelectedText: string;
+    procedure CopyToClipboard;
+    { fills the copy menu for client X, Y without opening it }
+    function BuildCopyMenu(X, Y: Integer): TPopupMenu;
   published
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     property Lines: TStrings read GetLines write SetLines;
+    { the right-click menu: Copy, Copy this line, Copy link address,
+      Copy all, Select all.  Not shown when off or when PopupMenu is set. }
+    property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
+    { lets a program add its own items to that menu as it opens }
+    property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
+
     property HTMLScale: Integer read FHTMLScale write SetHTMLScale default 100;
     property SuperSubScriptRatio: Double read FSuperSubScriptRatio write FSuperSubScriptRatio;
     property ShowSelection: Boolean read FShowSelection write FShowSelection default False;
@@ -195,6 +217,8 @@ const
 constructor TInkMemo.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
+  FCopyMenu := True;
+  FCopyMenuHost := TInkCopyMenu.Create(Self);
   FHTMLScale := 100;
   FSuperSubScriptRatio := 0.7;
   FShowSelection := False;
@@ -561,6 +585,85 @@ begin
     for I := 0 to Items.Count - 1 do SL.Add(InkToHTML(Items[I], FTextFormat));
     SL.SaveToFile(FileName);
   finally SL.Free end;
+end;
+
+
+{ --- copying ------------------------------------------------------------ }
+
+procedure TInkMemo.DoSelectAll(Sender: TObject);
+begin
+  if MultiSelect then SelectAll;
+  FAllChosen := True;
+end;
+
+function TInkMemo.SelectedText: string;
+begin
+  if FAllChosen then Result := TrimRight(PlainText)
+  else Result := InkListSelection(Self, @GetPlainText);
+end;
+
+procedure TInkMemo.CopyToClipboard;
+var S: string;
+begin
+  S := SelectedText;
+  if S <> '' then InkCopyText(S);
+end;
+
+function TInkMemo.BuildCopyMenu(X, Y: Integer): TPopupMenu;
+var Texts: TInkCopyTexts; I: Integer;
+begin
+  Texts := Default(TInkCopyTexts);
+  Texts.CanSelect := True;
+  Texts.Selection := SelectedText;
+  I := ItemAtPos(Point(X, Y), True);
+  if I >= 0 then
+  begin
+    Texts.Block := GetPlainText(I);
+    Texts.BlockCaption := SInkCopyLine;
+  end;
+  Texts.Link := FHoverLink;
+  Texts.All := TrimRight(PlainText);
+  Texts.SelectAll := @DoSelectAll;
+  FCopyMenuHost.Build(Self, Texts, X, Y, FOnCopyMenu);
+  Result := FCopyMenuHost.Menu;
+end;
+
+procedure TInkMemo.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+var P: TPoint;
+begin
+  inherited DoContextPopup(MousePos, Handled);
+  if Handled or not FCopyMenu or Assigned(PopupMenu) then Exit;
+  if (MousePos.X < 0) and (MousePos.Y < 0) then MousePos := Point(8, 8);
+  BuildCopyMenu(MousePos.X, MousePos.Y);
+  if FCopyMenuHost.Menu.Items.Count = 0 then Exit;
+  P := ClientToScreen(MousePos);
+  FCopyMenuHost.Menu.PopUp(P.X, P.Y);
+  Handled := True;
+end;
+
+procedure TInkMemo.KeyDown(var Key: Word; Shift: TShiftState);
+begin
+  if (Shift * [ssCtrl, ssAlt, ssShift] = [ssCtrl]) and (Key = VK_A) then
+  begin
+    DoSelectAll(Self);
+    Key := 0;
+    Exit;
+  end;
+  if (ssCtrl in Shift) and ((Key = VK_C) or (Key = VK_INSERT)) then
+  begin
+    CopyToClipboard;
+    Key := 0;
+    Exit;
+  end;
+  { Ctrl on its own is how both of those begin; anything else ends "all" }
+  if not (Key in [VK_CONTROL, VK_LCONTROL, VK_RCONTROL]) then FAllChosen := False;
+  inherited KeyDown(Key, Shift);
+end;
+
+procedure TInkMemo.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+begin
+  if Button = mbLeft then FAllChosen := False;
+  inherited MouseDown(Button, Shift, X, Y);
 end;
 
 end.

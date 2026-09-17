@@ -17,7 +17,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, ImgList, LCLType, LCLIntf, Types,
-  InkHtml, InkMarkdown;
+  Menus, InkHtml, InkMarkdown, InkCopyMenu;
 
 type
   TInkLinkEvent = procedure(Sender: TObject; const LinkName: string) of object;
@@ -62,6 +62,10 @@ type
     procedure SetLinkHoverStyle(AValue: TInkLinkStyle);
     procedure SubPropChanged(Sender: TObject);
     procedure UpdateHover(const AHit: THTMLHitInfo);
+  private
+    FCopyMenu: Boolean;
+    FCopyMenuHost: TInkCopyMenu;
+    FOnCopyMenu: TInkCopyMenuEvent;
     { Caption as it will actually be drawn: re-flowed when WordWrap or
       MaxWidth ask for it, otherwise the caption untouched. Sets Canvas.Font. }
     function RenderText: string;
@@ -79,11 +83,14 @@ type
     procedure TextChanged; override;
     procedure DoSetBounds(ALeft, ATop, AWidth, AHeight: integer); override;
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     { The caption with all markup stripped }
     function PlainText: string;
+    { fills the copy menu for client X, Y without opening it }
+    function BuildCopyMenu(X, Y: Integer): TPopupMenu;
     { The href under the mouse, '' when none }
     property HoverLink: string read FHoverLink;
     { The text shown for that link }
@@ -116,6 +123,11 @@ type
     property OnLinkEnter: TInkLinkEvent read FOnLinkEnter write FOnLinkEnter;
     property OnLinkLeave: TInkLinkEvent read FOnLinkLeave write FOnLinkLeave;
     property OnLinkRightClick: TInkLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
+    { the right-click menu: Copy link address over a link, and Copy all.
+      Not shown when off or when PopupMenu is set. }
+    property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
+    { lets a program add its own items to that menu as it opens }
+    property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
 
     property Align;
     property Anchors;
@@ -157,6 +169,8 @@ end;
 constructor TInkLabel.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
+  FCopyMenu := True;
+  FCopyMenuHost := TInkCopyMenu.Create(Self);
   FHTMLScale := 100;
   FSuperSubScriptRatio := 0.7;
   FTransparent := True;
@@ -438,7 +452,30 @@ end;
 
 function TInkLabel.PlainText: string;
 begin
-  Result := HTMLPlainText(Caption);
+  Result := HTMLPlainText(InkToHTML(Caption, FTextFormat));
+end;
+
+function TInkLabel.BuildCopyMenu(X, Y: Integer): TPopupMenu;
+var Texts: TInkCopyTexts;
+begin
+  Texts := Default(TInkCopyTexts);
+  Texts.Link := FHoverLink;
+  Texts.All := PlainText;
+  FCopyMenuHost.Build(Self, Texts, X, Y, FOnCopyMenu);
+  Result := FCopyMenuHost.Menu;
+end;
+
+procedure TInkLabel.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+var P: TPoint;
+begin
+  inherited DoContextPopup(MousePos, Handled);
+  if Handled or not FCopyMenu or Assigned(PopupMenu) then Exit;
+  if (MousePos.X < 0) and (MousePos.Y < 0) then MousePos := Point(0, 0);
+  BuildCopyMenu(MousePos.X, MousePos.Y);
+  if FCopyMenuHost.Menu.Items.Count = 0 then Exit;
+  P := ClientToScreen(MousePos);
+  FCopyMenuHost.Menu.PopUp(P.X, P.Y);
+  Handled := True;
 end;
 
 end.
