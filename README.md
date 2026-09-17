@@ -397,10 +397,13 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
   emphasis follows simpler rules than the specification, a link reference
   definition has to fit on one line, and footnotes are not read.
 * LazInk colors code blocks a little - comments, strings, numbers and
-  keywords, from the language the fence or the class named, or by rules most
-  languages share when it named none.  It is not a real highlighter and will
-  not always be right; `HighlightCode` turns it off, and `OnHighlightCode`
-  lets a program color the block itself (with SynEdit, say).
+  keywords.  Comment and quote rules cover about sixty language names;
+  keyword lists exist for the dozen or so that turn up in documents, Pascal
+  first among them.  A block that names no language is colored by the rules
+  most languages share.  It is not a real highlighter and will not always be
+  right; `HighlightCode` turns it off, and `OnHighlightCode` lets a program
+  color the block itself (with SynEdit, say).  `demo/code.md` has a block of
+  each.
 * No built-in HTTP downloads - a host supplies remote content through
   `OnResource`.
 

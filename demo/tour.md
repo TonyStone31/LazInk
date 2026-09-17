@@ -72,6 +72,7 @@ end;
 LazInk colors comments, strings, numbers and keywords - a little coloring,
 not a real highlighter. `HighlightCode` turns it off, and `OnHighlightCode`
 hands the block to a program that would rather color it itself.
+[Code, in the languages LazInk knows](code.md) has a block of each.
 
 ### Quotes, rules and the rest
 

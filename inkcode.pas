@@ -51,14 +51,23 @@ implementation
 type
   { how one family of languages writes its comments and strings }
   TInkCodeRules = record
-    { up to two line comment leads, and two block comment pairs }
-    Line1, Line2, Open1, Close1, Open2, Close2: string;
+    { up to two line comment leads, and three block comment pairs }
+    Line1, Line2, Open1, Close1, Open2, Close2, Open3, Close3: string;
+    { line comment leads that are only comments where they cannot be
+      anything else - at the start of a line, or with a space on both sides.
+      '#' is a comment in "# install", a color in "color: #fff"; '--' is a
+      comment in "x -- note", a decrement in "i--". }
+    Loose1, Loose2: string;
     { the characters a string may be written in }
     Quotes: string;
     { \" is a quote inside a string; "" is one too }
     Escape, Doubled: Boolean;
     { """ around a string that may cross lines, as Python writes it }
     Triples: Boolean;
+    { <tag> and </tag> names are colored, for HTML and XML }
+    Tags: Boolean;
+    { @decorator and @Annotation are colored, for Python and the JVM ones }
+    AtWords: Boolean;
     { a directive is colored like a keyword, not like a comment:
       '$' is Pascal's dollar directive in braces, '#' is C's #include }
     Directive: Char;
@@ -113,9 +122,9 @@ const
     'impl in let loop match mod move mut pub ref return self static struct super trait ' +
     'true type unsafe use where while ';
   PythonWords =
-    ' False None True and as assert async await break class continue def del elif else ' +
-    'except finally for from global if import in is lambda nonlocal not or pass raise ' +
-    'return try while with yield ';
+    ' False None True and as assert async await break class cls continue def del elif ' +
+    'else except finally for from global if import in is lambda nonlocal not or pass ' +
+    'raise return self try while with yield ';
   RubyWords =
     ' alias and begin break case class def defined? do else elsif end ensure false for ' +
     'if in module next nil not or redo rescue retry return self super then true undef ' +
@@ -193,11 +202,21 @@ begin
 end;
 
 { the rules for a language, or Known=False for the safe subset }
+{ is L one of the space-separated names in AList }
+function InList(const L, AList: string): Boolean;
+begin
+  Result := (L<>'') and (Pos(' '+L+' ',AList)>0);
+end;
+
+{ The rules for a language.  Comments and quotes are the cheap part - most
+  languages write them one of eight ways - so the names below are spread
+  wide and cost a line or two each.  Keyword lists are the expensive part
+  and there are only a handful, for the languages people put in documents. }
 function RulesFor(const ALanguage: string): TInkCodeRules;
 var L: string;
 begin
   Result := Default(TInkCodeRules);
-  Result.Quotes := '"'; Result.Known := False;
+  Result.Quotes := '"';
   L := ALanguage;
   { prose is not code: a Markdown or plain-text block is left alone }
   if L='markdown' then
@@ -207,96 +226,166 @@ begin
   if L='' then
   begin
     { nothing said: the rules everybody roughly agrees on }
-    Result.Line1 := '//'; Result.Line2 := '#';
+    Result.Line1 := '//';
+    Result.Loose1 := '#'; Result.Loose2 := '--';
     Result.Open1 := '/*'; Result.Close1 := '*/';
     Result.Open2 := '(*'; Result.Close2 := '*)';
-    Result.Quotes := '"'''; Result.Escape := True; Result.Doubled := True;
-    Result.Directive := '$'; Result.Words := CommonWords; Result.Fold := True;
-    Result.Known := False;
+    Result.Open3 := '<!--'; Result.Close3 := '-->';
+    Result.Quotes := '"''`'; Result.Escape := True; Result.Doubled := True;
+    Result.Words := CommonWords; Result.Fold := True;
     Exit;
   end;
+  Result.Known := True;
 
+  { Pascal, with the most complete rules of the lot: braces, (* *), //,
+    doubled quotes, dollar directives and $FF numbers }
   if L='pascal' then
   begin
     Result.Line1 := '//'; Result.Open1 := '{'; Result.Close1 := '}';
     Result.Open2 := '(*'; Result.Close2 := '*)';
     Result.Quotes := ''''; Result.Doubled := True; Result.Directive := '$';
-    Result.Words := PascalWords; Result.Fold := True; Result.Known := True;
+    Result.Words := PascalWords; Result.Fold := True;
     Exit;
   end;
-  if (L='html') or (L='vue') then
+  { ML and friends: (* *), and // as well in F# }
+  if InList(L,' ocaml sml fsharp ') then
+  begin
+    Result.Open1 := '(*'; Result.Close1 := '*)'; Result.Escape := True;
+    if L='fsharp' then Result.Line1 := '//';
+    Exit;
+  end;
+  { markup: <!-- -->, and the tag names read as this language's keywords }
+  if InList(L,' html vue xslt xaml ') then
   begin
     Result.Open1 := '<!--'; Result.Close1 := '-->';
-    Result.Quotes := '"'''; Result.Known := True;
+    Result.Quotes := '"'''; Result.Tags := True;
     Exit;
   end;
-  if L='css' then
+  { stylesheets: /* */, and // in the preprocessors }
+  if InList(L,' css stylus ') then
   begin
-    Result.Open1 := '/*'; Result.Close1 := '*/';
-    Result.Quotes := '"'''; Result.Known := True;
+    Result.Open1 := '/*'; Result.Close1 := '*/'; Result.Quotes := '"''';
+    if L='stylus' then Result.Line1 := '//';
     Exit;
   end;
   if L='json' then
   begin
-    Result.Words := JSONWords; Result.Known := True;
+    { .jsonc and friends allow //, and reading it costs nothing }
+    Result.Line1 := '//'; Result.Words := JSONWords;
     Exit;
   end;
-  if (L='ini') or (L='yaml') or (L='dockerfile') or (L='makefile') or (L='make') then
+  { hash: # to the end of the line }
+  if InList(L,' python ruby perl shell powershell r tcl awk elixir crystal ' +
+    'nim julia yaml toml ini dockerfile makefile cmake gitignore nginx conf ' +
+    'apache puppet hcl terraform properties desktop ') then
   begin
-    Result.Line1 := '#'; Result.Quotes := '"'''; Result.Known := True;
-    if L='ini' then Result.Line2 := ';';
-    Exit;
-  end;
-  if (L='lisp') or (L='scheme') or (L='clojure') or (L='elisp') or (L='asm') then
-  begin
-    Result.Line1 := ';'; Result.Quotes := '"'; Result.Known := True;
-    Exit;
-  end;
-  if (L='sql') or (L='lua') or (L='haskell') or (L='ada') or (L='elm') then
-  begin
-    Result.Line1 := '--'; Result.Quotes := '''"'; Result.Known := True;
-    if L='sql' then
+    Result.Line1 := '#'; Result.Quotes := '"'''; Result.Escape := True;
+    if L='python' then
     begin
-      Result.Open1 := '/*'; Result.Close1 := '*/'; Result.Doubled := True;
-      Result.Words := SQLWords; Result.Fold := True;
+      { docstrings in triple quotes, and @decorators }
+      Result.Words := PythonWords; Result.Triples := True; Result.AtWords := True;
     end
-    else if L='lua' then
+    else if L='ruby' then Result.Words := RubyWords
+    else if InList(L,' shell powershell ') then
     begin
-      Result.Open1 := '--[['; Result.Close1 := ']]'; Result.Escape := True;
-      Result.Words := LuaWords;
-    end
-    else if L='haskell' then
+      Result.Words := ShellWords; Result.Quotes := '"''`';
+    end;
+    { the block comment each of these adds on top of # }
+    if L='powershell' then begin Result.Open1 := '<#'; Result.Close1 := '#>' end
+    else if L='julia' then begin Result.Open1 := '#='; Result.Close1 := '=#' end
+    else if L='nim' then begin Result.Open1 := '#['; Result.Close1 := ']#' end
+    else if InList(L,' ini properties desktop ') then Result.Line2 := ';'
+    else if InList(L,' hcl terraform ') then Result.Line2 := '//';
+    Exit;
+  end;
+  { semicolon: the lisps, assembler, a couple of config formats }
+  if InList(L,' lisp scheme clojure elisp racket asm nasm autohotkey ') then
+  begin
+    Result.Line1 := ';'; Result.Quotes := '"'; Result.Escape := True;
+    Exit;
+  end;
+  { percent: TeX, MATLAB, Erlang, Prolog }
+  if InList(L,' latex tex bibtex matlab octave erlang prolog postscript ') then
+  begin
+    Result.Line1 := '%'; Result.Quotes := '''"'; Result.Escape := True;
+    if InList(L,' matlab octave ') then
     begin
-      Result.Open1 := '{-'; Result.Close1 := '-}'; Result.Escape := True;
-      Result.Words := HaskellWords;
+      Result.Open1 := '%{'; Result.Close1 := '%}';
     end;
     Exit;
   end;
-  if (L='python') or (L='ruby') or (L='perl') or (L='shell') or (L='powershell') or
-    (L='r') or (L='tcl') or (L='awk') then
+  { a quote, REM or :: to the end of the line: the Basics and batch files }
+  if InList(L,' vb vbnet vba basic freebasic ') then
   begin
-    Result.Line1 := '#'; Result.Quotes := '"'''; Result.Escape := True;
-    Result.Known := True;
-    if L='python' then begin Result.Words := PythonWords; Result.Triples := True end
-    else if L='ruby' then Result.Words := RubyWords
-    else if (L='shell') or (L='powershell') then Result.Words := ShellWords;
-    if L='powershell' then begin Result.Open1 := '<#'; Result.Close1 := '#>' end;
+    Result.Line1 := ''''; Result.Line2 := 'REM'; Result.Quotes := '"';
+    Result.Fold := True;
     Exit;
   end;
-  { everything else that is written with braces and // comments }
+  if InList(L,' batch bat cmd ') then
+  begin
+    Result.Line1 := '::'; Result.Line2 := 'REM'; Result.Quotes := '"';
+    Result.Fold := True;
+    Exit;
+  end;
+  if L='vim' then
+  begin
+    Result.Line1 := '"'; Result.Quotes := ''''; Result.Escape := True;
+    Exit;
+  end;
+  if L='fortran' then
+  begin
+    Result.Line1 := '!'; Result.Quotes := '''"'; Result.Fold := True;
+    Exit;
+  end;
+  { dash: SQL and the languages that borrowed its comment }
+  if InList(L,' sql lua haskell ada elm vhdl applescript ') then
+  begin
+    Result.Line1 := '--'; Result.Quotes := '''"'; Result.Escape := True;
+    if L='sql' then
+    begin
+      Result.Open1 := '/*'; Result.Close1 := '*/'; Result.Doubled := True;
+      Result.Escape := False; Result.Words := SQLWords; Result.Fold := True;
+    end
+    else if L='lua' then
+    begin
+      Result.Open1 := '--[['; Result.Close1 := ']]'; Result.Words := LuaWords;
+    end
+    else if L='haskell' then
+    begin
+      Result.Open1 := '{-'; Result.Close1 := '-}'; Result.Words := HaskellWords;
+    end
+    else if L='applescript' then
+    begin
+      Result.Open1 := '(*'; Result.Close1 := '*)';
+    end;
+    Exit;
+  end;
+  { everything written with braces: // and /* */ }
   Result.Line1 := '//'; Result.Open1 := '/*'; Result.Close1 := '*/';
-  Result.Quotes := '"'''; Result.Escape := True; Result.Known := True;
-  if (L='c') or (L='cpp') or (L='objc') or (L='objective-c') then
+  Result.Quotes := '"'''; Result.Escape := True;
+  if InList(L,' c cpp objc ') then
   begin
     Result.Words := CWords; Result.Directive := '#';
   end
   else if L='csharp' then Result.Words := CSharpWords
-  else if (L='java') or (L='kotlin') or (L='scala') or (L='groovy') or (L='dart') or
-    (L='swift') then Result.Words := JavaWords
-  else if (L='javascript') or (L='typescript') then Result.Words := JSWords
-  else if L='go' then Result.Words := GoWords
+  else if InList(L,' java kotlin scala groovy dart swift ') then
+  begin
+    Result.Words := JavaWords; Result.AtWords := True;
+  end
+  else if InList(L,' javascript typescript ') then
+  begin
+    { `a template string` is a string too }
+    Result.Words := JSWords; Result.Quotes := '"''`';
+  end
+  else if L='go' then
+  begin
+    Result.Words := GoWords; Result.Quotes := '"''`';
+  end
   else if L='rust' then Result.Words := RustWords
-  else if L='php' then begin Result.Words := PHPWords; Result.Line2 := '#' end
+  else if L='php' then
+  begin
+    Result.Words := PHPWords; Result.Line2 := '#';
+  end
   else
   begin
     { a language we have no word list for still gets its comments, strings
@@ -350,7 +439,7 @@ function InkHighlight(const ACode, ALanguage: string;
   const AColors: TInkCodeColors): string;
 var
   R: TInkCodeRules;
-  P, Len, Start: Integer;
+  P, Q, Len, Start: Integer;
   Plain: string;
 
   function At(const What: string): Boolean;
@@ -388,10 +477,45 @@ var
     Emit(C,Copy(ACode,Start,P-Start));
   end;
 
-  procedure TakeString(Quote: Char);
+  { A quote opens a string only if it closes again on the same line.  An
+    apostrophe in "don't", a Rust lifetime and a stray tick are then just
+    characters, instead of coloring the rest of the line. }
+  function Closes(Quote: Char; From: Integer): Boolean;
+  var Q: Integer;
+  begin
+    Result := False;
+    if R.Triples and (Copy(ACode,From,3)=StringOfChar(Quote,3)) then Exit(True);
+    Q := From+1;
+    while (Q<=Len) and (ACode[Q]<>#10) do
+    begin
+      if R.Escape and (ACode[Q]='\') then begin Inc(Q,2); Continue end;
+      if ACode[Q]=Quote then
+      begin
+        if R.Doubled and (Q<Len) and (ACode[Q+1]=Quote) then begin Inc(Q,2); Continue end;
+        Exit(True);
+      end;
+      Inc(Q);
+    end;
+  end;
+  { a lead that is only a comment where it cannot be anything else }
+  function Loose(const Lead: string): Boolean;
+  var Q: Integer;
+  begin
+    Result := False;
+    if (Lead='') or not At(Lead) then Exit;
+    Q := P-1;
+    while (Q>=1) and (ACode[Q] in [' ',#9]) do Dec(Q);
+    { at the start of its line, or spaced away from the code like a note }
+    if (Q<1) or (ACode[Q]=#10) then Exit(True);
+    Result := (ACode[P-1] in [' ',#9]) and (P+Length(Lead)<=Len) and
+      (ACode[P+Length(Lead)] in [' ',#9]);
+  end;
+  { From is where the colored span begins: the quote, or a prefix in front
+    of it - Python's f"..." and r"..." }
+  procedure TakeString(Quote: Char; From: Integer);
   var Triple: Boolean; Close: string;
   begin
-    Start := P;
+    Start := From;
     Triple := R.Triples and (Copy(ACode,P,3)=StringOfChar(Quote,3));
     if Triple then
     begin
@@ -430,6 +554,8 @@ var
       if (ACode[P]='.') and (P<Len) and (ACode[P+1]='.') then Break;
       Inc(P);
     end;
+    { "see 1." ends a sentence; the dot is not part of the number }
+    while (P>Start+1) and (ACode[P-1]='.') do Dec(P);
     Emit(AColors.Number,Copy(ACode,Start,P-Start));
   end;
 
@@ -470,7 +596,7 @@ begin
     begin
       Flush; TakeTo('',AColors.Keyword); Continue;
     end;
-    if At(R.Line1) or At(R.Line2) then
+    if At(R.Line1) or At(R.Line2) or Loose(R.Loose1) or Loose(R.Loose2) then
     begin
       Flush; TakeTo('',AColors.Comment); Continue;
     end;
@@ -482,9 +608,39 @@ begin
     begin
       Flush; TakeTo(R.Close2,AColors.Comment); Continue;
     end;
-    if (R.Quotes<>'') and (Pos(ACode[P],R.Quotes)>0) then
+    if At(R.Open3) then
     begin
-      Flush; TakeString(ACode[P]); Continue;
+      Flush; TakeTo(R.Close3,AColors.Comment); Continue;
+    end;
+    { @property, @Override: a decorator reads as a word of the language }
+    if R.AtWords and (ACode[P]='@') and (P<Len) and
+      (ACode[P+1] in ['a'..'z','A'..'Z','_']) then
+    begin
+      Flush; Start := P; Inc(P);
+      while (P<=Len) and (ACode[P] in ['a'..'z','A'..'Z','0'..'9','_','.']) do Inc(P);
+      Emit(AColors.Keyword,Copy(ACode,Start,P-Start));
+      Continue;
+    end;
+    { a string may wear a prefix: f"", r'', b"", rb"" - it is part of it }
+    if R.Triples and (ACode[P] in ['f','r','b','u','F','R','B','U']) and (P<Len) and
+      (Pos(ACode[P+1],R.Quotes)>0) and Closes(ACode[P+1],P+1) and
+      ((P=1) or not (ACode[P-1] in ['a'..'z','A'..'Z','0'..'9','_'])) then
+    begin
+      Flush; Q := P; Inc(P); TakeString(ACode[P],Q); Continue;
+    end;
+    { <div>, </div>: the tag's name is this language's keyword }
+    if R.Tags and (ACode[P]='<') and (P<Len) and
+      (ACode[P+1] in ['a'..'z','A'..'Z','/','!','?']) then
+    begin
+      Flush; Start := P; Inc(P);
+      if ACode[P] in ['/','!','?'] then Inc(P);
+      while (P<=Len) and (ACode[P] in ['a'..'z','A'..'Z','0'..'9','-','_',':']) do Inc(P);
+      Emit(AColors.Keyword,Copy(ACode,Start,P-Start));
+      Continue;
+    end;
+    if (R.Quotes<>'') and (Pos(ACode[P],R.Quotes)>0) and Closes(ACode[P],P) then
+    begin
+      Flush; TakeString(ACode[P],P); Continue;
     end;
     if (ACode[P] in ['0'..'9']) and
       ((P=1) or not (ACode[P-1] in ['a'..'z','A'..'Z','0'..'9','_'])) then

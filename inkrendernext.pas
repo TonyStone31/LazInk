@@ -55,7 +55,7 @@ type
     Part: Integer;
     IsImage: Boolean;
     ImageIndex: Integer;
-    Control: Byte; { 0=text, 1=table, 2=row, 3=cell }
+    Control: Byte; { 0=text, 1=table, 2=row, 3=cell, 4/5/6=closes }
   end;
 
   TInkNextLine = record
@@ -195,6 +195,15 @@ begin
   end;
 end;
 
+function InkNextText(const S: string): string;
+var I: Integer;
+begin
+  Result := InkNextDecodeText(S);
+  I := 1;
+  while I <= Length(Result) do
+    if Result[I] in [#10, #13] then Delete(Result, I, 1) else Inc(I);
+end;
+
 procedure TInkNextLayout.Clear;
 begin
   SetLength(FRuns, 0); SetLength(FLines, 0); FSize := Types.Size(0, 0);
@@ -288,12 +297,12 @@ begin
       if Source[P] <> '<' then
       begin
         Start := P; while (P <= Length(Source)) and (Source[P] <> '<') do Inc(P);
-        AddToken(ntText, '', InkNextDecodeText(Copy(Source, Start, P-Start)), False, Attrs); Continue;
+        AddToken(ntText, '', InkNextText(Copy(Source, Start, P-Start)), False, Attrs); Continue;
       end;
       Q := P+1; while (Q <= Length(Source)) and (Source[Q] <> '>') do Inc(Q);
       if Q > Length(Source) then
       begin
-        AddToken(ntText, '', InkNextDecodeText(Copy(Source, P, MaxInt)), False, Attrs); Break;
+        AddToken(ntText, '', InkNextText(Copy(Source, P, MaxInt)), False, Attrs); Break;
       end;
       Raw := Copy(Source, P+1, Q-P-1); P := Q+1;
       Closing := False; SelfClosing := False; Raw := Trim(Raw);
@@ -301,7 +310,7 @@ begin
       if (Raw <> '') and (Raw[Length(Raw)] = '/') then begin SelfClosing := True; Delete(Raw,Length(Raw),1); Raw := Trim(Raw) end;
       Q := 1; while (Q <= Length(Raw)) and not (Raw[Q] in [' ',#9,#10,#13]) do Inc(Q);
       Name := Lower(Copy(Raw,1,Q-1));
-      if not IsKnownTag(Name) then begin AddToken(ntText,'',InkNextDecodeText('<'+Raw+'>'),False,Attrs); Continue end;
+      if not IsKnownTag(Name) then Continue;
       Attrs.Clear;
       while Q <= Length(Raw) do
       begin
@@ -453,7 +462,10 @@ begin
             AddControl(3);
           end;
           if IsStyleTag(T.Name) and not T.SelfClosing then Push(S,T.Name)
-          else if T.Name='p' then begin AddStyledText(#10,S,Part); Inc(Part) end;
+          else if T.Name='p' then
+          begin
+            if Length(FStyled)>0 then begin AddStyledText(#10,S,Part); AddStyledText(#10,S,Part); Inc(Part) end;
+          end;
         end;
       ntClose:
         begin
@@ -461,7 +473,7 @@ begin
           if (T.Name='table') then AddControl(6)
           else if T.Name='tr' then AddControl(5)
           else if (T.Name='td') or (T.Name='th') then AddControl(4);
-          if T.Name='p' then begin AddStyledText(#10,S,Part); Inc(Part) end;
+          { </p> is intentionally inert; the opening paragraph tag owns the break. }
         end;
     end;
   end;
@@ -592,7 +604,7 @@ begin
 end;
 
 function TInkNextRenderer.Layout(const Canvas: TCanvas; const Options: TInkNextOptions): TInkNextLayout;
-var I,J,P,Line,First,Count,X,Y,MaxLineH,Avail,W: Integer; R: TInkNextRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer; C: Cardinal; L: TInkNextLine;
+var I,J,D,P,Line,First,Count,X,Y,MaxLineH,Avail,W: Integer; R: TInkNextRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer; C: Cardinal; L: TInkNextLine;
   procedure FinishLine;
   var K,Shift: Integer;
   begin
@@ -618,8 +630,13 @@ begin
     R:=FStyled[I];
     if R.Control=1 then
     begin
-      J := I+1;
-      while (J<=High(FStyled)) and (FStyled[J].Control<>6) do Inc(J);
+      J := I+1; D := 1;
+      while (J<=High(FStyled)) and (D>0) do
+      begin
+        if FStyled[J].Control=1 then Inc(D)
+        else if FStyled[J].Control=6 then Dec(D);
+        if D>0 then Inc(J);
+      end;
       if J<=High(FStyled) then LayoutTable(Canvas,Options,I,J,X,Y,Line);
       I := J+1; Continue;
     end;
