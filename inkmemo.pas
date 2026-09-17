@@ -426,7 +426,7 @@ begin
   Canvas.Brush.Style := bsClear;
   // The row rectangle the widgetset hands over can be wider than the column
   // actually on screen, and <center>/<right> place themselves relative to
-  // whatever rectangle they are given - which would push a centred line off
+  // whatever rectangle they are given - which would push a centered line off
   // to the right and a right-aligned one clean out of view.
   TextR := ARect;
   if TextR.Right > ClientWidth then

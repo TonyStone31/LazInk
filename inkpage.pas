@@ -110,6 +110,10 @@ type
     { what a drag extends by: 0 characters, 1 words, 2 blocks }
     FSelectUnit: Integer;
     FPressX, FPressY, FDragX, FDragY: Integer;
+    { counting clicks ourselves: GTK3's backend reports the third press of a
+      triple click as a plain press }
+    FClicks, FLastClickX, FLastClickY: Integer;
+    FLastClickTime: QWord;
     FMouseDrag: TInkMouseDrag;
     FSelectionColor: TColor;
     FAutoScroll: TTimer;
@@ -273,11 +277,11 @@ type
     property ContentHeight: Integer read FContentHeight;
     { how far down the page is scrolled, in pixels }
     property ScrollY: Integer read GetScrollY;
-    { The page's own scrollbar, drawn by LazInk and coloured from the page's
+    { The page's own scrollbar, drawn by LazInk and colored from the page's
       CSS: scrollbar-color (thumb, then track) and scrollbar-width (auto,
       thin or none), read from html or :root, falling back to body.  Without
       them the track is the page background and the thumb sits halfway
-      between that and the text colour. }
+      between that and the text color. }
     property ScrollBar: TInkScrollBar read FScroll;
   published
     property Source: string read FSource write SetSource;
@@ -1044,7 +1048,7 @@ function TInkPage.Options: THTMLOptions;
 var Link: TColor;
 begin
   Result := DefaultHTMLOptions;
-  { without a colour from the page, a link is a blue that reads on its
+  { without a color from the page, a link is a blue that reads on its
     background: dark blue on a light page, light blue on a dark one }
   if HTMLContrastColor(FStyles.Color('body','','background',
     FStyles.Color('body','','background-color',Color)))=clWhite then
@@ -1063,7 +1067,7 @@ end;
 procedure TInkPage.StyleScrollBar;
 var Track,Thumb,TextColor,C1,C2: TColor; Colors,SizeValue: string;
   Tokens: TStringList; P,Q,Depth,NewWidth: Integer;
-  { #rgb, #rrggbb, a colour name, currentcolor, or rgb()/rgba() with the
+  { #rgb, #rrggbb, a color name, currentcolor, or rgb()/rgba() with the
     three numbers separated by commas or spaces (alpha is ignored - the
     control has nothing behind it to show through) }
   function ParseColor(const S: string): TColor;
@@ -1209,7 +1213,7 @@ begin
     B.MarkerWidth := 0;
     if B.Tag='hr' then
     begin
-      { a rule: its colour from color, border-color or background, in
+      { a rule: its color from color, border-color or background, in
         that order, and a line two pixels thick }
       B.BarColor := FStyles.Color('hr',B.CSSClass,'color',
         FStyles.Color('hr',B.CSSClass,'border-color',
@@ -1483,7 +1487,7 @@ begin
 end;
 
 procedure TInkPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
-var P, WordFrom, WordTo: TInkPagePosition;
+var P, WordFrom, WordTo: TInkPagePosition; Now_: QWord; Near: Boolean;
 begin
   inherited;
   StopFlick;
@@ -1509,14 +1513,27 @@ begin
   P := PositionAt(X,Y);
   FSelecting := True; FSelMoved := False;
   FPressX := X; FPressY := Y; FDragX := X; FDragY := Y;
-  if ssTriple in Shift then
+  { A press soon after another in the same place is its second or third
+    click.  GTK sends a double click as a press and then the same press
+    again, marked double, at the same moment: that is not one more click. }
+  Now_ := GetTickCount64;
+  Near := (Abs(X-FLastClickX)<=4) and (Abs(Y-FLastClickY)<=4);
+  if not (Near and (Now_-FLastClickTime<25)) then
+  begin
+    if Near and (Now_-FLastClickTime<=GetDoubleClickTime) and (FClicks<3) then Inc(FClicks)
+    else FClicks := 1;
+  end;
+  FLastClickTime := Now_; FLastClickX := X; FLastClickY := Y;
+  if ssTriple in Shift then FClicks := 3
+  else if (ssDouble in Shift) and (FClicks<2) then FClicks := 2;
+  if FClicks=3 then
   begin
     FSelectUnit := 2; FSelMoved := True;
     FUnitFrom.Block := P.Block; FUnitFrom.Offset := 0;
     FUnitTo.Block := P.Block; FUnitTo.Offset := MaxInt;
     Select(FUnitFrom,FUnitTo);
   end
-  else if ssDouble in Shift then
+  else if FClicks=2 then
   begin
     FSelectUnit := 1; FSelMoved := True;
     if not WordAt(P,WordFrom,WordTo) then begin WordFrom := P; WordTo := P end;

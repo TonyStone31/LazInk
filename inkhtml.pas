@@ -56,7 +56,7 @@ type
 
   { Everything about a render beyond the text itself. Passed as one record so
     that adding a knob does not mean changing five overloads; DefaultHTMLOptions
-    fills it with the behaviour the plain HTMLDrawText has always had. }
+    fills it with the behavior the plain HTMLDrawText has always had. }
   THTMLOptions = record
     SuperSubScriptRatio: Double;
     Scale: Integer;
@@ -70,7 +70,7 @@ type
     { supplies <img src="n"> }
     Images: TCustomImageList;
     { how <a href=..> spans are painted. clDefault / clNone leave the
-      surrounding colour alone. }
+      surrounding color alone. }
     LinkColor: TColor;
     LinkBackColor: TColor;
     LinkUnderline: Boolean;
@@ -113,7 +113,7 @@ type
     procedure Assign(Source: TPersistent); override;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   published
-    { clDefault leaves the surrounding text colour alone. None of these three
+    { clDefault leaves the surrounding text color alone. None of these three
       declare a default: the hover style is born underlined and the normal one
       is not, so a single declared default would be wrong for one of them and
       the writer would drop the value. }
@@ -194,7 +194,7 @@ function HTMLStringToColor(AText: string; ADefColor: TColor = clBlack): TColor;
   entities this renderer emits and accepts. }
 { Black or white, whichever can be read on ABackground. }
 function HTMLContrastColor(ABackground: TColor): TColor;
-{ AColor nudged APercent towards its opposite end - lighter if it is dark,
+{ AColor nudged APercent toward its opposite end - lighter if it is dark,
   darker if it is light. For zebra striping that follows the current theme
   instead of assuming a white background. }
 function HTMLShadeColor(AColor: TColor; APercent: Integer): TColor;
@@ -334,11 +334,11 @@ function HTMLContrastColor(ABackground: TColor): TColor;
 var
   RGB: LongInt;
 begin
-  // a control left at clDefault is painted in the window colour; taken
+  // a control left at clDefault is painted in the window color; taken
   // literally, clDefault comes out black
   if ABackground = clDefault then ABackground := clWindow;
   RGB := ColorToRGB(ABackground);
-  // Rec. 601 luma, which is close enough to how bright a colour looks
+  // Rec. 601 luma, which is close enough to how bright a color looks
   if (Red(RGB) * 299 + Green(RGB) * 587 + Blue(RGB) * 114) div 1000 >= 140 then
     Result := clBlack
   else
@@ -354,9 +354,9 @@ begin
   RGB := ColorToRGB(AColor);
   R := Red(RGB); G := Green(RGB); B := Blue(RGB);
   if HTMLContrastColor(AColor) = clBlack then
-    D := -((255 * APercent) div 100)     // light colour: darken it
+    D := -((255 * APercent) div 100)     // light color: darken it
   else
-    D := (255 * APercent) div 100;       // dark colour: lighten it
+    D := (255 * APercent) div 100;       // dark color: lighten it
   R := EnsureRange(R + D, 0, 255);
   G := EnsureRange(G + D, 0, 255);
   B := EnsureRange(B + D, 0, 255);
@@ -1141,7 +1141,7 @@ begin
                   TagRaw := Copy(vText, 2, Pos(cTagEnd, vText) - 2);
                   TagPrp := UpperCase(TagRaw);
                   // "BGCOLOR" contains "COLOR", so a tag carrying only a
-                  // bgcolor would otherwise read as setting the font colour
+                  // bgcolor would otherwise read as setting the font color
                   // too - and text painted in its own background is invisible.
                   // Mask the longer name out before looking for the shorter.
                   TagNoBg := StringReplace(TagPrp, cBGCOLOR, cBGMask,
@@ -1165,7 +1165,7 @@ begin
                       Canvas.Brush.Color := HTMLStringToColor(Prp);
                       Trans := False;
                       // a highlighter that hides the text it highlights is no
-                      // use: with no colour asked for in this same tag, pick
+                      // use: with no color asked for in this same tag, pick
                       // one that reads on the background just set
                       if Pos(cCOLOR, TagNoBg) = 0 then
                         Canvas.Font.Color :=

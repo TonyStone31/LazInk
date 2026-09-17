@@ -17,11 +17,22 @@ widgetset-specific backends, no browser engine.
 | | Control | What it is |
 |---|---|---|
 | ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. |
-| ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own colour and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength colouring, highlighting digits/symbols, or syntax-colouring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment. |
-| ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character colour, background, size, face, style, super/subscript and links; word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
+| ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment. |
+| ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
 | ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`. |
 | | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG and animated GIF images, relative links, anchors, Back and Forward, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
 | ![](images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. |
+
+**Editing list items in place:** `TInkListBox.EditMode` says when the
+floating editor opens by itself - `emOnSelect` (the default; it opens when
+the button is released, so the highlight can first be dragged along the list),
+`emOnDblClick`, `emOnTripleClick`, `emOnClickSelected` (a click on the item
+already selected, after a moment, the way a file manager renames), or
+`emNone`. Whatever the mode, `EditItem(Index)` opens it from code, F2 opens it
+on the current item (except with `emNone`), `OnBeforeEdit` can refuse, and
+`OnItemEdited` sees the result. `EditRawHTML` decides whether the editor holds
+the item's markup or its plain text; `Editing` and `CancelEdit` do what they
+say.
 
 `TInkLabel`, `TInkMemo` and `TInkListBox` also share: an `Images` list for
 `<img src="n">`, `Borders` and `LineSpacing`, a `LinkStyle` / `LinkHoverStyle`
@@ -32,7 +43,7 @@ events — `OnLinkClick`, `OnLinkEnter`, `OnLinkLeave`, `OnLinkRightClick`.
 
 ```
 <b> <i> <u> <s>                        bold / italic / underline / strikeout
-<font color= bgcolor= size= face=>     #RRGGBB, clRed-style and named colours
+<font color= bgcolor= size= face=>     #RRGGBB, clRed-style and named colors
 <sup> <sub>                            superscript / subscript
 <br> <hr>                              line break / horizontal rule
 <p>...</p>                             paragraph: a break plus a blank line
@@ -98,7 +109,7 @@ CSS grid cards become a vertical list. No browser engine is added.
 InkPage1.LoadFromFile('/path/to/help/index.html');
 ```
 
-It reads Markdown just as well - a `.md` file is recognised by its name, and
+It reads Markdown just as well - a `.md` file is recognized by its name, and
 `LoadMarkdown` takes a string. Relative images and links are resolved against
 the document. A Markdown document has no stylesheet of its own, so
 `StyleSheet` lets the program dress it in its own theme; the page's own rules,
@@ -117,19 +128,19 @@ face, on a shaded background, and a long line is cut off at the block's edge
 rather than wrapped. Quotes get a bar down their left side.
 
 **Its scrollbar** is drawn by LazInk (`TInkScrollBar`), so it can wear the
-page's colours instead of the platform's grey.  It reads the same CSS a
+page's colors instead of the platform's gray.  It reads the same CSS a
 browser does:
 
 ```css
 html { scrollbar-color: #4ab3e8 #1b1e24; scrollbar-width: thin; }
 ```
 
-`scrollbar-color` is the thumb, then the track - `#rgb`, `#rrggbb`, a colour
+`scrollbar-color` is the thumb, then the track - `#rgb`, `#rrggbb`, a color
 name, `rgb()`/`rgba()`, `currentcolor`, or a `var()` holding any of those.
 `scrollbar-width` is `auto`, `thin` or `none` (none hides the bar; the page
 still scrolls).  Both are read from `html` or `:root`, then `body`.  Without
 them, the track is the page background and the thumb sits halfway between
-that and the text colour, so a dark page gets a dark bar with no CSS at all.
+that and the text color, so a dark page gets a dark bar with no CSS at all.
 `InkPage1.ScrollBar` reaches it from code.
 
 **Touch screens:** drag the page with a finger (or the left mouse button) to
@@ -208,7 +219,7 @@ WYSIWYG editor. Rich-editor table editing is not implemented.
 The shared renderer supports simple `<table>`, `<tr>`, `<th>` and `<td>`
 blocks, including multiple tables mixed with text. Columns are sized from their
 content and narrowed to the available width, cell text wraps, headers are bold,
-and borders use the current font colour. Links inside cells retain click and
+and borders use the current font color. Links inside cells retain click and
 hover support. List boxes now measure variable-height rows, with `ItemHeight`
 as their minimum height.
 
@@ -321,7 +332,7 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 * The Markdown is GitHub's, as documents use it, not CommonMark-complete:
   emphasis follows simpler rules than the specification, a link reference
   definition has to fit on one line, and footnotes are not read.
-* LazInk shows code blocks but does not colour them - for that, use SynEdit.
+* LazInk shows code blocks but does not color them - for that, use SynEdit.
 * No built-in HTTP downloads - a host supplies remote content through
   `OnResource`.
 
@@ -350,7 +361,7 @@ survived into the rendered page.
 [ROADMAP.md](ROADMAP.md) is the plan: touch scrolling on Linux, copying and
 selecting text, fuller Markdown, a Markdown editor in the demo; then a
 renderer of LazInk's own, replacing the JVCL-derived one so the whole
-package can move to a no-conditions licence; and a WYSIWYG Markdown editor
+package can move to a no-conditions license; and a WYSIWYG Markdown editor
 after that - with what "done" means for each.
 
 ## Credits and origins
@@ -360,7 +371,7 @@ after that - with what "done" means for each.
 In August 2021 Tony Stone started a thread on the Lazarus forum,
 [Memo Component that supports HTML markup](https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html),
 asking for a simple way to decorate text in list boxes and memos with a
-little HTML - mostly colour and bold - for showing log files, without
+little HTML - mostly color and bold - for showing log files, without
 pulling in a heavyweight HTML component.
 
 **wp** suggested taking what was needed from the HTML drawing code in
@@ -378,13 +389,13 @@ worked on the design, the code and the debugging.
 ### Where the code comes from today
 
 The HTML renderer (`inkhtml.pas`, with `inktables.inc`) still contains code
-adapted from JVCL, and is under JVCL's licence (MPL 1.1) - see
+adapted from JVCL, and is under JVCL's license (MPL 1.1) - see
 [License](#license) and [the notices](THIRD_PARTY_NOTICES.md).  Everything
 else was written for LazInk.
 
 The plan ([ROADMAP.md](ROADMAP.md), section 4) is to replace that renderer
 with one written for LazInk, so the whole package can be released with
-essentially no conditions.  That is not a judgement on JVCL or on anyone
+essentially no conditions.  That is not a judgment on JVCL or on anyone
 who helped - it is a different view of how this particular code should be
 shared, and it can only be done with code written for it.  The credit below
 stays either way: JVCL and wp's example are what got LazInk off the ground.
@@ -401,10 +412,10 @@ stays either way: JVCL and wp's example are what got LazInk off the ground.
   actually rendered.
 * **skalogryz** - pointed out that a Qt5 memo could do it with low-level
   widget access.
-* **avra** - the RichMemo wiki examples for mixed-colour text, and the IDE
+* **avra** - the RichMemo wiki examples for mixed-color text, and the IDE
   shortcuts for finding lost forms.
 * **Jurassic Pork** - reported that the original demo opened off-screen on a
-  single-monitor machine; the demo centres itself because of that.
+  single-monitor machine; the demo centers itself because of that.
 * **tetrastes** and **denis.totoliciu** - the *Window / Center lost window*
   discussion that came out of it.
 * **Digão Dalpiaz**, whose `TDzHTMLText` label was a source of **ideas** -

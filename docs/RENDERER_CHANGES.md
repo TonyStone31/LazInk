@@ -18,7 +18,7 @@ or date.
 - **August 31, 2026:** LazInk's initial repository commit (`b02b535`) includes
   the adapted standalone renderer and component wrappers. Compared with the
   2021 attachment, the accumulated renderer changes include additional font,
-  markup, entity, colour and layout handling.
+  markup, entity, color and layout handling.
 - **August 31, 2026:** commit `0a8b53f` renames `jvclhtmlutils.pas` to
   `inkhtml.pas`, with unit name `InkHtml`.
 - **Through September 16, 2026:** the working renderer adds/refines option
@@ -47,7 +47,7 @@ or date.
   selection. Table layout numbers its parts and does not report while
   measuring.
 - **September 16, 2026:** `HTMLShadeColor` and `HTMLContrastColor` read
-  `clDefault` as the window colour; it had turned a list box's stripes
+  `clDefault` as the window color; it had turned a list box's stripes
   black.
 
 Independent Markdown, page-viewer, CSS and animation helper units are covered

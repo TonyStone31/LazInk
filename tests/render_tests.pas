@@ -1,6 +1,6 @@
 program RenderTests;
 {$mode objfpc}{$H+}
-uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType,
+uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd;
@@ -205,6 +205,96 @@ type
   TLabelAccess = class(TInkLabel);
   TInkEditAccess = class(TInkEdit);
 
+{ --- the list box's in-place editor, by every route --- }
+procedure ListEditChecks(AList: TInkListBox);
+var R: TRect; K: Word; T: QWord;
+
+  procedure Click(Shift: TShiftState = []);
+  begin
+    TListAccess(AList).MouseDown(mbLeft, Shift, R.Left + 5, R.Top + 2);
+    TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
+  end;
+
+begin
+  R := AList.ItemRect(1);
+  AList.EditMode := emNone;
+  AList.ItemIndex := 1;
+  Click;
+  Check(not AList.Editing, 'emNone: a click does not edit');
+  K := VK_F2; TListAccess(AList).KeyDown(K, []);
+  Check(not AList.Editing, 'emNone: nor does F2');
+  AList.EditItem(1);
+  Check(AList.Editing, 'EditItem edits whatever the mode');
+  AList.CancelEdit;
+  Check(not AList.Editing, 'CancelEdit closes it');
+
+  AList.EditMode := emOnDblClick;
+  Sleep(GetDoubleClickTime + 50);
+  Click;
+  Check(not AList.Editing, 'emOnDblClick: one click does not edit');
+  TListAccess(AList).DblClick;
+  Check(AList.Editing, 'emOnDblClick: a double click edits');
+  AList.CancelEdit;
+  K := VK_F2; TListAccess(AList).KeyDown(K, []);
+  Check(AList.Editing, 'F2 edits the current item');
+  AList.CancelEdit;
+
+  AList.EditMode := emOnTripleClick;
+  Sleep(GetDoubleClickTime + 50);
+  Click; Sleep(80); Click;
+  Check(not AList.Editing, 'emOnTripleClick: two clicks do not edit');
+  Sleep(80); Click;
+  Check(AList.Editing, 'emOnTripleClick: the third does, unmarked as GTK3 sends it');
+  AList.CancelEdit;
+
+  AList.EditMode := emOnClickSelected;
+  Sleep(GetDoubleClickTime + 50);
+  AList.ItemIndex := 1;
+  Click;
+  Check(not AList.Editing, 'emOnClickSelected: not at once');
+  T := GetTickCount64;
+  while not AList.Editing and (GetTickCount64 - T < 3000) do
+  begin
+    Application.ProcessMessages;
+    Sleep(10);
+  end;
+  Check(AList.Editing, 'emOnClickSelected: a moment after a click on the selected item');
+  AList.CancelEdit;
+  Sleep(GetDoubleClickTime + 50);
+  Click; Sleep(60); Click([ssDouble]);
+  T := GetTickCount64;
+  while GetTickCount64 - T < GetDoubleClickTime + 300 do
+  begin
+    Application.ProcessMessages;
+    Sleep(10);
+  end;
+  Check(not AList.Editing, 'emOnClickSelected: a double click is not a rename');
+  { a held button drags the highlight; emOnSelect edits on the release }
+  AList.EditMode := emOnSelect;
+  AList.ItemIndex := 0;
+  Sleep(GetDoubleClickTime + 50);
+  R := AList.ItemRect(0);
+  TListAccess(AList).MouseDown(mbLeft, [ssLeft], R.Left + 5, R.Top + 2);
+  R := AList.ItemRect(2);
+  TListAccess(AList).MouseMove([ssLeft], R.Left + 5, R.Top + 2);
+  Check(AList.ItemIndex = 2, Format('the highlight follows a held mouse (%d)', [AList.ItemIndex]));
+  Check(not AList.Editing, 'emOnSelect waits while the button is down');
+  TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
+  Check(AList.Editing, 'and edits on the release');
+  AList.CancelEdit;
+  TListAccess(AList).MouseMove([], R.Left + 5, AList.ItemRect(1).Top + 2);
+  Check(AList.ItemIndex = 2, 'without the button the highlight stays');
+  R := AList.ItemRect(0);
+  AList.ItemIndex := 2;
+  Sleep(GetDoubleClickTime + 50);
+  TListAccess(AList).MouseDown(mbLeft, [ssLeft], R.Left + 5, R.Top + 2);
+  Check(not AList.Editing, 'emOnSelect: the first item is not edited under the press');
+  TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
+  Check(AList.Editing and (AList.ItemIndex = 0), 'the first item can be edited');
+  AList.CancelEdit;
+  AList.EditMode := emNone;
+end;
+
 { --- copying from the memo, the list box and the label --- }
 procedure ListCopyChecks(AMemo: TInkMemo; AList: TInkListBox; ALabel: TInkLabel);
 const
@@ -268,6 +358,7 @@ begin
   Check(not Handled, 'list: a PopupMenu of the program''s own wins');
   AList.PopupMenu := nil;
   AList.MultiSelect := False;
+  ListEditChecks(AList);
 
   ALabel.TextFormat := itfMarkdown;
   ALabel.Caption := '**hello** [there](http://x.org)';
@@ -364,7 +455,7 @@ begin
     Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
     Probe.RenderTo(Shot.Canvas);
     Check(ColorToRGB(Shot.Canvas.Pixels[P.X + 1, P.Y + 1]) = ColorToRGB(Probe.SelectionBackground),
-      'selected text has the selection colour behind it');
+      'selected text has the selection color behind it');
     Check(ColorToRGB(Shot.Canvas.Pixels[P.X - 3, P.Y + 1]) <> ColorToRGB(Probe.SelectionBackground),
       'and the text before it does not');
     Probe.SelectionColor := RGBToColor(1, 2, 3);
@@ -387,15 +478,31 @@ begin
   Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
   Check(Probe.Clicked = 'linked', 'a click on a link follows it: ' + Probe.Clicked);
 
-  { double click takes a word, triple click the block, Shift extends }
+  { double click takes a word, triple click the block, Shift extends.
+    Gestures in the same place are kept apart by more than a double-click
+    time, or the page counts them as one more click. }
+  Sleep(GetDoubleClickTime + 50);
   P := Probe.PositionPoint(Pos2(0, 8));
   Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.Let(P.X, P.Y + 3);
   Check(Probe.SelectedText = 'brave', 'a double click selects a word: "' + Probe.SelectedText + '"');
   Q := Probe.PositionPoint(Pos2(0, 18));
+  Sleep(GetDoubleClickTime + 50);
   Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.MoveTo(Q.X, Q.Y + 3); Probe.Let(Q.X, Q.Y + 3);
   Check(Probe.SelectedText = 'brave new world', 'dragging after a double click goes by words: "' + Probe.SelectedText + '"');
+  Sleep(GetDoubleClickTime + 50);
   Probe.Press(P.X, P.Y + 3, [ssTriple]); Probe.Let(P.X, P.Y + 3);
   Check(Probe.SelectedText = TrimRight(Words), 'a triple click selects the paragraph');
+  { as GTK3 delivers one: press, press, press-marked-double, press, press -
+    the third click comes unmarked }
+  Sleep(GetDoubleClickTime + 50);
+  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
+  Sleep(80);
+  Probe.Press(P.X, P.Y + 3); Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.Let(P.X, P.Y + 3);
+  Check(Probe.SelectedText = 'brave', 'GTK3''s double click is a word, not three clicks');
+  Sleep(80);
+  Probe.Press(P.X, P.Y + 3); Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
+  Check(Probe.SelectedText = TrimRight(Words), 'and its unmarked third click is a triple click');
+  Sleep(GetDoubleClickTime + 50);
   Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
   Probe.Press(Q.X, Q.Y + 3, [ssShift]); Probe.Let(Q.X, Q.Y + 3);
   Check(not Probe.HasSelection, 'Shift+click with nothing selected just places');
@@ -439,7 +546,7 @@ begin
   Check(Clipboard.AsText = TrimRight(Probe.PlainText), 'Copy all is the page''s text');
   Probe.ClearSelection;
   Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
-  Check(not Menu.Items[0].Enabled, 'Copy is greyed with nothing selected');
+  Check(not Menu.Items[0].Enabled, 'Copy is grayed with nothing selected');
   Menu.Items[Menu.Items.Count - 1].Click;
   Check(Probe.HasSelection, 'Select all');
   B0 := Probe.BlockCount - 1;
@@ -637,7 +744,7 @@ begin
   Probe.ScrollTo(0);
   Probe.Finger(itpBegin, 30, LinkY, 6200);
   Probe.Finger(itpCancel, 30, LinkY, 6250);
-  Check(Probe.Clicked = '', 'a cancelled touch is not a tap');
+  Check(Probe.Clicked = '', 'a canceled touch is not a tap');
   Probe.Finger(itpMove, 30, LinkY - 100, 6300);
   Check(Probe.ScrollY = 0, 'nor is anything after it');
 
@@ -958,7 +1065,7 @@ begin
     Styles.Text := 'h1 { color: #ff0000 } li { color: #00ff00 }';
     APage.StyleSheet := Styles;
     Check(ColorToRGB(FindBlock(APage, 'h1', 'New').TextColor) = RGBToColor(255, 0, 0),
-      'StyleSheet colours a Markdown heading');
+      'StyleSheet colors a Markdown heading');
     Check(ColorToRGB(FindBlock(APage, 'li', 'first').TextColor) = RGBToColor(0, 255, 0),
       'and its list items');
     APage.LoadHTML('<html><head><style>h1 { color: #0000ff }</style></head><body><h1>Own</h1></body></html>');
@@ -1158,7 +1265,7 @@ begin
 
     StyledBar('body { color: #0000ff; scrollbar-color: currentcolor rgba(1 2 3 / 50%) }');
     Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(0,0,255),
-      'currentcolor is the text colour, and body is read when html says nothing');
+      'currentcolor is the text color, and body is read when html says nothing');
     Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(1,2,3), 'rgba() with spaces');
 
     StyledBar('html { scrollbar-color: #ff0000 #00ff00 } body { scrollbar-color: #0000ff #0000ff }');
@@ -1168,14 +1275,14 @@ begin
     Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(0,0,0),
       'an unreadable pair is ignored: the track is the page background');
     Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(127,127,127),
-      'and the thumb is halfway to the text colour');
+      'and the thumb is halfway to the text color');
 
     StyledBar('html { scrollbar-width: none }');
     Check(not Probe.ScrollBar.Visible, 'scrollbar-width: none hides it');
     Probe.Press(100,150); Probe.MoveTo(100,50); Probe.Let(100,50);
     Check(Probe.ScrollY = 100, 'and the page still scrolls without it');
 
-    { the bar is drawn in its colours, where it says it is }
+    { the bar is drawn in its colors, where it says it is }
     StyledBar('html { scrollbar-color: #ff0000 #00ff00 }');
     Shot := TBitmap.Create;
     try
@@ -1184,9 +1291,9 @@ begin
       TR := Probe.ScrollBar.ThumbRect;
       J := Probe.ClientWidth - Probe.ScrollBar.Width;
       Check(ColorToRGB(Shot.Canvas.Pixels[J + (TR.Left + TR.Right) div 2,
-        (TR.Top + TR.Bottom) div 2]) = RGBToColor(255,0,0), 'the thumb is painted in its colour');
+        (TR.Top + TR.Bottom) div 2]) = RGBToColor(255,0,0), 'the thumb is painted in its color');
       Check(ColorToRGB(Shot.Canvas.Pixels[J + 1, Probe.ClientHeight - 3]) = RGBToColor(0,255,0),
-        'the track is painted in its colour');
+        'the track is painted in its color');
     finally Shot.Free end;
 
     { --- the scrollbar on its own --- }

@@ -53,7 +53,7 @@ reading a Markdown file that sits beside the demo.
 | `TInkLabel` | a label | HTML, Markdown |
 | `TInkMemo` | a multi-line viewer | HTML, Markdown |
 | `TInkListBox` | a list with an in-place editor | HTML, Markdown |
-| `TInkEdit` | an edit box coloured per character | plain text |
+| `TInkEdit` | an edit box colored per character | plain text |
 | `TInkRichEdit` | a WYSIWYG editor | its own document |
 
 ### Code
@@ -69,7 +69,7 @@ begin
 end;
 ```
 
-LazInk shows code but does not colour it - for that, use SynEdit.
+LazInk shows code but does not color it - for that, use SynEdit.
 
 ### Quotes, rules and the rest
 
@@ -90,3 +90,5 @@ address such as https://www.lazarus-ide.org, entities like &copy; and
 - **Label + Edit**, **Memo** and **List box** - the smaller controls, each
   reading the same markup.
 - **Credits** - where LazInk came from.
+
+LazInk lives at <https://github.com/TonyStone31/LazInk>.

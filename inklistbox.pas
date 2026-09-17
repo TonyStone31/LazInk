@@ -9,7 +9,17 @@ uses
   LCLType, LCLIntf, Types, Forms, Menus, InkHtml, InkMarkdown, InkCopyMenu;
 
 type
-  TInkEditMode = (emNone, emOnSelect, emOnDblClick);
+  { When the in-place editor opens by itself.  Whatever the mode, a program
+    can open it with EditItem, and F2 opens it on the current item unless
+    the mode is emNone.
+      emNone             never by itself
+      emOnSelect         when the user selects an item
+      emOnDblClick       on a double click
+      emOnTripleClick    on a triple click
+      emOnClickSelected  on a click on the item already selected, after a
+                         moment, as a file manager renames - a double click
+                         in that moment does not edit }
+  TInkEditMode = (emNone, emOnSelect, emOnDblClick, emOnTripleClick, emOnClickSelected);
 
   TBeforeEditEvent = procedure(Sender: TObject; Index: Integer;
     var Cancel: Boolean) of object;
@@ -65,6 +75,16 @@ type
     FOnCopyMenu: TInkCopyMenuEvent;
     { Ctrl+A was the last thing done: Ctrl+C copies everything }
     FAllChosen: Boolean;
+    { clicks counted here: GTK3's backend reports a triple click's third
+      press as a plain one }
+    FClicks, FLastClickX, FLastClickY, FPressItem, FPendingEdit: Integer;
+    FLastClickTime: QWord;
+    FPressWasSelected: Boolean;
+    { the left button is down on the list: the selection follows the
+      pointer, and emOnSelect waits for the release }
+    FButtonDown, FEditOnRelease: Boolean;
+    FClickEditTimer: TTimer;
+    procedure ClickEditTick(Sender: TObject);
     procedure DoSelectAll(Sender: TObject);
     procedure SetAlternateColor(AValue: TColor);
     procedure SetLineSpacing(AValue: Integer);
@@ -106,8 +126,12 @@ type
     destructor Destroy; override;
     procedure Click; override;
     procedure MeasureItem(Index: Integer; var TheHeight: Integer); override;
-    { Opens the in-place editor on Index from code, as a click would. }
+    { Opens the in-place editor on Index from code - whatever EditMode is,
+      so a program can edit on its own terms. }
     procedure EditItem(Index: Integer);
+    { whether the in-place editor is open, and closing it unchanged }
+    function Editing: Boolean;
+    procedure CancelEdit;
     function GetPlainText(Index: Integer): string;
     { The href under the mouse, '' when none }
     property HoverLink: string read FHoverLink;
@@ -224,6 +248,9 @@ type
 
 implementation
 
+uses
+  Math;
+
 procedure TInkListBox.SetTextFormat(AValue: TInkTextFormat);
 begin
   if FTextFormat = AValue then Exit;
@@ -239,6 +266,10 @@ begin
   inherited Create(AOwner);
   FCopyMenu := True;
   FCopyMenuHost := TInkCopyMenu.Create(Self);
+  FClickEditTimer := TTimer.Create(Self);
+  FClickEditTimer.Enabled := False;
+  FClickEditTimer.OnTimer := @ClickEditTick;
+  FPendingEdit := -1;
   FHTMLEnabled := True;
   FHTMLScale := 100;
   FSuperSubScriptRatio := 0.7;
@@ -264,6 +295,7 @@ end;
 
 destructor TInkListBox.Destroy;
 begin
+  FClickEditTimer.Enabled := False;
   FreeAndNil(FEditTimer);
   FreeAndNil(FEdit);
   FreeAndNil(FBorders);
@@ -343,22 +375,26 @@ begin
   FEditTimer.OnTimer := @EditTimerTick;
 end;
 
+{ The edit keeps the height its widgetset wants - forcing it to a row's
+  height fought the theme's minimum and LCL stopped with a layout loop -
+  and sits centered on the row.  It is only moved when something changed:
+  this runs from DrawItem, and moving it repaints the list. }
 procedure TInkListBox.PositionEdit;
 var
   R: TRect;
+  NewLeft, NewTop, NewWidth: Integer;
 begin
   if (FEdit = nil) or (FEditingIndex < 0) or (FEditingIndex >= Items.Count) then
     Exit;
   R := ItemRect(FEditingIndex);
-  if (R.Top <= 0) or (R.Top >= (Height - FEdit.Height)) then
-  begin
-    FEdit.Top := -1000;
-    Exit;
-  end;
-  FEdit.Left := R.Left + Self.Left - FEditOverhang;
-  FEdit.Top := R.Top + Self.Top - FEditOverhang;
-  FEdit.Width := (Self.ClientWidth - R.Left) + (FEditOverhang * 2);
-  FEdit.Height := R.Height + (FEditOverhang * 2);
+  if (R.Bottom <= 0) or (R.Top >= ClientHeight) then
+    NewTop := -1000             // scrolled out of sight
+  else
+    NewTop := Self.Top + (R.Top + R.Bottom - FEdit.Height) div 2;
+  NewLeft := R.Left + Self.Left - FEditOverhang;
+  NewWidth := (Self.ClientWidth - R.Left) + (FEditOverhang * 2);
+  if (FEdit.Left <> NewLeft) or (FEdit.Top <> NewTop) or (FEdit.Width <> NewWidth) then
+    FEdit.SetBounds(NewLeft, NewTop, NewWidth, FEdit.Height);
 end;
 
 procedure TInkListBox.HideEdit;
@@ -372,7 +408,6 @@ procedure TInkListBox.BeginEdit(Index: Integer);
 var
   Cancel: Boolean;
 begin
-  if FEditMode = emNone then Exit;
   if (Index < 0) or (Index >= Items.Count) then Exit;
 
   Cancel := False;
@@ -534,7 +569,12 @@ begin
   if Assigned(FOnUserSelectionChange) then
     FOnUserSelectionChange(Self, User);
   if User and (FEditMode = emOnSelect) then
-    BeginEdit(ItemIndex);
+  begin
+    if FButtonDown then FEditOnRelease := True
+    else BeginEdit(ItemIndex);
+  end;
+  { a selection that moved is not a click on the selected item }
+  FClickEditTimer.Enabled := False;
 end;
 
 procedure TInkListBox.DblClick;
@@ -542,11 +582,22 @@ begin
   inherited DblClick;
   if FEditMode = emOnDblClick then
     BeginEdit(ItemIndex);
+  FClickEditTimer.Enabled := False;
 end;
 
 procedure TInkListBox.EditItem(Index: Integer);
 begin
   BeginEdit(Index);
+end;
+
+function TInkListBox.Editing: Boolean;
+begin
+  Result := (FEdit <> nil) and FEdit.Visible;
+end;
+
+procedure TInkListBox.CancelEdit;
+begin
+  if Editing then HideEdit;
 end;
 
 procedure TInkListBox.SetAlternateColor(AValue: TColor);
@@ -597,6 +648,25 @@ var
   Hit: THTMLHitInfo;
 begin
   inherited MouseMove(Shift, X, Y);
+  { with the button held the highlight follows the pointer, as in most
+    list boxes - and past the top or bottom the list scrolls along }
+  if FButtonDown and (ssLeft in Shift) and not MultiSelect and (Items.Count > 0) then
+  begin
+    if Y < 0 then Idx := Max(0, TopIndex - 1)
+    else if Y >= ClientHeight then
+    begin
+      Idx := ItemAtPos(Point(X, ClientHeight - 1), False);
+      Idx := Min(Items.Count - 1, Idx + 1);
+    end
+    else Idx := ItemAtPos(Point(X, Y), False);
+    Idx := EnsureRange(Idx, 0, Items.Count - 1);
+    if Idx <> ItemIndex then
+    begin
+      ItemIndex := Idx;
+      MakeCurrentVisible;
+      if FEditMode = emOnSelect then FEditOnRelease := True;
+    end;
+  end;
   Hit.OnLink := False;
   Hit.LinkName := '';
   Hit.LinkText := '';
@@ -623,15 +693,6 @@ begin
   Empty.LinkText := '';
   Empty.LinkIndex := 0;
   UpdateHover(-1, Empty);
-end;
-
-procedure TInkListBox.MouseUp(Button: TMouseButton; Shift: TShiftState;
-  X, Y: Integer);
-begin
-  inherited MouseUp(Button, Shift, X, Y);
-  if (Button = mbRight) and (FHoverItem >= 0) and (FHoverLink <> '') and
-    Assigned(FOnLinkRightClick) then
-    FOnLinkRightClick(Self, FHoverItem, FHoverLink);
 end;
 
 procedure TInkListBox.Click;
@@ -767,13 +828,100 @@ begin
   end;
   { Ctrl on its own is how both of those begin; anything else ends "all" }
   if not (Key in [VK_CONTROL, VK_LCONTROL, VK_RCONTROL]) then FAllChosen := False;
+  if (Key = VK_F2) and (Shift = []) and (FEditMode <> emNone) and (ItemIndex >= 0) then
+  begin
+    BeginEdit(ItemIndex);
+    Key := 0;
+    Exit;
+  end;
   inherited KeyDown(Key, Shift);
 end;
 
 procedure TInkListBox.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+var
+  Now_: QWord;
+  Near: Boolean;
+  Idx: Integer;
 begin
-  if Button = mbLeft then FAllChosen := False;
+  if Button <> mbLeft then
+  begin
+    inherited MouseDown(Button, Shift, X, Y);
+    Exit;
+  end;
+  FAllChosen := False;
+  { A press soon after another in the same place is its second or third
+    click; GTK repeats a press, marked double, at the same moment, which is
+    not one more. }
+  Now_ := GetTickCount64;
+  Near := (Abs(X - FLastClickX) <= 4) and (Abs(Y - FLastClickY) <= 4);
+  if not (Near and (Now_ - FLastClickTime < 25)) then
+  begin
+    if Near and (Now_ - FLastClickTime <= GetDoubleClickTime) and (FClicks < 3) then
+      Inc(FClicks)
+    else
+    begin
+      FClicks := 1;
+      { what was selected before this press decides a click-to-rename }
+      FPressItem := ItemAtPos(Point(X, Y), True);
+      FPressWasSelected := (FPressItem >= 0) and (FPressItem = ItemIndex);
+    end;
+  end;
+  FLastClickTime := Now_; FLastClickX := X; FLastClickY := Y;
+  if ssTriple in Shift then FClicks := 3
+  else if (ssDouble in Shift) and (FClicks < 2) then FClicks := 2;
+  FButtonDown := True;
+  FEditOnRelease := False;
+  if (FEditMode = emOnSelect) and not MultiSelect then
+  begin
+    { the item is selected here rather than by the widget, so that the
+      editor can wait for the release instead of opening under the press }
+    Idx := ItemAtPos(Point(X, Y), True);
+    if (Idx >= 0) and (Idx <> ItemIndex) then
+    begin
+      ItemIndex := Idx;
+      FEditOnRelease := True;
+    end;
+  end;
   inherited MouseDown(Button, Shift, X, Y);
+  if FClicks > 1 then FClickEditTimer.Enabled := False;
+  if (FClicks = 3) and (FEditMode = emOnTripleClick) then
+    BeginEdit(ItemAtPos(Point(X, Y), True));
+end;
+
+procedure TInkListBox.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseUp(Button, Shift, X, Y);
+  if Button = mbLeft then
+  begin
+    FButtonDown := False;
+    if FEditOnRelease and (FEditMode = emOnSelect) and (FHoverLink = '') then
+    begin
+      FEditOnRelease := False;
+      BeginEdit(ItemIndex);
+      Exit;
+    end;
+    FEditOnRelease := False;
+  end;
+  if (Button = mbRight) and (FHoverItem >= 0) and (FHoverLink <> '') and
+    Assigned(FOnLinkRightClick) then
+    FOnLinkRightClick(Self, FHoverItem, FHoverLink);
+  if (Button = mbLeft) and (FEditMode = emOnClickSelected) and (FClicks = 1) and
+    FPressWasSelected and (ItemAtPos(Point(X, Y), True) = FPressItem) and
+    (FHoverLink = '') then
+  begin
+    { wait: this may be the first half of a double click }
+    FPendingEdit := FPressItem;
+    FClickEditTimer.Interval := GetDoubleClickTime;
+    FClickEditTimer.Enabled := False;
+    FClickEditTimer.Enabled := True;
+  end;
+end;
+
+procedure TInkListBox.ClickEditTick(Sender: TObject);
+begin
+  FClickEditTimer.Enabled := False;
+  if (FPendingEdit >= 0) and (FPendingEdit = ItemIndex) then BeginEdit(FPendingEdit);
 end;
 
 end.

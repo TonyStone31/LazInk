@@ -28,7 +28,7 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 * **No external dependencies** beyond Lazarus/LCL and FPC.  In particular
   the package must **not** depend on SynEdit or any GPL code - see 6.
 * **No syntax highlighting of code, by decision.**  LazInk shows code
-  blocks clearly and leaves colouring to SynEdit - see "Code blocks and
+  blocks clearly and leaves coloring to SynEdit - see "Code blocks and
   syntax highlighting" below.
 * **One renderer, two input formats.**  Markdown is converted to LazInk's
   markup and drawn by the same renderer.  Every display control has a
@@ -38,12 +38,14 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 * **A subset, on purpose.**  Not a browser, not CSS conformance, not
   CommonMark-complete.  Add what real documents need, and say plainly what
   is not supported (`docs/HELP_COMPATIBILITY.md`, README "Limits").
-* **Tested.**  `tests/run.sh` must stay green, and new behaviour comes with
+* **US English** in code, comments, captions and documents: color, center,
+  license, gray.
+* **Tested.**  `tests/run.sh` must stay green, and new behavior comes with
   checks.  Make sure a new check can actually fail.
-* **The licence boundary stays clean**: MIT for LazInk's own code, MPL 1.1
+* **The license boundary stays clean**: MIT for LazInk's own code, MPL 1.1
   for the JVCL-derived renderer (`inkhtml.pas`, `inktables.inc`), until
   the renderer is replaced and the whole package moves to a no-conditions
-  licence - see 4.
+  license - see 4.
 
 ---
 
@@ -55,9 +57,9 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 | `TInkMemo` | lines of markup, whole-document Markdown, copy menu, Ctrl+A/Ctrl+C by line | character selection |
 | `TInkListBox` | markup items, in-place editor, copy menu, Ctrl+A/Ctrl+C by item | character selection |
 | `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward (buttons, mouse, keys), small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection, copy menu, find in page | hardware check of touch |
-| `TInkEdit` | single-line edit, per-character colours | - |
+| `TInkEdit` | single-line edit, per-character colors | - |
 | `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
-| `TInkScrollBar` | canvas scrollbar, coloured from CSS `scrollbar-color` / `scrollbar-width` | - |
+| `TInkScrollBar` | canvas scrollbar, colored from CSS `scrollbar-color` / `scrollbar-width` | - |
 
 Checked against the Heckers Sketch manual (38 pages, 14 images, 2,209 text
 fragments all render).  Only **GTK3 on Linux** has been run.
@@ -183,7 +185,7 @@ GitHub-flavoured Markdown, and Heckers Sketch wants to hand its
   (relative to the document, the way `TInkPage` already handles HTML).
 * Blockquotes `>`.
 * Horizontal rules `---` / `***`.
-* Pipe tables (already there) with alignment markers honoured.
+* Pipe tables (already there) with alignment markers honored.
 * Task lists `- [ ]` / `- [x]`.
 * HTML comments `<!-- -->` dropped (Heckers Sketch's `WHATS_NEW.md` starts
   with one).
@@ -230,7 +232,7 @@ inside a table cell shows its alt text.
   selects a word, triple-click a paragraph, Shift+click extends.
 * Selection runs **across blocks** on `TInkPage` - paragraph, list item,
   table cell - in document order.
-* The highlight colour from CSS (`::selection`) or a `SelectionColor`
+* The highlight color from CSS (`::selection`) or a `SelectionColor`
   property.
 * Copy as plain text; also as HTML where the platform clipboard takes it.
 * **Mouse drag selects, finger drag scrolls** - which needs P1.  Until then,
@@ -298,16 +300,16 @@ demonstrate and maybe it opens the readme for the demo app."
   exists in Lazarus trunk, but its header says GPL only, and it may not be
   in the stable release - reasons enough on their own.)
   * Start with a plain multi-line source box (`TMemo`) so the tab works.
-  * Then colour the Markdown source with LazInk's own machinery: the
-    per-character colour/style callback `TInkEdit` already has
+  * Then color the Markdown source with LazInk's own machinery: the
+    per-character color/style callback `TInkEdit` already has
     (`OnGetCharAttrs`), in a **multi-line** plain-text editor - a
     `TInkCodeMemo`, or a plain-text mode of `TInkRichEdit`.  Headings,
     `**bold**` markers, `` `code` ``, links, list markers and quotes in
-    their own colours.  Markdown is the only language it colours - see
+    their own colors.  Markdown is the only language it colors - see
     "Code blocks and syntax highlighting".
   * If that editor turns out to be worth having on its own, it belongs in
     the package: a canvas-drawn multi-line editor with per-character
-    colouring is useful well beyond this demo.
+    coloring is useful well beyond this demo.
 * Keeping the source and the preview scrolled together is nice, not
   essential.
 
@@ -321,7 +323,7 @@ monospace face) and a live `TInkPage` preview (300 ms after typing stops,
 keeping its scroll position), Open, Save, Save as, a "changed" mark, and
 "HTML in the source" for `MarkdownRawHTML`; it opens `README.md` at start
 and resolves the README's images beside it.  The README has its picture.
-Not yet: colouring the source (the `TInkCodeMemo` idea), keeping the two
+Not yet: coloring the source (the `TInkCodeMemo` idea), keeping the two
 panes scrolled together, and a build on the current stable Lazarus - only
 trunk was run.
 
@@ -333,7 +335,7 @@ Label tab has a live markup playground and a Markdown label; the memo's
 cheat sheet gained a table and lost its blank rows; each tab says how to
 copy from it; and `--screenshots DIR` saves every tab for the README.
 The list box's "alternating" rows had been drawn black: `HTMLShadeColor`
-took the list's `clDefault` colour literally.
+took the list's `clDefault` color literally.
 
 ### P6. Heckers Sketch's help pages inside the program
 
@@ -379,7 +381,7 @@ grid - the cards already stack into a list, which may be enough.
 
 ---
 
-## 4. A renderer of our own, and a licence with no strings
+## 4. A renderer of our own, and a license with no strings
 
 **Tony:** "eventually we want our own complete replacement... I want a
 license that is almost zero restrictions... do whatever you want with this
@@ -391,10 +393,10 @@ as inspiration and getting it off the ground for us."
 LazInk's renderer, `inkhtml.pas` (with `inktables.inc`), is derived from
 Project JEDI's JVCL and stays under **MPL 1.1** - it still contains JVCL
 routines line for line (see `THIRD_PARTY_NOTICES.md`).  MPL is a fair
-licence, but it has conditions: the covered files keep their licence, and
+license, but it has conditions: the covered files keep their license, and
 anyone shipping a program built with them owes recipients that source.  So
 LazInk cannot be "do anything you like" while those two files are in it,
-and relabelling them is not an option - **only code we wrote ourselves can
+and relabeling them is not an option - **only code we wrote ourselves can
 be relicensed.**
 
 Replacing the renderer is also the natural moment to get HTML right: the
@@ -402,16 +404,16 @@ JVCL code was an inline-markup drawer that has been stretched to tables and
 pages.  A renderer designed for documents from the start can be both leaner
 and more capable.
 
-### The licence to move to
+### The license to move to
 
 For "do whatever you want", in order of preference:
 
 1. **0BSD** (Zero-Clause BSD) - one paragraph, no conditions at all, not
-   even keeping the notice; OSI-approved, so companies' lawyers recognise
+   even keeping the notice; OSI-approved, so companies' lawyers recognize
    it.  **Recommended.**
-2. **MIT-0** - the MIT licence with the attribution condition removed; also
+2. **MIT-0** - the MIT license with the attribution condition removed; also
    OSI-approved.
-3. **The Unlicense** - a public-domain dedication with a fallback licence
+3. **The Unlicense** - a public-domain dedication with a fallback license
    for countries without public domain.  Fine, but less widely accepted by
    corporate policies than 0BSD.
 
@@ -425,7 +427,7 @@ This is not legal advice - read the one you pick before switching.
 The new renderer has to be **genuinely new code**, not `inkhtml.pas`
 rewritten line by line, or it is still derived.
 
-* Write it from a **behaviour specification**, not from the old source:
+* Write it from a **behavior specification**, not from the old source:
   `docs/HELP_COMPATIBILITY.md`, the test suite, and a list of what each tag
   and CSS property does (write that list first, in `docs/RENDERER_SPEC.md`).
 * Use a **different design**, which is the honest evidence that it is new:
@@ -459,8 +461,8 @@ rewritten line by line, or it is still derived.
    thread is credited as where LazInk came from, not as a source of code.
    Relicense only files whose authors agree; anything uncertain gets
    rewritten too.
-4. Switch `LICENSE` to the chosen licence, drop `LICENSES/MPL-1.1.txt`,
-   update the SPDX lines and `lazink.lpk`'s licence field.
+4. Switch `LICENSE` to the chosen license, drop `LICENSES/MPL-1.1.txt`,
+   update the SPDX lines and `lazink.lpk`'s license field.
 5. **Keep the credit.**  The story, as Tony tells it: he started the forum
    thread in 2021 wanting simple HTML to decorate list box text; wp
    suggested taking what was needed from JVCL and helped make it happen;
@@ -481,14 +483,14 @@ help pages already use and LazInk currently drops (see
 `HELP_COMPATIBILITY.md`):
 
 1. **The `style` attribute** - `<span style="color:#c00">`.  The most common
-   way people colour one thing.
+   way people color one thing.
 2. **`<span>` and `<div>` with classes**, styled from the stylesheet.
 3. **Simple descendant selectors** - `.sheet td`, `nav a` - and child
    selectors.  Real stylesheets are written this way.
 4. **Proper whitespace rules** - collapsing in normal text, kept in `<pre>`,
    `&nbsp;` respected.
 5. **Box model basics** - margin and padding shorthand (1 to 4 values),
-   `border` with width/style/colour, `border-radius`, `background-color`
+   `border` with width/style/color, `border-radius`, `background-color`
    on any block.
 6. **Text styling** - `line-height`, `text-align`, `font-weight`,
    `font-style`, `text-decoration`, `text-transform`, `letter-spacing`,
@@ -526,19 +528,19 @@ In rough order of value to other Lazarus developers:
 
 1. **A WYSIWYG Markdown editor** - `TInkRichEdit` reading and writing
    Markdown: headings, lists, links, code, then tables.  A search of the
-   Online Package Manager's catalogue (16 September 2026) found nothing for
+   Online Package Manager's catalog (16 September 2026) found nothing for
    Lazarus that **renders** Markdown natively, and nothing that **edits** it
    WYSIWYG.  HtmlViewer, LazRichView and RichMemo are the nearest, and none
    of them does Markdown.  This is where LazInk could be unique.
 2. **Other widgetsets actually run** - win32, qt5/qt6, cocoa, gtk2 - with
    the results written into the README.
-3. **An Online Package Manager listing** - after the licence change, so it
-   goes out under the licence it will keep.
+3. **An Online Package Manager listing** - after the license change, so it
+   goes out under the license it will keep.
 
 ### Code blocks and syntax highlighting
 
-GitHub colours a fenced code block by the language named after the opening
-fence (` ```pascal `).  **LazInk will not colour code** - that is what
+GitHub colors a fenced code block by the language named after the opening
+fence (` ```pascal `).  **LazInk will not color code** - that is what
 SynEdit is for, and anyone whose program is mainly about showing or
 editing code should use SynEdit.  LazInk is for documents that sometimes
 contain code: READMEs, release notes, help pages.
@@ -549,11 +551,11 @@ contain code: READMEs, release notes, help pages.
 * **The language name is kept** (`class="language-pascal"`), as GitHub
   does.  It costs nothing.
 * **The README says it once**, under Limits: "LazInk shows code blocks but
-  does not colour them - for that, use SynEdit."
-* A hook for a host to colour code itself is a **maybe, later, only if
+  does not color them - for that, use SynEdit."
+* A hook for a host to color code itself is a **maybe, later, only if
   somebody asks**.  No SynEdit glue, no add-on package.
 
-The one thing LazInk colours as source is Markdown itself, in the demo's
+The one thing LazInk colors as source is Markdown itself, in the demo's
 editor tab (P5), because Markdown is LazInk's own business.
 
 ---
@@ -563,7 +565,7 @@ editor tab (P5), because Markdown is LazInk's own business.
 * **Don't build a browser** or chase CSS conformance.
 * **Don't use or depend on `TSynMarkdownSyn`** - not in the package, not
   in the demo.
-* **Don't colour code** or build SynEdit glue - see "Code blocks and syntax
+* **Don't color code** or build SynEdit glue - see "Code blocks and syntax
   highlighting".
 * **Don't make the package depend on SynEdit** or on any GPL code.
 * **Don't make separate "Markdown" versions of each control** - use
@@ -616,11 +618,19 @@ editor tab (P5), because Markdown is LazInk's own business.
   `TInkListBox`; the renderer renamed `InkHtml`.
 * **16 September 2026**
   * `TInkRichEdit`, `TInkPage`, tables, Markdown input, the CSS reader,
-    animated GIFs, the test suite, and the MIT/MPL licence files.
+    animated GIFs, the test suite, and the MIT/MPL license files.
   * Published at https://github.com/TonyStone31/LazInk.
   * First real use: Heckers Sketch's What's New window.  `TInkPage` learned
     drag-to-scroll for Windows touch screens first.
-  * `TInkScrollBar`, coloured from CSS `scrollbar-color` /
+  * `TInkScrollBar`, colored from CSS `scrollbar-color` /
     `scrollbar-width`; `var()` fallbacks and nesting.
   * Found in real use: touch does not scroll on Linux (P1), and text cannot
     be copied (P2, P4).
+  * Later the same day: Markdown as GitHub reads it, touch on GTK3, text
+    selection and the copy menu, find in page, the mouse's back and
+    forward buttons, and the demo as a tour.  Triple-click counted by the
+    page itself, since GTK3 reports the third click as a plain one.
+    `TInkListBox` gained `emOnTripleClick`, `emOnClickSelected`, F2,
+    `Editing` / `CancelEdit`, a highlight that follows a held mouse, and an
+    editor that works on the first item and no longer loops over its
+    height.  Spelling moved to US English.

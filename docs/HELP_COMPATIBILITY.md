@@ -20,7 +20,7 @@ Supported content in this site:
 - Document titles; headings; paragraphs; navigation and footer text.
 - Ordered and unordered lists, including indentation for nested lists.
 - Bold, italic/emphasis, code and keyboard labels. Code/key labels use a
-  monospace face and their stylesheet background colour.
+  monospace face and their stylesheet background color.
 - Table rows, headers, cells, wrapping, and cell links.
 - PNG screenshots and animated GIFs, constrained to the available width.
 - Figures/captions and visible text in screenshot placeholders.
@@ -53,12 +53,12 @@ selectors, source order and simple selector specificity. `:root` custom properti
 and `var(--name)` allow the site's existing palette to work.
 
 The native layout uses `color`, `background`, pixel `font-size`, single-value
-pixel `padding`, pixel `margin-top`/`margin-bottom`, the colour from a simple
+pixel `padding`, pixel `margin-top`/`margin-bottom`, the color from a simple
 `border` declaration, and `.wrap`'s pixel `max-width`. Code/key font selection is
 semantic. The control's Font supplies the base font.
 
 The scrollbar is LazInk's own and takes `scrollbar-color` (thumb and track:
-hex, colour names, `rgb()`/`rgba()`, `currentcolor`, `var()`) and
+hex, color names, `rgb()`/`rgba()`, `currentcolor`, `var()`) and
 `scrollbar-width` (`auto`, `thin`, `none`) from `html`/`:root`, falling back
 to `body`.  `var()` takes a fallback - `var(--x, #fff)` - and nests; a value
 whose variable cannot be resolved is dropped rather than overriding an
@@ -71,8 +71,8 @@ This is **not CSS conformance**. In particular:
 - Cards stack vertically. CSS grid, flexbox, positioning and media queries are
   ignored. Content still wraps and images shrink with the control.
 - Descendant selectors, pseudo-classes, inline `style` attributes, and general
-  CSS inheritance are not implemented. Alias-cell colours therefore fall back
-  to the normal text colour.
+  CSS inheritance are not implemented. Alias-cell colors therefore fall back
+  to the normal text color.
 - Shorthand font/margin declarations, multi-value padding, line-height, rounded
   corners, letter spacing, uppercase transforms, border-collapse, and individual
   border styles are not reproduced.
