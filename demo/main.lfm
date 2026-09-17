@@ -779,6 +779,7 @@ object frmMain: TfrmMain
           Width = 80
           Height = 28
           Caption = 'Back'
+          Enabled = False
           OnClick = HelpBack
         end
         object btnHelpForward: TButton
@@ -787,15 +788,25 @@ object frmMain: TfrmMain
           Width = 80
           Height = 28
           Caption = 'Forward'
+          Enabled = False
           OnClick = HelpForward
+        end
+        object btnHelpFind: TButton
+          Left = 348
+          Top = 6
+          Width = 80
+          Height = 28
+          Caption = 'Find'
+          OnClick = HelpFind
         end
       end
       object helpPage: TInkPage
         Align = alClient
         TabStop = True
+        OnNavigate = HelpNavigate
       end
       object dlgHelp: TOpenDialog
-        Filter = 'HTML pages|*.html;*.htm'
+        Filter = 'HTML and Markdown pages|*.html;*.htm;*.md;*.markdown'
       end
     end
     object tabTables: TTabSheet

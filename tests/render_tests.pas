@@ -3,7 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkGIF,
-  InkTouch, InkCopyMenu, Menus, Clipbrd;
+  InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
   List: TInkListBox; Page: TInkPage; CSS: TInkStyleSheet;
@@ -21,12 +21,15 @@ type
   TPageProbe = class(TInkPage)
   public
     Clicked: string;
-    Changes: Integer;
+    Changes, Navigations: Integer;
+    procedure Navigated(Sender: TObject);
+    procedure Button(AButton: TMouseButton; X, Y: Integer);
     procedure Press(X, Y: Integer; Shift: TShiftState = []);
     procedure Key(K: Word; Shift: TShiftState);
     procedure SelChanged(Sender: TObject);
     procedure AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: Integer);
     procedure Tick;
+    procedure LoadURLForTest(const URL: string);
     procedure MoveTo(X, Y: Integer);
     procedure Let(X, Y: Integer);
     procedure LinkHit(Sender: TObject; const URL: string);
@@ -45,6 +48,17 @@ begin
   KeyDown(K, Shift);
 end;
 
+procedure TPageProbe.Navigated(Sender: TObject);
+begin
+  Inc(Navigations);
+end;
+
+procedure TPageProbe.Button(AButton: TMouseButton; X, Y: Integer);
+begin
+  MouseDown(AButton, [], X, Y);
+  MouseUp(AButton, [], X, Y);
+end;
+
 procedure TPageProbe.SelChanged(Sender: TObject);
 begin
   Inc(Changes);
@@ -56,6 +70,11 @@ begin
   Item := TMenuItem.Create(Menu);
   Item.Caption := 'Mine';
   Menu.Items.Add(Item);
+end;
+
+procedure TPageProbe.LoadURLForTest(const URL: string);
+begin
+  LoadFromURL(URL);
 end;
 
 procedure TPageProbe.Tick;
@@ -91,6 +110,27 @@ end;
 {$IFDEF LCLGTK3}
 { A touch event made the way GDK makes one, sent to the control's window the
   way GTK sends it - so the hook in InkTouch is what gets tested. }
+{ a mouse button, the same way }
+procedure SendButton(Control: TWinControl; Kind: TGdkEventType; AButton, X, Y: Integer);
+var
+  Event: PGdkEvent;
+  Widget: PGtkWidget;
+  P: TPoint;
+begin
+  Widget := TGtk3Widget(Control.Handle).GetContainerWidget;
+  Event := gdk_event_new(Kind);
+  P := Control.ClientToScreen(Point(X, Y));
+  Event^.button.window := PGdkWindow(g_object_ref(gtk_widget_get_window(Widget)));
+  Event^.button.x := X;
+  Event^.button.y := Y;
+  Event^.button.x_root := P.X;
+  Event^.button.y_root := P.Y;
+  Event^.button.button := AButton;
+  Event^.button.time := GetTickCount64 and $FFFFFFFF;
+  gtk_widget_event(Widget, Event);
+  gdk_event_free(Event);
+end;
+
 procedure SendTouch(Control: TWinControl; Kind: TGdkEventType; Sequence: Pointer; X, Y: Integer);
 var
   Event: PGdkEvent;
@@ -163,6 +203,7 @@ type
   TMemoAccess = class(TInkMemo);
   TListAccess = class(TInkListBox);
   TLabelAccess = class(TInkLabel);
+  TInkEditAccess = class(TInkEdit);
 
 { --- copying from the memo, the list box and the label --- }
 procedure ListCopyChecks(AMemo: TInkMemo; AList: TInkListBox; ALabel: TInkLabel);
@@ -439,6 +480,128 @@ begin
 
   Probe.OnSelectionChange := nil;
   Probe.MouseDrag := imdScroll;
+end;
+
+{ --- Back and Forward --- }
+procedure NavigationChecks;
+var Dir, A, B2: string; SL: TStringList; K: Word;
+begin
+  Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'lazink-nav-' + IntToStr(GetProcessID);
+  ForceDirectories(Dir);
+  A := Dir + PathDelim + 'a.html'; B2 := Dir + PathDelim + 'b.md';
+  SL := TStringList.Create;
+  try
+    SL.Text := '<html><head><title>Page A</title></head><body><p><a href="b.md">to b</a></p></body></html>';
+    SL.SaveToFile(A);
+    SL.Text := '# Page B' + LineEnding + LineEnding + 'text';
+    SL.SaveToFile(B2);
+  finally SL.Free end;
+  Probe.Navigations := 0;
+  Probe.OnNavigate := @Probe.Navigated;
+  Probe.OnLinkClick := nil;
+  Probe.LoadFromFile(A);
+  Check(Probe.Navigations = 1, 'OnNavigate after a load');
+  Check(not Probe.CanGoBack and not Probe.CanGoForward, 'one page: no Back or Forward');
+  Probe.LoadFromFile(B2);
+  Check(Probe.DocumentTitle = 'Page B', 'a .md page, by its name: ' + Probe.DocumentTitle);
+  Check(Probe.CanGoBack and not Probe.CanGoForward, 'two pages: Back');
+  Probe.Back;
+  Check((Probe.DocumentTitle = 'Page A') and Probe.CanGoForward and not Probe.CanGoBack,
+    'Back, and then Forward is possible');
+  Check(Probe.TextFormat = itfHTML, 'the .html page is HTML again');
+  Check(Probe.Navigations = 3, Format('OnNavigate after Back (%d)', [Probe.Navigations]));
+  Probe.Button(mbExtra2, 10, 10);
+  Check(Probe.DocumentTitle = 'Page B', 'the mouse''s forward button');
+  Probe.Button(mbExtra1, 10, 10);
+  Check(Probe.DocumentTitle = 'Page A', 'the mouse''s back button');
+  K := VK_RIGHT; Probe.KeyDown(K, [ssAlt]);
+  Check(Probe.DocumentTitle = 'Page B', 'Alt+Right');
+  K := VK_LEFT; Probe.KeyDown(K, [ssAlt]);
+  Check(Probe.DocumentTitle = 'Page A', 'Alt+Left');
+  K := VK_BROWSER_FORWARD; Probe.KeyDown(K, []);
+  Check(Probe.DocumentTitle = 'Page B', 'the Forward key');
+  K := VK_BROWSER_BACK; Probe.KeyDown(K, []);
+  Check(Probe.DocumentTitle = 'Page A', 'the Back key');
+  {$IFDEF LCLGTK3}
+  { GTK3's backend drops buttons 8 and 9; the hook brings them back }
+  Application.ProcessMessages;
+  SendButton(Probe, GDK_BUTTON_PRESS, 9, 10, 10);
+  SendButton(Probe, GDK_BUTTON_RELEASE, 9, 10, 10);
+  Check(Probe.DocumentTitle = 'Page B', 'button 9 through GTK3 goes forward');
+  SendButton(Probe, GDK_BUTTON_PRESS, 8, 10, 10);
+  SendButton(Probe, GDK_BUTTON_RELEASE, 8, 10, 10);
+  Check(Probe.DocumentTitle = 'Page A', 'button 8 through GTK3 goes back');
+  {$ENDIF}
+  { a link followed from a page goes into the history too }
+  Probe.LoadFromFile(A);
+  Probe.LoadURLForTest('b.md');
+  Check(Probe.DocumentTitle = 'Page B', 'a relative link');
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'Page A', 'and back from it');
+  Probe.OnNavigate := nil;
+  Probe.OnLinkClick := @Probe.LinkHit;
+  DeleteFile(A); DeleteFile(B2); RemoveDir(Dir);
+end;
+
+{ --- find in page --- }
+procedure FindChecks;
+var Current, Total, K: Integer; Key: Word; Doc: string;
+begin
+  Doc := '<html><body><p>The cat sat.</p>';
+  for K := 1 to 40 do Doc := Doc + '<p>filler ' + IntToStr(K) + '</p>';
+  Doc := Doc + '<p>Another CAT, and a cat.</p></body></html>';
+  Probe.LoadHTML(Doc);
+  Probe.ScrollTo(0);
+  Total := Probe.FindCount('cat', [], Current);
+  Check((Total = 3) and (Current = 0), Format('FindCount (%d, %d)', [Total, Current]));
+  Check(Probe.FindCount('cat', [ifoMatchCase], Current) = 2, 'FindCount matching case');
+  Check(Probe.Find('cat'), 'Find');
+  Check((Probe.SelectedText = 'cat') and (Probe.SelectionStart.Block = 0), 'finds the first');
+  Probe.FindCount('cat', [], Current);
+  Check(Current = 1, 'and it is the first of three');
+  Check(Probe.Find('cat') and (Probe.SelectedText = 'CAT'), 'the next, whatever its case');
+  Check(Probe.ScrollY > 0, 'scrolled to it');
+  Check(Probe.Find('cat') and (Probe.SelectionStart.Offset > 10), 'and the next in the same block');
+  Check(Probe.Find('cat') and (Probe.SelectionStart.Block = 0), 'round the end to the first');
+  Check(Probe.Find('cat', [ifoBackwards]) and (Probe.SelectionStart.Offset > 10), 'backwards round the start');
+  Check(Probe.Find('cat', [ifoBackwards]) and (Probe.SelectedText = 'CAT'), 'and back again');
+  Check(Probe.Find('cat', [ifoMatchCase]) and (Probe.SelectedText = 'cat'), 'matching case skips CAT');
+  Probe.ClearSelection;
+  Probe.ScrollTo(0);
+  Check(Probe.Find('cat') and (Probe.SelectionStart.Block = 0), 'from the top again');
+  Key := VK_F3; Probe.KeyDown(Key, []);
+  Check((Probe.SelectedText = 'CAT') and (Probe.SelectionStart.Block > 0), 'F3 finds the next');
+  Key := VK_F3; Probe.KeyDown(Key, [ssShift]);
+  Check(Probe.SelectionStart.Block = 0, 'Shift+F3 the one before');
+  Check(not Probe.Find('dog'), 'not found');
+  Check(Probe.SelectedText = 'cat', 'leaves the selection alone');
+
+  { the find bar }
+  Probe.ClearSelection;
+  Key := VK_F; Probe.KeyDown(Key, [ssCtrl]);
+  Check(Probe.FindBarVisible, 'Ctrl+F opens the find bar');
+  Probe.FindEdit.Text := 'fill';
+  Check(Probe.SelectedText = 'fill', 'typing finds: ' + Probe.SelectedText);
+  K := Probe.SelectionStart.Block;
+  Probe.FindEdit.Text := 'filler 2';
+  Check((Probe.SelectedText = 'filler 2') and (Probe.SelectionStart.Block = K + 1),
+    'and the match grows in place where it can, moving on where it must');
+  Probe.FindEdit.Text := 'filler';
+  Key := VK_RETURN;
+  TInkEditAccess(Probe.FindEdit).KeyDown(Key, []);
+  Check(Probe.SelectionStart.Block = K + 2, 'Enter goes to the next');
+  Key := VK_RETURN;
+  TInkEditAccess(Probe.FindEdit).KeyDown(Key, [ssShift]);
+  Check(Probe.SelectionStart.Block = K + 1, 'Shift+Enter to the one before');
+  Probe.FindEdit.Text := 'nowhere';
+  Check(Probe.SelectedText = 'filler', 'nothing found leaves the last match');
+  Key := VK_ESCAPE;
+  TInkEditAccess(Probe.FindEdit).KeyDown(Key, []);
+  Check(not Probe.FindBarVisible, 'Esc closes it');
+  Probe.Select(Pos2(0, 4), Pos2(0, 7));
+  Probe.ShowFindBar;
+  Check(Probe.FindEdit.Text = 'cat', 'the find bar starts with the selection');
+  Probe.HideFindBar;
 end;
 
 { --- a finger on the page ---
@@ -946,6 +1109,8 @@ begin
     Probe.DragScroll := True;
     TouchChecks;
     SelectionChecks;
+    NavigationChecks;
+    FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

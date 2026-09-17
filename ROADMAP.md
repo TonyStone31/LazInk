@@ -54,7 +54,7 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 | `TInkLabel` | inline markup, HTML or Markdown, copy menu | character selection |
 | `TInkMemo` | lines of markup, whole-document Markdown, copy menu, Ctrl+A/Ctrl+C by line | character selection |
 | `TInkListBox` | markup items, in-place editor, copy menu, Ctrl+A/Ctrl+C by item | character selection |
-| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward, small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection and copy menu | hardware check of touch; find in page |
+| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward (buttons, mouse, keys), small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection, copy menu, find in page | hardware check of touch |
 | `TInkEdit` | single-line edit, per-character colours | - |
 | `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
 | `TInkScrollBar` | canvas scrollbar, coloured from CSS `scrollbar-color` / `scrollbar-width` | - |
@@ -267,8 +267,8 @@ every selection gesture, the painted highlight, the copied text and HTML,
 the menu, and a finger that must still scroll.
 
 Not done: character selection in `TInkLabel`, `TInkMemo` and `TInkListBox`
-(they have the copy menu and line-level copying instead); inline code keeps
-its own background over the highlight; keyboard selection (Shift+arrows).
+(they have the copy menu and line-level copying instead); keyboard
+selection (Shift+arrows).
 On Qt and GTK2 a finger cannot be told from the mouse, so there it selects
 unless `MouseDrag := imdScroll`.
 
@@ -330,6 +330,32 @@ Heckers Sketch will need when it gets there:
   `CanGoBack`/`CanGoForward` so they can be enabled and disabled.
 * **Find in page** (Ctrl+F) - nice to have, after P4, since it reuses the
   highlight.
+
+**Done on LazInk's side (16 September 2026)**, except the contents list:
+* `CanGoBack` / `CanGoForward`, and `OnNavigate` after every new document
+  (link, Back, Forward, load from code) so a program can update its buttons
+  and title.  `Back` now moves the history index before loading, so the
+  event sees the right state.
+* **Tony asked for the mouse's own back and forward buttons.**  Windows and
+  Qt deliver them as `mbExtra1` / `mbExtra2`; the Lazarus GTK3 backend
+  drops buttons 8 and 9 entirely, so `InkHookTouch` also listens for them
+  on the control's window and sends LCL the `LM_XBUTTONDOWN` / `UP`
+  messages Windows would.  `TInkPage` goes back and forward on them, and on
+  Alt+Left / Alt+Right and the keyboard's Back / Forward keys.  Tested
+  through `gtk_widget_event` with GDK button events.
+* `Find(Text, Options)` and `FindCount`, over the same words selection
+  uses, round the end of the page, scrolling the match into view; a find
+  bar drawn by the page with a `TInkEdit` in it (Ctrl+F, find as you type,
+  Enter / F3 and Shift for next and previous, Esc).  A form with
+  `KeyPreview` sees Enter and Esc before the bar does - Heckers Sketch's
+  What's New window closes on both, so it would need to check
+  `ActiveControl` if it offers find.
+* A `.md` page among the HTML pages is read as Markdown by its name.
+* The selection is now painted over the text, which is drawn again on it,
+  so a match inside inline code is visible.
+
+Still for Heckers Sketch to decide: a contents list in place of the card
+grid - the cards already stack into a list, which may be enough.
 
 ---
 

@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkHtml, InkMarkdown, InkCSS, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Applications may supply remote/cached content here. Return True on success. }
@@ -15,6 +15,9 @@ type
   end;
   { what dragging with the left mouse button does; a finger always scrolls }
   TInkMouseDrag = (imdSelect, imdScroll);
+  { ifoMatchCase: capitals must match; ifoBackwards: the one before }
+  TInkFindOption = (ifoMatchCase, ifoBackwards);
+  TInkFindOptions = set of TInkFindOption;
   { a run of text as the renderer laid it out, in page coordinates }
   TInkPageRun = record
     Text: string;
@@ -24,6 +27,7 @@ type
     FontName: string;
     FontSize: Integer;
     FontStyle: TFontStyles;
+    FontColor: TColor;
   end;
   TInkPageBlock = class
   public
@@ -130,6 +134,27 @@ type
     procedure SetSelectionColor(AValue: TColor);
     procedure DoSelectAll(Sender: TObject);
     function BlockAt(X,Y: Integer): Integer;
+  private
+    { find in page }
+    FFindEdit: TInkEdit;
+    FFindText: string;
+    FOnNavigate: TNotifyEvent;
+    procedure Navigated;
+    function GetCanGoBack: Boolean;
+    function GetCanGoForward: Boolean;
+    function SearchWords(Index: Integer; AOptions: TInkFindOptions): string;
+    function FindFrom(const AText: string; AOptions: TInkFindOptions;
+      const AFrom: TInkPagePosition; out AMatch: TInkPagePosition): Boolean;
+    function SelectMatch(const AText: string; AOptions: TInkFindOptions;
+      const AFrom: TInkPagePosition): Boolean;
+    function FindStart(AOptions: TInkFindOptions): TInkPagePosition;
+    function FindBarRect: TRect;
+    function FindButtonRect(Index: Integer): TRect;
+    procedure PlaceFindBar;
+    procedure FindEditChange(Sender: TObject);
+    procedure FindEditKey(Sender: TObject; var Key: Word; Shift: TShiftState);
+    function GetFindBarVisible: Boolean;
+    procedure PaintFindBar(ACanvas: TCanvas);
     function GetScrollY: Integer;
     function GetStyleSheet: TStrings;
     procedure SetStyleSheet(AValue: TStrings);
@@ -180,6 +205,9 @@ type
     { the blocks the page was read into, in document order }
     function BlockCount: Integer;
     function Block(Index: Integer): TInkPageBlock;
+    { Through the pages visited by links and LoadFromFile / LoadFromURL.
+      The mouse's back and forward buttons, Alt+Left / Alt+Right and a
+      keyboard's Back / Forward keys do the same. }
     procedure Back;
     procedure Forward;
     procedure ScrollTo(Y: Integer);
@@ -214,6 +242,27 @@ type
     function SelectionBackground: TColor;
     { fills the copy menu for client X, Y without opening it }
     function BuildCopyMenu(X,Y: Integer): TPopupMenu;
+    { Selects the next place AText appears after the selection - before it
+      with ifoBackwards - going round the end of the page, and scrolls it
+      into view.  False when it appears nowhere. }
+    function Find(const AText: string; AOptions: TInkFindOptions = []): Boolean;
+    { how often AText appears, and which of them is selected (from 1; 0 when
+      the selection is not one of them) }
+    function FindCount(const AText: string; AOptions: TInkFindOptions;
+      out Current: Integer): Integer;
+    { scrolls just far enough for the place to be on screen }
+    procedure ScrollIntoView(const APosition: TInkPagePosition);
+    { The find bar: a box at the page's top right.  Ctrl+F opens it, typing
+      finds as you go, Enter and F3 go to the next, Shift with either to the
+      one before, Esc closes it.  A form with KeyPreview sees Enter and Esc
+      first. }
+    procedure ShowFindBar;
+    procedure HideFindBar;
+    property FindBarVisible: Boolean read GetFindBarVisible;
+    property FindEdit: TInkEdit read FFindEdit;
+    { for Back and Forward buttons }
+    property CanGoBack: Boolean read GetCanGoBack;
+    property CanGoForward: Boolean read GetCanGoForward;
     { the selection's first and last places, in document order }
     property SelectionStart: TInkPagePosition read GetSelectionStart;
     property SelectionEnd: TInkPagePosition read GetSelectionEnd;
@@ -258,6 +307,10 @@ type
       background wins. }
     property SelectionColor: TColor read FSelectionColor write SetSelectionColor default clDefault;
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
+    { after a new document is shown - a link, Back, Forward or a load from
+      code - so a program can update its title and its Back and Forward
+      buttons }
+    property OnNavigate: TNotifyEvent read FOnNavigate write FOnNavigate;
     { the right-click menu: Copy, Copy this paragraph, Copy link address,
       Copy all, Select all.  Not shown when off or when PopupMenu is set. }
     property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
@@ -549,9 +602,17 @@ begin
   finally S.Free end;
 end;
 procedure TInkPage.LoadHTML(const HTML: string; const BaseURL: string);
-begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse end;
+begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse; Navigated end;
 procedure TInkPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
-begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse end;
+begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse; Navigated end;
+procedure TInkPage.Navigated;
+begin
+  if Assigned(FOnNavigate) then FOnNavigate(Self);
+end;
+function TInkPage.GetCanGoBack: Boolean;
+begin Result := FHistoryIndex>0 end;
+function TInkPage.GetCanGoForward: Boolean;
+begin Result := FHistoryIndex+1<FHistory.Count end;
 procedure TInkPage.LoadFromFile(const FileName: string);
 begin Navigate(FilenameToURI(ExpandFileName(FileName)),True) end;
 procedure TInkPage.LoadFromURL(const URL: string);
@@ -577,6 +638,7 @@ begin
     while FHistory.Count>FHistoryIndex+1 do FHistory.Delete(FHistory.Count-1);
     FHistory.Add(URL); FHistoryIndex := FHistory.Count-1;
   end;
+  Navigated;
 end;
 { a table's plain text ends each cell with a tab; the last one on a row is
   not wanted }
@@ -611,9 +673,17 @@ begin Result := FBlocks.Count end;
 function TInkPage.Block(Index: Integer): TInkPageBlock;
 begin Layout; Result := TInkPageBlock(FBlocks[Index]) end;
 procedure TInkPage.Back;
-begin if FHistoryIndex>0 then begin Navigate(FHistory[FHistoryIndex-1],False); Dec(FHistoryIndex) end end;
+begin
+  if FHistoryIndex<=0 then Exit;
+  Dec(FHistoryIndex);
+  Navigate(FHistory[FHistoryIndex],False);
+end;
 procedure TInkPage.Forward;
-begin if FHistoryIndex+1<FHistory.Count then begin Navigate(FHistory[FHistoryIndex+1],False); Inc(FHistoryIndex) end end;
+begin
+  if FHistoryIndex+1>=FHistory.Count then Exit;
+  Inc(FHistoryIndex);
+  Navigate(FHistory[FHistoryIndex],False);
+end;
 procedure TInkPage.Parse;
 var
   S, Raw, Element, Cls, Buffer, BlockTag, BlockClass, PendingAnchor, PendingMarker,
@@ -1220,11 +1290,6 @@ begin
       Continue;
     end;
     if B.BackColor<>clNone then begin ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid; ACanvas.FillRect(R) end;
-    if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) and (B.Wrapped<>'') then
-    begin
-      PaintSelection(ACanvas,I,B,SelFrom,SelTo);
-      BlockFont(ACanvas,B);
-    end;
     ACanvas.Brush.Style := bsClear;
     if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
     if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
@@ -1244,15 +1309,23 @@ begin
       try
         IntersectClipRect(ACanvas.Handle,R.Left,R.Top,R.Right,R.Bottom);
         HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);
+        if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
+          PaintSelection(ACanvas,I,B,SelFrom,SelTo);
       finally RestoreDC(ACanvas.Handle,Saved) end;
     end
-    else HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);
+    else
+    begin
+      HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);
+      if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
+        PaintSelection(ACanvas,I,B,SelFrom,SelTo);
+    end;
   end;
   if FScroll.Visible then
     FScroll.RenderTo(ACanvas,Rect(ClientWidth-FScroll.Width,0,ClientWidth,ClientHeight));
+  if FindBarVisible then PaintFindBar(ACanvas);
 end;
 procedure TInkPage.Resize;
-begin inherited; FLayoutDirty := True; Invalidate end;
+begin inherited; FLayoutDirty := True; PlaceFindBar; Invalidate end;
 procedure TInkPage.FontChanged(Sender: TObject);
 begin inherited; FLayoutDirty := True; Invalidate end;
 function TInkPage.HitLink(X,Y: Integer): string;
@@ -1415,6 +1488,13 @@ begin
   inherited;
   StopFlick;
   if Button<>mbLeft then Exit;
+  if FindBarVisible and PtInRect(FindBarRect,Point(X,Y)) then
+  begin
+    if PtInRect(FindButtonRect(0),Point(X,Y)) then Find(FFindEdit.Text,[ifoBackwards])
+    else if PtInRect(FindButtonRect(1),Point(X,Y)) then Find(FFindEdit.Text)
+    else if PtInRect(FindButtonRect(2),Point(X,Y)) then HideFindBar;
+    Exit;
+  end;
   { a platform that sends a copy of a touch as mouse events as well must not
     move the page twice }
   if (FGrab and FGrabFinger) or (GetTickCount64-FLastTouchEnd<500) then Exit;
@@ -1494,6 +1574,9 @@ end;
 procedure TInkPage.MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
 begin
   inherited;
+  { the mouse's own back and forward buttons }
+  if Button=mbExtra1 then begin Back; Exit end;
+  if Button=mbExtra2 then begin Forward; Exit end;
   if Button<>mbLeft then Exit;
   if FSelecting then
   begin
@@ -1533,6 +1616,7 @@ begin
     Text := AText; Left := ALeft; Top := ATop; Width := AWidth; Height := AHeight;
     Line := ALine; Part := APart; LineHeight := AHeight;
     FontName := AFont.Name; FontSize := AFont.Size; FontStyle := AFont.Style;
+    FontColor := AFont.Color;
   end;
   Inc(B.RunCount);
 end;
@@ -1890,7 +1974,6 @@ begin
   PrepareRuns(B);
   if Index=AFrom.Block then SelA := AFrom.Offset else SelA := 0;
   if Index=ATo.Block then SelZ := ATo.Offset else SelZ := MaxInt;
-  ACanvas.Brush.Style := bsSolid;
   ACanvas.Brush.Color := SelectionBackground;
   for K := 0 to B.RunCount-1 do
   begin
@@ -1904,7 +1987,14 @@ begin
     Space := (Z=RunEnd) and (SelZ>RunEnd) and
       ((K=B.RunCount-1) or (B.Runs[K+1].Line<>R.Line) or (B.Runs[K+1].Part<>R.Part));
     if Space then begin RunFont(Canvas,R); Inc(X2,Canvas.TextWidth(' ')) end;
+    { painted over the text, which is then drawn again on it: a code span's
+      own background would otherwise hide the selection }
+    ACanvas.Brush.Style := bsSolid;
     ACanvas.FillRect(Rect(X1,R.Top-FScroll.Position,X2,R.Top+R.LineHeight-FScroll.Position));
+    RunFont(ACanvas,R);
+    ACanvas.Font.Color := R.FontColor;
+    ACanvas.Brush.Style := bsClear;
+    ACanvas.TextOut(X1,R.Top-FScroll.Position,Copy(R.Text,A-R.Start+1,Z-A));
   end;
 end;
 
@@ -1959,7 +2049,23 @@ begin
     case Key of
       VK_A: begin SelectAll; Key := 0; Exit end;
       VK_C, VK_INSERT: begin CopyToClipboard; Key := 0; Exit end;
+      VK_F: begin ShowFindBar; Key := 0; Exit end;
     end;
+  if (Shift*[ssAlt,ssCtrl,ssShift]=[ssAlt]) and (Key in [VK_LEFT,VK_RIGHT]) then
+  begin
+    if Key=VK_LEFT then Back else Forward;
+    Key := 0; Exit;
+  end;
+  if Key in [VK_BROWSER_BACK,VK_BROWSER_FORWARD] then
+  begin
+    if Key=VK_BROWSER_BACK then Back else Forward;
+    Key := 0; Exit;
+  end;
+  if (Key=VK_F3) and (FFindText<>'') then
+  begin
+    if ssShift in Shift then Find(FFindText,[ifoBackwards]) else Find(FFindText);
+    Key := 0; Exit;
+  end;
   case Key of
     VK_UP: Delta := -32;
     VK_DOWN: Delta := 32;
@@ -1984,4 +2090,270 @@ begin
     if Pos(' '+Anchor+' ',' '+B.Anchor+' ')>0 then begin FScroll.Position := Min(B.Bounds.Top,Max(0,FContentHeight-ClientHeight)); Exit end;
   end;
 end;
+{ --- finding ------------------------------------------------------------ }
+
+function TInkPage.SearchWords(Index: Integer; AOptions: TInkFindOptions): string;
+var Lower: string;
+begin
+  Result := BlockText(Index);
+  if ifoMatchCase in AOptions then Exit;
+  { UTF-8 lower case, unless it would change where the characters are }
+  Lower := UTF8LowerCase(Result);
+  if Length(Lower)=Length(Result) then Result := Lower else Result := LowerCase(Result);
+end;
+
+function TInkPage.FindFrom(const AText: string; AOptions: TInkFindOptions;
+  const AFrom: TInkPagePosition; out AMatch: TInkPagePosition): Boolean;
+var Needle, Hay: string; I, Step, K, N, Q, Last: Integer; Start: TInkPagePosition;
+begin
+  Result := False;
+  AMatch.Block := 0; AMatch.Offset := 0;
+  if (AText='') or (FBlocks.Count=0) then Exit;
+  Needle := AText;
+  if not (ifoMatchCase in AOptions) then
+  begin
+    Needle := UTF8LowerCase(AText);
+    if Length(Needle)<>Length(AText) then Needle := LowerCase(AText);
+  end;
+  Start := Clamp(AFrom);
+  if ifoBackwards in AOptions then Step := -1 else Step := 1;
+  { every block once, starting with the one the search starts in, and that
+    one again at the end for what lies on the other side of the start }
+  I := Start.Block;
+  for N := 0 to FBlocks.Count do
+  begin
+    Hay := SearchWords(I,AOptions);
+    if Step>0 then
+    begin
+      if N=0 then K := Start.Offset+1 else K := 1;
+      Q := Pos(Needle,Hay,K);
+      if (N=FBlocks.Count) and (Q>Start.Offset) then Q := 0;
+      if Q>0 then
+      begin
+        AMatch.Block := I; AMatch.Offset := Q-1;
+        Exit(True);
+      end;
+    end
+    else
+    begin
+      { the last match that begins before the start (or anywhere, after
+        the first block) }
+      Last := 0; Q := Pos(Needle,Hay);
+      while Q>0 do
+      begin
+        if (N=0) and (Q-1>=Start.Offset) then Break;
+        if (N=FBlocks.Count) and (Q-1<Start.Offset) then begin Q := Pos(Needle,Hay,Q+1); Continue end;
+        Last := Q;
+        Q := Pos(Needle,Hay,Q+1);
+      end;
+      if Last>0 then
+      begin
+        AMatch.Block := I; AMatch.Offset := Last-1;
+        Exit(True);
+      end;
+    end;
+    I := I+Step;
+    if I>=FBlocks.Count then I := 0;
+    if I<0 then I := FBlocks.Count-1;
+  end;
+end;
+
+function TInkPage.SelectMatch(const AText: string; AOptions: TInkFindOptions;
+  const AFrom: TInkPagePosition): Boolean;
+var Match, MatchEnd: TInkPagePosition;
+begin
+  FFindText := AText;
+  Result := FindFrom(AText,AOptions,AFrom,Match);
+  if not Result then Exit;
+  MatchEnd := Match;
+  MatchEnd.Offset := Match.Offset+Length(AText);
+  FSelAnchor := Match; FSelCaret := MatchEnd;
+  ScrollIntoView(Match);
+  SelectionChanged;
+end;
+
+function TInkPage.FindStart(AOptions: TInkFindOptions): TInkPagePosition;
+begin
+  if HasSelection then Exit(SelectionStart);
+  { nothing selected: from what is on screen }
+  if ifoBackwards in AOptions then Result := PositionAt(ClientWidth,ClientHeight-1)
+  else Result := PositionAt(0,0);
+end;
+
+function TInkPage.Find(const AText: string; AOptions: TInkFindOptions): Boolean;
+var From: TInkPagePosition;
+begin
+  From := FindStart(AOptions);
+  { the next match begins after the current one does; the one before,
+    before it }
+  if HasSelection and not (ifoBackwards in AOptions) then Inc(From.Offset);
+  Result := SelectMatch(AText,AOptions,From);
+end;
+
+function TInkPage.FindCount(const AText: string; AOptions: TInkFindOptions;
+  out Current: Integer): Integer;
+var I, Q: Integer; Needle, Hay: string; SelFrom, SelTo: TInkPagePosition;
+begin
+  Result := 0; Current := 0;
+  if AText='' then Exit;
+  Needle := AText;
+  if not (ifoMatchCase in AOptions) then
+  begin
+    Needle := UTF8LowerCase(AText);
+    if Length(Needle)<>Length(AText) then Needle := LowerCase(AText);
+  end;
+  SelFrom := SelectionStart; SelTo := SelectionEnd;
+  for I := 0 to FBlocks.Count-1 do
+  begin
+    Hay := SearchWords(I,AOptions);
+    Q := Pos(Needle,Hay);
+    while Q>0 do
+    begin
+      Inc(Result);
+      if HasSelection and (SelFrom.Block=I) and (SelFrom.Offset=Q-1) and
+        (SelTo.Block=I) and (SelTo.Offset=Q-1+Length(Needle)) then Current := Result;
+      Q := Pos(Needle,Hay,Q+Length(Needle));
+    end;
+  end;
+end;
+
+procedure TInkPage.ScrollIntoView(const APosition: TInkPagePosition);
+var P: TPoint; B: TInkPageBlock; Margin, PlaceTop, PlaceBottom: Integer;
+begin
+  P := PositionPoint(APosition);
+  B := TInkPageBlock(FBlocks[Clamp(APosition).Block]);
+  Margin := Scale96ToFont(40);
+  PlaceTop := P.Y;
+  PlaceBottom := P.Y+Max(B.PointSize*2,16);
+  if FindBarVisible then Inc(Margin,FindBarRect.Bottom);
+  if PlaceTop<Margin then
+    FScroll.Position := EnsureRange(FScroll.Position+PlaceTop-Margin,0,Max(0,FContentHeight-ClientHeight))
+  else if PlaceBottom>ClientHeight-Scale96ToFont(40) then
+    FScroll.Position := EnsureRange(FScroll.Position+PlaceBottom-ClientHeight+Scale96ToFont(40)+ClientHeight div 3,
+      0,Max(0,FContentHeight-ClientHeight));
+end;
+
+function TInkPage.GetFindBarVisible: Boolean;
+begin
+  Result := Assigned(FFindEdit) and FFindEdit.Visible;
+end;
+
+function TInkPage.FindBarRect: TRect;
+var W, H: Integer;
+begin
+  H := Scale96ToFont(34);
+  W := Min(Scale96ToFont(360),ClientWidth-FScroll.Width-8);
+  Result := Rect(ClientWidth-FScroll.Width-W-6,4,ClientWidth-FScroll.Width-6,4+H);
+end;
+
+{ 0 previous, 1 next, 2 close }
+function TInkPage.FindButtonRect(Index: Integer): TRect;
+var Bar: TRect; S: Integer;
+begin
+  Bar := FindBarRect;
+  S := Bar.Bottom-Bar.Top-8;
+  Result := Rect(Bar.Right-4-(3-Index)*S,Bar.Top+4,Bar.Right-4-(2-Index)*S,Bar.Bottom-4);
+end;
+
+procedure TInkPage.PlaceFindBar;
+var Bar: TRect;
+begin
+  if not Assigned(FFindEdit) then Exit;
+  Bar := FindBarRect;
+  { the edit, then the count, then the three buttons }
+  FFindEdit.SetBounds(Bar.Left+6,Bar.Top+5,
+    Max(40,FindButtonRect(0).Left-Bar.Left-6-Scale96ToFont(64)),Bar.Bottom-Bar.Top-10);
+end;
+
+procedure TInkPage.ShowFindBar;
+begin
+  if not Assigned(FFindEdit) then
+  begin
+    FFindEdit := TInkEdit.Create(Self);
+    FFindEdit.Parent := Self;
+    FFindEdit.OnChange := @FindEditChange;
+    FFindEdit.OnKeyDown := @FindEditKey;
+  end;
+  FFindEdit.Font.Assign(Font);
+  PlaceFindBar;
+  FFindEdit.Visible := True;
+  if FFindEdit.CanFocus then FFindEdit.SetFocus;
+  { a selection on one line is what to look for, as in a browser }
+  if HasSelection and (Pos(#10,SelectedText)=0) and (FFindEdit.Text<>SelectedText) then
+    FFindEdit.Text := SelectedText;
+  FFindEdit.SelectAll;
+  Invalidate;
+end;
+
+procedure TInkPage.HideFindBar;
+begin
+  if not FindBarVisible then Exit;
+  FFindEdit.Visible := False;
+  if CanFocus then SetFocus;
+  Invalidate;
+end;
+
+procedure TInkPage.FindEditChange(Sender: TObject);
+begin
+  if FFindEdit.Text='' then
+  begin
+    FFindText := '';
+    ClearSelection;
+    Invalidate;
+    Exit;
+  end;
+  { as it is typed: from where the match so far begins, so it grows in
+    place; nothing found leaves the last match where it was }
+  SelectMatch(FFindEdit.Text,[],FindStart([]));
+  Invalidate;
+end;
+
+procedure TInkPage.FindEditKey(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  case Key of
+    VK_RETURN, VK_F3:
+      begin
+        if ssShift in Shift then Find(FFindEdit.Text,[ifoBackwards])
+        else Find(FFindEdit.Text);
+        Invalidate;
+        Key := 0;
+      end;
+    VK_ESCAPE:
+      begin
+        HideFindBar;
+        Key := 0;
+      end;
+  end;
+end;
+
+procedure TInkPage.PaintFindBar(ACanvas: TCanvas);
+const
+  Glyphs: array[0..2] of string = ('▲','▼','✕');
+var Bar, R: TRect; PageBack, Fore: TColor; Total, Current, K: Integer; Count: string;
+begin
+  Bar := FindBarRect;
+  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
+  Fore := FStyles.Color('body','','color',Font.Color);
+  ACanvas.Brush.Style := bsSolid;
+  ACanvas.Brush.Color := HTMLShadeColor(PageBack,10);
+  ACanvas.Pen.Color := MixColor(PageBack,Fore,0.4);
+  ACanvas.RoundRect(Bar,8,8);
+  ACanvas.Font.Assign(Font);
+  ACanvas.Font.Color := MixColor(PageBack,Fore,0.8);
+  ACanvas.Brush.Style := bsClear;
+  Total := FindCount(FFindEdit.Text,[],Current);
+  if FFindEdit.Text='' then Count := ''
+  else if Total=0 then Count := '0/0'
+  else Count := IntToStr(Current)+'/'+IntToStr(Total);
+  R := Rect(FFindEdit.Left+FFindEdit.Width+4,Bar.Top,FindButtonRect(0).Left-2,Bar.Bottom);
+  ACanvas.TextOut(R.Right-ACanvas.TextWidth(Count),
+    (Bar.Top+Bar.Bottom-ACanvas.TextHeight(Count)) div 2,Count);
+  for K := 0 to 2 do
+  begin
+    R := FindButtonRect(K);
+    ACanvas.TextOut((R.Left+R.Right-ACanvas.TextWidth(Glyphs[K])) div 2,
+      (R.Top+R.Bottom-ACanvas.TextHeight(Glyphs[K])) div 2,Glyphs[K]);
+  end;
+end;
+
 end.

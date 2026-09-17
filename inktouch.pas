@@ -14,7 +14,13 @@
 
   One handler per control, not one for the program: several controls on
   several forms can each be touched.  Only the first finger down is
-  followed; a second finger is ignored until the first lifts. }
+  followed; a second finger is ignored until the first lifts.
+
+  The same hook mends one more thing GTK3 drops: the back and forward
+  buttons many mice have (buttons 8 and 9).  Windows, and Qt, deliver them
+  to a control as MouseDown / MouseUp with mbExtra1 and mbExtra2; the
+  Lazarus GTK3 backend throws them away.  A hooked control gets them the
+  same way as on the other platforms. }
 unit InkTouch;
 {$mode objfpc}{$H+}
 interface
@@ -24,9 +30,10 @@ type
   { X, Y are in the control's client coordinates }
   TInkTouchEvent = procedure(Phase: TInkTouchPhase; X, Y: Integer) of object;
 
-{ Starts delivering touches on AControl's window to AHandler.  Call it from
+{ Starts delivering touches on AControl's window to AHandler, and the
+  mouse's back and forward buttons as mbExtra1 / mbExtra2.  Call it from
   the control's CreateWnd: a recreated handle is a new window.  False where
-  the platform already delivers fingers as mouse events, or cannot hook. }
+  the platform already delivers both, or cannot hook. }
 function InkHookTouch(AControl: TWinControl; AHandler: TInkTouchEvent): Boolean;
 
 { For a control that only needs a finger to act like the left mouse button
@@ -131,6 +138,37 @@ begin
   Result := True;
 end;
 
+{ buttons 8 and 9, which the backend drops, as the messages Windows sends }
+function ButtonCallback(Widget: PGtkWidget; Event: PGdkEventButton; Data: gpointer): gboolean; cdecl;
+var
+  Hook: PTouchHook;
+  Msg: Cardinal;
+  Keys: PtrInt;
+  P: TPoint;
+begin
+  Result := False;
+  Hook := PTouchHook(Data);
+  if (Event = nil) or (Hook = nil) then Exit;
+  case Event^.button of
+    8: Keys := MK_XBUTTON1;
+    9: Keys := MK_XBUTTON2;
+  else
+    Exit;
+  end;
+  case Event^.type_ of
+    GDK_BUTTON_PRESS: Msg := LM_XBUTTONDOWN;
+    GDK_BUTTON_RELEASE: Msg := LM_XBUTTONUP;
+  else
+    Exit(True);                 // a double press of one: nothing more
+  end;
+  try
+    P := Hook^.Control.ScreenToClient(Point(Round(Event^.x_root), Round(Event^.y_root)));
+    Hook^.Control.Perform(Msg, Keys, PtrInt(Word(SmallInt(P.X))) or (PtrInt(Word(SmallInt(P.Y))) shl 16));
+  except
+  end;
+  Result := True;
+end;
+
 procedure FreeHook(Data: gpointer; Closure: PGClosure); cdecl;
 begin
   Dispose(PTouchHook(Data));
@@ -153,6 +191,12 @@ begin
   { the hook lives as long as the window: GTK frees it with the widget }
   g_signal_connect_data(PGObject(Widget), 'touch-event',
     TGCallback(@TouchCallback), Hook, @FreeHook, G_CONNECT_DEFAULT);
+  { the same record: freed once, with the touch handler, when the widget
+    goes, and no handler outlives it }
+  g_signal_connect_data(PGObject(Widget), 'button-press-event',
+    TGCallback(@ButtonCallback), Hook, nil, G_CONNECT_DEFAULT);
+  g_signal_connect_data(PGObject(Widget), 'button-release-event',
+    TGCallback(@ButtonCallback), Hook, nil, G_CONNECT_DEFAULT);
   Result := True;
 end;
 

@@ -106,7 +106,7 @@ type
     tabHelpPage: TTabSheet;
     helpPage: TInkPage;
     pnlHelpTools: TPanel;
-    btnHelpOpen, btnHelpBack, btnHelpForward: TButton;
+    btnHelpOpen, btnHelpBack, btnHelpForward, btnHelpFind: TButton;
     dlgHelp: TOpenDialog;
     tabTables: TTabSheet;
     cbTableFormat: TComboBox;
@@ -125,6 +125,8 @@ type
     procedure HelpOpen(Sender: TObject);
     procedure HelpBack(Sender: TObject);
     procedure HelpForward(Sender: TObject);
+    procedure HelpFind(Sender: TObject);
+    procedure HelpNavigate(Sender: TObject);
     procedure TableFormatChange(Sender: TObject);
     procedure TableSourceChange(Sender: TObject);
     { editor }
@@ -219,6 +221,15 @@ procedure TfrmMain.HelpBack(Sender: TObject);
 begin helpPage.Back end;
 procedure TfrmMain.HelpForward(Sender: TObject);
 begin helpPage.Forward end;
+procedure TfrmMain.HelpFind(Sender: TObject);
+begin helpPage.ShowFindBar end;
+{ the buttons follow the page's history, whether it moved by a button, a
+  link, the mouse's own back and forward buttons or Alt+arrow }
+procedure TfrmMain.HelpNavigate(Sender: TObject);
+begin
+  btnHelpBack.Enabled := helpPage.CanGoBack;
+  btnHelpForward.Enabled := helpPage.CanGoForward;
+end;
 
 procedure TfrmMain.TableFormatChange(Sender: TObject);
 begin
