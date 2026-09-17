@@ -1,0 +1,32 @@
+LazInk licensing
+================
+
+LazInk contains code under two licenses. This is a per-file distinction,
+not a choice to use either license for the entire package.
+
+1. MPL 1.1: inkhtml.pas and its renderer implementation include inktables.inc.
+   inkhtml.pas contains code derived from Project JEDI's JVCL. Its modifications
+   remain under the Mozilla Public License 1.1. See LICENSES/MPL-1.1.txt,
+   THIRD_PARTY_NOTICES.md, and docs/RENDERER_CHANGES.md.
+
+2. MIT: independently authored LazInk components and supporting code,
+   examples, tests, and documentation, except for the MPL files above and
+   material carrying its own upstream notice. See LICENSES/MIT.txt.
+
+The MIT permission does not relicense third-party material. Upstream notices
+and license texts retain their original terms. Lazarus/LCL and Free Pascal
+are dependencies with their own licenses; they are not relicensed by LazInk.
+
+Distribution of the MPL-covered renderer, including in compiled applications,
+requires compliance with MPL 1.1. Include the applicable notices and license,
+document modifications, and make the corresponding covered source available
+to recipients as described in sections 3.1-3.6. The full license controls.
+Independent application files need not become MPL merely because they use
+LazInk; section 3.7 permits larger works under other licenses.
+
+Source availability in this source distribution: the corresponding renderer
+source is supplied in inkhtml.pas and inktables.inc alongside this file.
+If distributing a binary separately, supply its corresponding covered source
+and required build materials with it, or give recipients an actual source
+location that satisfies MPL 1.1. A link to unmodified JVCL is not a substitute
+for the source of the modified renderer used to build that binary.

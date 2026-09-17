@@ -13,11 +13,11 @@ procedure Register;
 implementation
 
 uses
-  InkLabel, InkEdit, InkMemo, InkListBox;
+  InkLabel, InkEdit, InkMemo, InkListBox, InkRichEdit, InkPage;
 
 procedure Register;
 begin
-  RegisterComponents('LazInk', [TInkLabel, TInkEdit, TInkMemo, TInkListBox]);
+  RegisterComponents('LazInk', [TInkLabel, TInkEdit, TInkRichEdit, TInkMemo, TInkListBox, TInkPage]);
 end;
 
 initialization

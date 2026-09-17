@@ -8,8 +8,8 @@ unit LazInk;
 interface
 
 uses
-  InkHtml, InkLabel, InkEdit, InkMemo, InkListBox, LazInkReg, 
-  LazarusPackageIntf;
+  InkGIF, InkCSS, InkPage, InkMarkdown, InkHtml, InkLabel, InkEdit, InkMemo,
+  InkListBox, InkRichEdit, LazInkReg, LazarusPackageIntf;
 
 implementation
 

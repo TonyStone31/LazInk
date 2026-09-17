@@ -15,10 +15,17 @@
         </SyntaxOptions>
       </Parsing>
     </CompilerOptions>
-    <Description Value="LazInk — lightweight HTML-formatted text controls drawn entirely with TCanvas: TInkLabel, TInkEdit (per-character colored edit box), TInkMemo and TInkListBox. Renders a simple HTML subset (bold, italic, underline, font color/size, sub/sup, links) identically on every LCL widgetset including gtk3."/>
-    <License Value="Component code: MIT. Renderer unit InkHtml derives from the JVCL project (MPL 1.1) — see its header."/>
-    <Version Minor="9"/>
+    <Description Value="LazInk — lightweight HTML-formatted text controls drawn entirely with TCanvas: TInkLabel, TInkEdit (per-character coloured edit box), TInkRichEdit (multi-line WYSIWYG editor with caret and selection inside the rendered text), TInkMemo and TInkListBox. Renders a simple HTML subset (bold, italic, underline, strikeout, font colour/bgcolour/size/face, sub/sup, paragraphs, alignment, links) identically on every LCL widgetset including gtk3."/>
+    <License Value="Independent component code: MIT. Renderer inkhtml.pas and inktables.inc: MPL 1.1. See LICENSE and THIRD_PARTY_NOTICES.md."/>
+    <Version Major="1"/>
     <Files>
+      <Item><Filename Value="inkgif.pas"/><UnitName Value="InkGIF"/></Item>
+      <Item><Filename Value="inkcss.pas"/><UnitName Value="InkCSS"/></Item>
+      <Item><Filename Value="inkpage.pas"/><UnitName Value="InkPage"/></Item>
+      <Item>
+        <Filename Value="inkmarkdown.pas"/>
+        <UnitName Value="InkMarkdown"/>
+      </Item>
       <Item>
         <Filename Value="inkhtml.pas"/>
         <UnitName Value="InkHtml"/>
@@ -38,6 +45,10 @@
       <Item>
         <Filename Value="inklistbox.pas"/>
         <UnitName Value="InkListBox"/>
+      </Item>
+      <Item>
+        <Filename Value="inkrichedit.pas"/>
+        <UnitName Value="InkRichEdit"/>
       </Item>
       <Item>
         <Filename Value="lazinkreg.pas"/>

@@ -1,3 +1,41 @@
+# Lazarus / Free Pascal build output
 lib/
-backup/
+**/lib/
+*.o
+*.ppu
+*.a
+*.or
+*.rsj
+*.rst
+*.res
 *.compiled
+*.dbg
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Lazarus per-user session and backup files
+*.lps
+backup/
+**/backup/
+*.bak
+*.~*
+
+# The demo's compiled program
+demo/lazinkdemo
+demo/lazinkdemo.app/
+
+# Test and tool output
+tests/results/
+*.bmp
+__pycache__/
+*.pyc
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

@@ -5,8 +5,8 @@ unit InkListBox;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, StdCtrls, ExtCtrls,
-  LCLType, Types, Forms;
+  Classes, SysUtils, Controls, Graphics, StdCtrls, ExtCtrls, ImgList,
+  LCLType, LCLIntf, Types, Forms, InkHtml, InkMarkdown;
 
 type
   TInkEditMode = (emNone, emOnSelect, emOnDblClick);
@@ -17,9 +17,15 @@ type
   TItemEditedEvent = procedure(Sender: TObject; Index: Integer;
     const OldText, NewText: string; var Accept: Boolean) of object;
 
+  TInkListLinkEvent = procedure(Sender: TObject; Index: Integer;
+    const LinkName: string) of object;
+
   { TInkListBox }
 
   TInkListBox = class(TCustomListBox)
+  private
+    FTextFormat: TInkTextFormat;
+    procedure SetTextFormat(AValue: TInkTextFormat);
   private
     FHTMLEnabled: Boolean;
     FHTMLScale: Integer;
@@ -33,9 +39,33 @@ type
     FEdit: TEdit;
     FEditTimer: TTimer;
     FEditingIndex: Integer;
+    FEditRawHTML: Boolean;
+    FAlternateColor: TColor;
+    FLineSpacing: Integer;
+    FBorders: TInkBorders;
+    FImages: TCustomImageList;
+    FLinkStyle: TInkLinkStyle;
+    FLinkHoverStyle: TInkLinkStyle;
+    FAutoOpenLink: Boolean;
+    FHoverItem: Integer;     // -1 when the mouse is not over a link
+    FHoverIndex: Integer;    // ordinal of that link within its item
+    FHoverLink: string;
+    FHoverLinkText: string;
     FOnBeforeEdit: TBeforeEditEvent;
     FOnItemEdited: TItemEditedEvent;
+    FOnLinkClick: TInkListLinkEvent;
+    FOnLinkEnter: TInkListLinkEvent;
+    FOnLinkLeave: TInkListLinkEvent;
+    FOnLinkRightClick: TInkListLinkEvent;
     FOnUserSelectionChange: TSelectionChangeEvent;
+    procedure SetAlternateColor(AValue: TColor);
+    procedure SetLineSpacing(AValue: Integer);
+    procedure SetBorders(AValue: TInkBorders);
+    procedure SetImages(AValue: TCustomImageList);
+    procedure SetLinkStyle(AValue: TInkLinkStyle);
+    procedure SetLinkHoverStyle(AValue: TInkLinkStyle);
+    procedure SubPropChanged(Sender: TObject);
+    procedure UpdateHover(AItem: Integer; const AHit: THTMLHitInfo);
     procedure InternalSelectionChange(Sender: TObject; User: Boolean);
     procedure EnsureEdit;
     procedure PositionEdit;
@@ -50,26 +80,66 @@ type
     procedure EditKeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure EditExit(Sender: TObject);
   protected
+    { Everything the renderer needs beyond the text itself. }
+    function Options(AHoverIndex: Integer = 0): THTMLOptions;
     procedure DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState); override;
     procedure DblClick; override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
+    procedure MouseLeave; override;
+    procedure Resize; override;
+    procedure Notification(AComponent: TComponent; Operation: TOperation); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+    procedure Click; override;
+    procedure MeasureItem(Index: Integer; var TheHeight: Integer); override;
+    { Opens the in-place editor on Index from code, as a click would. }
+    procedure EditItem(Index: Integer);
     function GetPlainText(Index: Integer): string;
+    { The href under the mouse, '' when none }
+    property HoverLink: string read FHoverLink;
+    property HoverLinkText: string read FHoverLinkText;
     procedure SaveAsPlain(const FileName: string);
     procedure SaveAsHTML(const FileName: string);
   published
+    property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     property HTMLEnabled: Boolean read FHTMLEnabled write FHTMLEnabled default True;
     property HTMLScale: Integer read FHTMLScale write FHTMLScale default 100;
     property SuperSubScriptRatio: Double read FSuperSubScriptRatio write FSuperSubScriptRatio;
     property EditMode: TInkEditMode read FEditMode write FEditMode default emOnSelect;
     property ReadOnlyEdit: Boolean read FReadOnlyEdit write FReadOnlyEdit default True;
+    { What the in-place editor shows. False (the default) hands the user the
+      item with the markup stripped - good for copying a log line out. True
+      hands over the markup itself, so the item can be re-styled in place and
+      the result is visible the moment Enter is pressed. }
+    property EditRawHTML: Boolean read FEditRawHTML write FEditRawHTML default False;
+    { Background for odd-numbered rows. clNone (the default) turns it off. }
+    property AlternateColor: TColor read FAlternateColor write SetAlternateColor default clNone;
+    property LineSpacing: Integer read FLineSpacing write SetLineSpacing default 0;
+    { Margins around the text. Each row is drawn on its own, so Top and Bottom
+      are padding inside every row rather than once for the whole control;
+      LineSpacing is what separates lines within a row. }
+    property Borders: TInkBorders read FBorders write SetBorders;
+    { Supplies <img src="n">, where n is an index into this list - a status
+      icon per row, which is what a log listbox usually wants. }
+    property Images: TCustomImageList read FImages write SetImages;
+    property LinkStyle: TInkLinkStyle read FLinkStyle write SetLinkStyle;
+    property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
+    { Open a clicked link with the system browser. Only applies when no
+      OnLinkClick handler is assigned - a handler always wins. }
+    property AutoOpenLink: Boolean read FAutoOpenLink write FAutoOpenLink default False;
     property EditTimeout: Integer read FEditTimeout write FEditTimeout default 5000;
     property EditOverhang: Integer read FEditOverhang write FEditOverhang default 2;
     property SelectionColor: TColor read FSelectionColor write FSelectionColor default clHighlight;
     property SelectionTextColor: TColor read FSelectionTextColor write FSelectionTextColor default clHighlightText;
     property OnBeforeEdit: TBeforeEditEvent read FOnBeforeEdit write FOnBeforeEdit;
     property OnItemEdited: TItemEditedEvent read FOnItemEdited write FOnItemEdited;
+    property OnLinkClick: TInkListLinkEvent read FOnLinkClick write FOnLinkClick;
+    property OnLinkEnter: TInkListLinkEvent read FOnLinkEnter write FOnLinkEnter;
+    property OnLinkLeave: TInkListLinkEvent read FOnLinkLeave write FOnLinkLeave;
+    property OnLinkRightClick: TInkListLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
 
     property Align;
     property Anchors;
@@ -130,8 +200,13 @@ type
 
 implementation
 
-uses
-  InkHtml;
+procedure TInkListBox.SetTextFormat(AValue: TInkTextFormat);
+begin
+  if FTextFormat = AValue then Exit;
+  FTextFormat := AValue;
+  SubPropChanged(nil);
+end;
+
 
 { TInkListBox }
 
@@ -148,7 +223,16 @@ begin
   FSelectionColor := clHighlight;
   FSelectionTextColor := clHighlightText;
   FEditingIndex := -1;
-  Style := lbOwnerDrawFixed;
+  FEditRawHTML := False;
+  FAlternateColor := clNone;
+  FHoverItem := -1;
+  FBorders := TInkBorders.Create;
+  FBorders.OnChange := @SubPropChanged;
+  FLinkStyle := TInkLinkStyle.Create(False);
+  FLinkStyle.OnChange := @SubPropChanged;
+  FLinkHoverStyle := TInkLinkStyle.Create(True);
+  FLinkHoverStyle.OnChange := @SubPropChanged;
+  Style := lbOwnerDrawVariable;
   inherited OnSelectionChange := @InternalSelectionChange;
 end;
 
@@ -156,7 +240,60 @@ destructor TInkListBox.Destroy;
 begin
   FreeAndNil(FEditTimer);
   FreeAndNil(FEdit);
+  FreeAndNil(FBorders);
+  FreeAndNil(FLinkStyle);
+  FreeAndNil(FLinkHoverStyle);
   inherited Destroy;
+end;
+
+function TInkListBox.Options(AHoverIndex: Integer = 0): THTMLOptions;
+begin
+  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
+    FBorders, FImages, FLinkStyle, FLinkHoverStyle, AHoverIndex);
+end;
+
+procedure TInkListBox.SubPropChanged(Sender: TObject);
+begin
+  if HandleAllocated then begin Items.BeginUpdate; Items.EndUpdate end;
+  Invalidate;
+end;
+
+procedure TInkListBox.SetLineSpacing(AValue: Integer);
+begin
+  if FLineSpacing = AValue then Exit;
+  FLineSpacing := AValue;
+  Invalidate;
+end;
+
+procedure TInkListBox.SetBorders(AValue: TInkBorders);
+begin
+  FBorders.Assign(AValue);
+end;
+
+procedure TInkListBox.SetLinkStyle(AValue: TInkLinkStyle);
+begin
+  FLinkStyle.Assign(AValue);
+end;
+
+procedure TInkListBox.SetLinkHoverStyle(AValue: TInkLinkStyle);
+begin
+  FLinkHoverStyle.Assign(AValue);
+end;
+
+procedure TInkListBox.SetImages(AValue: TCustomImageList);
+begin
+  if FImages = AValue then Exit;
+  if FImages <> nil then FImages.RemoveFreeNotification(Self);
+  FImages := AValue;
+  if FImages <> nil then FImages.FreeNotification(Self);
+  Invalidate;
+end;
+
+procedure TInkListBox.Notification(AComponent: TComponent; Operation: TOperation);
+begin
+  inherited Notification(AComponent, Operation);
+  if (Operation = opRemove) and (AComponent = FImages) then
+    FImages := nil;
 end;
 
 procedure TInkListBox.EnsureEdit;
@@ -221,7 +358,10 @@ begin
 
   FEditingIndex := Index;
   FEdit.ReadOnly := FReadOnlyEdit;
-  FEdit.Text := HTMLPlainText(Items[Index]);
+  if FEditRawHTML then
+    FEdit.Text := Items[Index]
+  else
+    FEdit.Text := HTMLPlainText(InkToHTML(Items[Index], FTextFormat));
   PositionEdit;
   FEdit.Visible := True;
   FEdit.BringToFront;
@@ -248,7 +388,13 @@ begin
   Idx := FEditingIndex;
   OldText := Items[Idx];
   NewText := FEdit.Text;
-  if NewText = HTMLPlainText(OldText) then Exit;
+  if FEditRawHTML then
+  begin
+    if NewText = OldText then Exit;
+  end
+  else
+  if NewText = HTMLPlainText(InkToHTML(OldText, FTextFormat)) then
+    Exit;
 
   Accept := True;
   if Assigned(FOnItemEdited) then FOnItemEdited(Self, Idx, OldText, NewText, Accept);
@@ -304,7 +450,21 @@ begin
   HideEdit;
 end;
 
+procedure TInkListBox.MeasureItem(Index: Integer; var TheHeight: Integer);
+var Sz: TSize;
+begin
+  TheHeight := ItemHeight;
+  if (Index < 0) or (Index >= Items.Count) or not FHTMLEnabled then Exit;
+  Canvas.Font := Font;
+  Sz := HTMLTextExtentOpt(Canvas, Rect(0,0,ClientWidth,0), [],
+    InkToHTML(Items[Index], FTextFormat), Options);
+  if Sz.cy + 2 > TheHeight then TheHeight := Sz.cy + 2;
+end;
+
 procedure TInkListBox.DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState);
+var
+  TextR: TRect;
+  Opts: THTMLOptions;
 begin
   if (FEdit <> nil) and FEdit.Visible then
     PositionEdit;
@@ -316,18 +476,31 @@ begin
   end
   else
   begin
-    Canvas.Brush.Color := Color;
+    if (FAlternateColor <> clNone) and Odd(Index) then
+      Canvas.Brush.Color := FAlternateColor
+    else
+      Canvas.Brush.Color := Color;
     Canvas.Font.Color := Font.Color;
   end;
   Canvas.FillRect(ARect);
 
   if (Index < 0) or (Index >= Items.Count) then Exit;
 
-  if FHTMLEnabled then
-    HTMLDrawText(Canvas, ARect, State, Items[Index],
-      FSuperSubScriptRatio, FHTMLScale)
+  // alignment tags place themselves inside the rectangle they are handed, and
+  // the row rectangle can be wider than the column actually on screen
+  TextR := ARect;
+  if TextR.Right > ClientWidth then
+    TextR.Right := ClientWidth;
+
+  // the hovered link only lights up on the row it is actually on
+  if Index = FHoverItem then
+    Opts := Options(FHoverIndex)
   else
-    Canvas.TextRect(ARect, ARect.Left + 2, ARect.Top, Items[Index]);
+    Opts := Options;
+  if FHTMLEnabled then
+    HTMLDrawOpt(Canvas, TextR, State, InkToHTML(Items[Index], FTextFormat), Opts)
+  else
+    Canvas.TextRect(TextR, TextR.Left + 2, TextR.Top, Items[Index]);
 end;
 
 procedure TInkListBox.InternalSelectionChange(Sender: TObject; User: Boolean);
@@ -345,12 +518,124 @@ begin
     BeginEdit(ItemIndex);
 end;
 
+procedure TInkListBox.EditItem(Index: Integer);
+begin
+  BeginEdit(Index);
+end;
+
+procedure TInkListBox.SetAlternateColor(AValue: TColor);
+begin
+  if FAlternateColor = AValue then Exit;
+  FAlternateColor := AValue;
+  Invalidate;
+end;
+
+{ Hover is tracked as (row, ordinal-of-link-in-that-row), so two links with the
+  same target still light up one at a time. }
+procedure TInkListBox.UpdateHover(AItem: Integer; const AHit: THTMLHitInfo);
+var
+  NewIndex, OldItem: Integer;
+  OldLink: string;
+begin
+  if AHit.OnLink then NewIndex := AHit.LinkIndex else NewIndex := 0;
+  if NewIndex = 0 then AItem := -1;
+  if (AItem = FHoverItem) and (NewIndex = FHoverIndex) then Exit;
+
+  OldItem := FHoverItem;
+  OldLink := FHoverLink;
+  if (OldItem >= 0) and Assigned(FOnLinkLeave) then
+    FOnLinkLeave(Self, OldItem, OldLink);
+
+  FHoverItem := AItem;
+  FHoverIndex := NewIndex;
+  if AItem >= 0 then
+  begin
+    FHoverLink := AHit.LinkName;
+    FHoverLinkText := AHit.LinkText;
+    Cursor := crHandPoint;
+    if Assigned(FOnLinkEnter) then FOnLinkEnter(Self, AItem, FHoverLink);
+  end
+  else
+  begin
+    FHoverLink := '';
+    FHoverLinkText := '';
+    Cursor := crDefault;
+  end;
+  Invalidate;
+end;
+
+procedure TInkListBox.MouseMove(Shift: TShiftState; X, Y: Integer);
+var
+  Idx: Integer;
+  R: TRect;
+  Hit: THTMLHitInfo;
+begin
+  inherited MouseMove(Shift, X, Y);
+  Hit.OnLink := False;
+  Hit.LinkName := '';
+  Hit.LinkText := '';
+  Hit.LinkIndex := 0;
+  Idx := GetIndexAtY(Y);
+  if FHTMLEnabled and (Idx >= 0) and (Idx < Items.Count) then
+  begin
+    R := ItemRect(Idx);
+    if R.Right > ClientWidth then
+      R.Right := ClientWidth;
+    Canvas.Font := Font;
+    Hit := HTMLHitTest(Canvas, R, InkToHTML(Items[Idx], FTextFormat), Options, X, Y);
+  end;
+  UpdateHover(Idx, Hit);
+end;
+
+procedure TInkListBox.MouseLeave;
+var
+  Empty: THTMLHitInfo;
+begin
+  inherited MouseLeave;
+  Empty.OnLink := False;
+  Empty.LinkName := '';
+  Empty.LinkText := '';
+  Empty.LinkIndex := 0;
+  UpdateHover(-1, Empty);
+end;
+
+procedure TInkListBox.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseUp(Button, Shift, X, Y);
+  if (Button = mbRight) and (FHoverItem >= 0) and (FHoverLink <> '') and
+    Assigned(FOnLinkRightClick) then
+    FOnLinkRightClick(Self, FHoverItem, FHoverLink);
+end;
+
+procedure TInkListBox.Click;
+begin
+  inherited Click;
+  if (FHoverItem >= 0) and (FHoverLink <> '') then
+  begin
+    if Assigned(FOnLinkClick) then
+      FOnLinkClick(Self, FHoverItem, FHoverLink)
+    else if FAutoOpenLink then
+      OpenURL(FHoverLink);
+  end;
+end;
+
+{ The floating editor is a sibling positioned in the parent's coordinates, so a
+  resize moves the listbox out from under it. }
+procedure TInkListBox.Resize;
+begin
+  inherited Resize;
+  if Assigned(FLinkHoverStyle) then SubPropChanged(nil);
+  if (FEdit <> nil) and FEdit.Visible then
+    PositionEdit;
+end;
+
 function TInkListBox.GetPlainText(Index: Integer): string;
 begin
   if (Index < 0) or (Index >= Items.Count) then
     Result := ''
   else
-    Result := HTMLPlainText(Items[Index]);
+    Result := HTMLPlainText(InkToHTML(Items[Index], FTextFormat));
 end;
 
 procedure TInkListBox.SaveAsPlain(const FileName: string);
@@ -361,7 +646,7 @@ begin
   SL := TStringList.Create;
   try
     for i := 0 to Items.Count - 1 do
-      SL.Add(HTMLPlainText(Items[i]));
+      SL.Add(HTMLPlainText(InkToHTML(Items[i], FTextFormat)));
     SL.SaveToFile(FileName);
   finally
     SL.Free;
@@ -369,8 +654,13 @@ begin
 end;
 
 procedure TInkListBox.SaveAsHTML(const FileName: string);
+var SL: TStringList; I: Integer;
 begin
-  Items.SaveToFile(FileName);
+  SL := TStringList.Create;
+  try
+    for I := 0 to Items.Count - 1 do SL.Add(InkToHTML(Items[I], FTextFormat));
+    SL.SaveToFile(FileName);
+  finally SL.Free end;
 end;
 
 end.

@@ -1,17 +1,35 @@
-{ InkHtml — inline HTML canvas rendering for the LazInk controls.
+{ InkHtml — HTML canvas rendering for LazInk.
+  SPDX-License-Identifier: MPL-1.1
 
-  ATTRIBUTION: this unit is derived from the JVCL project's JvHtControls
-  (JvHTMLParser / HTML drawing routines), originally by Maciej Kaczkowski
-  and the Project JEDI JVCL contributors — https://jvcl.github.io/ — and
-  later adapted for Lazarus/LCL. Licensed under the Mozilla Public License
-  Version 1.1 (MPL 1.1); you may obtain a copy of the license at
-  http://www.mozilla.org/MPL/MPL-1.1.html
+  The contents of this file are subject to the Mozilla Public License
+  Version 1.1 (the "License"); you may not use this file except in
+  compliance with the License. You may obtain a copy of the License at
+  https://www.mozilla.org/MPL/1.1/ or in LICENSES/MPL-1.1.txt.
 
   Software distributed under the License is distributed on an "AS IS"
-  basis, WITHOUT WARRANTY OF ANY KIND, either expressed or implied.
+  basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
+  License for the specific language governing rights and limitations
+  under the License.
 
-  Modifications for LazInk: standalone unit, LCL types, UTF-8 handling.
-  Keep this notice intact in any redistribution. }
+  The Original Code is portions of Project JEDI's JVCL HTML drawing code:
+
+  JvHTControls.PAS, released on 2002-07-04.
+  The Initial Developer is Andrei Prygounkov.
+  Copyright (c) 1999, 2002 Andrei Prygounkov. All Rights Reserved.
+  Listed contributors: Maciej Kaczkowski, Timo Tegtmeier, Andreas Hausladen.
+
+  JvJVCLUtils.PAS, released on 2002-09-24.
+  The Initial Developers are Fedor Koshevnikov, Igor Pavluk and Serge Korolev.
+  Copyright (c) 1997, 1998 Fedor Koshevnikov, Igor Pavluk and Serge Korolev.
+  Copyright (c) 2001,2002 SGB Software. All Rights Reserved.
+
+  Contributor(s): Project JEDI/JVCL contributors; wp (standalone Lazarus
+  extraction and adaptations); LazInk contributors (subsequent modifications).
+
+  Upstream: https://github.com/project-jedi/jvcl
+  Provenance and full upstream notices: THIRD_PARTY_NOTICES.md.
+  Modification history and dates: docs/RENDERER_CHANGES.md.
+  Keep these notices intact in redistributions. }
 unit InkHtml;
 
 {$mode ObjFPC}{$H+}
@@ -19,10 +37,122 @@ unit InkHtml;
 interface
 
 uses
-  Classes, SysUtils, Graphics, LCLIntf, LCLType, Types;
+  Classes, SysUtils, Graphics, Controls, ImgList, LCLIntf, LCLType, Types;
 
 type
   TJvHTMLCalcType = (htmlShow, htmlCalcWidth, htmlCalcHeight, htmlHyperLink);
+
+  { How the whole block of text sits inside the rectangle it is given. }
+  TInkVertAlign = (ivaTop, ivaCenter, ivaBottom);
+  TInkHorzAlign = (ihaLeft, ihaCenter, ihaRight);
+
+  { Everything about a render beyond the text itself. Passed as one record so
+    that adding a knob does not mean changing five overloads; DefaultHTMLOptions
+    fills it with the behaviour the plain HTMLDrawText has always had. }
+  THTMLOptions = record
+    SuperSubScriptRatio: Double;
+    Scale: Integer;
+    { extra pixels between lines }
+    LineSpacing: Integer;
+    { margins taken off the drawing rectangle: Left, Top, Right, Bottom }
+    Borders: TRect;
+    { where the block sits when it is smaller than the rectangle }
+    VertAlign: TInkVertAlign;
+    HorzAlign: TInkHorzAlign;
+    { supplies <img src="n"> }
+    Images: TCustomImageList;
+    { how <a href=..> spans are painted. clDefault / clNone leave the
+      surrounding colour alone. }
+    LinkColor: TColor;
+    LinkBackColor: TColor;
+    LinkUnderline: Boolean;
+    { and how the one under the mouse is painted instead. HoverIndex is the
+      ordinal of the link within this text, counting from 1; 0 means none. }
+    HoverIndex: Integer;
+    HoverColor: TColor;
+    HoverBackColor: TColor;
+    HoverUnderline: Boolean;
+  end;
+
+  { What the mouse was over, filled in when CalcType is htmlHyperLink. }
+  THTMLHitInfo = record
+    OnLink: Boolean;
+    LinkName: string;      // the href
+    LinkText: string;      // the text between <a> and </a>
+    LinkIndex: Integer;    // ordinal of the link, counting from 1
+  end;
+
+type
+  { How <a href=..> spans look. Published as a sub-property so the whole thing
+    can be set in the Object Inspector. }
+  TInkLinkStyle = class(TPersistent)
+  private
+    FColor: TColor;
+    FBackColor: TColor;
+    FUnderline: Boolean;
+    FOnChange: TNotifyEvent;
+    procedure SetColor(AValue: TColor);
+    procedure SetBackColor(AValue: TColor);
+    procedure SetUnderline(AValue: Boolean);
+    procedure Changed;
+  public
+    constructor Create(ADefaultUnderline: Boolean = False);
+    procedure Assign(Source: TPersistent); override;
+    property OnChange: TNotifyEvent read FOnChange write FOnChange;
+  published
+    { clDefault leaves the surrounding text colour alone. None of these three
+      declare a default: the hover style is born underlined and the normal one
+      is not, so a single declared default would be wrong for one of them and
+      the writer would drop the value. }
+    property Color: TColor read FColor write SetColor;
+    { clNone means no background at all }
+    property BackColor: TColor read FBackColor write SetBackColor;
+    property Underline: Boolean read FUnderline write SetUnderline;
+  end;
+
+  { Margins between the control's edge and its text. }
+  TInkBorders = class(TPersistent)
+  private
+    FLeft, FTop, FRight, FBottom: Integer;
+    FOnChange: TNotifyEvent;
+    procedure SetSide(AIndex, AValue: Integer);
+    function GetSide(AIndex: Integer): Integer;
+  public
+    procedure Assign(Source: TPersistent); override;
+    procedure SetAll(AValue: Integer);
+    property OnChange: TNotifyEvent read FOnChange write FOnChange;
+  published
+    property Left: Integer index 0 read GetSide write SetSide default 0;
+    property Top: Integer index 1 read GetSide write SetSide default 0;
+    property Right: Integer index 2 read GetSide write SetSide default 0;
+    property Bottom: Integer index 3 read GetSide write SetSide default 0;
+  end;
+
+function DefaultHTMLOptions(ASuperSubScriptRatio: Double = 0.7;
+  AScale: Integer = 100): THTMLOptions;
+{ Gathers a control's published properties into the record the renderer wants.
+  Every LazInk control builds its options through this, so they all behave the
+  same way. }
+function InkOptions(ARatio: Double; AScale, ALineSpacing: Integer;
+  ABorders: TInkBorders; AImages: TCustomImageList;
+  ALink, AHover: TInkLinkStyle; AHoverIndex: Integer): THTMLOptions;
+
+{ The full renderer. Everything else in this unit is a convenience wrapper. }
+procedure HTMLDrawTextEx3(Canvas: TCanvas; Rect: TRect;
+  const State: TOwnerDrawState; const Text: string; const AOpts: THTMLOptions;
+  CalcType: TJvHTMLCalcType; MouseX, MouseY: integer;
+  out Width, Height: integer; out AHit: THTMLHitInfo);
+
+procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
+  const Text: string; const AOpts: THTMLOptions);
+function HTMLTextExtentOpt(Canvas: TCanvas; Rect: TRect;
+  const State: TOwnerDrawState; const Text: string;
+  const AOpts: THTMLOptions): TSize;
+function HTMLTextHeightOpt(Canvas: TCanvas; const Text: string;
+  const AOpts: THTMLOptions): integer;
+{ Hit-tests Text drawn in Rect against a mouse position. }
+function HTMLHitTest(Canvas: TCanvas; Rect: TRect; const Text: string;
+  const AOpts: THTMLOptions; MouseX, MouseY: integer): THTMLHitInfo;
 
 procedure HTMLDrawTextEx(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
   const Text: string; out Width: integer; CalcType: TJvHTMLCalcType;
@@ -46,6 +176,27 @@ function HTMLTextHeight(Canvas: TCanvas; const Text: string;
   SuperSubScriptRatio: double; Scale: integer = 100): integer;
 function HTMLPrepareText(const Text: string): string;
 function HTMLStringToColor(AText: string; ADefColor: TColor = clBlack): TColor;
+{ Turns text into markup-safe text and back. Escape only touches the three
+  characters that would otherwise be read as markup; Unescape understands the
+  entities this renderer emits and accepts. }
+{ Black or white, whichever can be read on ABackground. }
+function HTMLContrastColor(ABackground: TColor): TColor;
+{ AColor nudged APercent towards its opposite end - lighter if it is dark,
+  darker if it is light. For zebra striping that follows the current theme
+  instead of assuming a white background. }
+function HTMLShadeColor(AColor: TColor; APercent: Integer): TColor;
+function HTMLEscape(const Text: string): string;
+function HTMLUnescape(const Text: string): string;
+{ Re-flows Text so that no rendered line is wider than MaxWidth, by inserting
+  <br> at word boundaries. Formatting tags open across an inserted break stay
+  in effect, exactly as they would without wrapping. Canvas must already carry
+  the font the text will be drawn with. }
+function HTMLWordWrap(Canvas: TCanvas; const Text: string; MaxWidth: integer;
+  SuperSubScriptRatio: double; Scale: integer = 100): string;
+{ True when AChar starts a Chinese, Japanese or Korean character. Those scripts
+  do not separate words with spaces, so every character is a place a line may
+  break - without this, CJK text never wraps at all. }
+function HTMLIsCJK(const AChar: string): boolean;
 
 
 implementation
@@ -68,6 +219,15 @@ const
   cIND = 'IND';
   cCOLOR = 'COLOR';
   cBGCOLOR = 'BGCOLOR';
+  cFACE = 'FACE';
+  cSRC = 'SRC';
+  { same length as BGCOLOR and contains no 'COLOR' }
+  cBGMask = '#######';
+  { stands in for a literal ampersand between prepare and draw }
+  cAmpMark = #1;
+  cPOpen = '<P>';
+  cPOpen2 = '<P/>';
+  cPClose = '</P>';
 
 function CanvasMaxTextHeight(Canvas: TCanvas): integer;
 var
@@ -83,34 +243,108 @@ function HTMLPrepareText(const Text: string): string;
 type
   THtmlCode = record
     Html: string;
-    Text: UTF8String;
+    { plain string, not UTF8String: the replacements below are already UTF-8
+      byte sequences, and letting the compiler transcode a UTF8String into the
+      default ansi codepage on assignment is what turned © into Â© }
+    Html2: string;
   end;
 const
-  Conversions: array [0..6] of THtmlCode = (
-    (Html: '&amp;'; Text: '&'),
-    (Html: '&quot;'; Text: '"'),
-    (Html: '&reg;'; Text: #$C2#$AE),
-    (Html: '&copy;'; Text: #$C2#$A9),
-    (Html: '&trade;'; Text: #$E2#$84#$A2),
-    (Html: '&euro;'; Text: #$E2#$82#$AC),
-    (Html: '&nbsp;'; Text: ' ')
+  Conversions: array [0..5] of THtmlCode = (
+    (Html: '&quot;'; Html2: '"'),
+    (Html: '&reg;'; Html2: #$C2#$AE),
+    (Html: '&copy;'; Html2: #$C2#$A9),
+    (Html: '&trade;'; Html2: #$E2#$84#$A2),
+    (Html: '&euro;'; Html2: #$E2#$82#$AC),
+    (Html: '&nbsp;'; Html2: ' ')
     );
 var
   I: integer;
 begin
   Result := Text;
+  // "&amp;" stands aside as a marker until every other entity has been read,
+  // so that "&amp;lt;" ends up as the literal text "&lt;" instead of being
+  // unescaped twice into "<". The marker turns back into "&" at draw time.
+  Result := StringReplace(Result, '&amp;', cAmpMark, [rfReplaceAll, rfIgnoreCase]);
   for I := Low(Conversions) to High(Conversions) do
+    // the replacements are already UTF-8, which is what the LCL wants; running
+    // them through Utf8ToAnsi mangled them into mojibake
     Result := StringReplace(Result, Conversions[I].Html,
-      Utf8ToAnsi(Conversions[I].Text), [rfReplaceAll, rfIgnoreCase]);
+      Conversions[I].Html2, [rfReplaceAll, rfIgnoreCase]);
   Result := StringReplace(Result, #13, '', [rfReplaceAll]);
   // only <BR> can be new line
   Result := StringReplace(Result, #10, '', [rfReplaceAll]);
   // only <BR> can be new line
+
+  // <p>..</p> paragraphs. </p> only closes, so it vanishes; <p> starts a new
+  // paragraph, which is a line break plus a blank line. A <p> at the very
+  // beginning has nothing to separate itself from, so it just goes away.
+  Result := StringReplace(Result, cPClose, '', [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, cPOpen2, cBR + cBR, [rfReplaceAll, rfIgnoreCase]);
+  // Skip only real blanks looking for a leading <p>. TrimLeft would do it in
+  // one line, but it also eats everything below #32 - including the ampersand
+  // marker parked above.
+  I := 1;
+  while (I <= Length(Result)) and ((Result[I] = ' ') or (Result[I] = #9)) do
+    Inc(I);
+  if SameText(Copy(Result, I, Length(cPOpen)), cPOpen) then
+    Delete(Result, I, Length(cPOpen));
+  Result := StringReplace(Result, cPOpen, cBR + cBR, [rfReplaceAll, rfIgnoreCase]);
+
   Result := StringReplace(Result, cBR, sLineBreak, [rfReplaceAll, rfIgnoreCase]);
   Result := StringReplace(Result, cBR2, sLineBreak, [rfReplaceAll, rfIgnoreCase]);
   // Fixes <BR/>, but not <BR />!
   Result := StringReplace(Result, cHR, cHR + sLineBreak, [rfReplaceAll, rfIgnoreCase]);
   // fixed <HR><BR>
+end;
+
+function HTMLContrastColor(ABackground: TColor): TColor;
+var
+  RGB: LongInt;
+begin
+  RGB := ColorToRGB(ABackground);
+  // Rec. 601 luma, which is close enough to how bright a colour looks
+  if (Red(RGB) * 299 + Green(RGB) * 587 + Blue(RGB) * 114) div 1000 >= 140 then
+    Result := clBlack
+  else
+    Result := clWhite;
+end;
+
+function HTMLShadeColor(AColor: TColor; APercent: Integer): TColor;
+var
+  RGB: LongInt;
+  R, G, B, D: Integer;
+begin
+  RGB := ColorToRGB(AColor);
+  R := Red(RGB); G := Green(RGB); B := Blue(RGB);
+  if HTMLContrastColor(AColor) = clBlack then
+    D := -((255 * APercent) div 100)     // light colour: darken it
+  else
+    D := (255 * APercent) div 100;       // dark colour: lighten it
+  R := EnsureRange(R + D, 0, 255);
+  G := EnsureRange(G + D, 0, 255);
+  B := EnsureRange(B + D, 0, 255);
+  Result := RGBToColor(R, G, B);
+end;
+
+function HTMLEscape(const Text: string): string;
+begin
+  Result := StringReplace(Text, '&', '&amp;', [rfReplaceAll]);
+  Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
+  Result := StringReplace(Result, '>', '&gt;', [rfReplaceAll]);
+end;
+
+function HTMLUnescape(const Text: string): string;
+begin
+  Result := StringReplace(Text, '&lt;', '<', [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&gt;', '>', [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&quot;', '"', [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&nbsp;', ' ', [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&reg;', #$C2#$AE, [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&copy;', #$C2#$A9, [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&trade;', #$E2#$84#$A2, [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&euro;', #$E2#$82#$AC, [rfReplaceAll, rfIgnoreCase]);
+  // last, so that "&amp;lt;" comes back as the literal text "&lt;"
+  Result := StringReplace(Result, '&amp;', '&', [rfReplaceAll, rfIgnoreCase]);
 end;
 
 function HTMLStringToColor(AText: string; ADefColor: TColor = clBlack): TColor;
@@ -198,13 +432,188 @@ type
 
 // wp: Make Width, Height and MouseOnLink "out" parameters
 // (they were "var" in the original) to silence the compiler
+{ TInkLinkStyle }
+
+constructor TInkLinkStyle.Create(ADefaultUnderline: Boolean = False);
+begin
+  inherited Create;
+  FColor := clBlue;
+  FBackColor := clNone;
+  FUnderline := ADefaultUnderline;
+end;
+
+procedure TInkLinkStyle.Changed;
+begin
+  if Assigned(FOnChange) then FOnChange(Self);
+end;
+
+procedure TInkLinkStyle.SetColor(AValue: TColor);
+begin
+  if FColor = AValue then Exit;
+  FColor := AValue;
+  Changed;
+end;
+
+procedure TInkLinkStyle.SetBackColor(AValue: TColor);
+begin
+  if FBackColor = AValue then Exit;
+  FBackColor := AValue;
+  Changed;
+end;
+
+procedure TInkLinkStyle.SetUnderline(AValue: Boolean);
+begin
+  if FUnderline = AValue then Exit;
+  FUnderline := AValue;
+  Changed;
+end;
+
+procedure TInkLinkStyle.Assign(Source: TPersistent);
+begin
+  if Source is TInkLinkStyle then
+  begin
+    FColor := TInkLinkStyle(Source).Color;
+    FBackColor := TInkLinkStyle(Source).BackColor;
+    FUnderline := TInkLinkStyle(Source).Underline;
+    Changed;
+  end
+  else
+    inherited Assign(Source);
+end;
+
+{ TInkBorders }
+
+function TInkBorders.GetSide(AIndex: Integer): Integer;
+begin
+  case AIndex of
+    0: Result := FLeft;
+    1: Result := FTop;
+    2: Result := FRight;
+  else
+    Result := FBottom;
+  end;
+end;
+
+procedure TInkBorders.SetSide(AIndex, AValue: Integer);
+begin
+  if AValue < 0 then AValue := 0;
+  if GetSide(AIndex) = AValue then Exit;
+  case AIndex of
+    0: FLeft := AValue;
+    1: FTop := AValue;
+    2: FRight := AValue;
+  else
+    FBottom := AValue;
+  end;
+  if Assigned(FOnChange) then FOnChange(Self);
+end;
+
+procedure TInkBorders.SetAll(AValue: Integer);
+begin
+  SetSide(0, AValue);
+  SetSide(1, AValue);
+  SetSide(2, AValue);
+  SetSide(3, AValue);
+end;
+
+procedure TInkBorders.Assign(Source: TPersistent);
+begin
+  if Source is TInkBorders then
+  begin
+    FLeft := TInkBorders(Source).Left;
+    FTop := TInkBorders(Source).Top;
+    FRight := TInkBorders(Source).Right;
+    FBottom := TInkBorders(Source).Bottom;
+    if Assigned(FOnChange) then FOnChange(Self);
+  end
+  else
+    inherited Assign(Source);
+end;
+
+function InkOptions(ARatio: Double; AScale, ALineSpacing: Integer;
+  ABorders: TInkBorders; AImages: TCustomImageList;
+  ALink, AHover: TInkLinkStyle; AHoverIndex: Integer): THTMLOptions;
+begin
+  Result := DefaultHTMLOptions(ARatio, AScale);
+  Result.LineSpacing := ALineSpacing;
+  Result.Images := AImages;
+  Result.HoverIndex := AHoverIndex;
+  if ABorders <> nil then
+  begin
+    Result.Borders.Left := ABorders.Left;
+    Result.Borders.Top := ABorders.Top;
+    Result.Borders.Right := ABorders.Right;
+    Result.Borders.Bottom := ABorders.Bottom;
+  end;
+  if ALink <> nil then
+  begin
+    Result.LinkColor := ALink.Color;
+    Result.LinkBackColor := ALink.BackColor;
+    Result.LinkUnderline := ALink.Underline;
+  end;
+  if AHover <> nil then
+  begin
+    Result.HoverColor := AHover.Color;
+    Result.HoverBackColor := AHover.BackColor;
+    Result.HoverUnderline := AHover.Underline;
+  end;
+end;
+
+function DefaultHTMLOptions(ASuperSubScriptRatio: Double = 0.7;
+  AScale: Integer = 100): THTMLOptions;
+begin
+  Result.SuperSubScriptRatio := ASuperSubScriptRatio;
+  Result.Scale := AScale;
+  Result.LineSpacing := 0;
+  Result.Borders := Rect(0, 0, 0, 0);
+  Result.VertAlign := ivaTop;
+  Result.HorzAlign := ihaLeft;
+  Result.Images := nil;
+  // clBlue and an underline is what a link has always looked like here
+  Result.LinkColor := clBlue;
+  Result.LinkBackColor := clNone;
+  Result.LinkUnderline := False;
+  Result.HoverIndex := 0;
+  Result.HoverColor := clBlue;
+  Result.HoverBackColor := clNone;
+  Result.HoverUnderline := True;
+end;
+
+{ The old entry point, kept so that nothing outside this unit had to change. }
 procedure HTMLDrawTextEx2(Canvas: TCanvas; Rect: TRect;
   const State: TOwnerDrawState; const Text: string; out Width, Height: integer;
   CalcType: TJvHTMLCalcType; MouseX, MouseY: integer; out MouseOnLink: boolean;
   var LinkName: string; SuperSubScriptRatio: double; Scale: integer);
+var
+  Hit: THTMLHitInfo;
+begin
+  HTMLDrawTextEx3(Canvas, Rect, State, Text,
+    DefaultHTMLOptions(SuperSubScriptRatio, Scale), CalcType, MouseX, MouseY,
+    Width, Height, Hit);
+  MouseOnLink := Hit.OnLink;
+  LinkName := Hit.LinkName;
+end;
+
+procedure HTMLDrawInline(Canvas: TCanvas; Rect: TRect;
+  const State: TOwnerDrawState; const Text: string; const AOpts: THTMLOptions;
+  CalcType: TJvHTMLCalcType; MouseX, MouseY: integer;
+  out Width, Height: integer; out AHit: THTMLHitInfo);
 const
   DefaultLeft = 0; // (ahuser) was 2
 var
+  SuperSubScriptRatio: double;
+  Scale: integer;
+  MouseOnLink: boolean;
+  LinkName: string;
+  LinkIndex: integer;      // ordinal of the <a> being drawn, from 1
+  CurLinkText: string;     // display text of the link being drawn
+  OldLinkBrush: TColor;    // brush/transparency to restore at </a>
+  OldLinkTrans: boolean;
+  ImgIdx: integer;
+  BlockW, BlockH: integer;
+  PreOpts: THTMLOptions;
+  PreHit: THTMLHitInfo;
+  PreRect: TRect;
   vText, vM, TagPrp, Prp, TempLink: string;
   vCount: integer;
   vStr: TStringList;
@@ -220,10 +629,16 @@ var
   OldAlignment: TAlignment;
   OldFont: TFont;
   OldWidth: integer;
+  OldFontSize: integer;
+  OldFontName: string;
   // for font style
   RemFontColor, RemBrushColor: TColor;
   RemFontSize: integer;
+  RemFontName: string;
+  TagRaw: string;
+  TagNoBg: string;
   ScriptPosition: TScriptPosition;
+  LineH: integer;   // tallest glyph box seen on the line being built
 
   function ExtractPropertyValue(const Tag: string; PropName: string): string;
   var
@@ -258,6 +673,20 @@ var
     end;
   end;
 
+  procedure ApplyLinkStyle(AColor, ABackColor: TColor; AUnderline: boolean);
+  begin
+    if not Assigned(Canvas) then Exit;
+    if AColor <> clDefault then
+      Canvas.Font.Color := AColor;
+    if ABackColor <> clNone then
+    begin
+      Canvas.Brush.Color := ABackColor;
+      Trans := False;
+    end;
+    if AUnderline then
+      Canvas.Font.Style := Canvas.Font.Style + [fsUnderline];
+  end;
+
   procedure Style(const Style: TFontStyle; const Include: boolean);
   begin
     if Assigned(Canvas) then
@@ -272,10 +701,11 @@ var
     case Alignment of
       taRightJustify:
         Result := (Rect.Right - Rect.Left) - HTMLTextWidth(Canvas,
-          Rect, State, Str, Scale);
+          Rect, State, Str, SuperSubScriptRatio, Scale);
       taCenter:
         Result := DefaultLeft + ((Rect.Right - Rect.Left) -
-          HTMLTextWidth(Canvas, Rect, State, Str, SuperSubScriptRatio)) div 2;
+          HTMLTextWidth(Canvas, Rect, State, Str, SuperSubScriptRatio,
+          Scale)) div 2;
       else
         Result := DefaultLeft;
     end;
@@ -302,18 +732,27 @@ var
 
         Width := Canvas.TextWidth(M);
         Height := CanvasMaxTextHeight(Canvas);
+        // a line carrying <font size="18"> is as tall as the 18pt text in it,
+        // not as tall as whatever font happened to be current at its end
+        if Height > LineH then
+          LineH := Height;
 
         if ScriptPosition = spSubscript then
           R.Top := R.Top + lineHeight - Height - 1;
 
-        if IsLink and not MouseOnLink then
-          if (MouseY >= R.Top) and (MouseY <= R.Top + Height) and
-            (MouseX >= R.Left) and (MouseX <= R.Left + Width) and
-            ((MouseY > 0) or (MouseX > 0)) then
-          begin
-            MouseOnLink := True;
-            LinkName := TempLink;
-          end;
+        if IsLink then
+        begin
+          CurLinkText := CurLinkText + M;
+          if not MouseOnLink then
+            if (MouseY >= R.Top) and (MouseY <= R.Top + Height) and
+              (MouseX >= R.Left) and (MouseX <= R.Left + Width) and
+              ((MouseY > 0) or (MouseX > 0)) then
+            begin
+              MouseOnLink := True;
+              LinkName := TempLink;
+              AHit.LinkIndex := LinkIndex;
+            end;
+        end;
 
         if CalcType = htmlShow then
         begin
@@ -328,18 +767,93 @@ var
     end;
   end;
 
+  { <img src="n"> - one entry of the supplied image list, sitting on the line
+    like an oversized character. }
+  procedure DrawImage(AIndex: integer);
+  var
+    W, H: integer;
+  begin
+    if (AOpts.Images = nil) or (AIndex < 0) or (AIndex >= AOpts.Images.Count) then
+      Exit;
+    W := AOpts.Images.Width;
+    H := AOpts.Images.Height;
+    if H > LineH then
+      LineH := H;                  // the line has to make room for it
+    if (CalcType = htmlShow) and Assigned(Canvas) then
+      AOpts.Images.Draw(Canvas, Rect.Left + CurLeft, Rect.Top, AIndex, True);
+    CurLeft := CurLeft + W;
+  end;
+
   procedure NewLine(Always: boolean = False);
+  var
+    H: integer;
   begin
     if Assigned(Canvas) then
       if Always or (vCount < vStr.Count - 1) then
       begin
         Width := Max(Width, CurLeft);
         CurLeft := DefaultLeft;
-        Rect.Top := Rect.Top + CanvasMaxTextHeight(Canvas);
+        H := LineH;
+        if H = 0 then                  // an empty line still occupies one
+          H := CanvasMaxTextHeight(Canvas);
+        Rect.Top := Rect.Top + H + AOpts.LineSpacing;
+        LineH := 0;
       end;
   end;
 
 begin
+  SuperSubScriptRatio := AOpts.SuperSubScriptRatio;
+  Scale := AOpts.Scale;
+  if Scale = 0 then Scale := 100;
+  LinkIndex := 0;
+  CurLinkText := '';
+  OldLinkBrush := clNone;
+  OldLinkTrans := True;
+  ImgIdx := -1;
+  MouseOnLink := False;
+  LinkName := '';
+  AHit.OnLink := False;
+  AHit.LinkName := '';
+  AHit.LinkText := '';
+  AHit.LinkIndex := 0;
+
+  // borders simply shrink the area the text is laid out in
+  Inc(Rect.Left, AOpts.Borders.Left);
+  Inc(Rect.Top, AOpts.Borders.Top);
+  Dec(Rect.Right, AOpts.Borders.Right);
+  Dec(Rect.Bottom, AOpts.Borders.Bottom);
+
+  // Placing the block anywhere but top-left means knowing how big it is before
+  // a single word is drawn, so measure it first with the placement switched
+  // off - otherwise this would call itself forever.
+  if (CalcType = htmlShow) and (Canvas <> nil) and
+    ((AOpts.VertAlign <> ivaTop) or (AOpts.HorzAlign <> ihaLeft)) then
+  begin
+    PreOpts := AOpts;
+    PreOpts.VertAlign := ivaTop;
+    PreOpts.HorzAlign := ihaLeft;
+    PreOpts.Borders.Left := 0;
+    PreOpts.Borders.Top := 0;
+    PreOpts.Borders.Right := 0;
+    PreOpts.Borders.Bottom := 0;
+    PreRect.Left := 0;
+    PreRect.Top := 0;
+    PreRect.Right := Rect.Right - Rect.Left;
+    PreRect.Bottom := 0;
+    HTMLDrawTextEx3(Canvas, PreRect, State, Text, PreOpts, htmlCalcWidth,
+      0, 0, BlockW, BlockH, PreHit);
+    case AOpts.VertAlign of
+      ivaCenter: Inc(Rect.Top, Max(0, ((Rect.Bottom - Rect.Top) - BlockH) div 2));
+      ivaBottom: Inc(Rect.Top, Max(0, (Rect.Bottom - Rect.Top) - BlockH));
+      ivaTop: ;
+    end;
+    case AOpts.HorzAlign of
+      ihaCenter: Inc(Rect.Left, Max(0, ((Rect.Right - Rect.Left) - BlockW) div 2));
+      ihaRight: Inc(Rect.Left, Max(0, (Rect.Right - Rect.Left) - BlockW));
+      ihaLeft: ;
+    end;
+  end;
+
   // (p3) remove warnings
   OldFontColor := 0;
   OldBrushColor := 0;
@@ -347,6 +861,9 @@ begin
   RemFontSize := 0;
   RemFontColor := 0;
   RemBrushColor := 0;
+  RemFontName := '';
+  OldFontSize := 0;
+  OldFontName := '';
   OldAlignment := taLeftJustify;
   OldFont := TFont.Create;
 
@@ -363,7 +880,10 @@ begin
     //  OldAlignment  := Alignment;
     RemFontColor := Canvas.Font.Color;
     RemBrushColor := Canvas.Brush.Color;
-    RemFontSize := Canvas.Font.size;
+    RemFontSize := Canvas.Font.Size;
+    RemFontName := Canvas.Font.Name;
+    OldFontSize := Canvas.Font.Size;
+    OldFontName := Canvas.Font.Name;
   end;
 
   vStr := TStringList.Create;
@@ -382,6 +902,7 @@ begin
 
     Width := DefaultLeft;
     CurLeft := DefaultLeft;
+    LineH := 0;
 
     vM := '';
     for vCount := 0 to vStr.Count - 1 do
@@ -395,6 +916,7 @@ begin
         vM := StringReplace(vM, '&lt;', cLT, [rfReplaceAll, rfIgnoreCase]);
         // <--+ this must be here
         vM := StringReplace(vM, '&gt;', cGT, [rfReplaceAll, rfIgnoreCase]); // <--/
+        vM := StringReplace(vM, cAmpMark, '&', [rfReplaceAll]);
         if GetChar(vText, 1) = cTagBegin then
         begin
           if vM <> '' then
@@ -406,8 +928,15 @@ begin
             case GetChar(vText, 3, True) of
               'A':
               begin
+                if IsLink and (AHit.LinkIndex = LinkIndex) and
+                  (AHit.LinkText = '') then
+                  AHit.LinkText := CurLinkText;
                 IsLink := False;
+                CurLinkText := '';
                 Canvas.Font.Assign(OldFont);
+                if OldLinkBrush <> clNone then
+                  Canvas.Brush.Color := OldLinkBrush;
+                Trans := OldLinkTrans;
               end;
               'B':
                 Style(fsBold, False);
@@ -420,6 +949,15 @@ begin
                 ScriptPosition := spNormal;
                 Style(fsStrikeOut, False);
               end;
+              'C', 'R', 'L':
+              begin   // </center> </right> </left>
+                TagPrp := UpperCase(Copy(vText, 3, Pos(cTagEnd, vText) - 3));
+                // back to the default from the next line on. CurLeft must not
+                // be touched here: the line this tag closes is still being
+                // drawn, and resetting the pen would also zero its width.
+                if (TagPrp = cCENTER) or (TagPrp = cRIGHT) or (TagPrp = 'LEFT') then
+                  Alignment := taLeftJustify;
+              end;
               'F':
               begin
                 if not Selected then // restore old colors
@@ -427,6 +965,7 @@ begin
                   Canvas.Font.Color := RemFontColor;
                   Canvas.Brush.Color := RemBrushColor;
                   Canvas.Font.Size := RemFontSize;
+                  Canvas.Font.Name := RemFontName;
                   Trans := True;
                 end;
               end;
@@ -457,22 +996,59 @@ begin
                   if Pos(cHREF, UpperCase(TagPrp)) > 0 then
                   begin
                     IsLink := True;
+                    Inc(LinkIndex);
+                    CurLinkText := '';
                     OldFont.Assign(Canvas.Font);
-                    if not Selected then
-                      Canvas.Font.Color := clBlue;
+                    OldLinkBrush := Canvas.Brush.Color;
+                    OldLinkTrans := Trans;
                     TempLink := ExtractPropertyValue(TagPrp, cHREF);
+                    // the link under the mouse gets to look different from
+                    // the rest, which is the whole point of a hover style
+                    if not Selected then
+                      if LinkIndex = AOpts.HoverIndex then
+                        ApplyLinkStyle(AOpts.HoverColor, AOpts.HoverBackColor,
+                          AOpts.HoverUnderline)
+                      else
+                        ApplyLinkStyle(AOpts.LinkColor, AOpts.LinkBackColor,
+                          AOpts.LinkUnderline);
                   end;
                 end;
               end;
+              'C', 'R', 'L':
+                // <center> <right> <left>: the ALIGN branch above handles the
+                // <align=..> spelling, these are the ones people actually type
+                begin
+                  TagPrp := UpperCase(Copy(vText, 2, Pos(cTagEnd, vText) - 2));
+                  if (TagPrp = cCENTER) or (TagPrp = cRIGHT) or (TagPrp = 'LEFT') then
+                  begin
+                    if TagPrp = cCENTER then
+                      Alignment := taCenter
+                    else if TagPrp = cRIGHT then
+                      Alignment := taRightJustify
+                    else
+                      Alignment := taLeftJustify;
+                    // only re-place the pen while the line is still empty:
+                    // moving it after something has been drawn would strand it
+                    if (CurLeft = DefaultLeft) and
+                      (CalcType in [htmlShow, htmlHyperLink]) then
+                      CurLeft := CalcPos(vText);
+                  end;
+                end;
               'B':
                 Style(fsBold, True);
               'I':
                 if GetChar(vText, 3, True) = 'N' then //IND="%d"
                 begin
                   TagPrp := Copy(vText, 2, Pos(cTagEnd, vText) - 2);
-                  CurLeft := StrToInt(ExtractPropertyValue(TagPrp, cIND)); // ex IND="10"
+                  CurLeft := StrToIntDef(ExtractPropertyValue(TagPrp, cIND), 0);
                   if odReserved1 in State then
                     CurLeft := Round((CurLeft * Scale) div 100);
+                end
+                else if GetChar(vText, 3, True) = 'M' then // IMG SRC="n"
+                begin
+                  TagPrp := UpperCase(Copy(vText, 2, Pos(cTagEnd, vText) - 2));
+                  ImgIdx := StrToIntDef(ExtractPropertyValue(TagPrp, cSRC), -1);
+                  DrawImage(ImgIdx);
                 end
                 else
                   Style(fsItalic, True); // ITALIC
@@ -518,13 +1094,21 @@ begin
                 if (Pos(cTagEnd, vText) > 0) and (not Selected) and
                   Assigned(Canvas) {and (CalcType in [htmlShow, htmlHyperLink])} then // F from FONT
                 begin
-                  TagPrp := UpperCase(Copy(vText, 2, Pos(cTagEnd, vText) - 2));
+                  TagRaw := Copy(vText, 2, Pos(cTagEnd, vText) - 2);
+                  TagPrp := UpperCase(TagRaw);
+                  // "BGCOLOR" contains "COLOR", so a tag carrying only a
+                  // bgcolor would otherwise read as setting the font colour
+                  // too - and text painted in its own background is invisible.
+                  // Mask the longer name out before looking for the shorter.
+                  TagNoBg := StringReplace(TagPrp, cBGCOLOR, cBGMask,
+                    [rfReplaceAll]);
                   RemFontColor := Canvas.Font.Color;
                   RemBrushColor := Canvas.Brush.Color;
+                  RemFontName := Canvas.Font.Name;
 
-                  if Pos(cCOLOR, TagPrp) > 0 then
+                  if Pos(cCOLOR, TagNoBg) > 0 then
                   begin
-                    Prp := ExtractPropertyValue(TagPrp, cCOLOR);
+                    Prp := ExtractPropertyValue(TagNoBg, cCOLOR);
                     Canvas.Font.Color := HTMLStringToColor(Prp);
                   end;
                   if Pos(cBGCOLOR, TagPrp) > 0 then
@@ -536,12 +1120,26 @@ begin
                     begin
                       Canvas.Brush.Color := HTMLStringToColor(Prp);
                       Trans := False;
+                      // a highlighter that hides the text it highlights is no
+                      // use: with no colour asked for in this same tag, pick
+                      // one that reads on the background just set
+                      if Pos(cCOLOR, TagNoBg) = 0 then
+                        Canvas.Font.Color :=
+                          HTMLContrastColor(Canvas.Brush.Color);
                     end;
                   end;
                   if Pos('SIZE', TagPrp) > 0 then
                   begin
                     Prp := ExtractPropertyValue(TagPrp, 'SIZE');
                     Canvas.Font.Size := StrToIntDef(Prp, 2){ * Canvas.Font.Size div 2};
+                  end;
+                  if Pos(cFACE, TagPrp) > 0 then
+                  begin
+                    // read the face from the tag as typed - a font family name
+                    // is not case insensitive to the font matcher
+                    Prp := Trim(ExtractPropertyValue(TagRaw, cFACE));
+                    if Prp <> '' then
+                      Canvas.Font.Name := Prp;
                   end;
                 end;
             end;
@@ -560,6 +1158,11 @@ begin
     begin
       Canvas.Font.Style := OldFontStyles;
       Canvas.Font.Color := OldFontColor;
+      // an unclosed <font size=..> or face=.. must not leak out onto the
+      // canvas and grow every following measurement
+      Canvas.Font.Size := OldFontSize;
+      if OldFontName <> '' then
+        Canvas.Font.Name := OldFontName;
       Canvas.Brush.Color := OldBrushColor;
       Canvas.Brush.Style := OldBrushStyle;
       Alignment := OldAlignment;
@@ -570,8 +1173,15 @@ begin
     FreeAndNil(OldFont);
   end;
   Width := Max(Width, CurLeft - DefaultLeft);
-  Height := Rect.Top + CanvasMaxTextHeight(Canvas);
+  Height := Rect.Top + Max(LineH, CanvasMaxTextHeight(Canvas));
+
+  AHit.OnLink := MouseOnLink;
+  AHit.LinkName := LinkName;
+  if MouseOnLink and (AHit.LinkText = '') then
+    AHit.LinkText := CurLinkText;   // text ran to the end without a </a>
 end;
+
+{$I inktables.inc}
 
 // wp: I made this a procedure - it was a function in the original with the
 // result being unassigned.
@@ -600,9 +1210,61 @@ begin
     MouseY, S, St, SuperSubScriptRatio, Scale);
 end;
 
+procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
+  const Text: string; const AOpts: THTMLOptions);
+var
+  W, H: integer;
+  Hit: THTMLHitInfo;
+begin
+  HTMLDrawTextEx3(Canvas, Rect, State, Text, AOpts, htmlShow, 0, 0, W, H, Hit);
+end;
+
+function HTMLTextExtentOpt(Canvas: TCanvas; Rect: TRect;
+  const State: TOwnerDrawState; const Text: string;
+  const AOpts: THTMLOptions): TSize;
+var
+  Hit: THTMLHitInfo;
+begin
+  HTMLDrawTextEx3(Canvas, Rect, State, Text, AOpts, htmlCalcWidth, 0, 0,
+    Result.cx, Result.cy, Hit);
+  if Result.cy = 0 then
+    Result.cy := CanvasMaxTextHeight(Canvas);
+  Inc(Result.cy);
+  // The borders are part of the space the text needs. The top one is already
+  // in the height, because it moved the first line down; the width is measured
+  // from the left border inwards, so neither side of it is counted yet.
+  Inc(Result.cx, AOpts.Borders.Left + AOpts.Borders.Right);
+  Inc(Result.cy, AOpts.Borders.Bottom);
+end;
+
+function HTMLTextHeightOpt(Canvas: TCanvas; const Text: string;
+  const AOpts: THTMLOptions): integer;
+var
+  W: integer;
+  R: TRect;
+  Hit: THTMLHitInfo;
+begin
+  R := Rect(0, 0, 0, 0);
+  HTMLDrawTextEx3(Canvas, R, [], Text, AOpts, htmlCalcHeight, 0, 0, W, Result, Hit);
+  if Result = 0 then
+    Result := CanvasMaxTextHeight(Canvas);
+  Inc(Result);
+  Inc(Result, AOpts.Borders.Bottom);   // the top border is already in Result
+end;
+
+function HTMLHitTest(Canvas: TCanvas; Rect: TRect; const Text: string;
+  const AOpts: THTMLOptions; MouseX, MouseY: integer): THTMLHitInfo;
+var
+  W, H: integer;
+begin
+  HTMLDrawTextEx3(Canvas, Rect, [], Text, AOpts, htmlHyperLink, MouseX, MouseY,
+    W, H, Result);
+end;
+
 function HTMLPlainText(const Text: string): string;
 var
-  S: string;
+  S, Tag: string;
+  P: Integer;
 begin
   Result := '';
   S := HTMLPrepareText(Text);
@@ -610,11 +1272,23 @@ begin
   begin
     Result := Result + Copy(S, 1, Pos(cTagBegin, S) - 1);
     if Pos(cTagEnd, S) > 0 then
-      Delete(S, 1, Pos(cTagEnd, S))
+    begin
+      P := Pos(cTagBegin, S);
+      Tag := LowerCase(Copy(S, P, Pos(cTagEnd, S)-P+1));
+      if (Tag = '</td>') or (Tag = '</th>') then Result := Result + #9;
+      if (Tag = '</tr>') or (Tag = '<br>') or (Tag = '<br/>') or
+        (Tag = '</p>') then Result := Result + LineEnding;
+      Delete(S, 1, Pos(cTagEnd, S));
+    end
     else
       Delete(S, 1, Pos(cTagBegin, S));
   end;
   Result := Result + S;
+  // now that no tag delimiters are left, an unescaped '<' cannot be mistaken
+  // for the start of one
+  Result := StringReplace(Result, '&lt;', cLT, [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, '&gt;', cGT, [rfReplaceAll, rfIgnoreCase]);
+  Result := StringReplace(Result, cAmpMark, '&', [rfReplaceAll]);
 end;
 
 function HTMLTextExtent(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
@@ -655,5 +1329,258 @@ begin
   Inc(Result);
 end;
 
-end.
+
+{ The Unicode codepoint starting at byte P, and how many bytes it occupies.
+  ALen is never 0, so a caller advancing by it cannot loop forever. }
+function InkCodepointAt(const S: string; P: integer; out ALen: integer): Cardinal;
+var
+  B: byte;
+  L: integer;
+begin
+  ALen := 1;
+  Result := 0;
+  L := Length(S);
+  if (P < 1) or (P > L) then Exit;
+  B := Ord(S[P]);
+  if B < $80 then
+    Result := B
+  else if (B and $E0) = $C0 then
+  begin
+    ALen := 2;
+    if P + 1 <= L then
+      Result := ((B and $1F) shl 6) or (Ord(S[P + 1]) and $3F);
+  end
+  else if (B and $F0) = $E0 then
+  begin
+    ALen := 3;
+    if P + 2 <= L then
+      Result := ((B and $0F) shl 12) or ((Ord(S[P + 1]) and $3F) shl 6) or
+        (Ord(S[P + 2]) and $3F);
+  end
+  else if (B and $F8) = $F0 then
+  begin
+    ALen := 4;
+    if P + 3 <= L then
+      Result := ((B and $07) shl 18) or ((Ord(S[P + 1]) and $3F) shl 12) or
+        ((Ord(S[P + 2]) and $3F) shl 6) or (Ord(S[P + 3]) and $3F);
+  end
+  else
+    Result := B;      // stray continuation byte - take it as one character
+end;
+
+function InkIsCJKCodepoint(ACp: Cardinal): boolean;
+begin
+  Result :=
+    ((ACp >= $1100) and (ACp <= $11FF)) or      // Hangul Jamo
+    ((ACp >= $2E80) and (ACp <= $A4CF)) or      // radicals, kana, ideographs, Yi
+    ((ACp >= $AC00) and (ACp <= $D7A3)) or      // Hangul syllables
+    ((ACp >= $F900) and (ACp <= $FAFF)) or      // compatibility ideographs
+    ((ACp >= $FE30) and (ACp <= $FE4F)) or      // compatibility forms
+    ((ACp >= $FF00) and (ACp <= $FF9F)) or      // fullwidth forms
+    ((ACp >= $20000) and (ACp <= $2FA1F));      // extensions B..F
+end;
+
+{ Punctuation that must not be pushed to the start of the next line. }
+function InkIsNoBreakBefore(ACp: Cardinal): boolean;
+begin
+  case ACp of
+    $3001, $3002,                               // ideographic comma, full stop
+    $FF01, $FF0C, $FF0E, $FF1A, $FF1B, $FF1F,   // fullwidth ! , . : ; ?
+    $3009, $300B, $300D, $300F, $3011,          // closing brackets
+    $FF09, $FF3D, $FF5D:
+      Result := True;
+  else
+    Result := False;
+  end;
+end;
+
+function HTMLIsCJK(const AChar: string): boolean;
+var
+  L: integer;
+begin
+  Result := (AChar <> '') and InkIsCJKCodepoint(InkCodepointAt(AChar, 1, L));
+end;
+
+{ Word wrap.
+
+  The renderer breaks a line only where the markup says so (<br>, <hr>, <p>),
+  so wrapping is done by rewriting the markup: walk the text word by word,
+  measure what the current visual line would come to, and drop in a <br> when
+  the next word would not fit.
+
+  The catch is formatting that is still open at the break. <b>a very long
+  sentence</b> that wraps must stay bold on the second line, and the width of
+  that second line has to be measured in bold too. So a stack of the currently
+  open tags is kept, and its concatenation (LineOpen) is prepended to whatever
+  is measured. The renderer itself carries font state across a <br> already,
+  so nothing has to be re-emitted into the output - LineOpen is only ever used
+  for measuring. }
+function HTMLWordWrap(Canvas: TCanvas; const Text: string; MaxWidth: integer;
+  SuperSubScriptRatio: double; Scale: integer = 100): string;
+var
+  Stack: TStringList;             // open formatting tags, innermost last
+  Res, Line, LineOpen, Pending: string;
+  Atom, Nm: string;
+  P, Start, Len, I, CpLen: integer;
+  Cp: Cardinal;
+  R: TRect;
+
+  function OpenPrefix: string;
+  var
+    K: integer;
+  begin
+    Result := '';
+    for K := 0 to Stack.Count - 1 do
+      Result := Result + Stack[K];
+  end;
+
+  // '<b>' -> 'B', '</font color=x>' -> '/FONT', '<br/>' -> 'BR'
+  function TagNameOf(const ATag: string): string;
+  var
+    K: integer;
+    C: char;
+  begin
+    Result := '';
+    K := 2;                                   // skip '<'
+    if (K <= Length(ATag)) and (ATag[K] = '/') then
+    begin
+      Result := '/';
+      Inc(K);
+    end;
+    while K <= Length(ATag) do
+    begin
+      C := ATag[K];
+      if not (((C >= 'a') and (C <= 'z')) or ((C >= 'A') and (C <= 'Z')) or
+              ((C >= '0') and (C <= '9'))) then
+        Break;
+      Result := Result + UpCase(C);
+      Inc(K);
+    end;
+  end;
+
+  function IsBreakTag(const AName: string): boolean;
+  begin
+    Result := (AName = 'BR') or (AName = 'HR') or (AName = 'P') or (AName = '/P');
+  end;
+
+  function IsStyleTag(const AName: string): boolean;
+  begin
+    Result := (AName = 'B') or (AName = 'I') or (AName = 'U') or (AName = 'S') or
+      (AName = 'SUP') or (AName = 'SUB') or (AName = 'FONT') or (AName = 'A');
+  end;
+
+  procedure StartNewLine;
+  begin
+    Line := '';
+    Pending := '';
+    LineOpen := OpenPrefix;
+  end;
+
+  procedure AddWord(const W: string);
+  begin
+    if (Line <> '') and (HTMLTextWidth(Canvas, R, [], LineOpen + Line + Pending + W,
+      SuperSubScriptRatio, Scale) > MaxWidth) then
+    begin
+      Res := Res + cBR;                       // the held spaces die with the break
+      StartNewLine;
+    end;
+    Res := Res + Pending + W;
+    Line := Line + Pending + W;
+    Pending := '';
+  end;
+
+begin
+  Result := Text;
+  if (Canvas = nil) or (MaxWidth <= 0) or (Text = '') then
+    Exit;
+
+  P := Pos('<table', LowerCase(Text));
+  if P > 0 then
+  begin
+    Start := Pos('</table>', LowerCase(Text));
+    if Start = 0 then Start := Length(Text) + 1 else Inc(Start, 8);
+    Result := HTMLWordWrap(Canvas, Copy(Text, 1, P-1), MaxWidth,
+      SuperSubScriptRatio, Scale) + Copy(Text, P, Start-P) +
+      HTMLWordWrap(Canvas, Copy(Text, Start, MaxInt), MaxWidth,
+        SuperSubScriptRatio, Scale);
+    Exit;
+  end;
+  R := Rect(0, 0, MaxWidth, 0);
+  Stack := TStringList.Create;
+  try
+    Res := '';
+    Line := '';
+    LineOpen := '';
+    Pending := '';
+    P := 1;
+    Len := Length(Text);
+    while P <= Len do
+    begin
+      if Text[P] = cTagBegin then
+      begin
+        Start := P;
+        while (P <= Len) and (Text[P] <> cTagEnd) do
+          Inc(P);
+        if P <= Len then
+          Inc(P);                             // take the '>' too
+        Atom := Copy(Text, Start, P - Start);
+        Nm := TagNameOf(Atom);
+        Res := Res + Pending + Atom;
+        Line := Line + Pending + Atom;
+        Pending := '';
+        if IsBreakTag(Nm) then
+          StartNewLine
+        else if IsStyleTag(Nm) then
+          Stack.Add(Atom)
+        else if (Length(Nm) > 1) and (Nm[1] = '/') then
+          for I := Stack.Count - 1 downto 0 do
+            if TagNameOf(Stack[I]) = Copy(Nm, 2, Length(Nm)) then
+            begin
+              Stack.Delete(I);
+              Break;
+            end;
+      end
+      else if (Text[P] = ' ') or (Text[P] = #9) then
+      begin
+        Start := P;
+        while (P <= Len) and ((Text[P] = ' ') or (Text[P] = #9)) do
+          Inc(P);
+        Pending := Pending + Copy(Text, Start, P - Start);
+      end
+      else
+      begin
+        // A word runs to the next tag or blank. CJK is the exception: it has no
+        // blanks, so each character is its own word and may start a line -
+        // except closing punctuation, which is kept with what it follows.
+        // A slash also ends a word, so long paths can break somewhere.
+        Start := P;
+        Cp := InkCodepointAt(Text, P, CpLen);
+        if InkIsCJKCodepoint(Cp) then
+        begin
+          Inc(P, CpLen);
+          while P <= Len do
+          begin
+            Cp := InkCodepointAt(Text, P, CpLen);
+            if not InkIsNoBreakBefore(Cp) then Break;
+            Inc(P, CpLen);
+          end;
+        end
+        else
+          while (P <= Len) and (Text[P] <> cTagBegin) and (Text[P] <> ' ') and
+            (Text[P] <> #9) do
+          begin
+            Cp := InkCodepointAt(Text, P, CpLen);
+            if InkIsCJKCodepoint(Cp) then Break;   // starts the next word
+            Inc(P, CpLen);
+            if (Text[P - 1] = '/') or (Text[P - 1] = '\') then Break;
+          end;
+        AddWord(Copy(Text, Start, P - Start));
+      end;
+    end;
+    Result := Res + Pending;
+  finally
+    Stack.Free;
+  end;
+end;
+
 end.
