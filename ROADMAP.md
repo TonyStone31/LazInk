@@ -728,7 +728,6 @@ editor tab (P5), because Markdown is LazInk's own business.
   ```sh
   ls /path/to/help/*.html > pages.txt
   LAZARUS_DIR=... FPC=... tests/run.sh pages.txt results/
-  python3 tests/check_help_text.py pages.txt results/
   ```
 
   Heckers Sketch's manual is a good folder for this: `docs/help` in its

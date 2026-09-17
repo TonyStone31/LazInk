@@ -151,18 +151,19 @@ existing `DefaultWndHandler` warning during the control tests.
 Reproduce the audit and content checks:
 
 ```sh
-python3 tools/audit_help.py https://tonystone31.github.io/noella-etch-a-sketch/ \
+fpc -FU/tmp/audit -FE/tmp/audit tools/audit_help.pas
+/tmp/audit/audit_help https://tonystone31.github.io/noella-etch-a-sketch/ \
   --download /tmp/lazink-help --output /tmp/help-audit.json
-python3 - <<'PY'
-from pathlib import Path
-Path('/tmp/help-pages.txt').write_text('\n'.join(
-    str(p) for p in sorted(Path('/tmp/lazink-help').rglob('*.html'))))
-Path('/tmp/help-results').mkdir(exist_ok=True)
-PY
+find /tmp/lazink-help -name '*.html' | sort > /tmp/help-pages.txt
+mkdir -p /tmp/help-results
 LAZARUS_DIR=/path/to/lazarus FPC=/path/to/fpc \
   tests/run.sh /tmp/help-pages.txt /tmp/help-results
-python3 tests/check_help_text.py /tmp/help-pages.txt /tmp/help-results
 ```
+
+`tests/run.sh` checks the visible text as well when it is given a page list
+and a results folder.  Both tools read the pages with the FCL's own HTML
+reader, so they check LazInk against an independent reading of the same
+files.
 
 The optional site tests assert the audited snapshot's image/frame counts. If the
 site adds images or replaces its animation, review and update those expectations.

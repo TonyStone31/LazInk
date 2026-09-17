@@ -29,8 +29,6 @@ demo/lazinkdemo.app/
 # Test and tool output
 tests/results/
 *.bmp
-__pycache__/
-*.pyc
 
 # Editors and operating systems
 .vscode/
