@@ -1248,6 +1248,57 @@ begin
   Markup := InkHighlight('It is 42 degrees, and "quoted" text.', 'markdown', Colors);
   Check(Pos('<font', Markup) = 0, 'a Markdown block is left alone');
 
+  { --- the things that used to color half a line by mistake --- }
+  Markup := InkHighlight('a { color: #fff; background: red }', '', Colors);
+  Check(Pos('#fff; background: red', Markup) > 0, 'a hex color is not a comment');
+  Markup := InkHighlight('# install it' + #10 + 'x = 1   # and a note', '', Colors);
+  Check(Pos('># install it</font>', Markup) > 0, 'but # at the start of a line is');
+  Check(Pos('># and a note</font>', Markup) > 0, 'and so is # spaced off the code');
+  Markup := InkHighlight('for (i = n; i > 0; i--) sum -= i;', '', Colors);
+  Check(Pos('<font color', Copy(Markup, Pos('i--', Markup), 40)) = 0,
+    'i-- is a decrement, not a comment');
+  Markup := InkHighlight('SELECT 1 -- how many', '', Colors);
+  Check(Pos('>-- how many</font>', Markup) > 0, 'a spaced -- still is one');
+  Markup := InkHighlight('echo it''s fine' + #10 + 'echo ''really''', '', Colors);
+  Check(Pos('>fine', Markup) = 0, 'an apostrophe in a word does not open a string');
+  Check(Pos('>''really''</font>', Markup) > 0, 'a quote that closes on the line does');
+  Markup := InkHighlight('let s = `a ${x} template`;', 'javascript', Colors);
+  Check(Pos('>`a ${x} template`</font>', Markup) > 0, 'a backtick string in JavaScript');
+  Markup := InkHighlight('<div class="card"><!-- a note --></div>', 'html', Colors);
+  Check(Pos('>&lt;div</font>', Markup) > 0, 'an HTML tag name is colored');
+  Check(Pos('>&lt;/div</font>', Markup) > 0, 'and so is a closing one');
+  Check(Pos('>&lt;!-- a note --&gt;</font>', Markup) > 0, 'with its comment');
+  Markup := InkHighlight('see section 1. it says', '', Colors);
+  Check(Pos('>1</font>', Markup) > 0, 'a number at the end of a sentence keeps its dot out');
+
+  { comments in the languages people put in documents }
+  Check(Pos('>-- note</font>', InkHighlight('x = 1 -- note', 'lua', Colors)) > 0, 'Lua --');
+  Check(Pos('>% note</font>', InkHighlight('x = 1 % note', 'matlab', Colors)) > 0, 'MATLAB %');
+  Check(Pos('>; note</font>', InkHighlight('mov ax, 1 ; note', 'asm', Colors)) > 0, 'assembler ;');
+  Check(Pos('>'' note</font>', InkHighlight('x = 1 '' note', 'vb', Colors)) > 0, 'Basic apostrophe');
+  Check(Pos('>(* note *)</font>', InkHighlight('let x = 1 (* note *)', 'ocaml', Colors)) > 0,
+    'OCaml (* *)');
+  Check(Pos('>#= note =#</font>', InkHighlight('x = 1 #= note =#', 'julia', Colors)) > 0,
+    'Julia #= =#');
+  Check(Pos('>{- note -}</font>', InkHighlight('x = 1 {- note -}', 'haskell', Colors)) > 0,
+    'Haskell {- -}');
+  Check(Pos('>{ note }</font>', InkHighlight('X := 1; { note }', 'pascal', Colors)) > 0,
+    'and Pascal braces, of course');
+
+  { Pascal's doubled quote is one string, not two }
+  Markup := InkHighlight('Reply := ''It''''s ready''; N := $FF;', 'pascal', Colors);
+  Check(Pos('>''It''''s ready''</font>', Markup) > 0, 'a doubled quote stays inside its string');
+  Check(Pos('>$FF</font>', Markup) > 0, 'and $FF is a number');
+
+  { Python, which has a few habits of its own }
+  Markup := InkHighlight('@property' + #10 + 'def go(self):' + #10 +
+    '    """what it does"""' + #10 + '    return f"{self.n} left"', 'python', Colors);
+  Check(Pos('>@property</font>', Markup) > 0, 'a decorator reads as a keyword');
+  Check(Pos('>self</font>', Markup) > 0, 'and so does self');
+  Check(Pos('>"""what it does"""</font>', Markup) > 0, 'a docstring is one string');
+  Check(Pos('>f"{self.n} left"</font>', Markup) > 0, 'an f-string keeps its f');
+  Check(Pos('>def</font>', Markup) > 0, 'and def is still def');
+
   { --- and through a page --- }
   Probe.SetBounds(0, 0, 500, 400);
   Probe.HighlightCode := True;
