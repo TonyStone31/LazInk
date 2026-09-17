@@ -901,7 +901,7 @@ object frmMain: TfrmMain
           Height = 300
           Top = 12
           Width = 236
-          Caption = '<b>TInkMemo</b> is a viewer, not an editor — a log, a transcript, a help page. Each line of <font face="DejaVu Sans Mono">Lines</font> is one paragraph of markup, and lines may differ in height.<br><br>It rides on a variable-height owner-drawn listbox, so scrolling and invalidation come for free.<br><br><b>Copying:</b> click a line and press Ctrl+C, or Ctrl+A and then Ctrl+C for all of it. Right-click for the copy menu.'
+          Caption = '<b>TInkMemo</b> shows lines of markup - a log, a chat, a page of notes. Each line of <font face="DejaVu Sans Mono">Lines</font> is one paragraph; <font face="DejaVu Sans Mono">Append</font> adds one and follows the end when you are there.<br><br>It is drawn by the same engine as the Documents tab: drag to select across lines, double-click a word, triple-click a line, Ctrl+A and Ctrl+C, right-click to copy, Ctrl+F to find.'
           SuperSubScriptRatio = 0.7
           WordWrap = True
           ParentColor = False
@@ -939,6 +939,49 @@ object frmMain: TfrmMain
           OnChange = tbScaleChange
           TabOrder = 1
         end
+        object lblAppendHdr: TInkLabel
+          Left = 12
+          Height = 18
+          Top = 440
+          Width = 200
+          Caption = '<b>Append</b> a line of markup:'
+          SuperSubScriptRatio = 0.7
+          AutoSize = True
+          ParentColor = False
+        end
+        object edtAppend: TInkEdit
+          Cursor = crIBeam
+          Left = 12
+          Height = 30
+          Top = 464
+          Width = 236
+          Text = '<b>you</b>: hello, <font color="#2E86DE">memo</font>!'
+          OnChange = edtAppendChange
+          OnGetCharAttrs = edtMarkupGetCharAttrs
+          OnKeyDown = edtAppendKeyDown
+          Color = clWindow
+          Font.Color = clWindowText
+          ParentFont = False
+          TabOrder = 2
+        end
+        object btnAppend: TButton
+          Left = 12
+          Height = 28
+          Top = 502
+          Width = 114
+          Caption = 'Append'
+          OnClick = btnAppendClick
+          TabOrder = 3
+        end
+        object btnMemoClear: TButton
+          Left = 134
+          Height = 28
+          Top = 502
+          Width = 114
+          Caption = 'Clear'
+          OnClick = btnMemoClearClick
+          TabOrder = 4
+        end
       end
       object memCheat: TInkMemo
         Left = 0
@@ -954,7 +997,7 @@ object frmMain: TfrmMain
           '<b>&lt;font face="name"&gt;</b> — <font face="DejaVu Serif">a serif face</font>, <font face="DejaVu Sans Mono">a monospaced one</font>.'
           '<b>&lt;sup&gt;</b> and <b>&lt;sub&gt;</b> — E=mc<sup>2</sup>, H<sub>2</sub>O, x<sup>n</sup>+y<sup>n</sup>.'
           '<b>&lt;a href="..."&gt;</b> — <a href="https://wiki.lazarus.freepascal.org/">a link that fires OnLinkClick</a>. Run the mouse over it: LinkHoverStyle repaints just that one.'
-          '<b>&lt;img src="n"&gt;</b> — entry n of the Images list, sitting on the line like an oversized character: <img src="0"> info, <img src="2"> warning, <img src="3"> error, <img src="1"> done.'
+          '<b>&lt;img src="n"&gt;</b> — entry n of the Images list: <img src="0"> info, <img src="2"> warning, <img src="3"> error, <img src="1"> done.'
           '<b>&lt;br&gt;</b> breaks a line.<br>Like that.'
           '<b>&lt;p&gt;...&lt;/p&gt;</b> is a paragraph: a break plus a blank line.<p>Like this one.</p>'
           '<b>&lt;center&gt;</b> and <b>&lt;right&gt;</b> move a whole line:'
