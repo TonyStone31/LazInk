@@ -444,89 +444,106 @@ is a from-scratch prototype of the engine this document describes.  It is
 built the way section 2 asks: tokenize, style, lay out into kept line boxes,
 paint from them.
 
-**Dry run, 18 September 2026** - both engines drawing the same markup side by
-side, and a benchmark on 67 KB of markup.  Reproduce it with
-`tools/renderer_dryrun.pas` (it writes a comparison PNG and prints the
-numbers; it builds against the working tree and is not part of the package).
+**Dry runs.**  `tools/renderer_dryrun.pas` draws the same markup with both
+engines side by side into one PNG, prints their extents and hit tests, and
+times both on 67 KB of markup.  It has been run twice: once when the
+prototype first appeared, and again after its next round of work the same
+day.
 
-What already matches, within a pixel:
+| | Old | Prototype, first run | Prototype, second run |
+|---|---|---|---|
+| inline markup and wrapping | 428 x 56 | 430 x 55 | 432 x 55 |
+| `<center>` / `<right>` / `<left>` | 430 x 69 | 430 x 68 | 430 x 68 |
+| entities | 334 x 18 | 430 x 17 | **334 x 17** |
+| a long unbreakable word | 428 x 35 | 430 x 34 | 432 x 34 |
+| CJK text | 354 x 18 | 430 x 17 | **354 x 17** |
+| a plain table | 138 x 61 | 430 x 58 | **138 x 58** |
+| a table of cards | 430 x 64 | 430 x 29 | 422 x 45 |
+| first layout, 67 KB | 74 ms | 68 ms | **38 ms** |
+| 30 paints from the kept layout | 872 ms | 73 ms | **75 ms** |
+| re-layout at a new width | 76 ms | 62 ms | **34 ms** |
 
-| Sample | Old | Prototype |
-|---|---|---|
-| inline markup and wrapping | 428 x 56 | 430 x 55 |
-| `<center>` / `<right>` / `<left>` | 430 x 69 | 430 x 68 |
-| a long unbreakable word | 428 x 35 | 430 x 34 |
-| CJK text | 354 x 18 | 430 x 17 |
+So the engine lays a long document out in **half** the old engine's time and
+paints a screenful in about a tenth of it, because painting reads a layout
+instead of parsing and measuring again.  That is the design working, and it
+is the reason to finish it.
 
-Bold, italic, underline, strike, `<font>` color and size, links and their
-underline, where the lines break, entity handling (including `&amp;lt;`
-staying literal text, so the `#1` marker convention is not needed), and hit
-testing - the link is found with the right href and ordinal.
+Matching the old engine already: bold, italic, underline, strike, `<font>`
+color and size, links and their underline, where lines break, long words,
+CJK, alignment, superscript and subscript, `<hr>`, entity handling
+(including `&amp;lt;` staying literal text, so the `#1` marker convention is
+not needed), content widths, hit testing with the right href and ordinal,
+and `odSelected` / `odDisabled` colors.
 
-Speed, on 67 KB of markup (about 6,800 pixels tall, 14,400 runs):
-
-| | Old | Prototype |
-|---|---|---|
-| first layout | 77 ms | **68 ms** |
-| 30 paints from the kept layout | 849 ms | **73 ms** |
-| re-layout at a new width | 74 ms | **62 ms** |
-
-That paint number is the whole reason for the design: **11 times faster**,
-because painting reads a layout instead of parsing and measuring again.
+One difference is an **improvement, not a regression**: the hit result's
+`LinkText` comes back `a link` where the old engine says `alink`.  The old
+one drops the space between runs.  The prototype is right; do not "fix" it
+backwards, and change the test that pins the old spelling when the switch
+happens.
 
 ### The checklist
 
-Ranked by how much stands behind each one.  This is the work between the
-prototype and a replacement:
+Done since the prototype first ran (all 18 September 2026):
 
-- [ ] **Tables.**  The largest item by far, and Heckers Sketch's index lives
-      on it.  None of section 3.3 is implemented: no `width`, `layout`,
-      `cellspacing`, `cellpadding`, `cellbg`, `bordercolor`, `border`,
-      `sides` or `radius`; no per-cell `bgcolor`, `color`, `radius` or
-      `sides`; no borders drawn; no column-width algorithm (longest word
-      first, then share what is left by how much wider each column wants to
-      be); and cell content came out in the wrong order in the card sample.
-- [ ] **Superscript and subscript.**  Measured at 0.7 size, but `Paint` does
-      not apply the smaller size or the raise and lower, so `H<sub>2</sub>O`
-      draws flat.
-- [ ] **`<hr>`.**  Tokenized as `ntRule`, turned into a tab, never drawn.
-- [ ] **`<p>`.**  Must be two breaks - a blank line - and dropped when it is
-      the first thing in the string.  It is one break today.
-- [ ] **Extents must report content width**, not the whole available width.
-      `TInkLabel`, `TInkMemo` and `TInkListBox` size themselves from this; a
-      label that always answers the full width is a label that fills its
-      form.
-- [ ] **A paint origin.**  `Paint` ignores the destination rectangle's
-      origin and draws at layout coordinates, so the only way to move the
-      text is `Borders` - which is part of the layout cache key, so
-      scrolling re-lays out every frame (1,925 ms instead of 73 ms for 30
-      paints).  Decide this early: an origin argument at paint time, and
-      `Borders` out of the key.
-- [ ] **`LinkText`** in the hit result is always empty; it must be the words
-      between `<a>` and `</a>`.
-- [ ] **`<ind=N>`.**  The prototype reads `<ind n="20">`; the markup the
-      document layer emits is `<ind=20>`.  And `Indent` is stored but never
-      used in layout.
-- [ ] **Images.**  Runs are a hard-coded 16 x 16 instead of the image list's
-      size; and see section 11 for what a picture will have to be.
-- [ ] **`TOwnerDrawState`.**  No notion of `odSelected`, `odDisabled` or
-      `odReserved1` - see section 4; the list box needs all three.
-- [ ] **Selection.**  No equivalent of `OnRun` / `RunPart` yet.  The public
-      `RunAt` / `LineAt` on the layout is a better shape for it than a
-      callback, but `TInkCustomPage.PrepareRuns` has to be rewritten onto
-      whichever it becomes.
-- [ ] **The utility half of the API** (section 4): `HTMLPlainText`,
-      `HTMLEscape` / `HTMLUnescape`, `HTMLStringToColor`, `HTMLShadeColor`,
-      `HTMLContrastColor`, a public `IsCJK`, a `HTMLWordWrap` equivalent,
-      and the options builders.  Mechanical, but 30-odd call sites depend on
-      them.
-- [ ] **Move `TInkBorders` and `TInkLinkStyle`** out of the MPL unit first,
-      as section 4 says - they are published properties on MIT controls.
+- [x] Superscript and subscript are painted, not just measured.
+- [x] `<hr>` is drawn.
+- [x] Extents report the **content** width, so a label sizes to its text.
+- [x] `LinkText` is filled in.
+- [x] Images take the image list's size instead of a hard-coded 16 x 16.
+- [x] `TOwnerDrawState`: `odSelected` and `odDisabled` pick the selection
+      and disabled colors.
+- [x] `<ind>`'s indent is applied at layout time.
+- [x] Half the utility API: `InkNextEscape`, `InkNextUnescape`,
+      `InkNextPlainText`, `InkNextContrastColor`, `InkNextShadeColor`,
+      `InkNextIsCJK`.
 
-Nothing found in the dry run says the design is wrong.  The opposite: the
-parts that are hardest to get right generically - wrapping, CJK, alignment,
-link ordinals, caching - already agree with the old engine, and the paint
-number vindicates keeping the layout.
+Still to do, heaviest first:
+
+- [ ] **Tables.**  Still the largest item, and Heckers Sketch's index rides
+      on it.  Cell backgrounds, borders and padding now draw, but:
+      - **`<br>` inside a cell does not start a new line.**  Measured on
+        `<td><b>Title</b><br>body words</td>`: both runs come back at the
+        same place (`@6,6`), so the second line is painted over the first.
+        This is why a card shows only its body text.
+      - A plain table draws **no grid**; the old engine borders every cell.
+      - Column widths are not the algorithm in section 3.3 (longest word
+        first, then share what is left), and `width="100%"` /
+        `layout="fixed"` are not read.
+      - The card sample is 45 pixels tall against the old engine's 64, so
+        padding and spacing do not add up to the same box yet.
+- [ ] **`InkNextPlainText` puts a spurious line break and tab before a
+      table's first cell** - `[\n\tTitle...]` where the old engine gives
+      `[Title...]`.  `tests/check_help_text.pas` compares this text across
+      38 pages, so it has to match exactly.
+- [ ] **`<p>` is one break; it must be two** - a blank line - and dropped
+      when it is the first thing in the string.
+- [ ] **A paint origin.**  Still the signature decision: `Paint` draws at
+      layout coordinates, so moving text means moving `Borders`, which is in
+      the cache key - 30 scrolled paints cost 1,063 ms against 75 ms for the
+      same paints at rest.  An origin argument at paint time, `Borders` out
+      of the key.
+- [ ] **A line may end a couple of pixels past the width** (432 against a
+      430 column) when it finishes with a superscript or a larger font.
+- [ ] **`<ind=N>`.**  The tokenizer reads `<ind n="20">`; the markup the
+      document layer emits is `<ind=20>`.  And the indent is always scaled
+      by `Scale`, where the old engine scales it only when `odReserved1` is
+      in the draw state.
+- [ ] **`InkNextColor` is implementation-only** - it is the
+      `HTMLStringToColor` replacement and has to be public.
+- [ ] **Selection.**  No `OnRun` / `RunPart` equivalent yet.  `RunAt` /
+      `LineAt` on the layout is the better shape; `TInkCustomPage.PrepareRuns`
+      gets rewritten onto whichever it becomes.
+- [ ] **The rest of the API** (section 4): the options builders, and a
+      decision on `HTMLWordWrap` - the prototype wraps inside layout, so
+      `inkpage.pas` stops pre-wrapping rather than the engine growing a
+      wrapper.
+- [ ] **Move `TInkBorders` and `TInkLinkStyle`** out of the MPL unit, as
+      section 4 says.  Unchanged and still worth doing on its own.
+
+Nothing in either dry run says the design is wrong.  The opposite: the parts
+that are hardest to get right generically already agree with the old engine,
+the gap list is shrinking in the order a person would pick, and the speed is
+going the right way.
 
 ---
 
