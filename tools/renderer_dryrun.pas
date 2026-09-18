@@ -1,7 +1,7 @@
 { A dry run of the renderer prototype against the one it would replace.
 
   Draws the same markup with InkHtml (the MPL engine the package uses) and
-  with InkRenderNext (the 0BSD prototype), side by side into one PNG, and
+  with InkRender (the 0BSD prototype), side by side into one PNG, and
   prints their extents, line counts and hit test answers.  Then times both
   on a long document: first layout, thirty paints, and a re-layout at a new
   width.
@@ -21,15 +21,15 @@
 program renderer_dryrun;
 {$mode objfpc}{$H+}
 uses Interfaces, Forms, Classes, SysUtils, Graphics, Types, Math, DateUtils,
-  InkHtml, InkRenderNext;
+  InkHtml, InkRender;
 const
   W = 430;
 var
   Sheet: TBitmap; PNG: TPortableNetworkGraphic;
-  O: THTMLOptions; N: TInkNextOptions; R: TInkNextRenderer; L: TInkNextLayout;
+  O: THTMLOptions; N: TInkRenderOptions; R: TInkRenderer; L: TInkRenderLayout;
   Samples, Names: array of string;
   I, Y, K: Integer; Wrapped: string; Sz, NSz: TSize;
-  Hit: THTMLHitInfo; NHit: TInkNextHit; Tile: TBitmap; Run: TInkNextRun;
+  Hit: THTMLHitInfo; NHit: TInkRenderHit; Tile: TBitmap; Run: TInkRenderRun;
   LinkX, LinkY: Integer;
 
   procedure Sample(const AName, AMarkup: string);
@@ -42,7 +42,7 @@ var
   procedure Bench;
   const BWidth = 700;
   var Doc, BWrapped: string; I, Reps: Integer; T: TDateTime; BW: TBitmap;
-    BO: THTMLOptions; BN: TInkNextOptions; BR: TInkNextRenderer; BL: TInkNextLayout;
+    BO: THTMLOptions; BN: TInkRenderOptions; BR: TInkRenderer; BL: TInkRenderLayout;
     BSz: TSize;
   begin
     Doc := '';
@@ -54,7 +54,7 @@ var
     BW := TBitmap.Create; BW.SetSize(BWidth, 400);
     BW.Canvas.Font.Name := 'DejaVu Sans'; BW.Canvas.Font.Size := 10;
     BO := DefaultHTMLOptions;
-    BR := TInkNextRenderer.Create;
+    BR := TInkRenderer.Create;
     FillChar(BN, SizeOf(BN), 0);
     BN.BaseFont := BW.Canvas.Font; BN.Width := BWidth; BN.Scale := 100; BN.HoverIndex := -1;
     BN.LinkColor := clBlue; BN.LinkBackColor := clNone; BN.HoverColor := clRed;
@@ -134,7 +134,7 @@ begin
   SetFont(Sheet.Canvas);
 
   O := DefaultHTMLOptions; O.LinkColor := clBlue; O.LinkUnderline := True;
-  R := TInkNextRenderer.Create;
+  R := TInkRenderer.Create;
   FillChar(N, SizeOf(N), 0);
   N.BaseFont := Sheet.Canvas.Font; N.Width := W; N.Scale := 100;
   N.Borders := Rect(0, 0, 0, 0);
@@ -178,12 +178,12 @@ begin
   WriteLn('--- plain text, both engines ---');
   K := 0;
   for I := 0 to High(Samples) do
-    if HTMLPlainText(Samples[I]) <> InkNextPlainText(Samples[I]) then
+    if HTMLPlainText(Samples[I]) <> InkRenderPlainText(Samples[I]) then
     begin
       Inc(K);
       WriteLn('  differs: ', Names[I]);
       WriteLn('    old [', StringReplace(HTMLPlainText(Samples[I]), LineEnding, '\n', [rfReplaceAll]), ']');
-      WriteLn('    new [', StringReplace(InkNextPlainText(Samples[I]), LineEnding, '\n', [rfReplaceAll]), ']');
+      WriteLn('    new [', StringReplace(InkRenderPlainText(Samples[I]), LineEnding, '\n', [rfReplaceAll]), ']');
     end;
   if K = 0 then WriteLn('  every sample reads back the same from both engines')
   else WriteLn('  ', K, ' of ', Length(Samples), ' differ');

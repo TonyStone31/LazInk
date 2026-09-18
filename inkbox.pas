@@ -1,4 +1,4 @@
-{ LazInk recursive renderer foundation.
+{ InkBox - the box tree LazInk lays a document out through.
 
   This unit is intentionally separate from InkRenderNext.  It is the
   structural experiment required by docs/RENDERER_SPEC.md section 2.1:
@@ -8,7 +8,7 @@
   SPDX-License-Identifier: 0BSD
   Copyright (c) 2026 LazInk contributors
 }
-unit InkRenderBox;
+unit InkBox;
 
 {$mode objfpc}{$H+}
 
