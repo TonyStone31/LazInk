@@ -25,9 +25,11 @@ uses
 function InkNextEscape(const Text: string): string;
 function InkNextUnescape(const Text: string): string;
 function InkNextPlainText(const Markup: string): string;
+function InkNextColor(const S: string; Default: TColor = clBlack): TColor;
 function InkNextContrastColor(Background: TColor): TColor;
 function InkNextShadeColor(Color: TColor; Percent: Integer): TColor;
 function InkNextIsCJK(const Text: string): Boolean;
+function InkNextScalePx(Value, Scale: Integer): Integer;
 
 type
   TInkNextTokenKind = (ntText, ntOpen, ntClose, ntBreak, ntRule);
@@ -99,6 +101,9 @@ type
     HoverColor, HoverBackColor: TColor;
     HoverUnderline: Boolean;
     OwnerState: TOwnerDrawState;
+    { code: the text is laid out as it was written and cut off at the edge
+      rather than wrapped }
+    NoWrap: Boolean;
     OnRun: TInkNextRunEvent;
     RunPart: Integer;
   end;
@@ -154,8 +159,14 @@ type
     destructor Destroy; override;
     procedure Tokenize(const Source: string);
     function Layout(const Canvas: TCanvas; const Options: TInkNextOptions): TInkNextLayout;
-    procedure Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkNextOptions);
-    function HitTest(const Canvas: TCanvas; X, Y: Integer): TInkNextHit;
+    { Paints the kept layout into Bounds.  AOffsetX and AOffsetY move the
+      text inside it without laying anything out again - which is what
+      scrolling is: one layout, a hundred offsets. }
+    procedure Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkNextOptions;
+      AOffsetX: Integer = 0; AOffsetY: Integer = 0);
+    { X and Y in the coordinates Paint was given, offsets included }
+    function HitTest(const Canvas: TCanvas; X, Y: Integer;
+      AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkNextHit;
     property CachedLayout: TInkNextLayout read FLayout;
   end;
 
@@ -194,7 +205,7 @@ begin
 end;
 
 function InkNextPlainText(const Markup: string): string;
-var P,Q: Integer; Raw,Name: string;
+var P,Q,S: Integer; Raw,Name: string; Closing: Boolean;
 begin
   Result:=''; P:=1;
   while P<=Length(Markup) do
@@ -203,10 +214,19 @@ begin
     Q:=P+1; while (Q<=Length(Markup)) and (Markup[Q]<>'>') do Inc(Q);
     if Q>Length(Markup) then begin Result:=Result+Copy(Markup,P,MaxInt); Break end;
     Raw:=LowerCase(Trim(Copy(Markup,P+1,Q-P-1)));
-    if (Raw<>'') and (Raw[1]='/') then Delete(Raw,1,1);
-    Name:=Raw; P:=Pos(' ',Name); if P>0 then Name:=Copy(Name,1,P-1);
-    if (Name='td') or (Name='th') then Result:=Result+#9
-    else if (Name='tr') or (Name='br') or (Name='p') then Result:=Result+LineEnding;
+    Closing:=(Raw<>'') and (Raw[1]='/');
+    if Closing then Delete(Raw,1,1);
+    Name:=Raw; S:=Pos(' ',Name); if S>0 then Name:=Copy(Name,1,S-1);
+    { section 3.4.  An opening <p> is a blank line - two endings - because
+      that is what it draws; a closing one, a rule and a break are one each;
+      a cell ends with a tab. }
+    if Closing and ((Name='td') or (Name='th')) then Result:=Result+#9
+    else if (not Closing) and (Name='p') then
+    begin
+      if Trim(Result)<>'' then Result:=Result+LineEnding+LineEnding;
+    end
+    else if (Name='br') or (Name='hr') or
+      (Closing and ((Name='tr') or (Name='p'))) then Result:=Result+LineEnding;
     P:=Q+1;
   end;
   Result:=InkNextUnescape(Result);
@@ -237,6 +257,12 @@ begin
   U:=Ord(Text[1]);
   Result:=((U>=$2E80) and (U<=$A4CF)) or ((U>=$AC00) and (U<=$D7A3)) or
     ((U>=$F900) and (U<=$FAFF)) or ((U>=$20000) and (U<=$2FA1F));
+end;
+
+function InkNextScalePx(Value, Scale: Integer): Integer;
+begin
+  if Scale<=0 then Scale:=100;
+  Result:=Max(0,Round(Value*Scale/100));
 end;
 
 function InkNextAttr(const Attrs: TStringList; const Name: string): string;
@@ -439,6 +465,7 @@ begin
   S := Options.BaseFont.Name + '|' + IntToStr(Options.BaseFont.Size) + '|' +
     IntToStr(Options.BaseFont.Color) + '|' + IntToStr(StyleBits) +
     '|' + IntToStr(Options.Scale) + '|' + IntToStr(Options.LineSpacing) +
+    '|' + IntToStr(Ord(Options.NoWrap)) +
     '|' + IntToStr(Options.Height) + '|' + IntToStr(Integer(Options.VertAlign)) +
     '|' + IntToStr(Options.Borders.Left) + '|' + IntToStr(Options.Borders.Top) +
     '|' + IntToStr(Options.Borders.Right) + '|' + IntToStr(Options.Borders.Bottom);
@@ -619,15 +646,16 @@ end;
 procedure TInkNextRenderer.LayoutTable(const Canvas: TCanvas;
   const Options: TInkNextOptions; AStart, AEnd: Integer; var X, Y, Line: Integer);
 type
-  TCell = record StartRun, EndRun, Row, Col: Integer; AttrText: string end;
+  TCell = record StartRun, EndRun, Row, Col, Pad: Integer; AttrText: string end;
 var
   Cells: array of TCell;
-  I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, CellWidth,
-    Pad, Spacing, SX, SY, W, H, RunIndex, FirstRun, P: Integer;
-  RowHeights, ColWidths, MinWidths: array of Integer;
-  R: TInkNextRun; Sz: TSize; L: TInkNextLine;
+  I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing, DefaultPad,
+    SX, SY, W, H, Want, Extra, Total, CellX, CellY: Integer;
+  RowHeights, ColWidths, ColMin, ColMax: array of Integer;
+  R: TInkNextRun; L: TInkNextLine;
   InCell, FixedLayout, FillWidth: Boolean; TableAttrs, CellAttrs: TStringList;
   WidthText: string; WidthPercent: Integer;
+
   procedure AddLine(First, Count, Top, Height, Part: Integer);
   begin
     if Count <= 0 then Exit;
@@ -636,119 +664,243 @@ var
     SetLength(FLayout.FLines, Length(FLayout.FLines)+1);
     FLayout.FLines[High(FLayout.FLines)] := L;
   end;
-begin
-  { First collect the table's cells from structural markers. The renderer does
-    not need to retain a DOM: a compact range list is enough for layout. }
-  SetLength(Cells, 0); TableAttrs:=TStringList.Create; CellAttrs:=TStringList.Create;
-  try
-    TableAttrs.Text:=FStyled[AStart].Meta;
-    FixedLayout:=LowerCase(TableAttrs.Values['layout'])='fixed';
-    FillWidth:=False; WidthPercent:=0; WidthText:=Trim(TableAttrs.Values['width']);
-    if (WidthText<>'') and (WidthText[Length(WidthText)]='%') then
-    begin
-      WidthPercent:=EnsureRange(StrToIntDef(Copy(WidthText,1,Length(WidthText)-1),0),1,100);
-      FillWidth:=True;
-    end
-    else if WidthText<>'' then FillWidth:=True;
-    Spacing:=StrToIntDef(TableAttrs.Values['cellspacing'],0);
-    Pad:=StrToIntDef(TableAttrs.Values['cellpadding'],6);
-    if Pad<0 then Pad:=0;
-  Row := -1; Col := 0; Rows := 0; Cols := 0; InCell := False;
-  for I := AStart+1 to AEnd-1 do
+
+  { Lays one cell's runs out inside AWidth, wrapping the way body text does.
+    With Emit off it only measures, which is how a row learns its height
+    before anything is placed.  Returns the height the cell needs. }
+  function LayCell(Index, AX, AY, AWidth: Integer; Emit: Boolean): Integer;
+  var RunIndex, CX, CY, LineH, RW, P, Start, Bytes, Pad: Integer;
+    Run: TInkNextRun; Sz: TSize; Text, Atom: string; C: Cardinal;
+    Attrs: TStringList; BG, FG: TColor;
   begin
-    case FStyled[I].Control of
-      2: begin Inc(Row); Col := 0; Rows := Max(Rows, Row+1) end;
-      3: if not InCell then
-         begin
-           InCell := True; CellIndex := Length(Cells); SetLength(Cells,CellIndex+1);
-           Cells[CellIndex].StartRun := I+1; Cells[CellIndex].EndRun := I;
-           Cells[CellIndex].Row := Max(0,Row); Cells[CellIndex].Col := Col;
-           Cells[CellIndex].AttrText := FStyled[I].Meta;
-           Cols := Max(Cols, Col+1);
-         end;
-      4: if InCell then begin Cells[CellIndex].EndRun := I-1; InCell := False; Inc(Col) end;
-    end;
-  end;
-  if InCell then Cells[CellIndex].EndRun := AEnd-1;
-  if (Rows=0) or (Cols=0) then begin TableAttrs.Free; CellAttrs.Free; Exit end;
-  SetLength(RowHeights,Rows); SetLength(ColWidths,Cols); SetLength(MinWidths,Cols);
-  TableWidth := Max(1,Options.Width-Options.Borders.Left-Options.Borders.Right);
-  if (WidthPercent>0) and (WidthPercent<100) then
-    TableWidth:=Max(1,TableWidth*WidthPercent div 100);
-  for I := 0 to High(Cells) do
-  begin
-    W := 0; H := 0;
-    for J := Cells[I].StartRun to Cells[I].EndRun do
-      if (J>=0) and (J<Length(FStyled)) and (FStyled[J].Control=0) then
-      begin
-        Sz := MeasureRun(Canvas,FStyled[J]); Inc(W,Sz.cx); H := Max(H,Sz.cy);
-        WidthText:=FStyled[J].Text;
-        while WidthText<>'' do
-        begin
-          P:=1; while (P<=Length(WidthText)) and not (WidthText[P] in [' ',#9]) do Inc(P);
-          MinWidths[Cells[I].Col]:=Max(MinWidths[Cells[I].Col],Canvas.TextWidth(Copy(WidthText,1,P-1)));
-          while (P<=Length(WidthText)) and (WidthText[P] in [' ',#9]) do Inc(P);
-          Delete(WidthText,1,P-1);
-        end;
-      end;
-    CellAttrs.Text:=Cells[I].AttrText;
-    Pad:=StrToIntDef(CellAttrs.Values['cellpadding'],StrToIntDef(TableAttrs.Values['cellpadding'],6));
-    ColWidths[Cells[I].Col] := Max(ColWidths[Cells[I].Col],W+Pad*2);
-    RowHeights[Cells[I].Row] := Max(RowHeights[Cells[I].Row],H+Pad*2);
-  end;
-  for I := 0 to Cols-1 do if ColWidths[I]=0 then ColWidths[I] := Pad*2+12;
-  for I := 0 to Rows-1 do if RowHeights[I]=0 then RowHeights[I] := Pad*2+Canvas.TextHeight('Tg');
-  W := 0; for I := 0 to Cols-1 do Inc(W,ColWidths[I]);
-  if FixedLayout then begin for I:=0 to Cols-1 do ColWidths[I]:=Max(1,(TableWidth-Spacing*Max(0,Cols+1)) div Cols); W:=TableWidth end
-  else if FillWidth then
-    for I:=0 to Cols-1 do ColWidths[I]:=Max(1,(TableWidth-Spacing*Max(0,Cols+1))*ColWidths[I] div Max(1,W))
-  else if W > TableWidth then
-  begin
-    for I := 0 to Cols-1 do ColWidths[I] := Max(Pad*2+12, Max(MinWidths[I]+Pad*2, ColWidths[I]*TableWidth div W));
-  end;
-  SX := Options.Borders.Left+Spacing; SY := Y+Spacing;
-  for I := 0 to High(Cells) do
-  begin
-    X := SX; for J := 0 to Cells[I].Col-1 do Inc(X,ColWidths[J]+Spacing);
-    Y := SY; for J := 0 to Cells[I].Row-1 do Inc(Y,RowHeights[J]);
-    CellAttrs.Text:=Cells[I].AttrText; Pad:=StrToIntDef(CellAttrs.Values['cellpadding'],StrToIntDef(TableAttrs.Values['cellpadding'],6));
-    CellWidth := Max(1,ColWidths[Cells[I].Col]-Pad*2); FirstRun := Length(FLayout.FRuns);
-    R.Text:=''; R.Style:=BaseStyle(Options); R.Bounds:=Rect(X,Y,X+ColWidths[Cells[I].Col],Y+RowHeights[Cells[I].Row]);
-    R.Line:=Length(FLayout.FLines); R.Part:=Cells[I].Row*1000+Cells[I].Col; R.IsImage:=False; R.ImageIndex:=-1;
-    R.Control:=8; R.Meta:=Cells[I].AttrText; if R.Meta='' then R.Meta:=TableAttrs.Text;
-    SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R;
-    for RunIndex := Cells[I].StartRun to Cells[I].EndRun do
+    Pad := Cells[Index].Pad;
+    Attrs := TStringList.Create;
+    try
+      Attrs.Text := Cells[Index].AttrText;
+      BG := InkNextColor(Attrs.Values['bgcolor'], clNone);
+      FG := InkNextColor(Attrs.Values['color'], clNone);
+    finally Attrs.Free end;
+    CX := AX+Pad; CY := AY+Pad; LineH := 0;
+    for RunIndex := Cells[Index].StartRun to Cells[Index].EndRun do
     begin
       if (RunIndex<0) or (RunIndex>=Length(FStyled)) or
         (FStyled[RunIndex].Control<>0) then Continue;
-      R := FStyled[RunIndex];
-      R.Style.BackColor:=InkNextColor(CellAttrs.Values['bgcolor'],R.Style.BackColor);
-      R.Style.Color:=InkNextColor(CellAttrs.Values['color'],R.Style.Color);
-      Sz := MeasureRun(Canvas,R);
-      { A cell's line boxes are intentionally independent from surrounding
-        lines. The later wrapping pass can split these runs without touching
-        the table's row geometry. }
-      R.Bounds := Rect(X+Pad,Y+Pad,X+Pad+Min(CellWidth,Sz.cx),Y+Pad+Sz.cy);
+      Run := FStyled[RunIndex];
+      if BG<>clNone then Run.Style.BackColor := BG;
+      if FG<>clNone then Run.Style.Color := FG;
+      Text := Run.Text;
+      P := 1;
+      while P<=Length(Text) do
+      begin
+        if Text[P]=#10 then
+        begin
+          { a break inside a cell starts another line in the same cell }
+          Inc(P);
+          if LineH=0 then LineH := Canvas.TextHeight('Tg');
+          Inc(CY,LineH); CX := AX+Pad; LineH := 0;
+          Continue;
+        end;
+        Start := P;
+        if Text[P] in [' ',#9] then
+          while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
+        else
+          while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
+          begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
+        Atom := Copy(Text,Start,P-Start);
+        Run.Text := Atom; Sz := MeasureRun(Canvas,Run); RW := Sz.cx;
+        if (CX>AX+Pad) and (CX+RW>AX+Pad+AWidth) and
+          (Atom[1]<>' ') and (Atom[1]<>#9) then
+        begin
+          if LineH=0 then LineH := Sz.cy;
+          Inc(CY,LineH); CX := AX+Pad; LineH := 0;
+        end;
+        if Emit then
+        begin
+          if Run.Style.Script=nsSuper then
+            Run.Bounds := Rect(CX,CY-Sz.cy div 4,CX+RW,CY-Sz.cy div 4+Sz.cy)
+          else if Run.Style.Script=nsSub then
+            Run.Bounds := Rect(CX,CY+Sz.cy div 4,CX+RW,CY+Sz.cy div 4+Sz.cy)
+          else Run.Bounds := Rect(CX,CY,CX+RW,CY+Sz.cy);
+          Run.Line := Length(FLayout.FLines);
+          Run.Part := Cells[Index].Row*1000+Cells[Index].Col;
+          SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1);
+          FLayout.FRuns[High(FLayout.FRuns)] := Run;
+        end;
+        Inc(CX,RW); LineH := Max(LineH,MetricHeight(Canvas,Run));
+      end;
+    end;
+    if LineH=0 then LineH := Canvas.TextHeight('Tg');
+    Result := (CY+LineH) - AY + Pad;
+  end;
+
+  { the width a cell would like, and the width it cannot go below (its
+    longest single word), both without the padding }
+  procedure CellWidths(Index: Integer; out AWant, ALeast: Integer);
+  var RunIndex, P, Start, Bytes, LineW: Integer; Run: TInkNextRun;
+    Text, Atom: string; C: Cardinal; Sz: TSize;
+  begin
+    AWant := 0; ALeast := 0; LineW := 0;
+    for RunIndex := Cells[Index].StartRun to Cells[Index].EndRun do
+    begin
+      if (RunIndex<0) or (RunIndex>=Length(FStyled)) or
+        (FStyled[RunIndex].Control<>0) then Continue;
+      Run := FStyled[RunIndex]; Text := Run.Text; P := 1;
+      while P<=Length(Text) do
+      begin
+        if Text[P]=#10 then begin Inc(P); LineW := 0; Continue end;
+        Start := P;
+        if Text[P] in [' ',#9] then
+          while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
+        else
+          while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
+          begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
+        Atom := Copy(Text,Start,P-Start);
+        Run.Text := Atom; Sz := MeasureRun(Canvas,Run);
+        Inc(LineW,Sz.cx); AWant := Max(AWant,LineW);
+        if not (Atom[1] in [' ',#9]) then ALeast := Max(ALeast,Sz.cx);
+      end;
+    end;
+  end;
+
+begin
+  SetLength(Cells,0); TableAttrs := TStringList.Create; CellAttrs := TStringList.Create;
+  try
+    TableAttrs.Text := FStyled[AStart].Meta;
+    FixedLayout := LowerCase(TableAttrs.Values['layout'])='fixed';
+    FillWidth := False; WidthPercent := 0; WidthText := Trim(TableAttrs.Values['width']);
+    if (WidthText<>'') and (WidthText[Length(WidthText)]='%') then
+    begin
+      WidthPercent := EnsureRange(StrToIntDef(Copy(WidthText,1,Length(WidthText)-1),0),1,100);
+      FillWidth := True;
+    end
+    else if WidthText<>'' then FillWidth := True;
+    Spacing := InkNextScalePx(StrToIntDef(TableAttrs.Values['cellspacing'],0),Options.Scale);
+    DefaultPad := Max(0,InkNextScalePx(StrToIntDef(TableAttrs.Values['cellpadding'],6),Options.Scale));
+
+    { the cells, as ranges into the styled runs - no tree is needed for this }
+    Row := -1; Col := 0; Rows := 0; Cols := 0; InCell := False;
+    for I := AStart+1 to AEnd-1 do
+      case FStyled[I].Control of
+        2: begin Inc(Row); Col := 0; Rows := Max(Rows,Row+1) end;
+        3: if not InCell then
+           begin
+             InCell := True; CellIndex := Length(Cells); SetLength(Cells,CellIndex+1);
+             Cells[CellIndex].StartRun := I+1; Cells[CellIndex].EndRun := I;
+             Cells[CellIndex].Row := Max(0,Row); Cells[CellIndex].Col := Col;
+             Cells[CellIndex].AttrText := FStyled[I].Meta;
+             CellAttrs.Text := FStyled[I].Meta;
+             Cells[CellIndex].Pad := Max(0,InkNextScalePx(
+               StrToIntDef(CellAttrs.Values['cellpadding'],
+               StrToIntDef(TableAttrs.Values['cellpadding'],6)),Options.Scale));
+             Cols := Max(Cols,Col+1);
+           end;
+        4: if InCell then begin Cells[CellIndex].EndRun := I-1; InCell := False; Inc(Col) end;
+      end;
+    if InCell then Cells[CellIndex].EndRun := AEnd-1;
+    if (Rows=0) or (Cols=0) then Exit;
+
+    SetLength(RowHeights,Rows); SetLength(ColWidths,Cols);
+    SetLength(ColMin,Cols); SetLength(ColMax,Cols);
+    for I := 0 to Cols-1 do begin ColMin[I] := 0; ColMax[I] := 0 end;
+    TableWidth := Max(1,Options.Width-Options.Borders.Left-Options.Borders.Right);
+    if (WidthPercent>0) and (WidthPercent<100) then
+      TableWidth := Max(1,TableWidth*WidthPercent div 100);
+    Dec(TableWidth,Spacing*(Cols+1));
+    TableWidth := Max(Cols,TableWidth);
+
+    for I := 0 to High(Cells) do
+    begin
+      CellWidths(I,W,H);
+      ColMax[Cells[I].Col] := Max(ColMax[Cells[I].Col],W+Cells[I].Pad*2);
+      ColMin[Cells[I].Col] := Max(ColMin[Cells[I].Col],H+Cells[I].Pad*2);
+    end;
+    for I := 0 to Cols-1 do
+    begin
+      if ColMax[I]=0 then ColMax[I] := DefaultPad*2+12;
+      ColMin[I] := Min(ColMin[I],ColMax[I]);
+    end;
+
+    Total := 0; for I := 0 to Cols-1 do Inc(Total,ColMax[I]);
+    if FixedLayout then
+      for I := 0 to Cols-1 do ColWidths[I] := Max(1,TableWidth div Cols)
+    else if FillWidth and (Total<TableWidth) then
+    begin
+      { a table told to fill the width shares the slack out by how much
+        wider each column would like to be }
+      Extra := TableWidth-Total; Want := 0;
+      for I := 0 to Cols-1 do Inc(Want,ColMax[I]);
+      for I := 0 to Cols-1 do
+        ColWidths[I] := ColMax[I]+Extra*ColMax[I] div Max(1,Want);
+    end
+    else if Total<=TableWidth then
+      for I := 0 to Cols-1 do ColWidths[I] := ColMax[I]
+    else
+    begin
+      { too wide: every column keeps its longest word, and what is left over
+        is shared by how much wider each one still wants to be }
+      Total := 0; for I := 0 to Cols-1 do Inc(Total,ColMin[I]);
+      Extra := TableWidth-Total;
+      Want := 0; for I := 0 to Cols-1 do Inc(Want,ColMax[I]-ColMin[I]);
+      for I := 0 to Cols-1 do
+        if Extra<=0 then ColWidths[I] := ColMin[I]
+        else if Want<=0 then ColWidths[I] := ColMin[I]+Extra div Cols
+        else ColWidths[I] := ColMin[I]+Extra*(ColMax[I]-ColMin[I]) div Want;
+    end;
+    for I := 0 to Cols-1 do ColWidths[I] := Max(1,ColWidths[I]);
+
+    { how tall each row has to be, now that the columns are settled }
+    for I := 0 to Rows-1 do RowHeights[I] := 0;
+    for I := 0 to High(Cells) do
+    begin
+      H := LayCell(I,0,0,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),False);
+      RowHeights[Cells[I].Row] := Max(RowHeights[Cells[I].Row],H);
+    end;
+    for I := 0 to Rows-1 do
+      if RowHeights[I]=0 then RowHeights[I] := DefaultPad*2+Canvas.TextHeight('Tg');
+
+    { and now place them }
+    SX := Options.Borders.Left+Spacing; SY := Y+Spacing;
+    for I := 0 to High(Cells) do
+    begin
+      CellX := SX; for J := 0 to Cells[I].Col-1 do Inc(CellX,ColWidths[J]+Spacing);
+      CellY := SY; for J := 0 to Cells[I].Row-1 do Inc(CellY,RowHeights[J]+Spacing);
+      J := Length(FLayout.FRuns);
+      { the cell's box: its background and borders are painted from this }
+      R.Text := ''; R.Style := BaseStyle(Options);
+      R.Bounds := Rect(CellX,CellY,CellX+ColWidths[Cells[I].Col],
+        CellY+RowHeights[Cells[I].Row]);
       R.Line := Length(FLayout.FLines); R.Part := Cells[I].Row*1000+Cells[I].Col;
+      R.IsImage := False; R.ImageIndex := -1; R.Control := 8;
+      R.Meta := Cells[I].AttrText;
+      if Trim(R.Meta)='' then R.Meta := TableAttrs.Text;
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1);
       FLayout.FRuns[High(FLayout.FRuns)] := R;
+      LayCell(I,CellX,CellY,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),True);
+      AddLine(J,Length(FLayout.FRuns)-J,CellY,RowHeights[Cells[I].Row],
+        Cells[I].Row*1000+Cells[I].Col);
     end;
-    AddLine(FirstRun,Length(FLayout.FRuns)-FirstRun,Y,RowHeights[Cells[I].Row],Cells[I].Row*1000+Cells[I].Col);
-  end;
-  Y := SY; for I := 0 to Rows-1 do Inc(Y,RowHeights[I]+Spacing); X := SX+TableWidth; Inc(Line);
-  TableAttrs.Free; CellAttrs.Free;
-  except TableAttrs.Free; CellAttrs.Free; raise end;
+
+    Y := SY; for I := 0 to Rows-1 do Inc(Y,RowHeights[I]+Spacing);
+    W := Spacing; for I := 0 to Cols-1 do Inc(W,ColWidths[I]+Spacing);
+    X := Options.Borders.Left+W; Inc(Line);
+  finally TableAttrs.Free; CellAttrs.Free end;
 end;
 
 function TInkNextRenderer.Layout(const Canvas: TCanvas; const Options: TInkNextOptions): TInkNextLayout;
 var I,J,D,P,Line,First,Count,X,Y,MaxLineH,Avail,W,H: Integer; R: TInkNextRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer; C: Cardinal; L: TInkNextLine; OptionKey: Cardinal;
-  procedure FinishLine;
+  procedure FinishLine(Forced: Boolean = False);
   var K,Shift: Integer;
   begin
-    if Count=0 then Exit; L.Bounds:=Rect(0,Y,Avail,Y+MaxLineH); L.FirstRun:=First; L.RunCount:=Count; L.Align:=FLayout.FRuns[First].Style.Align; L.Part:=FLayout.FRuns[First].Part;
+    if Count=0 then
+    begin
+      { <p> asks for two breaks in a row; the second one is a blank line,
+        not nothing }
+      if Forced then Inc(Y,MaxLineH+InkNextScalePx(Options.LineSpacing,Options.Scale));
+      Exit;
+    end; L.Bounds:=Rect(0,Y,Avail,Y+MaxLineH); L.FirstRun:=First; L.RunCount:=Count; L.Align:=FLayout.FRuns[First].Style.Align; L.Part:=FLayout.FRuns[First].Part;
     if L.Align=naCenter then Shift:=(Avail-(X-Options.Borders.Left)) div 2 else if L.Align=naRight then Shift:=Avail-(X-Options.Borders.Left) else Shift:=0;
     for K:=First to First+Count-1 do begin Inc(FLayout.FRuns[K].Bounds.Left,Shift); Inc(FLayout.FRuns[K].Bounds.Right,Shift); FLayout.FRuns[K].Line:=Line end;
-    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+Options.LineSpacing); X:=Options.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=Canvas.TextHeight('Tg');
+    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkNextScalePx(Options.LineSpacing,Options.Scale)); X:=Options.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=Canvas.TextHeight('Tg');
   end;
 begin
   OptionKey:=HashOptions(Options);
@@ -768,12 +920,15 @@ begin
     R:=FStyled[I];
     if R.Control=7 then
     begin
+      { a rule stands clear of the text on both sides, as it does in a
+        browser and in the old engine }
       FinishLine;
+      Inc(Y,MaxLineH);
       R.Bounds:=Rect(Options.Borders.Left,Y,Options.Width-Options.Borders.Right,Y+1);
       R.Line:=Line; R.Part:=R.Part;
       First:=Length(FLayout.FRuns); SetLength(FLayout.FRuns,First+1);
       FLayout.FRuns[First]:=R; Count:=1; MaxLineH:=1; X:=Options.Width-Options.Borders.Right;
-      FinishLine; Inc(I); Continue;
+      FinishLine; Inc(Y,Canvas.TextHeight('Tg')); Inc(I); Continue;
     end;
     if R.Control=1 then
     begin
@@ -790,16 +945,16 @@ begin
     if R.Control<>0 then begin Inc(I); Continue end;
     if R.IsImage then
     begin
-      Sz:=Types.Size(16,16);
+      Sz:=Types.Size(InkNextScalePx(16,Options.Scale),InkNextScalePx(16,Options.Scale));
       if (Options.Images<>nil) and (R.ImageIndex>=0) and
         (R.ImageIndex<Options.Images.Count) then
-        Sz:=Types.Size(Options.Images.Width,Options.Images.Height);
+        Sz:=Types.Size(InkNextScalePx(Options.Images.Width,Options.Scale),InkNextScalePx(Options.Images.Height,Options.Scale));
       Text:=#1
     end else Text:=R.Text;
     P:=1;
     while P<=Length(Text) do
     begin
-      if Text[P]=#10 then begin Inc(P); FinishLine; Continue end;
+      if Text[P]=#10 then begin Inc(P); FinishLine(True); Continue end;
       Start:=P;
       if Text[P] in [' ',#9] then
         while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
@@ -807,8 +962,15 @@ begin
         while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
         begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
       Atom:=Copy(Text,Start,P-Start); R.Text:=Atom;
-      if Count=0 then X:=Options.Borders.Left+Round(R.Style.Indent*Options.Scale/100);
-      Sz:=MeasureRun(Canvas,R); W:=Sz.cx; if (Count>0) and (X+W>Options.Width-Options.Borders.Right) and (Atom[1]<>' ') and (Atom[1]<>#9) then FinishLine;
+      if Count=0 then
+      begin
+        if odReserved1 in Options.OwnerState then
+          X:=Options.Borders.Left+Round(R.Style.Indent*Options.Scale/100)
+        else X:=Options.Borders.Left+R.Style.Indent;
+      end;
+      Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
+      if (Count>0) and not Options.NoWrap and (X+W>Options.Width-Options.Borders.Right) and
+        (Atom[1]<>' ') and (Atom[1]<>#9) then FinishLine;
       if Count=0 then First:=Length(FLayout.FRuns);
       if R.Style.Script=nsSuper then R.Bounds:=Rect(X,Y-Sz.cy div 4,X+W,Y-Sz.cy div 4+Sz.cy)
       else if R.Style.Script=nsSub then R.Bounds:=Rect(X,Y+Sz.cy div 4,X+W,Y+Sz.cy div 4+Sz.cy)
@@ -819,7 +981,15 @@ begin
   end;
   FinishLine;
   W:=0;
-  for I:=0 to High(FLayout.FRuns) do W:=Max(W,FLayout.FRuns[I].Bounds.Right);
+  for I:=0 to High(FLayout.FRuns) do
+  begin
+    { the width of what is written: a trailing space is not part of it, and
+      a rule is as wide as the column by definition rather than by content }
+    if FLayout.FRuns[I].Control=7 then Continue;
+    if (FLayout.FRuns[I].Control=0) and not FLayout.FRuns[I].IsImage and
+      (Trim(FLayout.FRuns[I].Text)='') then Continue;
+    W:=Max(W,FLayout.FRuns[I].Bounds.Right);
+  end;
   H:=Y+Options.Borders.Bottom;
   if (Options.Height>H) and (Options.VertAlign<>nvaTop) then
   begin
@@ -831,13 +1001,16 @@ begin
   FLayout.FSize:=Types.Size(Max(0,W+Options.Borders.Right),H); Result:=FLayout;
 end;
 
-procedure TInkNextRenderer.Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkNextOptions);
+procedure TInkNextRenderer.Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkNextOptions;
+  AOffsetX: Integer = 0; AOffsetY: Integer = 0);
 var I,J,DX,DY: Integer; L: TInkNextLine; R: TInkNextRun; Clip: TRect; C,BG: TColor; DrawRect: TRect;
   BoxAttrs: TStringList; Sides: string; BorderColor: TColor; BorderOn: Boolean; Radius: Integer;
   OldFont: TFont; OldBrushStyle: TBrushStyle; OldBrushColor: TColor;
 begin
   Layout(Canvas,Options); Clip:=Bounds; IntersectRect(Clip,Clip,Canvas.ClipRect);
-  DX:=Bounds.Left; DY:=Bounds.Top;
+  { the offsets move the text inside Bounds; the clip does not move with it,
+    which is what makes them a scroll rather than a second layout }
+  DX:=Bounds.Left+AOffsetX; DY:=Bounds.Top+AOffsetY;
   OldFont:=TFont.Create; OldFont.Assign(Canvas.Font); OldBrushStyle:=Canvas.Brush.Style; OldBrushColor:=Canvas.Brush.Color; BoxAttrs:=TStringList.Create;
   try
     for I:=0 to High(FLayout.FLines) do begin L:=FLayout.FLines[I]; if (L.Bounds.Bottom+DY<Clip.Top) or (L.Bounds.Top+DY>Clip.Bottom) then Continue;
@@ -849,13 +1022,15 @@ begin
         begin
           BoxAttrs.Text:=R.Meta; BG:=InkNextColor(BoxAttrs.Values['bgcolor'],clNone);
           if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG; Canvas.FillRect(DrawRect) end;
+          { a table with nothing said about its borders gets the grid the
+            old engine draws; border="none" is how a page asks for none }
           BorderOn:=LowerCase(Trim(BoxAttrs.Values['border']))<>'none';
-          BorderOn:=BorderOn and ((BoxAttrs.Values['border']<>'') or (BoxAttrs.Values['bordercolor']<>''));
           if BorderOn then
           begin
-            BorderColor:=InkNextColor(BoxAttrs.Values['bordercolor'],clBlack); Canvas.Pen.Color:=BorderColor;
+            BorderColor:=InkNextColor(BoxAttrs.Values['bordercolor'],clBlack);
+            Canvas.Pen.Color:=BorderColor; Canvas.Pen.Width:=1;
             Sides:=LowerCase(BoxAttrs.Values['sides']); if Sides='' then Sides:='trbl';
-            Radius:=StrToIntDef(BoxAttrs.Values['radius'],0);
+            Radius:=InkNextScalePx(StrToIntDef(BoxAttrs.Values['radius'],0),Options.Scale);
             if (Radius>0) and (Sides='trbl') then Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,Radius,Radius)
             else begin
               if Pos('t',Sides)>0 then Canvas.Line(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Top);
@@ -887,12 +1062,15 @@ begin
   finally Canvas.Font.Assign(OldFont); Canvas.Brush.Style:=OldBrushStyle; Canvas.Brush.Color:=OldBrushColor; OldFont.Free; BoxAttrs.Free end;
 end;
 
-function TInkNextRenderer.HitTest(const Canvas: TCanvas; X, Y: Integer): TInkNextHit;
+function TInkNextRenderer.HitTest(const Canvas: TCanvas; X, Y: Integer;
+  AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkNextHit;
 var I,K,Lo,Hi,Mid: Integer; R: TInkNextRun; W: Integer; F: TFont; L: TInkNextLine;
 begin
   Result.OnLink := False; Result.LinkIndex := 0; Result.LinkName := '';
   Result.LinkText := ''; Result.RunIndex := -1; Result.CharacterOffset := 0;
-  if FLayout=nil then Exit; F:=TFont.Create; try
+  if FLayout=nil then Exit;
+  Dec(X,AOffsetX); Dec(Y,AOffsetY);
+  F:=TFont.Create; try
     for K:=0 to High(FLayout.FLines) do
     begin
       L:=FLayout.FLines[K];
