@@ -20,7 +20,7 @@ unit InkRenderNext;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, Types, Math;
+  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, Types, Math, InkRenderBox;
 
 function InkNextEscape(const Text: string): string;
 function InkNextUnescape(const Text: string): string;
@@ -61,6 +61,9 @@ type
     Text: string;
     Style: TInkNextStyle;
     Bounds: TRect;
+    { spec 2.2: a run hangs from a baseline rather than sitting on a top
+      edge.  Ascent is how far it reaches above that line, Descent below. }
+    Ascent, Descent, Baseline: Integer;
     Line: Integer;
     Part: Integer;
     IsImage: Boolean;
@@ -71,6 +74,7 @@ type
 
   TInkNextLine = record
     Bounds: TRect;
+    Baseline: Integer;
     FirstRun, RunCount: Integer;
     Align: TInkNextAlign;
     Part: Integer;
@@ -135,6 +139,9 @@ type
     FLayoutKey: Cardinal;
     FStyleKey: Cardinal;
     FMetricKeys, FMetricHeights: TStringList;
+    { the box tree the document is laid out through, and the options in use }
+    FRoot: TInkBox;
+    FOpt: TInkNextOptions;
     FWidthKeys, FWidthValues: TStringList;
     FNextLink: Integer;
     function HashSource(const S: string): Cardinal;
@@ -149,11 +156,27 @@ type
     procedure AddStyledText(const Text: string; const Style: TInkNextStyle;
       APart: Integer);
     function MeasureRun(const Canvas: TCanvas; const Run: TInkNextRun): TSize;
+    { the height of a run's line, and how it sits on its baseline }
+    function Metrics(const Canvas: TCanvas; const Run: TInkNextRun;
+      out AAscent, ADescent: Integer): Integer;
     function MetricHeight(const Canvas: TCanvas; const Run: TInkNextRun): Integer;
     function IsCJK(C: Cardinal): Boolean;
     function CodepointAt(const S: string; P: Integer; out Bytes: Integer): Cardinal;
+    { ALeft and AWidth say where the table goes and how much room it has;
+      left alone they are the page's column, and a table inside a cell
+      passes the cell's }
     procedure LayoutTable(const Canvas: TCanvas; const Options: TInkNextOptions;
-      AStart, AEnd: Integer; var X, Y, Line: Integer);
+      AStart, AEnd: Integer; var X, Y, Line: Integer;
+      ALeft: Integer = -1; AWidth: Integer = -1);
+    { spec 2.1: the tree the document is laid out through, and the three
+      ways a box of ours measures itself }
+    procedure BuildBoxTree;
+    function MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
+      AWidth, AY: Integer): Integer;
+    function MeasureRule(ABox: TInkBox; const Canvas: TCanvas;
+      AWidth, AY: Integer): Integer;
+    function MeasureTableBox(ABox: TInkBox; const Canvas: TCanvas;
+      AWidth, AY: Integer): Integer;
   public
     constructor Create;
     destructor Destroy; override;
@@ -628,23 +651,42 @@ end;
 
 function TInkNextRenderer.MetricHeight(const Canvas: TCanvas;
   const Run: TInkNextRun): Integer;
+var A,D: Integer;
+begin
+  Result := Metrics(Canvas,Run,A,D);
+end;
+
+function TInkNextRenderer.Metrics(const Canvas: TCanvas; const Run: TInkNextRun;
+  out AAscent, ADescent: Integer): Integer;
 var Key, V: string; N: Integer; Old: TFont;
 begin
   Key := Run.Style.Face + #1 + IntToStr(Run.Style.Size) + #1 +
     IntToStr(InkNextStyleBits(Run.Style.Styles)) + #1 + IntToStr(Integer(Run.Style.Script));
   N := FMetricKeys.IndexOf(Key);
-  if N >= 0 then Exit(StrToIntDef(FMetricHeights[N], Canvas.TextHeight('Tg')));
+  if N >= 0 then
+  begin
+    V := FMetricHeights[N];
+    Result := StrToIntDef(Copy(V,1,Pos(',',V)-1),Canvas.TextHeight('Tg'));
+    AAscent := StrToIntDef(Copy(V,Pos(',',V)+1,MaxInt),Max(1,Round(Result*0.78)));
+    ADescent := Max(0,Result-AAscent);
+    Exit;
+  end;
   Old := TFont.Create; Old.Assign(Canvas.Font);
   Canvas.Font.Name := Run.Style.Face; Canvas.Font.Size := Run.Style.Size;
   Canvas.Font.Style := Run.Style.Styles;
   if Run.Style.Script<>nsNormal then Canvas.Font.Size := Max(1,Round(Canvas.Font.Size*0.7));
-  V := IntToStr(Canvas.TextHeight('Tg'));
-  N:=FMetricKeys.Add(Key); FMetricHeights.Insert(N,V); Result := StrToInt(V);
+  Result := Canvas.TextHeight('Tg');
+  { the LCL gives a height, not a baseline; this is the one approximation,
+    and a platform text backend can replace it without moving any layout }
+  AAscent := Max(1,Round(Result*0.78)); ADescent := Max(0,Result-AAscent);
+  V := IntToStr(Result)+','+IntToStr(AAscent);
+  N := FMetricKeys.Add(Key); FMetricHeights.Insert(N,V);
   Canvas.Font.Assign(Old); Old.Free;
 end;
 
 procedure TInkNextRenderer.LayoutTable(const Canvas: TCanvas;
-  const Options: TInkNextOptions; AStart, AEnd: Integer; var X, Y, Line: Integer);
+  const Options: TInkNextOptions; AStart, AEnd: Integer; var X, Y, Line: Integer;
+  ALeft: Integer = -1; AWidth: Integer = -1);
 type
   TCell = record StartRun, EndRun, Row, Col, Pad: Integer; AttrText: string end;
 var
@@ -665,11 +707,25 @@ var
     FLayout.FLines[High(FLayout.FLines)] := L;
   end;
 
+  { how tall a table inside a cell comes out: laid out into a layout that
+    is then thrown away, so measuring costs nothing on screen }
+  function MeasureNested(const Canvas: TCanvas; AStart, AEnd, AWidth: Integer): Integer;
+  var Keep: TInkNextLayout; X2,Y2,L2: Integer;
+  begin
+    Keep := FLayout; FLayout := TInkNextLayout.Create;
+    try
+      X2 := 0; Y2 := 0; L2 := 0;
+      LayoutTable(Canvas,FOpt,AStart,AEnd,X2,Y2,L2,0,AWidth);
+      Result := Y2;
+    finally FLayout.Free; FLayout := Keep end;
+  end;
+
   { Lays one cell's runs out inside AWidth, wrapping the way body text does.
     With Emit off it only measures, which is how a row learns its height
     before anything is placed.  Returns the height the cell needs. }
   function LayCell(Index, AX, AY, AWidth: Integer; Emit: Boolean): Integer;
-  var RunIndex, CX, CY, LineH, RW, P, Start, Bytes, Pad: Integer;
+  var RunIndex, CX, CY, LineH, RW, P, Start, Bytes, Pad,
+    Inner, Depth, InnerX, InnerLine: Integer;
     Run: TInkNextRun; Sz: TSize; Text, Atom: string; C: Cardinal;
     Attrs: TStringList; BG, FG: TColor;
   begin
@@ -681,10 +737,37 @@ var
       FG := InkNextColor(Attrs.Values['color'], clNone);
     finally Attrs.Free end;
     CX := AX+Pad; CY := AY+Pad; LineH := 0;
-    for RunIndex := Cells[Index].StartRun to Cells[Index].EndRun do
+    RunIndex := Cells[Index].StartRun;
+    while RunIndex<=Cells[Index].EndRun do
     begin
-      if (RunIndex<0) or (RunIndex>=Length(FStyled)) or
-        (FStyled[RunIndex].Control<>0) then Continue;
+      if (RunIndex<0) or (RunIndex>=Length(FStyled)) then begin Inc(RunIndex); Continue end;
+      { a table inside a cell is this same operation again, in the width the
+        cell has - which is the whole point of laying out through a tree }
+      if FStyled[RunIndex].Control=1 then
+      begin
+        Inner := RunIndex+1; Depth := 1;
+        while (Inner<=Cells[Index].EndRun) and (Depth>0) do
+        begin
+          if FStyled[Inner].Control=1 then Inc(Depth)
+          else if FStyled[Inner].Control=6 then Dec(Depth);
+          if Depth>0 then Inc(Inner);
+        end;
+        if Inner<=Cells[Index].EndRun then
+        begin
+          if CX>AX+Pad then
+          begin
+            if LineH=0 then LineH := Canvas.TextHeight('Tg');
+            Inc(CY,LineH); CX := AX+Pad; LineH := 0;
+          end;
+          InnerX := AX+Pad; InnerLine := Length(FLayout.FLines);
+          if Emit then
+            LayoutTable(Canvas,FOpt,RunIndex,Inner,InnerX,CY,InnerLine,AX+Pad,AWidth)
+          else Inc(CY,MeasureNested(Canvas,RunIndex,Inner,AWidth));
+          LineH := 0;
+        end;
+        RunIndex := Inner+1; Continue;
+      end;
+      if FStyled[RunIndex].Control<>0 then begin Inc(RunIndex); Continue end;
       Run := FStyled[RunIndex];
       if BG<>clNone then Run.Style.BackColor := BG;
       if FG<>clNone then Run.Style.Color := FG;
@@ -728,6 +811,7 @@ var
         end;
         Inc(CX,RW); LineH := Max(LineH,MetricHeight(Canvas,Run));
       end;
+      Inc(RunIndex);
     end;
     if LineH=0 then LineH := Canvas.TextHeight('Tg');
     Result := (CY+LineH) - AY + Pad;
@@ -779,7 +863,22 @@ begin
 
     { the cells, as ranges into the styled runs - no tree is needed for this }
     Row := -1; Col := 0; Rows := 0; Cols := 0; InCell := False;
-    for I := AStart+1 to AEnd-1 do
+    I := AStart+1;
+    while I<=AEnd-1 do
+    begin
+      { a table inside a cell is that cell's business: step over it whole,
+        or its rows and cells would be counted as this table's }
+      if FStyled[I].Control=1 then
+      begin
+        J := I+1; Want := 1;
+        while (J<=AEnd-1) and (Want>0) do
+        begin
+          if FStyled[J].Control=1 then Inc(Want)
+          else if FStyled[J].Control=6 then Dec(Want);
+          if Want>0 then Inc(J);
+        end;
+        I := J+1; Continue;
+      end;
       case FStyled[I].Control of
         2: begin Inc(Row); Col := 0; Rows := Max(Rows,Row+1) end;
         3: if not InCell then
@@ -796,13 +895,17 @@ begin
            end;
         4: if InCell then begin Cells[CellIndex].EndRun := I-1; InCell := False; Inc(Col) end;
       end;
+      Inc(I);
+    end;
     if InCell then Cells[CellIndex].EndRun := AEnd-1;
     if (Rows=0) or (Cols=0) then Exit;
 
     SetLength(RowHeights,Rows); SetLength(ColWidths,Cols);
     SetLength(ColMin,Cols); SetLength(ColMax,Cols);
     for I := 0 to Cols-1 do begin ColMin[I] := 0; ColMax[I] := 0 end;
-    TableWidth := Max(1,Options.Width-Options.Borders.Left-Options.Borders.Right);
+    if ALeft<0 then ALeft := Options.Borders.Left;
+    if AWidth>0 then TableWidth := Max(1,AWidth)
+    else TableWidth := Max(1,Options.Width-Options.Borders.Left-Options.Borders.Right);
     if (WidthPercent>0) and (WidthPercent<100) then
       TableWidth := Max(1,TableWidth*WidthPercent div 100);
     Dec(TableWidth,Spacing*(Cols+1));
@@ -859,7 +962,7 @@ begin
       if RowHeights[I]=0 then RowHeights[I] := DefaultPad*2+Canvas.TextHeight('Tg');
 
     { and now place them }
-    SX := Options.Borders.Left+Spacing; SY := Y+Spacing;
+    SX := ALeft+Spacing; SY := Y+Spacing;
     for I := 0 to High(Cells) do
     begin
       CellX := SX; for J := 0 to Cells[I].Col-1 do Inc(CellX,ColWidths[J]+Spacing);
@@ -882,73 +985,75 @@ begin
 
     Y := SY; for I := 0 to Rows-1 do Inc(Y,RowHeights[I]+Spacing);
     W := Spacing; for I := 0 to Cols-1 do Inc(W,ColWidths[I]+Spacing);
-    X := Options.Borders.Left+W; Inc(Line);
+    X := ALeft+W; Inc(Line);
   finally TableAttrs.Free; CellAttrs.Free end;
 end;
 
-function TInkNextRenderer.Layout(const Canvas: TCanvas; const Options: TInkNextOptions): TInkNextLayout;
-var I,J,D,P,Line,First,Count,X,Y,MaxLineH,Avail,W,H: Integer; R: TInkNextRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer; C: Cardinal; L: TInkNextLine; OptionKey: Cardinal;
+function TInkNextRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
+  AWidth, AY: Integer): Integer;
+var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
+  R: TInkNextRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer;
+  C: Cardinal; L: TInkNextLine;
+  { every run on the line is placed so its baseline is at the same height:
+    the largest ascent on the line.  The line is that plus the largest
+    descent, which is what makes a heading and small text sit together. }
+  procedure AlignBaselines(First, Count: Integer; var ALineH: Integer;
+    out ABaseline: Integer);
+  var K, Asc, Desc, Shift, H: Integer;
+  begin
+    Asc := 0; Desc := 0;
+    for K := First to First+Count-1 do
+    begin
+      Asc := Max(Asc,FLayout.FRuns[K].Ascent);
+      Desc := Max(Desc,FLayout.FRuns[K].Descent);
+    end;
+    if Asc+Desc>ALineH then ALineH := Asc+Desc;
+    ABaseline := Y+Asc;
+    for K := First to First+Count-1 do
+    begin
+      Shift := 0;
+      { superscript and subscript are offsets from the line's baseline, and
+        they are measured against the line's own ascent so that small text
+        beside big text is lifted by the same amount the reader expects }
+      if FLayout.FRuns[K].Style.Script=nsSuper then Shift := -(Asc div 3)
+      else if FLayout.FRuns[K].Style.Script=nsSub then Shift := Desc;
+      H := FLayout.FRuns[K].Bounds.Bottom-FLayout.FRuns[K].Bounds.Top;
+      FLayout.FRuns[K].Baseline := ABaseline+Shift;
+      FLayout.FRuns[K].Bounds.Top := ABaseline+Shift-FLayout.FRuns[K].Ascent;
+      FLayout.FRuns[K].Bounds.Bottom := FLayout.FRuns[K].Bounds.Top+H;
+    end;
+  end;
   procedure FinishLine(Forced: Boolean = False);
-  var K,Shift: Integer;
+  var K,Shift,Base: Integer;
   begin
     if Count=0 then
     begin
       { <p> asks for two breaks in a row; the second one is a blank line,
         not nothing }
-      if Forced then Inc(Y,MaxLineH+InkNextScalePx(Options.LineSpacing,Options.Scale));
+      if Forced then Inc(Y,MaxLineH+InkNextScalePx(FOpt.LineSpacing,FOpt.Scale));
       Exit;
-    end; L.Bounds:=Rect(0,Y,Avail,Y+MaxLineH); L.FirstRun:=First; L.RunCount:=Count; L.Align:=FLayout.FRuns[First].Style.Align; L.Part:=FLayout.FRuns[First].Part;
-    if L.Align=naCenter then Shift:=(Avail-(X-Options.Borders.Left)) div 2 else if L.Align=naRight then Shift:=Avail-(X-Options.Borders.Left) else Shift:=0;
+    end;
+    AlignBaselines(First,Count,MaxLineH,Base); L.Baseline := Base; L.Bounds:=Rect(0,Y,Avail,Y+MaxLineH); L.FirstRun:=First; L.RunCount:=Count; L.Align:=FLayout.FRuns[First].Style.Align; L.Part:=FLayout.FRuns[First].Part;
+    if L.Align=naCenter then Shift:=(Avail-(X-FOpt.Borders.Left)) div 2 else if L.Align=naRight then Shift:=Avail-(X-FOpt.Borders.Left) else Shift:=0;
     for K:=First to First+Count-1 do begin Inc(FLayout.FRuns[K].Bounds.Left,Shift); Inc(FLayout.FRuns[K].Bounds.Right,Shift); FLayout.FRuns[K].Line:=Line end;
-    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkNextScalePx(Options.LineSpacing,Options.Scale)); X:=Options.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=Canvas.TextHeight('Tg');
+    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkNextScalePx(FOpt.LineSpacing,FOpt.Scale)); X:=FOpt.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=Canvas.TextHeight('Tg');
   end;
 begin
-  OptionKey:=HashOptions(Options);
-  FLayoutKey := FSourceHash xor OptionKey xor Cardinal(Options.Width);
-  if (FLayout.SourceHash=FLayoutKey) and (FLayout.Width=Options.Width) and
-    (FLayout.FScale=Options.Scale) then Exit(FLayout);
-  if FStyleKey<>OptionKey then
-  begin
-    BuildStyles(Options);
-    FStyleKey := OptionKey;
-  end;
-  FLayout.Clear; FLayout.FSourceHash:=FLayoutKey; FLayout.FWidth:=Options.Width; FLayout.FScale:=Options.Scale;
-  Avail:=Options.Width-Options.Borders.Left-Options.Borders.Right; if Avail<1 then Avail:=1; X:=Options.Borders.Left; Y:=Options.Borders.Top; First:=0; Count:=0; Line:=0; MaxLineH:=Canvas.TextHeight('Tg');
-  I := 0;
-  while I <= High(FStyled) do
+  { the inline pass, over the runs this box covers and no further }
+  Avail:=AWidth; if Avail<1 then Avail:=1;
+  X:=FOpt.Borders.Left; Y:=AY; First:=Length(FLayout.FRuns); Count:=0;
+  Line:=Length(FLayout.FLines); MaxLineH:=Canvas.TextHeight('Tg');
+  I := ABox.Tag;
+  while (I<=ABox.TagEnd) and (I<=High(FStyled)) do
   begin
     R:=FStyled[I];
-    if R.Control=7 then
-    begin
-      { a rule stands clear of the text on both sides, as it does in a
-        browser and in the old engine }
-      FinishLine;
-      Inc(Y,MaxLineH);
-      R.Bounds:=Rect(Options.Borders.Left,Y,Options.Width-Options.Borders.Right,Y+1);
-      R.Line:=Line; R.Part:=R.Part;
-      First:=Length(FLayout.FRuns); SetLength(FLayout.FRuns,First+1);
-      FLayout.FRuns[First]:=R; Count:=1; MaxLineH:=1; X:=Options.Width-Options.Borders.Right;
-      FinishLine; Inc(Y,Canvas.TextHeight('Tg')); Inc(I); Continue;
-    end;
-    if R.Control=1 then
-    begin
-      J := I+1; D := 1;
-      while (J<=High(FStyled)) and (D>0) do
-      begin
-        if FStyled[J].Control=1 then Inc(D)
-        else if FStyled[J].Control=6 then Dec(D);
-        if D>0 then Inc(J);
-      end;
-      if J<=High(FStyled) then LayoutTable(Canvas,Options,I,J,X,Y,Line);
-      I := J+1; Continue;
-    end;
     if R.Control<>0 then begin Inc(I); Continue end;
     if R.IsImage then
     begin
-      Sz:=Types.Size(InkNextScalePx(16,Options.Scale),InkNextScalePx(16,Options.Scale));
-      if (Options.Images<>nil) and (R.ImageIndex>=0) and
-        (R.ImageIndex<Options.Images.Count) then
-        Sz:=Types.Size(InkNextScalePx(Options.Images.Width,Options.Scale),InkNextScalePx(Options.Images.Height,Options.Scale));
+      Sz:=Types.Size(InkNextScalePx(16,FOpt.Scale),InkNextScalePx(16,FOpt.Scale));
+      if (FOpt.Images<>nil) and (R.ImageIndex>=0) and
+        (R.ImageIndex<FOpt.Images.Count) then
+        Sz:=Types.Size(InkNextScalePx(FOpt.Images.Width,FOpt.Scale),InkNextScalePx(FOpt.Images.Height,FOpt.Scale));
       Text:=#1
     end else Text:=R.Text;
     P:=1;
@@ -964,22 +1069,119 @@ begin
       Atom:=Copy(Text,Start,P-Start); R.Text:=Atom;
       if Count=0 then
       begin
-        if odReserved1 in Options.OwnerState then
-          X:=Options.Borders.Left+Round(R.Style.Indent*Options.Scale/100)
-        else X:=Options.Borders.Left+R.Style.Indent;
+        if odReserved1 in FOpt.OwnerState then
+          X:=FOpt.Borders.Left+Round(R.Style.Indent*FOpt.Scale/100)
+        else X:=FOpt.Borders.Left+R.Style.Indent;
       end;
       Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
-      if (Count>0) and not Options.NoWrap and (X+W>Options.Width-Options.Borders.Right) and
+      if (Count>0) and not FOpt.NoWrap and (X+W>FOpt.Width-FOpt.Borders.Right) and
         (Atom[1]<>' ') and (Atom[1]<>#9) then FinishLine;
       if Count=0 then First:=Length(FLayout.FRuns);
-      if R.Style.Script=nsSuper then R.Bounds:=Rect(X,Y-Sz.cy div 4,X+W,Y-Sz.cy div 4+Sz.cy)
-      else if R.Style.Script=nsSub then R.Bounds:=Rect(X,Y+Sz.cy div 4,X+W,Y+Sz.cy div 4+Sz.cy)
-      else R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
-      SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W); MaxLineH:=Max(MaxLineH,MetricHeight(Canvas,R));
+      Metrics(Canvas,R,RunAsc,RunDesc); R.Ascent:=RunAsc; R.Descent:=RunDesc;
+      { a provisional place; AlignBaselines settles it when the line ends }
+      R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
+      SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W); MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
     end;
     Inc(I);
   end;
   FinishLine;
+  Result:=Y-AY;
+end;
+
+function TInkNextRenderer.MeasureRule(ABox: TInkBox; const Canvas: TCanvas;
+  AWidth, AY: Integer): Integer;
+var R: TInkNextRun; L: TInkNextLine; Gap,First: Integer;
+begin
+  { a rule stands clear of the text on both sides, as it does in a browser
+    and in the old engine }
+  R:=FStyled[ABox.Tag]; Gap:=Canvas.TextHeight('Tg');
+  R.Bounds:=Rect(FOpt.Borders.Left,AY+Gap,FOpt.Borders.Left+AWidth,AY+Gap+1);
+  R.Line:=Length(FLayout.FLines); R.Ascent:=1; R.Descent:=0; R.Baseline:=AY+Gap;
+  First:=Length(FLayout.FRuns);
+  SetLength(FLayout.FRuns,First+1); FLayout.FRuns[First]:=R;
+  L.Bounds:=Rect(0,AY+Gap,AWidth,AY+Gap+1); L.Baseline:=AY+Gap;
+  L.FirstRun:=First; L.RunCount:=1; L.Align:=naLeft; L.Part:=R.Part;
+  SetLength(FLayout.FLines,Length(FLayout.FLines)+1);
+  FLayout.FLines[High(FLayout.FLines)]:=L;
+  Result:=Gap*2+1;
+end;
+
+function TInkNextRenderer.MeasureTableBox(ABox: TInkBox; const Canvas: TCanvas;
+  AWidth, AY: Integer): Integer;
+var X,Y,Line: Integer;
+begin
+  X:=FOpt.Borders.Left; Y:=AY; Line:=Length(FLayout.FLines);
+  LayoutTable(Canvas,FOpt,ABox.Tag,ABox.TagEnd,X,Y,Line);
+  Result:=Y-AY;
+end;
+
+procedure TInkNextRenderer.BuildBoxTree;
+var I,J,D,SegStart: Integer; Box: TInkBox;
+  procedure CloseSegment(Last: Integer);
+  begin
+    if (SegStart<0) or (Last<SegStart) then begin SegStart:=-1; Exit end;
+    Box:=FRoot.AddChild(ibInline); Box.Tag:=SegStart; Box.TagEnd:=Last;
+    Box.OnMeasure:=@MeasureInline; SegStart:=-1;
+  end;
+begin
+  { spec 2.1: the document is a tree, and laying it out is one operation on
+    a box which calls itself on the children.  The root is a block, a
+    stretch of text is an inline box, and a table is a box that measures
+    its cells inside the columns it settles on. }
+  FreeAndNil(FRoot);
+  FRoot:=TInkBox.Create(ibBlock);
+  SegStart:=-1; I:=0;
+  while I<=High(FStyled) do
+  begin
+    if FStyled[I].Control=7 then
+    begin
+      CloseSegment(I-1);
+      Box:=FRoot.AddChild(ibRule); Box.Tag:=I; Box.TagEnd:=I;
+      Box.OnMeasure:=@MeasureRule; Inc(I); Continue;
+    end;
+    if FStyled[I].Control=1 then
+    begin
+      CloseSegment(I-1);
+      J:=I+1; D:=1;
+      while (J<=High(FStyled)) and (D>0) do
+      begin
+        if FStyled[J].Control=1 then Inc(D)
+        else if FStyled[J].Control=6 then Dec(D);
+        if D>0 then Inc(J);
+      end;
+      if J<=High(FStyled) then
+      begin
+        Box:=FRoot.AddChild(ibTable); Box.Tag:=I; Box.TagEnd:=J;
+        Box.OnMeasure:=@MeasureTableBox;
+      end;
+      I:=J+1; Continue;
+    end;
+    if SegStart<0 then SegStart:=I;
+    Inc(I);
+  end;
+  CloseSegment(High(FStyled));
+end;
+
+function TInkNextRenderer.Layout(const Canvas: TCanvas; const Options: TInkNextOptions): TInkNextLayout;
+var I,P,W,H,Avail,Y: Integer; OptionKey: Cardinal;
+begin
+  OptionKey := HashOptions(Options);
+  FLayoutKey := FSourceHash xor OptionKey xor Cardinal(Options.Width);
+  if (FLayout.SourceHash=FLayoutKey) and (FLayout.Width=Options.Width) and
+    (FLayout.FScale=Options.Scale) then Exit(FLayout);
+  if FStyleKey<>OptionKey then
+  begin
+    BuildStyles(Options);
+    FStyleKey := OptionKey;
+  end;
+  FOpt := Options;
+  FLayout.Clear; FLayout.FSourceHash:=FLayoutKey; FLayout.FWidth:=Options.Width;
+  FLayout.FScale:=Options.Scale;
+  Avail:=Options.Width-Options.Borders.Left-Options.Borders.Right;
+  if Avail<1 then Avail:=1;
+  BuildBoxTree;
+  { one call, and the tree lays itself out }
+  Y := Options.Borders.Top+FRoot.Measure(Canvas,Avail,Options.Borders.Top);
   W:=0;
   for I:=0 to High(FLayout.FRuns) do
   begin
@@ -990,15 +1192,15 @@ begin
       (Trim(FLayout.FRuns[I].Text)='') then Continue;
     W:=Max(W,FLayout.FRuns[I].Bounds.Right);
   end;
-  H:=Y+Options.Borders.Bottom;
-  if (Options.Height>H) and (Options.VertAlign<>nvaTop) then
+  H:=Y+FOpt.Borders.Bottom;
+  if (FOpt.Height>H) and (FOpt.VertAlign<>nvaTop) then
   begin
-    if Options.VertAlign=nvaCenter then P:=(Options.Height-H) div 2
-    else P:=Options.Height-H;
+    if FOpt.VertAlign=nvaCenter then P:=(FOpt.Height-H) div 2
+    else P:=FOpt.Height-H;
     for I:=0 to High(FLayout.FRuns) do begin Inc(FLayout.FRuns[I].Bounds.Top,P); Inc(FLayout.FRuns[I].Bounds.Bottom,P) end;
     for I:=0 to High(FLayout.FLines) do begin Inc(FLayout.FLines[I].Bounds.Top,P); Inc(FLayout.FLines[I].Bounds.Bottom,P) end;
   end;
-  FLayout.FSize:=Types.Size(Max(0,W+Options.Borders.Right),H); Result:=FLayout;
+  FLayout.FSize:=Types.Size(Max(0,W+FOpt.Borders.Right),H); Result:=FLayout;
 end;
 
 procedure TInkNextRenderer.Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkNextOptions;
@@ -1047,6 +1249,10 @@ begin
           Options.OnRun(R);
         end;
         Canvas.Font.Name:=R.Style.Face; Canvas.Font.Size:=R.Style.Size; Canvas.Font.Style:=R.Style.Styles;
+        { a superscript is drawn as small as it was measured; its place on
+          the line was settled from its baseline }
+        if R.Style.Script<>nsNormal then
+          Canvas.Font.Size:=Max(1,Round(R.Style.Size*0.7));
         C:=R.Style.Color; BG:=R.Style.BackColor;
         if R.Style.LinkIndex>0 then begin C:=Options.LinkColor; if Options.LinkUnderline then Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline]; if R.Style.LinkIndex=Options.HoverIndex then begin C:=Options.HoverColor; BG:=Options.HoverBackColor; if Options.HoverUnderline then Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline] end end;
         if odSelected in Options.OwnerState then begin C:=clHighlightText; BG:=clHighlight end
