@@ -1,4 +1,4 @@
-{ LazInk Markdown converter.  SPDX-License-Identifier: MIT
+{ LazInk Markdown converter.  SPDX-License-Identifier: 0BSD
 
   Markdown is read in one place, here, and turned into HTML.
   MarkdownToHTML writes real block elements - headings, paragraphs, lists,

@@ -1,4 +1,4 @@
-{ InkCode - the small code highlighter LazInk draws code blocks with. MIT.
+{ InkCode - the small code highlighter LazInk draws code blocks with. 0BSD.
 
   Not a highlighter in the SynEdit sense and not meant to become one: it
   colors the four things that make a block read as code - comments, strings,

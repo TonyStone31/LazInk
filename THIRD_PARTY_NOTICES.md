@@ -13,7 +13,8 @@ components have been developed as LazInk's own since.
 
 **The JVCL-derived renderer was removed on 18 September 2026.**  LazInk draws
 with its own engine now - `inkrender.pas`, `inkbox.pas`, `inkdraw.pas` - and
-no third-party code remains in the package, so the whole of it is MIT.  This
+no third-party code remains in the package, so the whole of it is 0BSD -
+no conditions at all.  This
 file keeps the history and the credit, which do not depend on the license:
 JVCL and wp's example are what got LazInk started, and that stays true now
 that none of their code is here.

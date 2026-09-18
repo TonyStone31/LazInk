@@ -1,4 +1,4 @@
-{ Canvas-drawn vertical scrollbar for LazInk. SPDX-License-Identifier: MIT }
+{ Canvas-drawn vertical scrollbar for LazInk. SPDX-License-Identifier: 0BSD }
 unit InkScrollBar;
 {$mode objfpc}{$H+}
 interface

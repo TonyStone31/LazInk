@@ -1,5 +1,5 @@
 { The right-click copy menu LazInk's display controls share.
-  SPDX-License-Identifier: MIT
+  SPDX-License-Identifier: 0BSD
 
   Text drawn on a canvas cannot be selected by the platform, so each
   display control offers its words through this menu instead: Copy (what

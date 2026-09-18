@@ -167,7 +167,7 @@ type
       passes the cell's }
     procedure LayoutTable(const Canvas: TCanvas; const Options: TInkRenderOptions;
       AStart, AEnd: Integer; var X, Y, Line: Integer;
-      ALeft: Integer = -1; AWidth: Integer = -1);
+      ALeft: Integer = -1; AWidth: Integer = -1; ABox: TInkBox = nil);
     { spec 2.1: the tree the document is laid out through, and the three
       ways a box of ours measures itself }
     procedure BuildBoxTree;
@@ -762,7 +762,7 @@ end;
 
 procedure TInkRenderer.LayoutTable(const Canvas: TCanvas;
   const Options: TInkRenderOptions; AStart, AEnd: Integer; var X, Y, Line: Integer;
-  ALeft: Integer = -1; AWidth: Integer = -1);
+  ALeft: Integer = -1; AWidth: Integer = -1; ABox: TInkBox = nil);
 type
   TCell = record StartRun, EndRun, Row, Col, Pad: Integer; AttrText: string end;
 var
@@ -770,8 +770,10 @@ var
   I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing, DefaultPad,
     SX, SY, W, H, Want, Extra, Total, CellX, CellY: Integer;
   RowHeights, ColWidths, ColMin, ColMax: array of Integer;
-  R: TInkRenderRun; L: TInkRenderLine;
-  InCell, FixedLayout, FillWidth: Boolean; TableAttrs, CellAttrs: TStringList;
+  R: TInkRenderRun; L: TInkRenderLine; Box: TInkBox; St: TInkBoxStyle;
+  Drop, MI: Integer; VA: string;
+  InCell, FixedLayout, FillWidth: Boolean;
+  TableAttrs, CellAttrs, Merge: TStringList;
   WidthText: string; WidthPercent: Integer;
 
   procedure AddLine(First, Count, Top, Height, Part: Integer);
@@ -924,6 +926,7 @@ var
 
 begin
   SetLength(Cells,0); TableAttrs := TStringList.Create; CellAttrs := TStringList.Create;
+  Merge := TStringList.Create;
   try
     TableAttrs.Text := FStyled[AStart].Meta;
     FixedLayout := LowerCase(TableAttrs.Values['layout'])='fixed';
@@ -1044,24 +1047,75 @@ begin
     for I := 0 to Rows-1 do
       if RowHeights[I]=0 then RowHeights[I] := DefaultPad*2+Canvas.TextHeight('Tg');
 
-    { and now place them }
+    { and now place them, each as a box of its own }
     SX := ALeft+Spacing; SY := Y+Spacing;
     for I := 0 to High(Cells) do
     begin
       CellX := SX; for J := 0 to Cells[I].Col-1 do Inc(CellX,ColWidths[J]+Spacing);
       CellY := SY; for J := 0 to Cells[I].Row-1 do Inc(CellY,RowHeights[J]+Spacing);
       J := Length(FLayout.FRuns);
-      { the cell's box: its background and borders are painted from this }
+      { the cell's box, with the style it carries: its padding, its colors,
+        its borders and how round its corners are.  Two cells in a row can
+        differ in every one of them, which is the point. }
+      { the cell's own attributes over the table's: a cell that says only
+        bgcolor still takes the table's border color, as a cell inherits in
+        a browser }
+      CellAttrs.Text := TableAttrs.Text;
+      Merge.Text := Cells[I].AttrText;
+      { MI, not J: J is holding this cell's first run }
+      for MI := 0 to Merge.Count-1 do
+        if Merge.Names[MI]<>'' then
+          CellAttrs.Values[Merge.Names[MI]] := Merge.ValueFromIndex[MI];
+      { cellbg is the table's word for "what a cell's background is unless
+        the cell says otherwise" }
+      if (CellAttrs.Values['bgcolor']='') and (CellAttrs.Values['cellbg']<>'') then
+        CellAttrs.Values['bgcolor'] := CellAttrs.Values['cellbg'];
+      if ABox<>nil then
+      begin
+        Box := ABox.AddChild(ibCell);
+        Box.Tag := Cells[I].StartRun; Box.TagEnd := Cells[I].EndRun;
+        Box.Meta := CellAttrs.Text;
+        St := Box.Style;
+        St.Padding := Rect(Cells[I].Pad,Cells[I].Pad,Cells[I].Pad,Cells[I].Pad);
+        St.BackColor := InkRenderColor(CellAttrs.Values['bgcolor'],clNone);
+        St.Color := InkRenderColor(CellAttrs.Values['color'],clNone);
+        if LowerCase(Trim(CellAttrs.Values['border']))='none' then
+          St.BorderColor := clNone
+        else
+          St.BorderColor := InkRenderColor(CellAttrs.Values['bordercolor'],clBlack);
+        St.Sides := LowerCase(CellAttrs.Values['sides']);
+        if St.Sides='' then St.Sides := 'trbl';
+        St.Radius := InkRenderScalePx(StrToIntDef(CellAttrs.Values['radius'],0),Options.Scale);
+        St.Content := ibTop;
+        VA := LowerCase(Trim(CellAttrs.Values['valign']));
+        if VA='middle' then St.Content := ibMiddle
+        else if VA='bottom' then St.Content := ibBottom;
+        Box.Style := St;
+        Box.FBoundsForCell(Rect(CellX,CellY,CellX+ColWidths[Cells[I].Col],
+          CellY+RowHeights[Cells[I].Row]));
+      end;
+      { the run the cell is painted from, filled in from that same style }
       R.Text := ''; R.Style := BaseStyle(Options);
       R.Bounds := Rect(CellX,CellY,CellX+ColWidths[Cells[I].Col],
         CellY+RowHeights[Cells[I].Row]);
       R.Line := Length(FLayout.FLines); R.Part := Cells[I].Row*1000+Cells[I].Col;
       R.IsImage := False; R.ImageIndex := -1; R.Control := 8;
-      R.Meta := Cells[I].AttrText;
-      if Trim(R.Meta)='' then R.Meta := TableAttrs.Text;
+      R.Meta := CellAttrs.Text;
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1);
       FLayout.FRuns[High(FLayout.FRuns)] := R;
-      LayCell(I,CellX,CellY,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),True);
+      { how far down the cell its words start, when it is taller than they
+        are and it says they should sit low }
+      Drop := 0;
+      if ABox<>nil then
+      begin
+        H := LayCell(I,0,0,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),False);
+        case Box.Style.Content of
+          ibMiddle: Drop := Max(0,(RowHeights[Cells[I].Row]-H) div 2);
+          ibBottom: Drop := Max(0,RowHeights[Cells[I].Row]-H);
+        else Drop := 0;   { the top, which is where a cell starts by default }
+        end;
+      end;
+      LayCell(I,CellX,CellY+Drop,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),True);
       AddLine(J,Length(FLayout.FRuns)-J,CellY,RowHeights[Cells[I].Row],
         Cells[I].Row*1000+Cells[I].Col);
     end;
@@ -1069,7 +1123,7 @@ begin
     Y := SY; for I := 0 to Rows-1 do Inc(Y,RowHeights[I]+Spacing);
     W := Spacing; for I := 0 to Cols-1 do Inc(W,ColWidths[I]+Spacing);
     X := ALeft+W; Inc(Line);
-  finally TableAttrs.Free; CellAttrs.Free end;
+  finally TableAttrs.Free; CellAttrs.Free; Merge.Free end;
 end;
 
 function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
@@ -1194,7 +1248,7 @@ function TInkRenderer.MeasureTableBox(ABox: TInkBox; const Canvas: TCanvas;
 var X,Y,Line: Integer;
 begin
   X:=FOpt.Borders.Left; Y:=AY; Line:=Length(FLayout.FLines);
-  LayoutTable(Canvas,FOpt,ABox.Tag,ABox.TagEnd,X,Y,Line);
+  LayoutTable(Canvas,FOpt,ABox.Tag,ABox.TagEnd,X,Y,Line,-1,AWidth,ABox);
   Result:=Y-AY;
 end;
 
@@ -1306,18 +1360,31 @@ begin
         if R.Control=8 then
         begin
           BoxAttrs.Text:=R.Meta; BG:=InkRenderColor(BoxAttrs.Values['bgcolor'],clNone);
-          if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG; Canvas.FillRect(DrawRect) end;
-          { a table with nothing said about its borders gets the grid the
-            old engine draws; border="none" is how a page asks for none }
+          { a table with nothing said about its borders gets a grid;
+            border="none" is how a page asks for none }
           BorderOn:=LowerCase(Trim(BoxAttrs.Values['border']))<>'none';
+          Sides:=LowerCase(BoxAttrs.Values['sides']); if Sides='' then Sides:='trbl';
+          Radius:=InkRenderScalePx(StrToIntDef(BoxAttrs.Values['radius'],0),Options.Scale);
+          BorderColor:=InkRenderColor(BoxAttrs.Values['bordercolor'],clBlack);
+          if (Radius>0) and (Sides='trbl') then
+          begin
+            { a rounded box is filled and outlined in one go: a square fill
+              behind it would show in the corners the round cuts off }
+            if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG end
+            else Canvas.Brush.Style:=bsClear;
+            if BorderOn then Canvas.Pen.Color:=BorderColor
+            else if BG<>clNone then Canvas.Pen.Color:=BG
+            else Canvas.Pen.Style:=psClear;
+            Canvas.Pen.Width:=1;
+            Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,Radius,Radius);
+            Canvas.Pen.Style:=psSolid;
+            Continue;
+          end;
+          if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG; Canvas.FillRect(DrawRect) end;
           if BorderOn then
           begin
-            BorderColor:=InkRenderColor(BoxAttrs.Values['bordercolor'],clBlack);
             Canvas.Pen.Color:=BorderColor; Canvas.Pen.Width:=1;
-            Sides:=LowerCase(BoxAttrs.Values['sides']); if Sides='' then Sides:='trbl';
-            Radius:=InkRenderScalePx(StrToIntDef(BoxAttrs.Values['radius'],0),Options.Scale);
-            if (Radius>0) and (Sides='trbl') then Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,Radius,Radius)
-            else begin
+            begin
               if Pos('t',Sides)>0 then Canvas.Line(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Top);
               if Pos('r',Sides)>0 then Canvas.Line(DrawRect.Right,DrawRect.Top,DrawRect.Right,DrawRect.Bottom);
               if Pos('b',Sides)>0 then Canvas.Line(DrawRect.Left,DrawRect.Bottom,DrawRect.Right,DrawRect.Bottom);
