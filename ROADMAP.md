@@ -721,6 +721,17 @@ help pages already use and LazInk currently drops (see
     Whichever way: **GIF stays**.  It is what pages in the wild use, and
     anything that reads WebP must keep reading GIF beside it.
 
+    Watch, not yet use: `Xelitan/AVIF-and-HEIC-for-Delphi-Lazarus-in-pure-
+    Pascal` (17 September 2026) does HEIC and AVIF stills in Pascal - a port
+    of libbpg for the HEVC side, an AV1 intra decoder for the other, checked
+    bit-exact against dav1d.  It is no use for this item: AVIF is AV1 and
+    WebP is VP8, so it shares nothing with the job, and the AV1 side is
+    still-frame only, so no animation.  It is a day old, LGPL against our
+    MIT, and every unit builds with range and overflow checks off.  What it
+    is worth is the proof that a codec ports to Pascal and can be held
+    bit-exact against the reference - which is how a WebP decoder should be
+    built and shown correct.  Look again when it has tests and users.
+
 Not wanted: JavaScript, forms, video, web fonts, positioning, animations,
 media queries beyond maybe one width breakpoint.
 
