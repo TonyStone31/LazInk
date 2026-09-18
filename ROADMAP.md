@@ -687,6 +687,39 @@ help pages already use and LazInk currently drops (see
 16. **Speed** - lay a page out once per width and cache it; paint only
     what is on screen; re-lay out only what changed.  Use the 38-page
     Heckers Sketch manual as the benchmark and keep a timing for it.
+17. **Animated WebP, beside PNG and GIF.**  A page that teaches a tool is
+    mostly pictures of it moving, and GIF is a 1987 format: 256 colours a
+    frame and next to no compression between frames.  Measured on one of
+    Heckers Sketch's own recordings, 17 September 2026:
+
+    | Format | Size |
+    |---|---|
+    | GIF, as shipped | 1,221 KB |
+    | GIF, tuned (8 fps, 64 colours) | 848 KB |
+    | Animated WebP, q55 | 452 KB |
+    | WebM (VP9) / MP4 | ~100 KB |
+
+    Its manual is about 13 MB, nearly all animations, and the program
+    downloads that as a zip - so the format is worth real money to it.
+    Video is out (see "not wanted" below): a document renderer with a media
+    framework behind it is a different program.  WebP is the one that fits:
+    still pictures and animations, a third of GIF's size, and every browser
+    already reads it, so the same file serves the website and the program.
+
+    Two ways to get it, and the choice matters more than the feature:
+
+    * **libwebp**, bound at run time.  Small job, well-tested decoder - and
+      a shared library to find.  On Linux it is usually there; on Windows it
+      is a DLL beside the exe, which breaks the one-file promise Heckers
+      Sketch makes, unless it is linked in statically.  A host that cannot
+      find it must fall back to the GIF rather than show a hole.
+    * **A decoder in Pascal.**  No dependency at all and it fits the
+      package's grain, but WebP is VP8 intra-frame coding: a real piece of
+      work, and a slow one to get right.  Lossless WebP alone is a smaller
+      job than lossy, and would cover screenshots better than animations.
+
+    Whichever way: **GIF stays**.  It is what pages in the wild use, and
+    anything that reads WebP must keep reading GIF beside it.
 
 Not wanted: JavaScript, forms, video, web fonts, positioning, animations,
 media queries beyond maybe one width breakpoint.
