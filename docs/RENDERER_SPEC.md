@@ -434,3 +434,135 @@ What is still open, with what each would cost:
    every remaining file (ROADMAP section 4, step 3), and change the license.
 5. Keep `docs/RENDERER_CHANGES.md` as the record of the old engine, and keep
    crediting JVCL, wp and the forum thread as where LazInk started.
+
+---
+
+## 10. The prototype, and what it still has to do
+
+`inkrendernext.pas` (0BSD, not in `lazink.lpk`, no dependency on `InkHtml`)
+is a from-scratch prototype of the engine this document describes.  It is
+built the way section 2 asks: tokenize, style, lay out into kept line boxes,
+paint from them.
+
+**Dry run, 18 September 2026** - both engines drawing the same markup side by
+side, and a benchmark on 67 KB of markup.  Reproduce it with
+`tools/renderer_dryrun.pas` (it writes a comparison PNG and prints the
+numbers; it builds against the working tree and is not part of the package).
+
+What already matches, within a pixel:
+
+| Sample | Old | Prototype |
+|---|---|---|
+| inline markup and wrapping | 428 x 56 | 430 x 55 |
+| `<center>` / `<right>` / `<left>` | 430 x 69 | 430 x 68 |
+| a long unbreakable word | 428 x 35 | 430 x 34 |
+| CJK text | 354 x 18 | 430 x 17 |
+
+Bold, italic, underline, strike, `<font>` color and size, links and their
+underline, where the lines break, entity handling (including `&amp;lt;`
+staying literal text, so the `#1` marker convention is not needed), and hit
+testing - the link is found with the right href and ordinal.
+
+Speed, on 67 KB of markup (about 6,800 pixels tall, 14,400 runs):
+
+| | Old | Prototype |
+|---|---|---|
+| first layout | 77 ms | **68 ms** |
+| 30 paints from the kept layout | 849 ms | **73 ms** |
+| re-layout at a new width | 74 ms | **62 ms** |
+
+That paint number is the whole reason for the design: **11 times faster**,
+because painting reads a layout instead of parsing and measuring again.
+
+### The checklist
+
+Ranked by how much stands behind each one.  This is the work between the
+prototype and a replacement:
+
+- [ ] **Tables.**  The largest item by far, and Heckers Sketch's index lives
+      on it.  None of section 3.3 is implemented: no `width`, `layout`,
+      `cellspacing`, `cellpadding`, `cellbg`, `bordercolor`, `border`,
+      `sides` or `radius`; no per-cell `bgcolor`, `color`, `radius` or
+      `sides`; no borders drawn; no column-width algorithm (longest word
+      first, then share what is left by how much wider each column wants to
+      be); and cell content came out in the wrong order in the card sample.
+- [ ] **Superscript and subscript.**  Measured at 0.7 size, but `Paint` does
+      not apply the smaller size or the raise and lower, so `H<sub>2</sub>O`
+      draws flat.
+- [ ] **`<hr>`.**  Tokenized as `ntRule`, turned into a tab, never drawn.
+- [ ] **`<p>`.**  Must be two breaks - a blank line - and dropped when it is
+      the first thing in the string.  It is one break today.
+- [ ] **Extents must report content width**, not the whole available width.
+      `TInkLabel`, `TInkMemo` and `TInkListBox` size themselves from this; a
+      label that always answers the full width is a label that fills its
+      form.
+- [ ] **A paint origin.**  `Paint` ignores the destination rectangle's
+      origin and draws at layout coordinates, so the only way to move the
+      text is `Borders` - which is part of the layout cache key, so
+      scrolling re-lays out every frame (1,925 ms instead of 73 ms for 30
+      paints).  Decide this early: an origin argument at paint time, and
+      `Borders` out of the key.
+- [ ] **`LinkText`** in the hit result is always empty; it must be the words
+      between `<a>` and `</a>`.
+- [ ] **`<ind=N>`.**  The prototype reads `<ind n="20">`; the markup the
+      document layer emits is `<ind=20>`.  And `Indent` is stored but never
+      used in layout.
+- [ ] **Images.**  Runs are a hard-coded 16 x 16 instead of the image list's
+      size; and see section 11 for what a picture will have to be.
+- [ ] **`TOwnerDrawState`.**  No notion of `odSelected`, `odDisabled` or
+      `odReserved1` - see section 4; the list box needs all three.
+- [ ] **Selection.**  No equivalent of `OnRun` / `RunPart` yet.  The public
+      `RunAt` / `LineAt` on the layout is a better shape for it than a
+      callback, but `TInkCustomPage.PrepareRuns` has to be rewritten onto
+      whichever it becomes.
+- [ ] **The utility half of the API** (section 4): `HTMLPlainText`,
+      `HTMLEscape` / `HTMLUnescape`, `HTMLStringToColor`, `HTMLShadeColor`,
+      `HTMLContrastColor`, a public `IsCJK`, a `HTMLWordWrap` equivalent,
+      and the options builders.  Mechanical, but 30-odd call sites depend on
+      them.
+- [ ] **Move `TInkBorders` and `TInkLinkStyle`** out of the MPL unit first,
+      as section 4 says - they are published properties on MIT controls.
+
+Nothing found in the dry run says the design is wrong.  The opposite: the
+parts that are hardest to get right generically - wrapping, CJK, alignment,
+link ordinals, caching - already agree with the old engine, and the paint
+number vindicates keeping the layout.
+
+---
+
+## 11. Room to leave for what comes later
+
+Not work for the first version.  They are here because each one is cheap to
+allow for now and expensive to retrofit.
+
+* **Pictures are boxes with a source of frames.**  Today an image run is an
+  image-list index of a fixed size.  A page's pictures are files - PNG, GIF
+  and, if ROADMAP item 17 happens, **animated WebP** - with a real size, a
+  current frame, and a clock.  Give an image run a size the caller sets and
+  a frame the caller can change between paints, and animation stays entirely
+  outside the engine, where `TInkGIF` already is.  The format question (a
+  Pascal decoder against binding libwebp, and the rule that GIF stays
+  whichever way it goes) is settled in ROADMAP section 4, item 17 - the
+  engine only has to not care which decoder filled the bitmap.
+* **A picture that is not inline.**  Blocks place their own pictures today
+  (`TInkCustomPage` does the layout), but `float: left` with text wrapping
+  round it is the one layout feature documents really ask for.  The line
+  box list makes it possible - a line needs to know its available width
+  varies down the page - so do not assume one width per layout.
+* **`colspan` and `rowspan`**, column widths from `width`, `<thead>` and
+  zebra striping (ROADMAP section 4, item 8).  The old engine cannot do
+  them; a table design that starts from a grid of cells rather than a list
+  of rows can.
+* **Code blocks that scroll sideways** rather than clipping, and real tab
+  stops - the open questions in section 8.  Both want a block that can be
+  wider than the column and clipped to it, which is a property of the line
+  box, not of the text.
+* **Selection painting.**  The controls draw the selection themselves from
+  run rectangles today.  If the engine ever paints it, it needs the
+  selection range as an input, not a second pass over the canvas.
+* **Hi-DPI.**  `Scale` is in the options and in the cache key already; keep
+  every measurement going through it rather than reading `Font.Size`
+  directly, and this stays a one-line concern.
+* **Not wanted, still:** JavaScript, forms, video, web fonts, positioning,
+  animations beyond a picture's own frames, and printing.  A document
+  renderer with a media framework behind it is a different program.
