@@ -6,7 +6,7 @@
   drawing, so it looks identical on every LCL widgetset (win32, gtk2, gtk3,
   qt, cocoa).
 
-  License: component code MIT; the renderer unit InkHtml is derived
+  License: component code MIT; the renderer unit InkDraw is derived
   from the JVCL project (MPL 1.1) — see that unit's header.
 }
 unit InkLabel;
@@ -17,7 +17,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, ImgList, LCLType, LCLIntf, Types,
-  Menus, InkHtml, InkMarkdown, InkCopyMenu;
+  Menus, InkDraw, InkMarkdown, InkCopyMenu;
 
 type
   TInkLinkEvent = procedure(Sender: TObject; const LinkName: string) of object;

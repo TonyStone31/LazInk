@@ -187,6 +187,12 @@ type
       scrolling is: one layout, a hundred offsets. }
     procedure Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkRenderOptions;
       AOffsetX: Integer = 0; AOffsetY: Integer = 0);
+    { Tells Options.OnRun about every run of text in the kept layout, in the
+      coordinates a paint at these offsets would have used.  This is how a
+      control learns where the words are without drawing them - measuring
+      must not depend on there being a clip, or a canvas at all. }
+    procedure ReportRuns(const Options: TInkRenderOptions;
+      AOffsetX: Integer = 0; AOffsetY: Integer = 0);
     { X and Y in the coordinates Paint was given, offsets included }
     function HitTest(const Canvas: TCanvas; X, Y: Integer;
       AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkRenderHit;
@@ -210,7 +216,29 @@ begin
     if TryStrToInt('$'+Hex, N) then Exit(RGBToColor((N shr 16) and $ff,
       (N shr 8) and $ff, N and $ff));
   end;
-  Result := StringToColorDef(S, Default);
+  { the names a page writes, which are not the LCL's clXxx spellings }
+  if V='white' then Exit(clWhite);
+  if (V='black') then Exit(clBlack);
+  if (V='gray') or (V='grey') then Exit(clGray);
+  if V='silver' then Exit(RGBToColor($C0,$C0,$C0));
+  if V='red' then Exit(clRed);
+  if V='maroon' then Exit(clMaroon);
+  if V='lime' then Exit(clLime);
+  if V='green' then Exit(clGreen);
+  if V='blue' then Exit(clBlue);
+  if V='navy' then Exit(clNavy);
+  if V='yellow' then Exit(clYellow);
+  if V='olive' then Exit(clOlive);
+  if (V='aqua') or (V='cyan') then Exit(clAqua);
+  if V='teal' then Exit(clTeal);
+  if (V='fuchsia') or (V='magenta') then Exit(clFuchsia);
+  if V='purple' then Exit(clPurple);
+  if V='orange' then Exit(RGBToColor($FF,$A5,$00));
+  if V='gold' then Exit(RGBToColor($FF,$D7,$00));
+  if V='pink' then Exit(RGBToColor($FF,$C0,$CB));
+  if V='brown' then Exit(RGBToColor($A5,$2A,$2A));
+  { and the LCL's own, so clWindowText and friends still work }
+  Result := StringToColorDef(S, StringToColorDef('cl'+S, Default));
 end;
 
 function InkRenderEscape(const Text: string): string;
@@ -998,6 +1026,13 @@ begin
         else ColWidths[I] := ColMin[I]+Extra*(ColMax[I]-ColMin[I]) div Want;
     end;
     for I := 0 to Cols-1 do ColWidths[I] := Max(1,ColWidths[I]);
+    { a table never reaches past the room it was given: when even the
+      longest words will not fit, the columns share what there is and a word
+      may stick out of its cell, which is what a browser does too }
+    Total := 0; for I := 0 to Cols-1 do Inc(Total,ColWidths[I]);
+    if Total>TableWidth then
+      for I := 0 to Cols-1 do
+        ColWidths[I] := Max(1,ColWidths[I]*TableWidth div Total);
 
     { how tall each row has to be, now that the columns are settled }
     for I := 0 to Rows-1 do RowHeights[I] := 0;
@@ -1314,6 +1349,22 @@ begin
       end;
     end;
   finally Canvas.Font.Assign(OldFont); Canvas.Brush.Style:=OldBrushStyle; Canvas.Brush.Color:=OldBrushColor; OldFont.Free; BoxAttrs.Free end;
+end;
+
+procedure TInkRenderer.ReportRuns(const Options: TInkRenderOptions;
+  AOffsetX: Integer = 0; AOffsetY: Integer = 0);
+var I: Integer; R: TInkRenderRun;
+begin
+  if not Assigned(Options.OnRun) or (FLayout=nil) then Exit;
+  for I := 0 to High(FLayout.FRuns) do
+  begin
+    R := FLayout.FRuns[I];
+    if R.Control<>0 then Continue;
+    R.Bounds := Rect(R.Bounds.Left+AOffsetX,R.Bounds.Top+AOffsetY,
+      R.Bounds.Right+AOffsetX,R.Bounds.Bottom+AOffsetY);
+    R.Part := Options.RunPart;
+    Options.OnRun(R);
+  end;
 end;
 
 function TInkRenderer.HitTest(const Canvas: TCanvas; X, Y: Integer;

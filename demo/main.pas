@@ -27,7 +27,7 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, StdCtrls,
   ComCtrls, Buttons, ImgList, LCLIntf, LCLType,
-  InkLabel, InkEdit, InkMemo, InkListBox, InkRichEdit, InkHtml, InkMarkdown, InkPage;
+  InkLabel, InkEdit, InkMemo, InkListBox, InkRichEdit, InkDraw, InkMarkdown, InkPage;
 
 type
 

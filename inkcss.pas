@@ -67,7 +67,7 @@ function CSSColor(const S: string; Fallback: TColor): TColor;
 function CSSPixels(const S: string; Fallback: Integer): Integer;
 
 implementation
-uses InkHtml, Math;
+uses InkDraw, Math;
 
 function TInkRule.Applies(AWidth: Integer): Boolean;
 begin

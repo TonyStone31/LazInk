@@ -251,7 +251,7 @@ function SameInkAttr(const A, B: TInkAttr): Boolean;
 implementation
 
 uses
-  InkHtml, InkTouch;
+  InkDraw, InkTouch;
 
 const
   cMargin = 3;

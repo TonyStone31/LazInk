@@ -11,11 +11,19 @@ helped extract it into a standalone unit with an owner-drawn list box
 example.  Tony's demo built on that example is where LazInk was born; the
 components have been developed as LazInk's own since.
 
-The JVCL-derived renderer described below is still in the package.  The
-intention (see `ROADMAP.md`, section 4) is to replace it with a renderer
-written for LazInk, so the package can be released with essentially no
-conditions.  When that is done, this file will keep the history and the
-credit: JVCL and wp's example are what got LazInk started.
+**The JVCL-derived renderer was removed on 18 September 2026.**  LazInk draws
+with its own engine now - `inkrender.pas`, `inkbox.pas`, `inkdraw.pas` - and
+no third-party code remains in the package, so the whole of it is MIT.  This
+file keeps the history and the credit, which do not depend on the license:
+JVCL and wp's example are what got LazInk started, and that stays true now
+that none of their code is here.
+
+Before the old files were deleted, the new engine was compared against them
+token by token.  The longest thing the two had in common was 21 tokens of LCL
+boilerplate - setting a brush before a FillRect, adding `fsUnderline` to a
+font, clamping to 0..255 before `RGBToColor`.  No shared function or type
+names, and none of JVCL's idioms.  `docs/RENDERER_CHANGES.md` remains as the
+record of what the old renderer was and what was done to it.
 
 ## Ideas, not code
 

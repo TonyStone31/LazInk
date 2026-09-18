@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkHtml, InkMarkdown, InkCSS, InkCode, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Everything about a clicked link. }
@@ -2836,7 +2836,7 @@ begin
   FRunBlock := B;
   try
     { the same layout the block is drawn with, measured instead of painted }
-    HTMLDrawTextEx3(Canvas,B.TextBounds,[],B.Wrapped,O,htmlHyperLink,-1,-1,W,H,Hit);
+    HTMLMeasureAndHit(Canvas,B.TextBounds,B.Wrapped,O,-1,-1,W,H,Hit);
   finally FRunBlock := nil end;
   SetLength(B.Runs,B.RunCount);
   { every run on a line is as tall as the line }
