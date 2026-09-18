@@ -1,4 +1,4 @@
-{ LazInk renderer prototype.
+{ InkRender - LazInk's own renderer.
 
   This unit is an isolated, from-scratch experiment for the renderer described
   in docs/RENDERER_SPEC.md.  It intentionally has no dependency on InkHtml,
@@ -13,53 +13,53 @@
   remeasures the source.  This is prototype plumbing, not a compatibility
   wrapper for the existing renderer.
 }
-unit InkRenderNext;
+unit InkRender;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, Types, Math, InkRenderBox;
+  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, Types, Math, InkBox;
 
-function InkNextEscape(const Text: string): string;
-function InkNextUnescape(const Text: string): string;
-function InkNextPlainText(const Markup: string): string;
-function InkNextColor(const S: string; Default: TColor = clBlack): TColor;
-function InkNextContrastColor(Background: TColor): TColor;
-function InkNextShadeColor(Color: TColor; Percent: Integer): TColor;
-function InkNextIsCJK(const Text: string): Boolean;
-function InkNextScalePx(Value, Scale: Integer): Integer;
+function InkRenderEscape(const Text: string): string;
+function InkRenderUnescape(const Text: string): string;
+function InkRenderPlainText(const Markup: string): string;
+function InkRenderColor(const S: string; Default: TColor = clBlack): TColor;
+function InkRenderContrastColor(Background: TColor): TColor;
+function InkRenderShadeColor(Color: TColor; Percent: Integer): TColor;
+function InkRenderIsCJK(const Text: string): Boolean;
+function InkRenderScalePx(Value, Scale: Integer): Integer;
 
 type
-  TInkNextTokenKind = (ntText, ntOpen, ntClose, ntBreak, ntRule);
-  TInkNextAlign = (naLeft, naCenter, naRight);
-  TInkNextVertAlign = (nvaTop, nvaCenter, nvaBottom);
-  TInkNextScript = (nsNormal, nsSuper, nsSub);
+  TInkRenderTokenKind = (ntText, ntOpen, ntClose, ntBreak, ntRule);
+  TInkRenderAlign = (naLeft, naCenter, naRight);
+  TInkRenderVertAlign = (nvaTop, nvaCenter, nvaBottom);
+  TInkRenderScript = (nsNormal, nsSuper, nsSub);
 
-  TInkNextToken = record
-    Kind: TInkNextTokenKind;
+  TInkRenderToken = record
+    Kind: TInkRenderTokenKind;
     Name: string;
     Value: string;
     Attributes: TStringList;
     SelfClosing: Boolean;
   end;
 
-  TInkNextStyle = record
+  TInkRenderStyle = record
     Face: string;
     Size: Integer;
     Color, BackColor: TColor;
     Styles: TFontStyles;
-    Script: TInkNextScript;
+    Script: TInkRenderScript;
     LinkIndex: Integer;
     LinkName: string;
-    Align: TInkNextAlign;
+    Align: TInkRenderAlign;
     Indent: Integer;
   end;
 
-  TInkNextRun = record
+  TInkRenderRun = record
     Text: string;
-    Style: TInkNextStyle;
+    Style: TInkRenderStyle;
     Bounds: TRect;
     { spec 2.2: a run hangs from a baseline rather than sitting on a top
       edge.  Ascent is how far it reaches above that line, Descent below. }
@@ -72,15 +72,15 @@ type
     Meta: string; { serialized attributes on structural runs }
   end;
 
-  TInkNextLine = record
+  TInkRenderLine = record
     Bounds: TRect;
     Baseline: Integer;
     FirstRun, RunCount: Integer;
-    Align: TInkNextAlign;
+    Align: TInkRenderAlign;
     Part: Integer;
   end;
 
-  TInkNextHit = record
+  TInkRenderHit = record
     OnLink: Boolean;
     LinkIndex: Integer;
     LinkName, LinkText: string;
@@ -88,14 +88,14 @@ type
     CharacterOffset: Integer;
   end;
 
-  TInkNextRunEvent = procedure(const Run: TInkNextRun) of object;
+  TInkRenderRunEvent = procedure(const Run: TInkRenderRun) of object;
 
-  TInkNextOptions = record
+  TInkRenderOptions = record
     BaseFont: TFont;
     Images: TCustomImageList;
     Width: Integer;
     Height: Integer;
-    VertAlign: TInkNextVertAlign;
+    VertAlign: TInkRenderVertAlign;
     Scale: Integer;
     LineSpacing: Integer;
     Borders: TRect;
@@ -108,14 +108,14 @@ type
     { code: the text is laid out as it was written and cut off at the edge
       rather than wrapped }
     NoWrap: Boolean;
-    OnRun: TInkNextRunEvent;
+    OnRun: TInkRenderRunEvent;
     RunPart: Integer;
   end;
 
-  TInkNextLayout = class
+  TInkRenderLayout = class
   private
-    FRuns: array of TInkNextRun;
-    FLines: array of TInkNextLine;
+    FRuns: array of TInkRenderRun;
+    FLines: array of TInkRenderLine;
     FSize: TSize;
     FSourceHash: Cardinal;
     FWidth, FScale: Integer;
@@ -123,49 +123,49 @@ type
     procedure Clear;
     function RunCount: Integer;
     function LineCount: Integer;
-    function RunAt(Index: Integer): TInkNextRun;
-    function LineAt(Index: Integer): TInkNextLine;
+    function RunAt(Index: Integer): TInkRenderRun;
+    function LineAt(Index: Integer): TInkRenderLine;
     property Size: TSize read FSize;
     property SourceHash: Cardinal read FSourceHash;
     property Width: Integer read FWidth;
   end;
 
-  TInkNextRenderer = class
+  TInkRenderer = class
   private
-    FTokens: array of TInkNextToken;
-    FStyled: array of TInkNextRun;
-    FLayout: TInkNextLayout;
+    FTokens: array of TInkRenderToken;
+    FStyled: array of TInkRenderRun;
+    FLayout: TInkRenderLayout;
     FSourceHash: Cardinal;
     FLayoutKey: Cardinal;
     FStyleKey: Cardinal;
     FMetricKeys, FMetricHeights: TStringList;
     { the box tree the document is laid out through, and the options in use }
     FRoot: TInkBox;
-    FOpt: TInkNextOptions;
+    FOpt: TInkRenderOptions;
     FWidthKeys, FWidthValues: TStringList;
     FNextLink: Integer;
     function HashSource(const S: string): Cardinal;
-    function HashOptions(const Options: TInkNextOptions): Cardinal;
+    function HashOptions(const Options: TInkRenderOptions): Cardinal;
     function IsKnownTag(const N: string): Boolean;
     function IsStyleTag(const N: string): Boolean;
-    function BaseStyle(const Options: TInkNextOptions): TInkNextStyle;
-    function StyleFor(const Stack: array of TInkNextStyle): TInkNextStyle;
-    procedure AddToken(AKind: TInkNextTokenKind; const Name, Value: string;
+    function BaseStyle(const Options: TInkRenderOptions): TInkRenderStyle;
+    function StyleFor(const Stack: array of TInkRenderStyle): TInkRenderStyle;
+    procedure AddToken(AKind: TInkRenderTokenKind; const Name, Value: string;
       ASelfClosing: Boolean; const Attrs: TStringList);
-    procedure BuildStyles(const Options: TInkNextOptions);
-    procedure AddStyledText(const Text: string; const Style: TInkNextStyle;
+    procedure BuildStyles(const Options: TInkRenderOptions);
+    procedure AddStyledText(const Text: string; const Style: TInkRenderStyle;
       APart: Integer);
-    function MeasureRun(const Canvas: TCanvas; const Run: TInkNextRun): TSize;
+    function MeasureRun(const Canvas: TCanvas; const Run: TInkRenderRun): TSize;
     { the height of a run's line, and how it sits on its baseline }
-    function Metrics(const Canvas: TCanvas; const Run: TInkNextRun;
+    function Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
       out AAscent, ADescent: Integer): Integer;
-    function MetricHeight(const Canvas: TCanvas; const Run: TInkNextRun): Integer;
+    function MetricHeight(const Canvas: TCanvas; const Run: TInkRenderRun): Integer;
     function IsCJK(C: Cardinal): Boolean;
     function CodepointAt(const S: string; P: Integer; out Bytes: Integer): Cardinal;
     { ALeft and AWidth say where the table goes and how much room it has;
       left alone they are the page's column, and a table inside a cell
       passes the cell's }
-    procedure LayoutTable(const Canvas: TCanvas; const Options: TInkNextOptions;
+    procedure LayoutTable(const Canvas: TCanvas; const Options: TInkRenderOptions;
       AStart, AEnd: Integer; var X, Y, Line: Integer;
       ALeft: Integer = -1; AWidth: Integer = -1);
     { spec 2.1: the tree the document is laid out through, and the three
@@ -181,16 +181,16 @@ type
     constructor Create;
     destructor Destroy; override;
     procedure Tokenize(const Source: string);
-    function Layout(const Canvas: TCanvas; const Options: TInkNextOptions): TInkNextLayout;
+    function Layout(const Canvas: TCanvas; const Options: TInkRenderOptions): TInkRenderLayout;
     { Paints the kept layout into Bounds.  AOffsetX and AOffsetY move the
       text inside it without laying anything out again - which is what
       scrolling is: one layout, a hundred offsets. }
-    procedure Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkNextOptions;
+    procedure Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkRenderOptions;
       AOffsetX: Integer = 0; AOffsetY: Integer = 0);
     { X and Y in the coordinates Paint was given, offsets included }
     function HitTest(const Canvas: TCanvas; X, Y: Integer;
-      AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkNextHit;
-    property CachedLayout: TInkNextLayout read FLayout;
+      AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkRenderHit;
+    property CachedLayout: TInkRenderLayout read FLayout;
   end;
 
 implementation
@@ -198,7 +198,7 @@ implementation
 function Lower(const S: string): string;
 begin Result := LowerCase(Trim(S)) end;
 
-function InkNextColor(const S: string; Default: TColor): TColor;
+function InkRenderColor(const S: string; Default: TColor): TColor;
 var V, Hex: string; N: LongInt;
 begin
   V := Lower(S);
@@ -213,21 +213,56 @@ begin
   Result := StringToColorDef(S, Default);
 end;
 
-function InkNextEscape(const Text: string): string;
+function InkRenderEscape(const Text: string): string;
+var P, Start: Integer;
 begin
-  Result:=StringReplace(Text,'&','&amp;',[rfReplaceAll]);
-  Result:=StringReplace(Result,'<','&lt;',[rfReplaceAll]);
-  Result:=StringReplace(Result,'>','&gt;',[rfReplaceAll]);
+  { one pass: copy the runs between the three characters that are markup,
+    and write their names where they were }
+  Result := ''; P := 1; Start := 1;
+  while P <= Length(Text) do
+  begin
+    if Text[P] in ['&','<','>'] then
+    begin
+      if P > Start then Result := Result + Copy(Text,Start,P-Start);
+      case Text[P] of
+        '&': Result := Result + '&amp;';
+        '<': Result := Result + '&lt;';
+        '>': Result := Result + '&gt;';
+      end;
+      Start := P+1;
+    end;
+    Inc(P);
+  end;
+  if P > Start then Result := Result + Copy(Text,Start,P-Start);
 end;
 
-function InkNextUnescape(const Text: string): string;
+function InkRenderUnescape(const Text: string): string;
+var P, Q: Integer; Name: string;
 begin
-  Result:=StringReplace(Text,'&lt;','<',[rfReplaceAll,rfIgnoreCase]);
-  Result:=StringReplace(Result,'&gt;','>',[rfReplaceAll,rfIgnoreCase]);
-  Result:=StringReplace(Result,'&amp;','&',[rfReplaceAll,rfIgnoreCase]);
+  { one pass, reading each &name; where it stands: an ampersand that came
+    from &amp; is therefore never read a second time }
+  Result := ''; P := 1;
+  while P <= Length(Text) do
+  begin
+    if Text[P] <> '&' then begin Result := Result+Text[P]; Inc(P); Continue end;
+    Q := P+1;
+    while (Q <= Length(Text)) and (Q-P <= 8) and (Text[Q] <> ';') do Inc(Q);
+    if (Q > Length(Text)) or (Text[Q] <> ';') then
+    begin
+      Result := Result+Text[P]; Inc(P); Continue;
+    end;
+    Name := LowerCase(Copy(Text,P+1,Q-P-1));
+    if Name = 'lt' then Result := Result+'<'
+    else if Name = 'gt' then Result := Result+'>'
+    else if Name = 'amp' then Result := Result+'&'
+    else if Name = 'quot' then Result := Result+'"'
+    else if Name = 'apos' then Result := Result+''''
+    else Result := Result+Copy(Text,P,Q-P+1);
+    P := Q+1;
+  end;
 end;
 
-function InkNextPlainText(const Markup: string): string;
+function InkRenderPlainText(const Markup: string): string;
 var P,Q,S: Integer; Raw,Name: string; Closing: Boolean;
 begin
   Result:=''; P:=1;
@@ -252,10 +287,10 @@ begin
       (Closing and ((Name='tr') or (Name='p'))) then Result:=Result+LineEnding;
     P:=Q+1;
   end;
-  Result:=InkNextUnescape(Result);
+  Result:=InkRenderUnescape(Result);
 end;
 
-function InkNextContrastColor(Background: TColor): TColor;
+function InkRenderContrastColor(Background: TColor): TColor;
 var R,G,B: Byte; L: Integer;
 begin
   R:=Red(ColorToRGB(Background)); G:=Green(ColorToRGB(Background)); B:=Blue(ColorToRGB(Background));
@@ -263,7 +298,7 @@ begin
   if L<128 then Result:=clWhite else Result:=clBlack;
 end;
 
-function InkNextShadeColor(Color: TColor; Percent: Integer): TColor;
+function InkRenderShadeColor(Color: TColor; Percent: Integer): TColor;
 var R,G,B: Integer;
 begin
   R:=Red(ColorToRGB(Color)); G:=Green(ColorToRGB(Color)); B:=Blue(ColorToRGB(Color));
@@ -273,7 +308,7 @@ begin
   Result:=RGBToColor(R,G,B);
 end;
 
-function InkNextIsCJK(const Text: string): Boolean;
+function InkRenderIsCJK(const Text: string): Boolean;
 var U: Cardinal;
 begin
   if Text='' then Exit(False);
@@ -282,16 +317,16 @@ begin
     ((U>=$F900) and (U<=$FAFF)) or ((U>=$20000) and (U<=$2FA1F));
 end;
 
-function InkNextScalePx(Value, Scale: Integer): Integer;
+function InkRenderScalePx(Value, Scale: Integer): Integer;
 begin
   if Scale<=0 then Scale:=100;
   Result:=Max(0,Round(Value*Scale/100));
 end;
 
-function InkNextAttr(const Attrs: TStringList; const Name: string): string;
+function InkRenderAttr(const Attrs: TStringList; const Name: string): string;
 begin Result := Attrs.Values[Lower(Name)] end;
 
-function InkNextStyleBits(const Styles: TFontStyles): Integer;
+function InkRenderStyleBits(const Styles: TFontStyles): Integer;
 begin
   Result := 0;
   if fsBold in Styles then Inc(Result, 1);
@@ -300,7 +335,7 @@ begin
   if fsStrikeOut in Styles then Inc(Result, 8);
 end;
 
-function InkNextDecodeText(const S: string): string;
+function InkRenderDecodeText(const S: string): string;
 var I: Integer; T: string;
 begin
   { The document layer owns full entity handling. These three escapes are
@@ -321,45 +356,45 @@ begin
   end;
 end;
 
-function InkNextText(const S: string): string;
+function InkRenderText(const S: string): string;
 var I: Integer;
 begin
-  Result := InkNextDecodeText(S);
+  Result := InkRenderDecodeText(S);
   I := 1;
   while I <= Length(Result) do
     if Result[I] in [#10, #13] then Delete(Result, I, 1) else Inc(I);
 end;
 
-procedure TInkNextLayout.Clear;
+procedure TInkRenderLayout.Clear;
 begin
   SetLength(FRuns, 0); SetLength(FLines, 0); FSize := Types.Size(0, 0);
   FSourceHash := 0; FWidth := -1; FScale := 100;
 end;
 
-function TInkNextLayout.RunCount: Integer;
+function TInkRenderLayout.RunCount: Integer;
 begin Result := Length(FRuns) end;
 
-function TInkNextLayout.LineCount: Integer;
+function TInkRenderLayout.LineCount: Integer;
 begin Result := Length(FLines) end;
 
-function TInkNextLayout.RunAt(Index: Integer): TInkNextRun;
+function TInkRenderLayout.RunAt(Index: Integer): TInkRenderRun;
 begin
   if (Index < 0) or (Index >= Length(FRuns)) then
     raise ERangeError.CreateFmt('Run index %d is outside the layout', [Index]);
   Result := FRuns[Index];
 end;
 
-function TInkNextLayout.LineAt(Index: Integer): TInkNextLine;
+function TInkRenderLayout.LineAt(Index: Integer): TInkRenderLine;
 begin
   if (Index < 0) or (Index >= Length(FLines)) then
     raise ERangeError.CreateFmt('Line index %d is outside the layout', [Index]);
   Result := FLines[Index];
 end;
 
-constructor TInkNextRenderer.Create;
+constructor TInkRenderer.Create;
 begin
   inherited Create;
-  FLayout := TInkNextLayout.Create;
+  FLayout := TInkRenderLayout.Create;
   FMetricKeys := TStringList.Create;
   FMetricHeights := TStringList.Create;
   FWidthKeys := TStringList.Create;
@@ -370,7 +405,7 @@ begin
   FWidthValues.CaseSensitive:=True;
 end;
 
-destructor TInkNextRenderer.Destroy;
+destructor TInkRenderer.Destroy;
 var I: Integer;
 begin
   for I := 0 to High(FTokens) do FTokens[I].Attributes.Free;
@@ -380,14 +415,14 @@ begin
   inherited Destroy;
 end;
 
-function TInkNextRenderer.HashSource(const S: string): Cardinal;
+function TInkRenderer.HashSource(const S: string): Cardinal;
 var I: Integer;
 begin
   Result := 2166136261;
   for I := 1 to Length(S) do Result := (Result xor Ord(S[I])) * 16777619;
 end;
 
-function TInkNextRenderer.IsKnownTag(const N: string): Boolean;
+function TInkRenderer.IsKnownTag(const N: string): Boolean;
 begin
   Result := (N = 'b') or (N = 'i') or (N = 'u') or (N = 's') or
     (N = 'sup') or (N = 'sub') or (N = 'font') or (N = 'a') or
@@ -396,7 +431,7 @@ begin
     (N = 'table') or (N = 'tr') or (N = 'td') or (N = 'th');
 end;
 
-function TInkNextRenderer.IsStyleTag(const N: string): Boolean;
+function TInkRenderer.IsStyleTag(const N: string): Boolean;
 begin
   Result := (N = 'b') or (N = 'i') or (N = 'u') or (N = 's') or
     (N = 'sup') or (N = 'sub') or (N = 'font') or (N = 'a') or
@@ -404,7 +439,7 @@ begin
     (N = 'td') or (N = 'th');
 end;
 
-procedure TInkNextRenderer.AddToken(AKind: TInkNextTokenKind;
+procedure TInkRenderer.AddToken(AKind: TInkRenderTokenKind;
   const Name, Value: string; ASelfClosing: Boolean; const Attrs: TStringList);
 var N: Integer;
 begin
@@ -416,7 +451,7 @@ begin
   FTokens[N].Attributes.Assign(Attrs);
 end;
 
-procedure TInkNextRenderer.Tokenize(const Source: string);
+procedure TInkRenderer.Tokenize(const Source: string);
 var P, Q, Start, N: Integer; Raw, Name, Key, Val: string;
   Closing, SelfClosing, InlineAttr: Boolean; Attrs: TStringList; Quote: Char;
 begin
@@ -430,12 +465,12 @@ begin
       if Source[P] <> '<' then
       begin
         Start := P; while (P <= Length(Source)) and (Source[P] <> '<') do Inc(P);
-        AddToken(ntText, '', InkNextText(Copy(Source, Start, P-Start)), False, Attrs); Continue;
+        AddToken(ntText, '', InkRenderText(Copy(Source, Start, P-Start)), False, Attrs); Continue;
       end;
       Q := P+1; while (Q <= Length(Source)) and (Source[Q] <> '>') do Inc(Q);
       if Q > Length(Source) then
       begin
-        AddToken(ntText, '', InkNextText(Copy(Source, P, MaxInt)), False, Attrs); Break;
+        AddToken(ntText, '', InkRenderText(Copy(Source, P, MaxInt)), False, Attrs); Break;
       end;
       Raw := Copy(Source, P+1, Q-P-1); P := Q+1;
       Closing := False; SelfClosing := False; Raw := Trim(Raw);
@@ -477,7 +512,7 @@ begin
   finally Attrs.Free end;
 end;
 
-function TInkNextRenderer.HashOptions(const Options: TInkNextOptions): Cardinal;
+function TInkRenderer.HashOptions(const Options: TInkRenderOptions): Cardinal;
 var S: string; StyleBits: Integer;
 begin
   StyleBits := 0;
@@ -495,7 +530,7 @@ begin
   Result := HashSource(S);
 end;
 
-function TInkNextRenderer.BaseStyle(const Options: TInkNextOptions): TInkNextStyle;
+function TInkRenderer.BaseStyle(const Options: TInkRenderOptions): TInkRenderStyle;
 begin
   Result.Face := Options.BaseFont.Name;
   Result.Size := Options.BaseFont.Size; if Result.Size <= 0 then Result.Size := 10;
@@ -506,7 +541,7 @@ begin
   Result.Align := naLeft; Result.Indent := 0;
 end;
 
-function TInkNextRenderer.StyleFor(const Stack: array of TInkNextStyle): TInkNextStyle;
+function TInkRenderer.StyleFor(const Stack: array of TInkRenderStyle): TInkRenderStyle;
 var I: Integer;
 begin
   Result.Face := ''; Result.Size := 10;
@@ -527,8 +562,8 @@ begin
   end;
 end;
 
-procedure TInkNextRenderer.AddStyledText(const Text: string;
-  const Style: TInkNextStyle; APart: Integer);
+procedure TInkRenderer.AddStyledText(const Text: string;
+  const Style: TInkRenderStyle; APart: Integer);
 var N: Integer;
 begin
   if Text = '' then Exit; N := Length(FStyled); SetLength(FStyled,N+1);
@@ -537,10 +572,10 @@ begin
   FStyled[N].Control := 0; FStyled[N].Meta := '';
 end;
 
-procedure TInkNextRenderer.BuildStyles(const Options: TInkNextOptions);
-var Stack: array of TInkNextStyle; StackNames: array of string;
-  Base, S: TInkNextStyle; I,N,Part,K: Integer; T: TInkNextToken;
-  procedure Push(const V: TInkNextStyle; const TagName: string);
+procedure TInkRenderer.BuildStyles(const Options: TInkRenderOptions);
+var Stack: array of TInkRenderStyle; StackNames: array of string;
+  Base, S: TInkRenderStyle; I,N,Part,K: Integer; T: TInkRenderToken;
+  procedure Push(const V: TInkRenderStyle; const TagName: string);
   begin
     K := Length(Stack); SetLength(Stack,K+1); SetLength(StackNames,K+1);
     Stack[K] := V; StackNames[K] := TagName;
@@ -585,16 +620,16 @@ begin
           else if T.Name='center' then S.Align := naCenter
           else if T.Name='right' then S.Align := naRight
           else if T.Name='left' then S.Align := naLeft
-          else if T.Name='ind' then S.Indent := StrToIntDef(InkNextAttr(T.Attributes,'n'),0)
+          else if T.Name='ind' then S.Indent := StrToIntDef(InkRenderAttr(T.Attributes,'n'),0)
           else if T.Name='font' then
           begin
-            S.Face := InkNextAttr(T.Attributes,'face');
-            N := StrToIntDef(InkNextAttr(T.Attributes,'size'),0); if N>0 then S.Size := N;
-            S.Color := InkNextColor(InkNextAttr(T.Attributes,'color'),S.Color);
-            S.BackColor := InkNextColor(InkNextAttr(T.Attributes,'bgcolor'),S.BackColor);
+            S.Face := InkRenderAttr(T.Attributes,'face');
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'size'),0); if N>0 then S.Size := N;
+            S.Color := InkRenderColor(InkRenderAttr(T.Attributes,'color'),S.Color);
+            S.BackColor := InkRenderColor(InkRenderAttr(T.Attributes,'bgcolor'),S.BackColor);
           end
-          else if T.Name='a' then begin Inc(FNextLink); S.LinkIndex := FNextLink; S.LinkName := InkNextAttr(T.Attributes,'href') end
-          else if T.Name='img' then begin AddStyledText(#1,S,Part); N := Length(FStyled)-1; FStyled[N].IsImage := True; FStyled[N].ImageIndex := StrToIntDef(InkNextAttr(T.Attributes,'src'),-1) end
+          else if T.Name='a' then begin Inc(FNextLink); S.LinkIndex := FNextLink; S.LinkName := InkRenderAttr(T.Attributes,'href') end
+          else if T.Name='img' then begin AddStyledText(#1,S,Part); N := Length(FStyled)-1; FStyled[N].IsImage := True; FStyled[N].ImageIndex := StrToIntDef(InkRenderAttr(T.Attributes,'src'),-1) end
           else if T.Name='table' then AddControl(1,T.Attributes.Text)
           else if T.Name='tr' then AddControl(2,T.Attributes.Text)
           else if (T.Name='td') or (T.Name='th') then
@@ -620,25 +655,38 @@ begin
   end;
 end;
 
-function TInkNextRenderer.CodepointAt(const S: string; P: Integer; out Bytes: Integer): Cardinal;
-var B: Byte;
+function TInkRenderer.CodepointAt(const S: string; P: Integer; out Bytes: Integer): Cardinal;
+var B: Byte; K, Follow: Integer;
 begin
-  Bytes := 1; Result := 0; if (P<1) or (P>Length(S)) then Exit; B := Ord(S[P]);
-  if B<$80 then Result:=B else if (B and $E0)=$C0 then begin Bytes:=2; Result:=((B and $1F) shl 6) or (Ord(S[P+1]) and $3F) end
-  else if (B and $F0)=$E0 then begin Bytes:=3; Result:=((B and $0F) shl 12) or ((Ord(S[P+1]) and $3F) shl 6) or (Ord(S[P+2]) and $3F) end
-  else if (B and $F8)=$F0 then begin Bytes:=4; Result:=((B and 7) shl 18) or ((Ord(S[P+1]) and $3F) shl 12) or ((Ord(S[P+2]) and $3F) shl 6) or (Ord(S[P+3]) and $3F) end
-  else Result:=B;
+  { the lead byte says how many follow it and carries the first few bits;
+    each following byte adds six more.  A byte that does not follow the
+    rules is passed through as itself rather than guessed at. }
+  Bytes := 1; Result := 0;
+  if (P<1) or (P>Length(S)) then Exit;
+  B := Ord(S[P]);
+  if B < $80 then Exit(B);
+  if (B and $E0) = $C0 then begin Follow := 1; Result := B and $1F end
+  else if (B and $F0) = $E0 then begin Follow := 2; Result := B and $0F end
+  else if (B and $F8) = $F0 then begin Follow := 3; Result := B and $07 end
+  else Exit(B);
+  if P+Follow > Length(S) then Exit(B);
+  for K := 1 to Follow do
+  begin
+    if (Ord(S[P+K]) and $C0) <> $80 then Exit(B);
+    Result := (Result shl 6) or Cardinal(Ord(S[P+K]) and $3F);
+  end;
+  Bytes := Follow+1;
 end;
 
-function TInkNextRenderer.IsCJK(C: Cardinal): Boolean;
+function TInkRenderer.IsCJK(C: Cardinal): Boolean;
 begin Result := ((C>=$2E80) and (C<=$A4CF)) or ((C>=$AC00) and (C<=$D7A3)) or ((C>=$F900) and (C<=$FAFF)) or ((C>=$20000) and (C<=$2FA1F)) end;
 
-function TInkNextRenderer.MeasureRun(const Canvas: TCanvas; const Run: TInkNextRun): TSize;
+function TInkRenderer.MeasureRun(const Canvas: TCanvas; const Run: TInkRenderRun): TSize;
 var Old: TFont; S,Key,V: string; N: Integer;
 begin
   S := Run.Text;
   Key := Run.Style.Face+#1+IntToStr(Run.Style.Size)+#1+
-    IntToStr(InkNextStyleBits(Run.Style.Styles))+#1+IntToStr(Integer(Run.Style.Script))+#1+S;
+    IntToStr(InkRenderStyleBits(Run.Style.Styles))+#1+IntToStr(Integer(Run.Style.Script))+#1+S;
   N:=FWidthKeys.IndexOf(Key);
   if N>=0 then begin Result:=Types.Size(StrToIntDef(FWidthValues[N],0),MetricHeight(Canvas,Run)); Exit end;
   Old := TFont.Create; Old.Assign(Canvas.Font); Canvas.Font.Name := Run.Style.Face;
@@ -649,19 +697,19 @@ begin
   Canvas.Font.Assign(Old); Old.Free;
 end;
 
-function TInkNextRenderer.MetricHeight(const Canvas: TCanvas;
-  const Run: TInkNextRun): Integer;
+function TInkRenderer.MetricHeight(const Canvas: TCanvas;
+  const Run: TInkRenderRun): Integer;
 var A,D: Integer;
 begin
   Result := Metrics(Canvas,Run,A,D);
 end;
 
-function TInkNextRenderer.Metrics(const Canvas: TCanvas; const Run: TInkNextRun;
+function TInkRenderer.Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
   out AAscent, ADescent: Integer): Integer;
 var Key, V: string; N: Integer; Old: TFont;
 begin
   Key := Run.Style.Face + #1 + IntToStr(Run.Style.Size) + #1 +
-    IntToStr(InkNextStyleBits(Run.Style.Styles)) + #1 + IntToStr(Integer(Run.Style.Script));
+    IntToStr(InkRenderStyleBits(Run.Style.Styles)) + #1 + IntToStr(Integer(Run.Style.Script));
   N := FMetricKeys.IndexOf(Key);
   if N >= 0 then
   begin
@@ -684,8 +732,8 @@ begin
   Canvas.Font.Assign(Old); Old.Free;
 end;
 
-procedure TInkNextRenderer.LayoutTable(const Canvas: TCanvas;
-  const Options: TInkNextOptions; AStart, AEnd: Integer; var X, Y, Line: Integer;
+procedure TInkRenderer.LayoutTable(const Canvas: TCanvas;
+  const Options: TInkRenderOptions; AStart, AEnd: Integer; var X, Y, Line: Integer;
   ALeft: Integer = -1; AWidth: Integer = -1);
 type
   TCell = record StartRun, EndRun, Row, Col, Pad: Integer; AttrText: string end;
@@ -694,7 +742,7 @@ var
   I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing, DefaultPad,
     SX, SY, W, H, Want, Extra, Total, CellX, CellY: Integer;
   RowHeights, ColWidths, ColMin, ColMax: array of Integer;
-  R: TInkNextRun; L: TInkNextLine;
+  R: TInkRenderRun; L: TInkRenderLine;
   InCell, FixedLayout, FillWidth: Boolean; TableAttrs, CellAttrs: TStringList;
   WidthText: string; WidthPercent: Integer;
 
@@ -710,9 +758,9 @@ var
   { how tall a table inside a cell comes out: laid out into a layout that
     is then thrown away, so measuring costs nothing on screen }
   function MeasureNested(const Canvas: TCanvas; AStart, AEnd, AWidth: Integer): Integer;
-  var Keep: TInkNextLayout; X2,Y2,L2: Integer;
+  var Keep: TInkRenderLayout; X2,Y2,L2: Integer;
   begin
-    Keep := FLayout; FLayout := TInkNextLayout.Create;
+    Keep := FLayout; FLayout := TInkRenderLayout.Create;
     try
       X2 := 0; Y2 := 0; L2 := 0;
       LayoutTable(Canvas,FOpt,AStart,AEnd,X2,Y2,L2,0,AWidth);
@@ -726,15 +774,15 @@ var
   function LayCell(Index, AX, AY, AWidth: Integer; Emit: Boolean): Integer;
   var RunIndex, CX, CY, LineH, RW, P, Start, Bytes, Pad,
     Inner, Depth, InnerX, InnerLine: Integer;
-    Run: TInkNextRun; Sz: TSize; Text, Atom: string; C: Cardinal;
+    Run: TInkRenderRun; Sz: TSize; Text, Atom: string; C: Cardinal;
     Attrs: TStringList; BG, FG: TColor;
   begin
     Pad := Cells[Index].Pad;
     Attrs := TStringList.Create;
     try
       Attrs.Text := Cells[Index].AttrText;
-      BG := InkNextColor(Attrs.Values['bgcolor'], clNone);
-      FG := InkNextColor(Attrs.Values['color'], clNone);
+      BG := InkRenderColor(Attrs.Values['bgcolor'], clNone);
+      FG := InkRenderColor(Attrs.Values['color'], clNone);
     finally Attrs.Free end;
     CX := AX+Pad; CY := AY+Pad; LineH := 0;
     RunIndex := Cells[Index].StartRun;
@@ -820,7 +868,7 @@ var
   { the width a cell would like, and the width it cannot go below (its
     longest single word), both without the padding }
   procedure CellWidths(Index: Integer; out AWant, ALeast: Integer);
-  var RunIndex, P, Start, Bytes, LineW: Integer; Run: TInkNextRun;
+  var RunIndex, P, Start, Bytes, LineW: Integer; Run: TInkRenderRun;
     Text, Atom: string; C: Cardinal; Sz: TSize;
   begin
     AWant := 0; ALeast := 0; LineW := 0;
@@ -858,8 +906,8 @@ begin
       FillWidth := True;
     end
     else if WidthText<>'' then FillWidth := True;
-    Spacing := InkNextScalePx(StrToIntDef(TableAttrs.Values['cellspacing'],0),Options.Scale);
-    DefaultPad := Max(0,InkNextScalePx(StrToIntDef(TableAttrs.Values['cellpadding'],6),Options.Scale));
+    Spacing := InkRenderScalePx(StrToIntDef(TableAttrs.Values['cellspacing'],0),Options.Scale);
+    DefaultPad := Max(0,InkRenderScalePx(StrToIntDef(TableAttrs.Values['cellpadding'],6),Options.Scale));
 
     { the cells, as ranges into the styled runs - no tree is needed for this }
     Row := -1; Col := 0; Rows := 0; Cols := 0; InCell := False;
@@ -888,7 +936,7 @@ begin
              Cells[CellIndex].Row := Max(0,Row); Cells[CellIndex].Col := Col;
              Cells[CellIndex].AttrText := FStyled[I].Meta;
              CellAttrs.Text := FStyled[I].Meta;
-             Cells[CellIndex].Pad := Max(0,InkNextScalePx(
+             Cells[CellIndex].Pad := Max(0,InkRenderScalePx(
                StrToIntDef(CellAttrs.Values['cellpadding'],
                StrToIntDef(TableAttrs.Values['cellpadding'],6)),Options.Scale));
              Cols := Max(Cols,Col+1);
@@ -989,11 +1037,11 @@ begin
   finally TableAttrs.Free; CellAttrs.Free end;
 end;
 
-function TInkNextRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
+function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
 var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
-  R: TInkNextRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer;
-  C: Cardinal; L: TInkNextLine;
+  R: TInkRenderRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer;
+  C: Cardinal; L: TInkRenderLine;
   { every run on the line is placed so its baseline is at the same height:
     the largest ascent on the line.  The line is that plus the largest
     descent, which is what makes a heading and small text sit together. }
@@ -1030,13 +1078,13 @@ var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
     begin
       { <p> asks for two breaks in a row; the second one is a blank line,
         not nothing }
-      if Forced then Inc(Y,MaxLineH+InkNextScalePx(FOpt.LineSpacing,FOpt.Scale));
+      if Forced then Inc(Y,MaxLineH+InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale));
       Exit;
     end;
     AlignBaselines(First,Count,MaxLineH,Base); L.Baseline := Base; L.Bounds:=Rect(0,Y,Avail,Y+MaxLineH); L.FirstRun:=First; L.RunCount:=Count; L.Align:=FLayout.FRuns[First].Style.Align; L.Part:=FLayout.FRuns[First].Part;
     if L.Align=naCenter then Shift:=(Avail-(X-FOpt.Borders.Left)) div 2 else if L.Align=naRight then Shift:=Avail-(X-FOpt.Borders.Left) else Shift:=0;
     for K:=First to First+Count-1 do begin Inc(FLayout.FRuns[K].Bounds.Left,Shift); Inc(FLayout.FRuns[K].Bounds.Right,Shift); FLayout.FRuns[K].Line:=Line end;
-    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkNextScalePx(FOpt.LineSpacing,FOpt.Scale)); X:=FOpt.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=Canvas.TextHeight('Tg');
+    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale)); X:=FOpt.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=Canvas.TextHeight('Tg');
   end;
 begin
   { the inline pass, over the runs this box covers and no further }
@@ -1050,10 +1098,10 @@ begin
     if R.Control<>0 then begin Inc(I); Continue end;
     if R.IsImage then
     begin
-      Sz:=Types.Size(InkNextScalePx(16,FOpt.Scale),InkNextScalePx(16,FOpt.Scale));
+      Sz:=Types.Size(InkRenderScalePx(16,FOpt.Scale),InkRenderScalePx(16,FOpt.Scale));
       if (FOpt.Images<>nil) and (R.ImageIndex>=0) and
         (R.ImageIndex<FOpt.Images.Count) then
-        Sz:=Types.Size(InkNextScalePx(FOpt.Images.Width,FOpt.Scale),InkNextScalePx(FOpt.Images.Height,FOpt.Scale));
+        Sz:=Types.Size(InkRenderScalePx(FOpt.Images.Width,FOpt.Scale),InkRenderScalePx(FOpt.Images.Height,FOpt.Scale));
       Text:=#1
     end else Text:=R.Text;
     P:=1;
@@ -1088,9 +1136,9 @@ begin
   Result:=Y-AY;
 end;
 
-function TInkNextRenderer.MeasureRule(ABox: TInkBox; const Canvas: TCanvas;
+function TInkRenderer.MeasureRule(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
-var R: TInkNextRun; L: TInkNextLine; Gap,First: Integer;
+var R: TInkRenderRun; L: TInkRenderLine; Gap,First: Integer;
 begin
   { a rule stands clear of the text on both sides, as it does in a browser
     and in the old engine }
@@ -1106,7 +1154,7 @@ begin
   Result:=Gap*2+1;
 end;
 
-function TInkNextRenderer.MeasureTableBox(ABox: TInkBox; const Canvas: TCanvas;
+function TInkRenderer.MeasureTableBox(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
 var X,Y,Line: Integer;
 begin
@@ -1115,7 +1163,7 @@ begin
   Result:=Y-AY;
 end;
 
-procedure TInkNextRenderer.BuildBoxTree;
+procedure TInkRenderer.BuildBoxTree;
 var I,J,D,SegStart: Integer; Box: TInkBox;
   procedure CloseSegment(Last: Integer);
   begin
@@ -1162,7 +1210,7 @@ begin
   CloseSegment(High(FStyled));
 end;
 
-function TInkNextRenderer.Layout(const Canvas: TCanvas; const Options: TInkNextOptions): TInkNextLayout;
+function TInkRenderer.Layout(const Canvas: TCanvas; const Options: TInkRenderOptions): TInkRenderLayout;
 var I,P,W,H,Avail,Y: Integer; OptionKey: Cardinal;
 begin
   OptionKey := HashOptions(Options);
@@ -1203,9 +1251,9 @@ begin
   FLayout.FSize:=Types.Size(Max(0,W+FOpt.Borders.Right),H); Result:=FLayout;
 end;
 
-procedure TInkNextRenderer.Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkNextOptions;
+procedure TInkRenderer.Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkRenderOptions;
   AOffsetX: Integer = 0; AOffsetY: Integer = 0);
-var I,J,DX,DY: Integer; L: TInkNextLine; R: TInkNextRun; Clip: TRect; C,BG: TColor; DrawRect: TRect;
+var I,J,DX,DY: Integer; L: TInkRenderLine; R: TInkRenderRun; Clip: TRect; C,BG: TColor; DrawRect: TRect;
   BoxAttrs: TStringList; Sides: string; BorderColor: TColor; BorderOn: Boolean; Radius: Integer;
   OldFont: TFont; OldBrushStyle: TBrushStyle; OldBrushColor: TColor;
 begin
@@ -1222,17 +1270,17 @@ begin
         DrawRect:=Rect(R.Bounds.Left+DX,R.Bounds.Top+DY,R.Bounds.Right+DX,R.Bounds.Bottom+DY);
         if R.Control=8 then
         begin
-          BoxAttrs.Text:=R.Meta; BG:=InkNextColor(BoxAttrs.Values['bgcolor'],clNone);
+          BoxAttrs.Text:=R.Meta; BG:=InkRenderColor(BoxAttrs.Values['bgcolor'],clNone);
           if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG; Canvas.FillRect(DrawRect) end;
           { a table with nothing said about its borders gets the grid the
             old engine draws; border="none" is how a page asks for none }
           BorderOn:=LowerCase(Trim(BoxAttrs.Values['border']))<>'none';
           if BorderOn then
           begin
-            BorderColor:=InkNextColor(BoxAttrs.Values['bordercolor'],clBlack);
+            BorderColor:=InkRenderColor(BoxAttrs.Values['bordercolor'],clBlack);
             Canvas.Pen.Color:=BorderColor; Canvas.Pen.Width:=1;
             Sides:=LowerCase(BoxAttrs.Values['sides']); if Sides='' then Sides:='trbl';
-            Radius:=InkNextScalePx(StrToIntDef(BoxAttrs.Values['radius'],0),Options.Scale);
+            Radius:=InkRenderScalePx(StrToIntDef(BoxAttrs.Values['radius'],0),Options.Scale);
             if (Radius>0) and (Sides='trbl') then Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,Radius,Radius)
             else begin
               if Pos('t',Sides)>0 then Canvas.Line(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Top);
@@ -1268,9 +1316,9 @@ begin
   finally Canvas.Font.Assign(OldFont); Canvas.Brush.Style:=OldBrushStyle; Canvas.Brush.Color:=OldBrushColor; OldFont.Free; BoxAttrs.Free end;
 end;
 
-function TInkNextRenderer.HitTest(const Canvas: TCanvas; X, Y: Integer;
-  AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkNextHit;
-var I,K,Lo,Hi,Mid: Integer; R: TInkNextRun; W: Integer; F: TFont; L: TInkNextLine;
+function TInkRenderer.HitTest(const Canvas: TCanvas; X, Y: Integer;
+  AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkRenderHit;
+var I,K,Lo,Hi,Mid: Integer; R: TInkRenderRun; W: Integer; F: TFont; L: TInkRenderLine;
 begin
   Result.OnLink := False; Result.LinkIndex := 0; Result.LinkName := '';
   Result.LinkText := ''; Result.RunIndex := -1; Result.CharacterOffset := 0;
