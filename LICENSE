@@ -1,43 +1,24 @@
 LazInk licensing
 ================
 
-MIT, for every file in the package. See LICENSES/MIT.txt.
+0BSD - the BSD Zero Clause License. Do whatever you want with this code.
+You do not have to keep this notice, credit anyone, or ask. The full text
+is in LICENSES/0BSD.txt.
 
-Until 18 September 2026 this said something longer: the renderer was derived
-from Project JEDI's JVCL and stayed under MPL 1.1, so the package carried two
-licenses and anyone shipping a program built with it owed recipients that
-renderer's source. That renderer is gone. LazInk draws with its own engine
-now - inkrender.pas, inkbox.pas and inkdraw.pas - and no third-party code
-remains in the package. See THIRD_PARTY_NOTICES.md for the history and the
-credit, which stand whatever the license says.
+That is the point of it, and it took some doing. Until 18 September 2026
+LazInk drew with a renderer derived from Project JEDI's JVCL, which stayed
+under MPL 1.1: the package carried two licenses, and anyone shipping a
+program built with it owed recipients that renderer's source. That renderer
+has been replaced by LazInk's own - inkrender.pas, inkbox.pas, inkdraw.pas -
+and deleted, so there is no third-party code in the package and nothing left
+to put conditions on it.
 
-Lazarus/LCL and Free Pascal are dependencies with their own licenses; they
+The credit does not depend on the license and is not going anywhere:
+THIRD_PARTY_NOTICES.md tells where LazInk came from - Tony Stone's forum
+thread in 2021, wp's suggestion to take what was needed from JVCL and the
+list box example he wrote, and the JVCL authors whose drawing code got it
+off the ground. docs/RENDERER_CHANGES.md keeps the record of that renderer.
+None of their code remains here; the thanks do.
+
+Lazarus/LCL and Free Pascal are dependencies with their own licenses. They
 are not relicensed by LazInk.
-
-The intended destination is a license with no conditions at all - 0BSD, as
-ROADMAP.md section 4 sets out. One thing stands between here and there:
-inklistbox.pas grew out of wp's forum list box example, and what remains of
-that example has to be confirmed or rewritten before the package can be
-relicensed again. MIT until then.
-
-MIT License
-
-Copyright (c) 2026 LazInk contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.

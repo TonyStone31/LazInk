@@ -1,4 +1,4 @@
-{ A deliberately small stylesheet reader for native help pages. MIT. }
+{ A deliberately small stylesheet reader for native help pages. 0BSD. }
 unit InkCSS;
 {$mode objfpc}{$H+}
 interface

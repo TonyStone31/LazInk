@@ -15,7 +15,7 @@
 # the control's theme rather than the page's light/dark scheme, it does not
 # read line-height or text-transform, and it draws no form controls.
 #
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: 0BSD
 set -eu
 
 PAGE=${1:?usage: browser_shot.sh page.html out.png [width] [height]}

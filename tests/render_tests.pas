@@ -3,6 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
+  InkWebP,
   LResources, LazInkReg,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
@@ -1348,6 +1349,157 @@ begin
   Probe.SetBounds(0, 0, 400, 200);
 end;
 
+{ --- WebP: the container, which is all there is so far --- }
+procedure WebPChecks;
+var
+  Still, Anim: TMemoryStream; W: TInkWebP; F: TInkWebPFrame;
+
+  { the pieces a WebP file is built from, written by hand so the test does
+    not need an encoder - and so that what the reader reads is exactly what
+    the test wrote }
+  procedure PutStr(S: TStream; const Text: string);
+  begin
+    if Text <> '' then S.WriteBuffer(Text[1], Length(Text));
+  end;
+
+  procedure Put32(S: TStream; N: LongWord);
+  begin
+    S.WriteBuffer(N, 4);
+  end;
+
+  procedure Put24(S: TStream; N: LongWord);
+  var B: array[0..2] of Byte;
+  begin
+    B[0] := N and $FF; B[1] := (N shr 8) and $FF; B[2] := (N shr 16) and $FF;
+    S.WriteBuffer(B, 3);
+  end;
+
+  procedure PutByte(S: TStream; N: Byte);
+  begin
+    S.WriteBuffer(N, 1);
+  end;
+
+  { RIFF....WEBP round whatever was written into Body }
+  function Wrap(Body: TMemoryStream): TMemoryStream;
+  begin
+    Result := TMemoryStream.Create;
+    PutStr(Result, 'RIFF');
+    Put32(Result, Body.Size + 4);
+    PutStr(Result, 'WEBP');
+    Body.Position := 0;
+    Result.CopyFrom(Body, Body.Size);
+    Result.Position := 0;
+  end;
+
+  { a lossless still, 40 x 30: VP8L's header packs width-1 and height-1 in
+    14 bits each after a signature byte }
+  function BuildStill: TMemoryStream;
+  var Body: TMemoryStream; Bits: LongWord;
+  begin
+    Body := TMemoryStream.Create;
+    try
+      PutStr(Body, 'VP8L');
+      Put32(Body, 10);
+      PutByte(Body, $2F);
+      Bits := (40 - 1) or ((30 - 1) shl 14);
+      Put32(Body, Bits);
+      Put32(Body, 0);
+      PutByte(Body, 0);
+      Result := Wrap(Body);
+    finally Body.Free end;
+  end;
+
+  { an animation: VP8X saying 64 x 48 and animated, ANIM with a background
+    and a loop count, then two ANMF frames }
+  function BuildAnimation: TMemoryStream;
+  var Body, Frame: TMemoryStream;
+
+    procedure AddFrame(X, Y, W, H, Duration: Integer; Flags: Byte);
+    begin
+      Frame := TMemoryStream.Create;
+      try
+        Put24(Frame, X div 2); Put24(Frame, Y div 2);
+        Put24(Frame, W - 1); Put24(Frame, H - 1);
+        Put24(Frame, Duration);
+        PutByte(Frame, Flags);
+        { the frame's pixels, as a lossless sub-chunk }
+        PutStr(Frame, 'VP8L'); Put32(Frame, 6);
+        PutByte(Frame, $2F); Put32(Frame, 0); PutByte(Frame, 0);
+        PutStr(Body, 'ANMF'); Put32(Body, Frame.Size);
+        Frame.Position := 0;
+        Body.CopyFrom(Frame, Frame.Size);
+      finally Frame.Free end;
+    end;
+
+  begin
+    Body := TMemoryStream.Create;
+    try
+      PutStr(Body, 'VP8X'); Put32(Body, 10);
+      PutByte(Body, 2); { the animation flag }
+      Put24(Body, 0);
+      Put24(Body, 64 - 1); Put24(Body, 48 - 1);
+      PutStr(Body, 'ANIM'); Put32(Body, 6);
+      { the background is written blue, green, red, alpha - BGRA }
+      PutByte(Body, $10); PutByte(Body, $20); PutByte(Body, $30); PutByte(Body, $FF);
+      PutByte(Body, 3); PutByte(Body, 0); { three loops }
+      AddFrame(0, 0, 64, 48, 120, 0);
+      AddFrame(8, 4, 32, 24, 80, 1);   { cleared to the background after it }
+      Result := Wrap(Body);
+    finally Body.Free end;
+  end;
+
+begin
+  { is it a WebP at all }
+  Check(not InkIsWebP('GIF89a stuff'), 'a GIF is not a WebP');
+  Check(not InkIsWebP('RIFF----WAVE'), 'nor is a WAV');
+
+  Still := BuildStill;
+  try
+    W := TInkWebP.Create(Still);
+    try
+      Check(W.Valid, 'a lossless still reads');
+      Check((W.Width = 40) and (W.Height = 30),
+        Format('its size comes from VP8L (%dx%d)', [W.Width, W.Height]));
+      Check(W.Kind = wkLossless, 'and it knows it is lossless');
+      Check(not W.Animated, 'one frame is not an animation');
+      Check(W.FrameCount = 1, 'and there is one frame');
+      Check(W.Frame(0).Size > 0, 'whose bytes it can point at');
+      { the hole: there is no decoder yet, and the unit says so rather than
+        pretending }
+      Check(not W.DecodeFrame(0), 'DecodeFrame is the piece still to write');
+      Check(not W.Decoded, 'so there are no pixels to draw yet');
+    finally W.Free end;
+  finally Still.Free end;
+
+  Anim := BuildAnimation;
+  try
+    W := TInkWebP.Create(Anim);
+    try
+      Check(W.Valid, 'an animation reads');
+      Check((W.Width = 64) and (W.Height = 48),
+        Format('its canvas comes from VP8X (%dx%d)', [W.Width, W.Height]));
+      Check(W.Kind = wkExtended, 'which makes it an extended file');
+      Check(W.Animated and (W.FrameCount = 2),
+        Format('with two frames (%d)', [W.FrameCount]));
+      Check(W.Loops = 3, Format('and a loop count (%d)', [W.Loops]));
+      Check(ColorToRGB(W.Background) = RGBToColor($30, $20, $10),
+        'the background it clears to, read back out of BGRA');
+      F := W.Frame(0);
+      Check((F.Width = 64) and (F.Height = 48) and (F.Duration = 120),
+        Format('frame one: %dx%d for %dms', [F.Width, F.Height, F.Duration]));
+      Check(F.Blend, 'blended onto what is there');
+      Check(F.Disposal = wdNone, 'and left in place');
+      F := W.Frame(1);
+      Check((F.X = 8) and (F.Y = 4) and (F.Width = 32) and (F.Height = 24),
+        Format('frame two sits at %d,%d and is %dx%d', [F.X, F.Y, F.Width, F.Height]));
+      Check(F.Duration = 80, 'for its own time');
+      Check(F.Disposal = wdBackground, 'and the canvas is cleared after it');
+      Check((F.Kind = wkLossless) and (F.Size > 0), 'its pixels are lossless, and located');
+      Check(not W.DecodeFrame(1), 'still no decoder');
+    finally W.Free end;
+  finally Anim.Free end;
+end;
+
 { --- the palette icons the IDE shows --- }
 procedure IconChecks;
 const
@@ -1969,6 +2121,7 @@ begin
     TagChecks;
     CodeChecks;
     IconChecks;
+    WebPChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }

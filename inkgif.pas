@@ -1,4 +1,4 @@
-{ Small GIF playback adapter. FPC still performs GIF/LZW decoding. MIT. }
+{ Small GIF playback adapter. FPC still performs GIF/LZW decoding. 0BSD. }
 unit InkGIF;
 {$mode objfpc}{$H+}
 interface

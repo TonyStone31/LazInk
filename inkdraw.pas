@@ -9,7 +9,7 @@
   the names and records here are the ones inkhtml.pas published, so a unit
   that used to say "uses InkHtml" says "uses InkDraw" and nothing else moves.
 
-  SPDX-License-Identifier: MIT
+  SPDX-License-Identifier: 0BSD
   Copyright (c) 2026 LazInk contributors }
 unit InkDraw;
 

@@ -461,7 +461,7 @@ worked on the design, the code and the debugging.
 
 All of it is LazInk's own.  The JVCL-derived renderer was replaced on
 18 September 2026 by `inkrender.pas`, `inkbox.pas` and `inkdraw.pas`, and
-deleted - so the package is MIT throughout, with no third-party code in it.
+deleted - so the package is 0BSD throughout, with no third-party code in it.
 The credit below stands anyway: JVCL and wp's example are what got LazInk
 started, whatever the license says now.
 
@@ -475,18 +475,17 @@ started, whatever the license says now.
 
 ## License
 
-**MIT, every file.**  See [LICENSE](LICENSE) and the
-[MIT text](LICENSES/MIT.txt).
+**0BSD** - do whatever you want with it.  No attribution required, no notice
+to keep, nothing to ask.  See [LICENSE](LICENSE) and the
+[0BSD text](LICENSES/0BSD.txt).
 
-It used to be two licenses: the renderer came from Project JEDI's JVCL and
-stayed under MPL 1.1, which meant anyone shipping a program built with LazInk
-owed recipients that renderer's source.  That renderer is gone - LazInk draws
-with its own engine now - so there is one license and no conditions beyond
-keeping the notice.  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) keeps
-the history, and [docs/RENDERER_CHANGES.md](docs/RENDERER_CHANGES.md) remains
-as the record of what the old renderer was.
+It used to be two licenses, and the awkward one was the renderer: it came
+from Project JEDI's JVCL and stayed under MPL 1.1, so anyone shipping a
+program built with LazInk owed recipients that renderer's source.  That
+renderer has been replaced by LazInk's own and deleted, and with no
+third-party code left there is nothing to put conditions on it.
 
-The destination is a license with no conditions at all - 0BSD,
-[ROADMAP.md](ROADMAP.md) section 4.  One thing is in the way: `inklistbox.pas`
-grew out of wp's forum list box example, and what is left of that example has
-to be confirmed or rewritten first.  MIT until then.
+The credit does not depend on the license and is not going anywhere:
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where LazInk came
+from, and [docs/RENDERER_CHANGES.md](docs/RENDERER_CHANGES.md) keeps the
+record of the renderer that got it off the ground.

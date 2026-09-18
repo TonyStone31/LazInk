@@ -22,6 +22,9 @@ type
     ibRule, ibImage);
   TInkBoxVAlign = (ibBaseline, ibTop, ibMiddle, ibBottom, ibSuper, ibSub);
 
+  { What a box is drawn with.  A table cell carries one of these of its own,
+    which is what lets two cells in a row have different padding, colors and
+    borders - and what a block will carry when blocks become boxes too. }
   TInkBoxStyle = record
     Face: string;
     Size: Integer;
@@ -32,6 +35,15 @@ type
     ZIndex: Integer;
     Opacity: Byte;
     OverflowHidden: Boolean;
+    { room inside the box, before its content starts }
+    Padding: TRect;
+    { the box's own border: its color, which sides are drawn ('trbl'), and
+      how round its corners are.  BorderColor clNone means none. }
+    BorderColor: TColor;
+    Sides: string;
+    Radius: Integer;
+    { where the content sits when the box is taller than it is }
+    Content: TInkBoxVAlign;
   end;
 
   TInkBoxRun = record
@@ -76,15 +88,18 @@ type
     procedure PaintChildren(Canvas: TCanvas; const Clip: TRect;
       OffsetX, OffsetY: Integer);
   public
-    { what the host put here: for InkRenderNext, the styled runs this box
-      covers, as a first and last index }
+    { what the host put here: for InkRender, the styled runs this box
+      covers, as a first and last index, and the attributes it was given }
     Tag, TagEnd: Integer;
+    Meta: string;
     { when assigned, this is how the box is measured, instead of the
       built-in block or inline pass }
     OnMeasure: TInkBoxMeasureEvent;
     constructor Create(AKind: TInkBoxKind);
     destructor Destroy; override;
     function AddChild(AKind: TInkBoxKind): TInkBox;
+    { a host that placed the box itself says where it ended up }
+    procedure FBoundsForCell(const ARect: TRect);
     function Child(Index: Integer): TInkBox;
     function AddText(const Text: string; const Style: TInkBoxStyle): TInkBoxRun;
     function Measure(const Canvas: TCanvas; AWidth, AY: Integer): Integer;
@@ -123,6 +138,8 @@ begin
   Result.BackColor:=clNone; Result.Styles:=[]; Result.VAlign:=ibBaseline;
   Result.LineHeight:=0; Result.ZIndex:=0; Result.Opacity:=255;
   Result.OverflowHidden:=False;
+  Result.Padding:=Rect(0,0,0,0); Result.BorderColor:=clNone; Result.Sides:='';
+  Result.Radius:=0; Result.Content:=ibTop;
 end;
 
 function InheritedBoxStyle(const Parent, Child: TInkBoxStyle): TInkBoxStyle;
@@ -134,12 +151,14 @@ begin
   if Result.LineHeight<=0 then Result.LineHeight:=Parent.LineHeight;
   if Result.Opacity=255 then Result.Opacity:=Parent.Opacity;
   Result.Styles:=Parent.Styles+Child.Styles;
+  { padding, borders and backgrounds belong to the box that declared them,
+    and are not handed down to its children }
 end;
 
 constructor TInkBox.Create(AKind: TInkBoxKind);
 begin
   inherited Create; FKind:=AKind; FStyle:=DefaultBoxStyle;
-  Tag:=-1; TagEnd:=-1; OnMeasure:=nil;
+  Tag:=-1; TagEnd:=-1; Meta:=''; OnMeasure:=nil;
   FBounds:=Rect(0,0,0,0); FClip:=FBounds; FImageSize:=Size(0,0);
   FOrderDirty:=True; FMeasured:=False; FMeasuredWidth:=-1;
 end;
@@ -194,6 +213,13 @@ begin Result:=Length(FChildren) end;
 
 function TInkBox.Child(Index: Integer): TInkBox;
 begin Result:=FChildren[Index] end;
+
+procedure TInkBox.FBoundsForCell(const ARect: TRect);
+begin
+  FBounds:=ARect; FClip:=ARect;
+  FMeasured:=True; FMeasuredWidth:=ARect.Right-ARect.Left;
+  FMeasuredHeight:=ARect.Bottom-ARect.Top;
+end;
 
 function TInkBox.RunCount: Integer;
 begin Result:=Length(FRuns) end;

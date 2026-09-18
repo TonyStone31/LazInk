@@ -1459,7 +1459,7 @@ object frmMain: TfrmMain
           '<font size="15"><b>Thanks</b></font>'
           '<b>wp</b> - the JVCL route, the standalone unit and the list box example LazInk started from.   <b>Project JEDI / JVCL</b> - the drawing code it grew from.   <b>Lazarus and Free Pascal</b>.'
           '<font size="15"><b>Licensing</b></font>'
-          'MIT, every file. LazInk draws with its own engine - inkrender.pas, inkbox.pas and inkdraw.pas - and no third-party code remains in the package.'
+          '0BSD - do whatever you want with it. LazInk draws with its own engine - inkrender.pas, inkbox.pas and inkdraw.pas - and no third-party code remains in the package.'
           'Until 18 September 2026 the renderer came from JVCL and was MPL 1.1, which put conditions on anyone shipping a program built with it. That renderer has been replaced and deleted. See LICENSE and THIRD_PARTY_NOTICES.md, which keeps the history and the credit.'
         )
         SuperSubScriptRatio = 0.7

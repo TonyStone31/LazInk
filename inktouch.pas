@@ -1,4 +1,4 @@
-{ Touch input for LazInk's controls.  SPDX-License-Identifier: MIT
+{ Touch input for LazInk's controls.  SPDX-License-Identifier: 0BSD
 
   Most platforms hand a finger to a program as mouse events, and there a
   control needs nothing: Windows turns a touch into a press, moves and a

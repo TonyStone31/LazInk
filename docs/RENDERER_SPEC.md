@@ -4,7 +4,7 @@ Written 17 September 2026 as the specification for a renderer to be built.
 **As of 18 September 2026 it is built**: `inkrender.pas` (the engine),
 `inkbox.pas` (the box tree it lays out through) and `inkdraw.pas` (the calls
 the controls make) replaced `inkhtml.pas` and `inktables.inc`, which are
-deleted, and the package is MIT throughout.  What follows is now both the
+deleted, and the package is 0BSD throughout.  What follows is now both the
 specification and the description: the behavior the engine produces, and why
 it is shaped the way it is.
 
@@ -638,6 +638,12 @@ change:
 
 Left:
 
+- [x] **Cells carry their own style** (18 September 2026): a cell is a box
+      with its own padding, background, border color, sides, radius, text
+      color and `valign`, and it takes the table's where it says nothing -
+      so two cells in a row can differ in all of them, as they do in a
+      browser.  `TInkBoxStyle` grew the fields, which is what a block will
+      use when blocks become boxes too.
 - [ ] **The card table is 8 pixels narrower** than the old engine's (422
       against 430): the outer `cellspacing` is counted differently at the
       edges.  Worth settling when the tables are checked against the real
@@ -664,7 +670,14 @@ invention.
 Not work for the first version.  They are here because each one is cheap to
 allow for now and expensive to retrofit.
 
-* **Pictures are boxes with a source of frames.**  Today an image run is an
+* **WebP, and pictures as boxes with a source of frames.**  `inkwebp.pas`
+  reads a WebP file's structure today - RIFF chunks, canvas size, lossy,
+  lossless or extended, every frame's position, size, duration, disposal and
+  blend - and `DecodeFrame` is deliberately a hole: it returns False, and
+  filling it (a libwebp binding, or a Pascal VP8L decoder to start with) is
+  the whole remaining job.  `tests/render_tests.pas` (WebPChecks) builds
+  WebP files byte by byte and checks what comes back, so the decoder has
+  something to grow against.  Nothing in the engine has to change for it:  Today an image run is an
   image-list index of a fixed size.  A page's pictures are files - PNG, GIF
   and, if ROADMAP item 17 happens, **animated WebP** - with a real size, a
   current frame, and a clock.  Give an image run a size the caller sets and

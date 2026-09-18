@@ -44,9 +44,9 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
   license, gray.
 * **Tested.**  `tests/run.sh` must stay green, and new behavior comes with
   checks.  Make sure a new check can actually fail.
-* **One license, and it is ours** (since 18 September 2026): MIT for every
-  file, because the JVCL-derived renderer has been replaced by LazInk's own
-  and deleted.  0BSD is still the destination - see 4.
+* **One license, and it is 0BSD** (since 18 September 2026): do whatever you
+  want with it, because the JVCL-derived renderer has been replaced by
+  LazInk's own and deleted - see 4.
 
 ---
 
@@ -522,7 +522,7 @@ exists.
 **Done, 18 September 2026** - the part that mattered.  `inkhtml.pas` and
 `inktables.inc` are deleted.  LazInk draws with `inkrender.pas` (the engine),
 `inkbox.pas` (the box tree it lays out through) and `inkdraw.pas` (the calls
-the controls make), all written for LazInk, and the package is **MIT
+the controls make), all written for LazInk, and the package is **0BSD
 throughout** with no third-party code in it.
 
 How it was checked before anything was deleted: the whole test suite and all
@@ -532,9 +532,12 @@ compared token by token, the longest thing in common being 21 tokens of LCL
 boilerplate.  It is also faster - half the time to lay a page out, a tenth of
 the time to paint one.
 
-What is left before 0BSD: `inklistbox.pas` grew out of wp's forum list box
-example, and what remains of that example has to be confirmed or rewritten
-(step 3 below).  That is the last provenance question in the package.
+On `inklistbox.pas`, which grew out of wp's forum list box example: Tony,
+who was given that example, settled it - it was written for him to use, with
+no license attached and no restriction intended.  With that, and with the
+JVCL code gone, the package went to **0BSD**: no conditions at all, not even
+keeping a notice.  The thanks stay in THIRD_PARTY_NOTICES.md because they
+are deserved, not because a license demands them.
 
 The rest of this section is the plan as it was written, kept because the
 reasoning still explains the choices.
