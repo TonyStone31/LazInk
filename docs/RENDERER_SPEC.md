@@ -71,6 +71,85 @@ Four stages, each testable on its own:
 Measuring, hit testing and painting then all read the same layout, which is
 what makes "what is under the pointer" agree with what was drawn.
 
+### 2.1 Boxes, and layout that recurses
+
+**Decided 18 September 2026.**  Stage 3 lays out a **tree of boxes**, not one
+flat list of runs in one column.  This is a requirement of the engine, not a
+someday: it is the difference between a text drawer and a renderer, and it
+is the one part that cannot be added later without rewriting everything
+written on top of it.
+
+The whole of it is one operation:
+
+> **Lay this box out in a space of width W, and tell me the size it took.**
+
+called on a box, which calls it on its children.  A block asks its children
+in turn and stacks them; a table asks each cell for a height at the column
+width it settled on; an inline context fills lines until they are full.  The
+shape is something like:
+
+```pascal
+type
+  TInkNextBoxKind = (nbBlock, nbInline, nbLine, nbTable, nbRow, nbCell, nbRule, nbImage);
+
+  TInkNextBox = class
+    Kind: TInkNextBoxKind;
+    Style: TInkNextStyle;      { what applies to this box }
+    Children: array of TInkNextBox;
+    { what the box's own margins, padding and borders take up }
+    Margin, Padding, Border: TRect;
+    { filled in by Measure: where the box ended up, in its parent }
+    Bounds: TRect;
+    { the runs an inline box holds, as they are today }
+    FirstRun, RunCount: Integer;
+    { lays the box out in AWidth and returns the height it needed; AY is
+      where it starts inside its parent }
+    function Measure(const Canvas: TCanvas; const Options: TInkNextOptions;
+      AWidth, AY: Integer): Integer; virtual;
+  end;
+```
+
+Everything already built stays: the tokenizer, the style stack, the metric
+cache, the run list, the paint offsets, the cell wrapping.  What changes is
+who owns the loop.  Today `Layout` walks a flat array and treats a table as
+a special case; afterwards, `Layout` builds a small tree and asks the root to
+measure itself, and a table is simply the box kind that arranges its children
+in columns.  Cells become boxes rather than a hand-written wrap loop, and
+`LayCell` is the code that becomes `TInkNextBox.Measure` for `nbCell`.
+
+What it buys, in the order anybody would want it: nested tables; a block with
+its own margins, padding, background and border (which `TInkCustomPage` does
+by hand today and would stop having to); `overflow` and a code block wider
+than its column; a float with text beside it; and, if it is ever wanted,
+flex and grid - all of them are "measure this subtree in a narrower space",
+which is the operation the tree already has.
+
+**Do it before more code is written against the flat list**, and keep
+`tools/renderer_dryrun.pas` green through the change: every sample's plain
+text, extents and hit tests must stay where they are while the inside is
+rebuilt.  That is what the harness is for.
+
+### 2.2 Lines hang from a baseline
+
+**Decided 18 September 2026**, and best done in the same pass as 2.1.  A line
+is currently as tall as its tallest run and painted from the top down.  Real
+inline layout hangs glyphs from a **baseline**: each run contributes an
+**ascent** (how far it reaches above the baseline) and a **descent**, the line
+takes the largest of each, and every run in it is placed so its baseline sits
+at the same height.
+
+Without it, 24-point and 10-point text on one line merely coexist - their
+tops line up, which is wrong and visible wherever a heading meets small text,
+or a `<sup>` meets body text.  With it, superscript and subscript stop being
+a quarter-of-a-line fudge and become what they are: an offset from the
+baseline.  `vertical-align` (top, middle, bottom, baseline) becomes possible
+and costs almost nothing once the line knows where its baseline is.
+
+The change is small now and pervasive later, because every vertical number in
+the engine - run bounds, line bounds, hit testing, selection rectangles -
+would otherwise have to change meaning.  Store `Ascent` and `Descent` beside
+each run's size, put `Baseline` in the line box, and place from it.
+
 **Caching.**  Layout must be reusable: the same markup at the same width,
 font and scale must not be laid out twice.  A page of 500 blocks is laid out
 once per width and painted on every scroll, so paint must be cheap and must
@@ -534,8 +613,14 @@ Done:
 - [x] **`NoWrap`** in the options: code is laid out as written and cut off at
       the edge rather than wrapped.
 
-Left:
+Left, and the first two are now the design (sections 2.1 and 2.2), not
+options:
 
+- [ ] **A box tree, and layout that recurses** - section 2.1.  Do it before
+      more is written against the flat run list; keep the dry run green
+      through it.
+- [ ] **Baselines** - section 2.2.  Same pass, while the vertical numbers are
+      being touched anyway.
 - [ ] **The card table is 8 pixels narrower** than the old engine's (422
       against 430): the outer `cellspacing` is counted differently at the
       edges.  Worth settling when the tables are checked against the real
@@ -601,27 +686,15 @@ allow for now and expensive to retrofit.
 LazInk is not going to be a browser (section 7, and ROADMAP section 6).  But
 the question worth answering once, now, is: **what would stop someone?**
 Most of what a browser does can be layered on later.  Five things cannot, or
-not cheaply, and four of them cost almost nothing to allow for today.
+not cheaply.
 
-1. **A box tree, and layout that recurses.**  This is the one that matters.
-   Today the engine lays **inline runs out in one column**: one width, one
-   flat list, and the only nested context in it is a table, handled as a
-   special case.  Blocks - their margins, padding, borders, backgrounds and
-   widths - are done above it by `TInkCustomPage`.  A general renderer needs
-   the opposite shape: a tree of boxes, and one operation, *lay this subtree
-   out in a box of width W and tell me the size it took*, called recursively.
-   Floats, `flex`, `grid`, nested blocks, `overflow`, a table cell that
-   contains another table - all of them fall out of that one operation, and
-   none of them is reachable without it.  Retrofitting recursion into a flat
-   run list is a rewrite; starting with it is a day.  **If only one thing on
-   this list is taken seriously, it is this one.**
-2. **Baselines.**  A line is currently as tall as its tallest run and painted
-   from the top down.  Real inline layout hangs glyphs from a **baseline**,
-   which is why 24-point and 10-point text on one line sit properly together
-   in a browser and merely coexist here.  Storing each run's ascent and
-   placing from the baseline is a small change now and a pervasive one later,
-   because every vertical position in the engine would have to change
-   meaning.  `vertical-align` needs it too.
+**Two of the five are no longer hypothetical**: the box tree and baselines
+are now how the engine is to be built - sections 2.1 and 2.2 - because they
+are what a renderer is, not only what a browser needs.  The other three stay
+here as what would have to come after them.
+
+1. **A box tree, and layout that recurses** - **decided, section 2.1.**
+2. **Baselines** - **decided, section 2.2.**
 3. **A cascade over that tree.**  `inkcss.pas` resolves style at the document
    layer, against a page's tags and classes, and hands the engine colors and
    attributes.  A general renderer resolves **computed style per box**:
