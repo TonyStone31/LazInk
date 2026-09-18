@@ -2,7 +2,7 @@ program RenderTests;
 {$mode objfpc}{$H+}
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
-  InkScrollBar, InkHtml, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
+  InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
   LResources, LazInkReg,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
@@ -1694,7 +1694,7 @@ const
   E = LineEnding;
 var
   B, B2: TInkPageBlock;
-  K, Rules: Integer;
+  K, J, Lines, Rules: Integer;
   Doc: string;
   Styles: TStringList;
   Shot: TBitmap;
@@ -1732,7 +1732,18 @@ begin
   Check(B.Indent > 0, 'a list is indented');
   Check(B.TextBounds.Left = B.Bounds.Left + B.Padding,
     'the words start at the indent; the marker hangs to their left');
-  Check(Pos('<BR>', UpperCase(B.Wrapped)) > 0, 'a long bullet wraps');
+  { the old engine wrapped by inserting <br> into the markup; this one wraps
+    while it lays out, so the check is that the words really do land on more
+    than one line, which is what a reader sees either way }
+  Lines := 0;
+  for K := 0 to APage.BlockCount - 1 do
+    if APage.Block(K) = B then
+    begin
+      APage.BlockText(K);
+      for J := 0 to B.RunCount - 1 do Lines := Max(Lines, B.Runs[J].Line);
+      Break;
+    end;
+  Check(Lines > 0, Format('a long bullet wraps (%d lines)', [Lines + 1]));
   B2 := FindBlock(APage, 'li', 'nested detail');
   Check(B2.Marker = '◦', 'a nested bullet is a circle');
   Check(B2.Indent > B.Indent, 'and indented further');

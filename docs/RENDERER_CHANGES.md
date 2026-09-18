@@ -61,3 +61,9 @@ or date.
 Independent Markdown, page-viewer, CSS and animation helper units are covered
 by the project's MIT license, not represented as upstream JVCL implementations.
 Future modifications to the covered renderer should extend this record.
+
+- **September 18, 2026:** `inkhtml.pas` and `inktables.inc` were deleted.
+  LazInk draws with its own engine - `inkrender.pas`, `inkbox.pas` and
+  `inkdraw.pas` - and no code from JVCL remains in the package. This file
+  stays as the record of what the old renderer was and what was done to it
+  while it was here. The credit stays too: see `../THIRD_PARTY_NOTICES.md`.

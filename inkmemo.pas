@@ -27,7 +27,7 @@
   If you would call Append, it is a memo; if you would call LoadFromFile,
   it is a page.
 
-  License: component code MIT; the renderer unit InkHtml is derived from the
+  License: component code MIT; the renderer unit InkDraw is derived from the
   JVCL project (MPL 1.1) - see that unit's header.
 }
 unit InkMemo;
@@ -38,7 +38,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, ImgList, LCLType, LCLIntf,
-  Types, InkHtml, InkMarkdown, InkPage, InkCopyMenu;
+  Types, InkDraw, InkMarkdown, InkPage, InkCopyMenu;
 
 type
   TInkMemoLinkEvent = procedure(Sender: TObject; LineIndex: Integer;

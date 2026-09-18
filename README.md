@@ -459,14 +459,11 @@ worked on the design, the code and the debugging.
 
 ### Where the code comes from today
 
-The HTML renderer (`inkhtml.pas`, with `inktables.inc`) still contains code
-adapted from JVCL, and is under JVCL's license (MPL 1.1) - see
-[License](#license) and [the notices](THIRD_PARTY_NOTICES.md).  Everything
-else was written for LazInk.
-
-The plan ([ROADMAP.md](ROADMAP.md), section 4) is to replace that renderer
-with one written for LazInk, so the whole package can be released with
-essentially no conditions.  The credit stays either way.
+All of it is LazInk's own.  The JVCL-derived renderer was replaced on
+18 September 2026 by `inkrender.pas`, `inkbox.pas` and `inkdraw.pas`, and
+deleted - so the package is MIT throughout, with no third-party code in it.
+The credit below stands anyway: JVCL and wp's example are what got LazInk
+started, whatever the license says now.
 
 ### Thanks
 
@@ -478,22 +475,18 @@ essentially no conditions.  The credit stays either way.
 
 ## License
 
-LazInk uses **MIT for its independent component code** and **MPL 1.1 for the
-JVCL-derived renderer** (`inkhtml.pas`, with `inktables.inc`). These licenses
-apply to different files; the complete package is not MIT-only.
+**MIT, every file.**  See [LICENSE](LICENSE) and the
+[MIT text](LICENSES/MIT.txt).
 
-See [LICENSE](LICENSE), the [MIT text](LICENSES/MIT.txt), the
-[MPL 1.1 text](LICENSES/MPL-1.1.txt), and the
-[renderer modification record](docs/RENDERER_CHANGES.md).  The plan for
-replacing that renderer with LazInk's own, so the whole package can move to
-a license with no conditions, is [ROADMAP.md](ROADMAP.md) section 4, and the
-behavior it has to reproduce is written down in
-[docs/RENDERER_SPEC.md](docs/RENDERER_SPEC.md).
+It used to be two licenses: the renderer came from Project JEDI's JVCL and
+stayed under MPL 1.1, which meant anyone shipping a program built with LazInk
+owed recipients that renderer's source.  That renderer is gone - LazInk draws
+with its own engine now - so there is one license and no conditions beyond
+keeping the notice.  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) keeps
+the history, and [docs/RENDERER_CHANGES.md](docs/RENDERER_CHANGES.md) remains
+as the record of what the old renderer was.
 
-No JVCL package needs installing, but the adapted source still carries its
-license. Both licenses permit commercial use. Applications may use LazInk
-without putting their independent source under MPL; distribution must still
-meet the covered renderer's source-availability and notice requirements.
-For this source distribution, the corresponding renderer source accompanies
-the license files. Binary distributors must provide their corresponding
-covered source or an actual compliant source-download location.
+The destination is a license with no conditions at all - 0BSD,
+[ROADMAP.md](ROADMAP.md) section 4.  One thing is in the way: `inklistbox.pas`
+grew out of wp's forum list box example, and what is left of that example has
+to be confirmed or rewritten first.  MIT until then.

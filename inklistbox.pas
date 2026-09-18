@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, StdCtrls, ExtCtrls, ImgList,
-  LCLType, LCLIntf, Types, Forms, Menus, InkHtml, InkMarkdown, InkCopyMenu;
+  LCLType, LCLIntf, Types, Forms, Menus, InkDraw, InkMarkdown, InkCopyMenu;
 
 type
   { When the in-place editor opens by itself.  Whatever the mode, a program

@@ -1,32 +1,43 @@
 LazInk licensing
 ================
 
-LazInk contains code under two licenses. This is a per-file distinction,
-not a choice to use either license for the entire package.
+MIT, for every file in the package. See LICENSES/MIT.txt.
 
-1. MPL 1.1: inkhtml.pas and its renderer implementation include inktables.inc.
-   inkhtml.pas contains code derived from Project JEDI's JVCL. Its modifications
-   remain under the Mozilla Public License 1.1. See LICENSES/MPL-1.1.txt,
-   THIRD_PARTY_NOTICES.md, and docs/RENDERER_CHANGES.md.
+Until 18 September 2026 this said something longer: the renderer was derived
+from Project JEDI's JVCL and stayed under MPL 1.1, so the package carried two
+licenses and anyone shipping a program built with it owed recipients that
+renderer's source. That renderer is gone. LazInk draws with its own engine
+now - inkrender.pas, inkbox.pas and inkdraw.pas - and no third-party code
+remains in the package. See THIRD_PARTY_NOTICES.md for the history and the
+credit, which stand whatever the license says.
 
-2. MIT: independently authored LazInk components and supporting code,
-   examples, tests, and documentation, except for the MPL files above and
-   material carrying its own upstream notice. See LICENSES/MIT.txt.
+Lazarus/LCL and Free Pascal are dependencies with their own licenses; they
+are not relicensed by LazInk.
 
-The MIT permission does not relicense third-party material. Upstream notices
-and license texts retain their original terms. Lazarus/LCL and Free Pascal
-are dependencies with their own licenses; they are not relicensed by LazInk.
+The intended destination is a license with no conditions at all - 0BSD, as
+ROADMAP.md section 4 sets out. One thing stands between here and there:
+inklistbox.pas grew out of wp's forum list box example, and what remains of
+that example has to be confirmed or rewritten before the package can be
+relicensed again. MIT until then.
 
-Distribution of the MPL-covered renderer, including in compiled applications,
-requires compliance with MPL 1.1. Include the applicable notices and license,
-document modifications, and make the corresponding covered source available
-to recipients as described in sections 3.1-3.6. The full license controls.
-Independent application files need not become MPL merely because they use
-LazInk; section 3.7 permits larger works under other licenses.
+MIT License
 
-Source availability in this source distribution: the corresponding renderer
-source is supplied in inkhtml.pas and inktables.inc alongside this file.
-If distributing a binary separately, supply its corresponding covered source
-and required build materials with it, or give recipients an actual source
-location that satisfies MPL 1.1. A link to unmodified JVCL is not a substitute
-for the source of the modified renderer used to build that binary.
+Copyright (c) 2026 LazInk contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

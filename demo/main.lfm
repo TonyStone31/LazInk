@@ -1452,17 +1452,15 @@ object frmMain: TfrmMain
           'wp suggested taking what was needed from the HTML drawing code in Project JEDI''s JVCL and helped make it happen, with a standalone unit and an owner-drawn list box example. Tony''s demo built on that example - the List box tab here - is where the idea for LazInk was born. The components have been LazInk''s own since.'
           'AI assistants helped teach the component creation process and worked on design, implementation and debugging.'
           '<font size="15"><b>Project JEDI / JVCL</b></font>'
-          'The HTML renderer still contains adapted JVCL code from JvHTControls and JvJVCLUtils. The plan is to replace it with a renderer written for LazInk, so the package can be released with essentially no conditions - the credit stays either way.'
+          'The HTML renderer used to be adapted JVCL code from JvHTControls and JvJVCLUtils. It has been replaced by LazInk''s own and deleted; the credit stays, because that code is what got LazInk off the ground.'
           'JvHTControls: Andrei Prygounkov; contributors include Maciej Kaczkowski, Timo Tegtmeier, and Andreas Hausladen.'
           'JvJVCLUtils: Fedor Koshevnikov, Igor Pavluk, Serge Korolev, and SGB Software.'
           '<a href="https://github.com/project-jedi/jvcl">Project JEDI / JVCL</a>'
           '<font size="15"><b>Thanks</b></font>'
           '<b>wp</b> - the JVCL route, the standalone unit and the list box example LazInk started from.   <b>Project JEDI / JVCL</b> - the drawing code it grew from.   <b>Lazarus and Free Pascal</b>.'
           '<font size="15"><b>Licensing</b></font>'
-          'Independent LazInk component code is MIT. The adapted renderer (inkhtml.pas and inktables.inc) is MPL 1.1.'
-          'The corresponding MPL renderer source is supplied alongside this demo in the LazInk source distribution. See LICENSE, LICENSES/MPL-1.1.txt, THIRD_PARTY_NOTICES.md, and docs/RENDERER_CHANGES.md.'
-          'If distributing this executable separately, include the corresponding covered source or provide recipients its actual download location.'
-          '<a href="https://www.mozilla.org/en-US/MPL/1.1/">Mozilla Public License 1.1</a>'
+          'MIT, every file. LazInk draws with its own engine - inkrender.pas, inkbox.pas and inkdraw.pas - and no third-party code remains in the package.'
+          'Until 18 September 2026 the renderer came from JVCL and was MPL 1.1, which put conditions on anyone shipping a program built with it. That renderer has been replaced and deleted. See LICENSE and THIRD_PARTY_NOTICES.md, which keeps the history and the credit.'
         )
         SuperSubScriptRatio = 0.7
         Borders.Left = 10

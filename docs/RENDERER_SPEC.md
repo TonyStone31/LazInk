@@ -1,10 +1,15 @@
 # LazInk renderer specification
 
-Written 17 September 2026.  This is the **behavior** the drawing engine has
-to produce, written down so a new one can be built **from this document and
-the test suite**, without reading the JVCL-derived code it replaces.  See
-ROADMAP.md section 4 for why: `inkhtml.pas` and `inktables.inc` are MPL 1.1,
-and they are the only thing keeping the package off a no-conditions license.
+Written 17 September 2026 as the specification for a renderer to be built.
+**As of 18 September 2026 it is built**: `inkrender.pas` (the engine),
+`inkbox.pas` (the box tree it lays out through) and `inkdraw.pas` (the calls
+the controls make) replaced `inkhtml.pas` and `inktables.inc`, which are
+deleted, and the package is MIT throughout.  What follows is now both the
+specification and the description: the behavior the engine produces, and why
+it is shaped the way it is.
+
+The switch was made when the whole test suite, all 38 Heckers Sketch help
+pages and the demo ran on the new engine - see section 10.
 
 **How to use it.**  Build to this document.  Do not open `inkhtml.pas` or
 `inktables.inc` while writing the new engine; if you have read them, work
