@@ -613,14 +613,26 @@ Done:
 - [x] **`NoWrap`** in the options: code is laid out as written and cut off at
       the edge rather than wrapped.
 
-Left, and the first two are now the design (sections 2.1 and 2.2), not
-options:
+Done 18 September 2026, in `inkrenderbox.pas` and `inkrendernext.pas`
+together, with every measurement in the dry run unchanged through the
+change:
 
-- [ ] **A box tree, and layout that recurses** - section 2.1.  Do it before
-      more is written against the flat run list; keep the dry run green
-      through it.
-- [ ] **Baselines** - section 2.2.  Same pass, while the vertical numbers are
-      being touched anyway.
+- [x] **A box tree, and layout that recurses** - section 2.1.  `TInkBox`
+      carries the tree, `Tag` / `TagEnd` the runs a box covers, and
+      `OnMeasure` lets the renderer measure what it owns while the tree owns
+      the walk.  `Layout` now builds a root block whose children are inline
+      stretches, rules and tables, and calls `Measure` on it once.
+- [x] **Baselines** - section 2.2.  Runs carry `Ascent` / `Descent`, lines
+      carry `Baseline`, and every run on a line is placed from it, so mixed
+      sizes sit together; superscript and subscript became offsets from the
+      baseline rather than a fraction of a line.
+- [x] **Nested tables** - a table inside a cell is measured by the same
+      routine in the cell's width, which the old engine has never managed:
+      it flattens the inner rows into the outer table.  This is the first
+      thing the tree bought that could not be had before.
+
+Left:
+
 - [ ] **The card table is 8 pixels narrower** than the old engine's (422
       against 430): the outer `cellspacing` is counted differently at the
       edges.  Worth settling when the tables are checked against the real
