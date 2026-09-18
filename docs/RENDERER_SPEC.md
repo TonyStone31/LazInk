@@ -593,3 +593,70 @@ allow for now and expensive to retrofit.
 * **Not wanted, still:** JavaScript, forms, video, web fonts, positioning,
   animations beyond a picture's own frames, and printing.  A document
   renderer with a media framework behind it is a different program.
+
+---
+
+## 12. If someone wanted to take it further
+
+LazInk is not going to be a browser (section 7, and ROADMAP section 6).  But
+the question worth answering once, now, is: **what would stop someone?**
+Most of what a browser does can be layered on later.  Five things cannot, or
+not cheaply, and four of them cost almost nothing to allow for today.
+
+1. **A box tree, and layout that recurses.**  This is the one that matters.
+   Today the engine lays **inline runs out in one column**: one width, one
+   flat list, and the only nested context in it is a table, handled as a
+   special case.  Blocks - their margins, padding, borders, backgrounds and
+   widths - are done above it by `TInkCustomPage`.  A general renderer needs
+   the opposite shape: a tree of boxes, and one operation, *lay this subtree
+   out in a box of width W and tell me the size it took*, called recursively.
+   Floats, `flex`, `grid`, nested blocks, `overflow`, a table cell that
+   contains another table - all of them fall out of that one operation, and
+   none of them is reachable without it.  Retrofitting recursion into a flat
+   run list is a rewrite; starting with it is a day.  **If only one thing on
+   this list is taken seriously, it is this one.**
+2. **Baselines.**  A line is currently as tall as its tallest run and painted
+   from the top down.  Real inline layout hangs glyphs from a **baseline**,
+   which is why 24-point and 10-point text on one line sit properly together
+   in a browser and merely coexist here.  Storing each run's ascent and
+   placing from the baseline is a small change now and a pervasive one later,
+   because every vertical position in the engine would have to change
+   meaning.  `vertical-align` needs it too.
+3. **A cascade over that tree.**  `inkcss.pas` resolves style at the document
+   layer, against a page's tags and classes, and hands the engine colors and
+   attributes.  A general renderer resolves **computed style per box**:
+   inheritance, specificity, `em` / `rem` / `%` against the containing block,
+   `currentColor`.  That belongs on the box tree, not in the parser - which
+   is another reason the tree comes first.
+4. **Stacking and clipping.**  Painting is in run order with one clip
+   rectangle.  A browser paints in **stacking contexts**: `z-index`,
+   `overflow: hidden`, opacity, transforms.  Painting a tree in z-order
+   instead of a list in document order is not hard, but it is structural.
+5. **Text shaping and font fallback.**  Arabic, Hebrew and the Indic scripts
+   need a shaper (HarfBuzz); a missing glyph needs a fallback font; emoji
+   need color fonts; and bidirectional text needs the Unicode algorithm.
+   This is the one item on the list that is not realistically ours to write,
+   and the honest answer for anyone who needs it is a platform text API or a
+   binding.
+
+Everything else a browser has is **incremental** on top of those, and can
+wait until somebody wants it: `colspan` / `rowspan`, `line-height`,
+`letter-spacing`, `text-transform`, lists with their own markers, form
+controls, SVG, incremental re-layout of only what changed, and printing.
+Scripting, the DOM and the network stay out for good: that is a different
+program, and LazInk's whole point is that it is not one.
+
+### Checking it against a browser
+
+For "does this look the way a page is meant to look", the reference is a
+browser, not the old engine.  `tools/browser_shot.sh page.html out.png 760`
+renders a page with whatever Chromium-family browser is installed, headless,
+so the same page can be put side by side with LazInk's own drawing of it.
+
+Done on Heckers Sketch's `commands.html` at 760 pixels (18 September 2026):
+headings, the numbered list, the callout boxes, the three-column command
+table, code and key spans and links all land in the same places and in the
+same order.  What differs, and is not a bug: LazInk takes its colors from
+the control's theme rather than the page's light or dark scheme, it does not
+read `line-height` (so the text is tighter) or `text-transform` (so a table
+heading is not shouted), and it draws no form controls.
