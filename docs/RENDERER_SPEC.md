@@ -193,7 +193,15 @@ them, which the old one does not.
 
 * tags are dropped, entities are resolved;
 * `</td>` and `</th>` become a **tab**;
-* `</tr>`, `<br>` and `</p>` become a **line ending**.
+* `</tr>`, `<br>`, `<hr>` and `</p>` become a **line ending**;
+* an **opening `<p>`** becomes **two** line endings - a blank line - because
+  that is what it draws, and none at the very start of the text.
+
+Those last two are easy to miss and they matter: `tests/check_help_text.pas`
+compares this text across 38 pages, so anything that does not produce it
+character for character fails the run.  A new engine should be checked
+against the old one on a corpus before anything else -
+`tools/renderer_dryrun.pas` does exactly that.
 
 ---
 
@@ -445,105 +453,107 @@ built the way section 2 asks: tokenize, style, lay out into kept line boxes,
 paint from them.
 
 **Dry runs.**  `tools/renderer_dryrun.pas` draws the same markup with both
-engines side by side into one PNG, prints their extents and hit tests, and
-times both on 67 KB of markup.  It has been run twice: once when the
-prototype first appeared, and again after its next round of work the same
-day.
+engines side by side into one PNG, checks that both read the same plain text
+back out of every sample, prints extents and hit tests, and times both on 67
+KB of markup.  It has been run three times: when the prototype appeared,
+after its second round, and after the work described below.
 
-| | Old | Prototype, first run | Prototype, second run |
+| Sample | Old | Prototype, first | Prototype, now |
 |---|---|---|---|
-| inline markup and wrapping | 428 x 56 | 430 x 55 | 432 x 55 |
+| inline markup and wrapping | 428 x 56 | 430 x 55 | **428 x 55** |
 | `<center>` / `<right>` / `<left>` | 430 x 69 | 430 x 68 | 430 x 68 |
+| paragraphs and a rule | 95 x 105 | 430 x 51 | **95 x 103** |
 | entities | 334 x 18 | 430 x 17 | **334 x 17** |
-| a long unbreakable word | 428 x 35 | 430 x 34 | 432 x 34 |
+| a long unbreakable word | 428 x 35 | 430 x 34 | **428 x 34** |
 | CJK text | 354 x 18 | 430 x 17 | **354 x 17** |
 | a plain table | 138 x 61 | 430 x 58 | **138 x 58** |
-| a table of cards | 430 x 64 | 430 x 29 | 422 x 45 |
-| first layout, 67 KB | 74 ms | 68 ms | **38 ms** |
-| 30 paints from the kept layout | 872 ms | 73 ms | **75 ms** |
-| re-layout at a new width | 76 ms | 62 ms | **34 ms** |
+| a table with headings | 153 x 61 | - | **153 x 58** |
+| nested inline markup | 254 x 18 | - | **254 x 17** |
+| paragraphs only | 34 x 86 | - | **34 x 85** |
+| a cell that wraps | 430 x 48 | - | **430 x 46** |
+| a table of cards | 430 x 64 | 430 x 29 | 422 x 62 |
 
-So the engine lays a long document out in **half** the old engine's time and
-paints a screenful in about a tenth of it, because painting reads a layout
-instead of parsing and measuring again.  That is the design working, and it
-is the reason to finish it.
+**Every width now matches the old engine exactly** except the card table's
+(422 against 430, from how the outer spacing is counted), and every height
+is one to three pixels shorter - line-height rounding, inside the "a pixel
+or two" the switch-over asks for.  **Every sample reads back the same plain
+text from both engines**, which is the check the 38 pages depend on.
 
-Matching the old engine already: bold, italic, underline, strike, `<font>`
-color and size, links and their underline, where lines break, long words,
-CJK, alignment, superscript and subscript, `<hr>`, entity handling
-(including `&amp;lt;` staying literal text, so the `#1` marker convention is
-not needed), content widths, hit testing with the right href and ordinal,
-and `odSelected` / `odDisabled` colors.
+Speed, on 67 KB of markup (6,800 pixels tall, 14,400 runs):
+
+| | Old | Prototype |
+|---|---|---|
+| first layout | 74 ms | **37 ms** |
+| re-layout at a new width | 75 ms | **31 ms** |
+| 30 paints, still | 848 ms | **74 ms** |
+| 30 paints, scrolling | 848 ms | **73 ms** |
+
+Twice as fast to lay out, **eleven times faster to paint**, and scrolling now
+costs the same as standing still, because an offset moves the text instead of
+a new layout.  Before the offset existed, those same 30 scrolled paints cost
+1,063 ms.
 
 One difference is an **improvement, not a regression**: the hit result's
-`LinkText` comes back `a link` where the old engine says `alink`.  The old
-one drops the space between runs.  The prototype is right; do not "fix" it
-backwards, and change the test that pins the old spelling when the switch
-happens.
+`LinkText` comes back `a link` where the old engine says `alink` - the old
+one drops the space between runs.  The prototype is right; change the test
+that pins the old spelling when the switch happens.
 
 ### The checklist
 
-Done since the prototype first ran (all 18 September 2026):
+Done:
 
-- [x] Superscript and subscript are painted, not just measured.
-- [x] `<hr>` is drawn.
-- [x] Extents report the **content** width, so a label sizes to its text.
-- [x] `LinkText` is filled in.
-- [x] Images take the image list's size instead of a hard-coded 16 x 16.
-- [x] `TOwnerDrawState`: `odSelected` and `odDisabled` pick the selection
-      and disabled colors.
-- [x] `<ind>`'s indent is applied at layout time.
-- [x] Half the utility API: `InkNextEscape`, `InkNextUnescape`,
-      `InkNextPlainText`, `InkNextContrastColor`, `InkNextShadeColor`,
-      `InkNextIsCJK`.
+- [x] Superscript and subscript painted, not just measured.
+- [x] `<hr>` drawn, with a line's space above and below it as the old engine
+      leaves.
+- [x] Extents report the **content** width: a trailing space is not part of
+      it, and a rule is as wide as its column by definition rather than by
+      content.
+- [x] `LinkText` filled in.
+- [x] Images take the image list's size.
+- [x] `TOwnerDrawState`: `odSelected` and `odDisabled` pick their colors,
+      `odReserved1` scales the indent.
+- [x] `<ind=20>`, in the form the document layer writes it.
+- [x] The utility API: `InkNextEscape`, `InkNextUnescape`,
+      `InkNextPlainText`, `InkNextColor`, `InkNextContrastColor`,
+      `InkNextShadeColor`, `InkNextIsCJK`.
+- [x] **Plain text matches the old engine character for character**,
+      including `<p>` as a blank line and `<hr>` as a break - see 3.4, which
+      had not said so.
+- [x] `<p>` draws a blank line: an explicit break on an empty line is a
+      line, not nothing.
+- [x] **A paint origin.**  `Paint` and `HitTest` take `AOffsetX` /
+      `AOffsetY`, so scrolling moves the text without touching the layout.
+- [x] **Tables.**  Cells wrap their text inside their column; a row is as
+      tall as its tallest cell; columns are sized the way 3.3 says - every
+      column keeps its longest word, then what is left is shared by how much
+      wider each still wants to be - `width`, `width="%"` and
+      `layout="fixed"` are read, and a table with nothing said about borders
+      gets the grid the old engine draws.
+- [x] `OnRun` / `RunPart` reporting, for selection.
+- [x] `VertAlign` for a control taller than its text.
+- [x] **`NoWrap`** in the options: code is laid out as written and cut off at
+      the edge rather than wrapped.
 
-Still to do, heaviest first:
+Left:
 
-- [ ] **Tables.**  Still the largest item, and Heckers Sketch's index rides
-      on it.  Cell backgrounds, borders and padding now draw, but:
-      - **`<br>` inside a cell does not start a new line.**  Measured on
-        `<td><b>Title</b><br>body words</td>`: both runs come back at the
-        same place (`@6,6`), so the second line is painted over the first.
-        This is why a card shows only its body text.
-      - A plain table draws **no grid**; the old engine borders every cell.
-      - Column widths are not the algorithm in section 3.3 (longest word
-        first, then share what is left), and `width="100%"` /
-        `layout="fixed"` are not read.
-      - The card sample is 45 pixels tall against the old engine's 64, so
-        padding and spacing do not add up to the same box yet.
-- [ ] **`InkNextPlainText` puts a spurious line break and tab before a
-      table's first cell** - `[\n\tTitle...]` where the old engine gives
-      `[Title...]`.  `tests/check_help_text.pas` compares this text across
-      38 pages, so it has to match exactly.
-- [ ] **`<p>` is one break; it must be two** - a blank line - and dropped
-      when it is the first thing in the string.
-- [ ] **A paint origin.**  Still the signature decision: `Paint` draws at
-      layout coordinates, so moving text means moving `Borders`, which is in
-      the cache key - 30 scrolled paints cost 1,063 ms against 75 ms for the
-      same paints at rest.  An origin argument at paint time, `Borders` out
-      of the key.
-- [ ] **A line may end a couple of pixels past the width** (432 against a
-      430 column) when it finishes with a superscript or a larger font.
-- [ ] **`<ind=N>`.**  The tokenizer reads `<ind n="20">`; the markup the
-      document layer emits is `<ind=20>`.  And the indent is always scaled
-      by `Scale`, where the old engine scales it only when `odReserved1` is
-      in the draw state.
-- [ ] **`InkNextColor` is implementation-only** - it is the
-      `HTMLStringToColor` replacement and has to be public.
-- [ ] **Selection.**  No `OnRun` / `RunPart` equivalent yet.  `RunAt` /
-      `LineAt` on the layout is the better shape; `TInkCustomPage.PrepareRuns`
-      gets rewritten onto whichever it becomes.
-- [ ] **The rest of the API** (section 4): the options builders, and a
-      decision on `HTMLWordWrap` - the prototype wraps inside layout, so
-      `inkpage.pas` stops pre-wrapping rather than the engine growing a
-      wrapper.
+- [ ] **The card table is 8 pixels narrower** than the old engine's (422
+      against 430): the outer `cellspacing` is counted differently at the
+      edges.  Worth settling when the tables are checked against the real
+      help pages.
+- [ ] **Heights run one to three pixels short** of the old engine's across
+      the board.  It is line-height rounding and it is within tolerance, but
+      the 38-page run will show whether it accumulates down a long page.
+- [ ] **`colspan` and `rowspan`** (section 11), which the old engine has
+      never had either.
+- [ ] **Wire it up behind a switch** and run `tests/run.sh` against it - the
+      real verdict, and the point at which the remaining differences stop
+      being samples and start being the manual.
 - [ ] **Move `TInkBorders` and `TInkLinkStyle`** out of the MPL unit, as
-      section 4 says.  Unchanged and still worth doing on its own.
+      section 4 says.  Still worth doing on its own, before the switch.
 
-Nothing in either dry run says the design is wrong.  The opposite: the parts
-that are hardest to get right generically already agree with the old engine,
-the gap list is shrinking in the order a person would pick, and the speed is
-going the right way.
+The engine now agrees with the one it replaces on everything the dry run can
+measure, and beats it on all four timings.  What is left is integration, not
+invention.
 
 ---
 

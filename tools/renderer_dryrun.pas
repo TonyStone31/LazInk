@@ -79,15 +79,9 @@ var
     WriteLn(Format('new: %d paints, kept layout    %5.0f ms',
       [Reps, MilliSecondsBetween(Now, T) * 1.0]));
     T := Now;
-    for I := 1 to Reps do
-    begin
-      { moving the text by its Borders re-lays it out, which is finding 6 }
-      BN.Borders := Rect(0, -I*20, 0, 0);
-      BR.Paint(BW.Canvas, Rect(0, 0, BWidth, 400), BN);
-    end;
-    WriteLn(Format('new: %d paints, moving Borders %5.0f ms  (each one re-lays out)',
+    for I := 1 to Reps do BR.Paint(BW.Canvas, Rect(0, 0, BWidth, 400), BN, 0, -I*20);
+    WriteLn(Format('new: %d paints, scrolling      %5.0f ms  (an offset, one layout)',
       [Reps, MilliSecondsBetween(Now, T) * 1.0]));
-    BN.Borders := Rect(0, 0, 0, 0);
     T := Now;
     BWrapped := HTMLWordWrap(BW.Canvas, Doc, BWidth - 120, BO.SuperSubScriptRatio, BO.Scale);
     BSz := HTMLTextExtentOpt(BW.Canvas, Rect(0, 0, BWidth - 120, 0), [], BWrapped, BO);
@@ -120,6 +114,14 @@ begin
     #$E4#$B8#$AD#$E6#$96#$87#$E6#$B8#$AC#$E8#$A9#$A6 + #$E4#$B8#$AD#$E6#$96#$87#$E6#$B8#$AC#$E8#$A9#$A6);
   Sample('plain table',
     '<table><tr><td>one</td><td>two</td></tr><tr><td>three</td><td>a longer cell</td></tr></table>');
+  Sample('table with headings',
+    '<table><tr><th>Control</th><th>What it is</th></tr>' +
+    '<tr><td>TInkPage</td><td>a viewer</td></tr></table>');
+  Sample('nested inline', 'a <b>bold <i>and italic <u>and underlined</u></i></b> run');
+  Sample('paragraphs only', 'one<p>two<p>three');
+  Sample('a cell that wraps',
+    '<table width="100%"><tr><td>a cell with enough words in it that the text has to ' +
+    'wrap inside the cell rather than run past its edge</td><td>short</td></tr></table>');
   Sample('styled table (cards)',
     '<table width="100%" layout="fixed" cellspacing="8" cellpadding="6 8 6 8" ' +
     'cellbg="#eef2ff" bordercolor="#c7d2fe" radius="8">' +
@@ -169,6 +171,22 @@ begin
       [Names[I], Sz.cx, Sz.cy, NSz.cx, NSz.cy, L.LineCount, L.RunCount]));
     Inc(Y, Max(Sz.cy, Min(NSz.cy, 400)) + 26);
   end;
+
+  { the text both engines say a document holds - the 38-page check compares
+    exactly this, so a difference here is a difference that matters }
+  WriteLn;
+  WriteLn('--- plain text, both engines ---');
+  K := 0;
+  for I := 0 to High(Samples) do
+    if HTMLPlainText(Samples[I]) <> InkNextPlainText(Samples[I]) then
+    begin
+      Inc(K);
+      WriteLn('  differs: ', Names[I]);
+      WriteLn('    old [', StringReplace(HTMLPlainText(Samples[I]), LineEnding, '\n', [rfReplaceAll]), ']');
+      WriteLn('    new [', StringReplace(InkNextPlainText(Samples[I]), LineEnding, '\n', [rfReplaceAll]), ']');
+    end;
+  if K = 0 then WriteLn('  every sample reads back the same from both engines')
+  else WriteLn('  ', K, ' of ', Length(Samples), ' differ');
 
   { hit testing on the link in sample 0 }
   SetFont(Sheet.Canvas);
