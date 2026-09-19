@@ -502,7 +502,7 @@ pulling in a heavyweight HTML component.
 **wp** suggested taking what was needed from the HTML drawing code in
 Project JEDI's JVCL, and helped make it happen: he pulled those routines
 out into a standalone unit and wrote an owner-drawn list box example around
-it.  Tony built a demo on top of that example - the floating in-place
+it.  He built a demo on top of that example - the floating in-place
 editor over a list item, saving the list as text or as markup - and that
 demo is where the idea for LazInk was born.
 

@@ -57,7 +57,7 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 | `TInkLabel` | inline markup, HTML or Markdown, copy menu | character selection |
 | `TInkMemo` | lines of markup, whole-document Markdown, copy menu, Ctrl+A/Ctrl+C by line | character selection |
 | `TInkListBox` | markup items, in-place editor, copy menu, Ctrl+A/Ctrl+C by item | character selection |
-| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward (buttons, mouse, keys), small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavoured Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection, copy menu, find in page, style attributes, folding `<details>` | hardware check of touch |
+| `TInkPage` | whole HTML or Markdown documents: headings, lists, tables, code/kbd, PNG and animated GIF, links, anchors, Back/Forward (buttons, mouse, keys), small CSS reader, themed scrollbar, drag-to-scroll, GitHub-flavored Markdown, code blocks, quotes, hanging list markers, a host stylesheet, GTK3 touch and flick, mouse selection, copy menu, find in page, style attributes, folding `<details>` | hardware check of touch |
 | `TInkEdit` | single-line edit, per-character colors | - |
 | `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
 | `TInkScrollBar` | canvas scrollbar, colored from CSS `scrollbar-color` / `scrollbar-width` | - |
@@ -75,7 +75,7 @@ Each item: the problem, exactly what to build, and what "done" means.
 
 ### P1. Touch scrolls a page on Linux (GTK3)
 
-**Problem.**  On Tony's wife's Linux Mint machine, a finger dragged on
+**Problem.**  On the wife's Linux Mint machine, a finger dragged on
 Heckers Sketch's What's New window does nothing.  It works on Windows.
 
 **Why** (read from the code; not yet reproduced on a touchscreen): the
@@ -131,13 +131,13 @@ flicks (`FlickScroll`); a mouse drag does not.  `TInkPage.Touch` is public.
 Tested: finger drag, tap, cancel, drag ending on a link, flick both ways,
 stopping a flick, and the real GTK path - `gtk_widget_event` with GDK touch
 events made in the test, including a second finger that must be ignored,
-and a tap on the scrollbar.  Not yet done: the check on Tony's wife's Linux
+and a tap on the scrollbar.  Not yet done: the check on the wife's Linux
 Mint machine, and a Windows run.  `TInkLabel` is a graphic control with no
 window, so on GTK3 a finger does not reach its links.
 
 ### P2. Copy text out - the quick version
 
-**Problem.**  Tony: "you cannot select text to copy and paste it elsewhere.
+**Problem.**  From a note: "you cannot select text to copy and paste it elsewhere.
 That's sort of a shitty aspect of lazink."
 
 **Build (before real selection):**
@@ -166,7 +166,7 @@ clipboard.  Captions are resourcestrings.
 ### P3. Fuller Markdown
 
 **Problem.**  The Markdown converter is a basic subset.  Programmers write
-GitHub-flavoured Markdown, and Heckers Sketch wants to hand its
+GitHub-flavored Markdown, and Heckers Sketch wants to hand its
 `WHATS_NEW.md` straight to LazInk instead of converting it to HTML itself
 (which it does today, in `uWhatsNew.pas`, `ReleaseNotesHTML`).
 
@@ -299,7 +299,7 @@ gets it for free.
 
 ### P5. A Markdown editor in the demo
 
-**Tony:** "I also want a mark down editor in the demo application... to
+**From a note:** "I also want a mark down editor in the demo application... to
 demonstrate and maybe it opens the readme for the demo app."
 
 **Build, in `demo/`:**
@@ -312,7 +312,7 @@ demonstrate and maybe it opens the readme for the demo app."
 * **Open** and **Save** on this tab.  The README currently says the demo has
   "deliberately no File/Open/Save actions" - update it to say this tab is
   the exception.
-* Source pane: **do not use SynEdit's `TSynMarkdownSyn`.**  Tony's call:
+* Source pane: **do not use SynEdit's `TSynMarkdownSyn`.**  the call:
   build as much of this as possible out of LazInk itself.  (The highlighter
   exists in Lazarus trunk, but its header says GPL only, and it may not be
   in the stable release - reasons enough on their own.)
@@ -375,7 +375,7 @@ Heckers Sketch will need when it gets there:
   (link, Back, Forward, load from code) so a program can update its buttons
   and title.  `Back` now moves the history index before loading, so the
   event sees the right state.
-* **Tony asked for the mouse's own back and forward buttons.**  Windows and
+* **What was asked for was the mouse's own back and forward buttons.**  Windows and
   Qt deliver them as `mbExtra1` / `mbExtra2`; the Lazarus GTK3 backend
   drops buttons 8 and 9 entirely, so `InkHookTouch` also listens for them
   on the control's window and sends LCL the `LM_XBUTTONDOWN` / `UP`
@@ -410,7 +410,7 @@ cards were enough for the contents page.  Notes from the first use:
 ### P7. Tables that look like a page, and pictures you can see properly
 
 Found on 17 September, once Heckers Sketch's manual was in the program.
-Tony: "a real web browser renders the help index better with the look of
+From a note: "a real web browser renders the help index better with the look of
 multiple tools per row where our renderer is a long list of 1 item per
 row... so we need better rendering... but this is pretty fucking good!"
 
@@ -429,13 +429,13 @@ the table renderer still lacks.  Heckers Sketch's `docs/help/index.html` and
    against the border now.
 3. **`border-spacing`** with `border-collapse: separate` - gaps between
    cells, which is what turns a table into cards.
-4. **Cell background and border colour** from CSS (`td { background: ...;
-   border: 1px solid ... }`), instead of a hard border in the text colour.
+4. **Cell background and border color** from CSS (`td { background: ...;
+   border: 1px solid ... }`), instead of a hard border in the text color.
    And **no border at all** when CSS says `border: none` (the index's
    `td.empty` filler cells).
 5. **Rounded cell corners** (`border-radius`).
 6. **`vertical-align: top`** in cells of different heights.
-7. **`<small>`** - smaller text - and a way to colour it: `table.cards
+7. **`<small>`** - smaller text - and a way to color it: `table.cards
    small { color: ... }` is a descendant selector, which the CSS reader does
    not take yet (item 3 in section 4's list).  Until then a simple
    `small { color: ... }` would do.  The index uses `<small>` for each
@@ -445,7 +445,7 @@ the table renderer still lacks.  Heckers Sketch's `docs/help/index.html` and
    rather than a fixed three.  That is what the browser does with the old
    index, and it copes with narrow windows.
 
-**Pictures you can see properly.**  Tony: "for the gif files... be able to
+**Pictures you can see properly.**  From a note: "for the gif files... be able to
 click them and see a larger image... I prefer not to get that package any
 bulkier... maybe we need to support open in new window hrefs and then we
 have a larger zoomable window for image or something... we will have to
@@ -532,7 +532,7 @@ compared token by token, the longest thing in common being 21 tokens of LCL
 boilerplate.  It is also faster - half the time to lay a page out, a tenth of
 the time to paint one.
 
-On `inklistbox.pas`, which grew out of wp's forum list box example: Tony,
+On `inklistbox.pas`, which grew out of wp's forum list box example: the owner,
 who was given that example, settled it - it was written for him to use, with
 no license attached and no restriction intended.  With that, and with the
 JVCL code gone, the package went to **0BSD**: no conditions at all, not even
@@ -635,7 +635,7 @@ rewritten line by line, or it is still derived.
 2. Delete `inkhtml.pas` and `inktables.inc`.
 3. **Check provenance of every remaining file before relicensing.**  All of
    them say MIT today, but `inklistbox.pas` grew out of wp's forum list box
-   example (via Tony's demo built on it) - confirm what, if anything, of
+   example (via the demo built on it) - confirm what, if anything, of
    that example is still in it, and rewrite whatever is.  The goal is that
    **no code from JVCL or from the forum example remains** - the forum
    thread is credited as where LazInk came from, not as a source of code.
@@ -643,15 +643,15 @@ rewritten line by line, or it is still derived.
    rewritten too.
 4. Switch `LICENSE` to the chosen license, drop `LICENSES/MPL-1.1.txt`,
    update the SPDX lines and `lazink.lpk`'s license field.
-5. **Keep the credit.**  The story, as Tony tells it: he started the forum
+5. **Keep the credit.**  The story, as the owner tells it: he started the forum
    thread in 2021 wanting simple HTML to decorate list box text; wp
    suggested taking what was needed from JVCL and helped make it happen;
-   Tony's demo on that example is where the idea for LazInk was born; and
+   the demo on that example is where the idea for LazInk was born; and
    the components have been LazInk's own since.  `THIRD_PARTY_NOTICES.md`,
    the README and the demo's Credits tab keep saying so - JVCL, wp and the
    other forum helpers as where it started, `TDzHTMLText` as a source of
    ideas (no code) - with no borrowed code left in the package.  This is
-   not about discrediting anyone; Tony sees how code should be shared
+   not about discrediting anyone; the owner sees how code should be shared
    differently, and that is only possible with code written for LazInk.
    Keep `docs/RENDERER_CHANGES.md` as a record of the old renderer.
 
@@ -715,14 +715,14 @@ help pages already use and LazInk currently drops (see
     written.
 
     A page that teaches a tool is
-    mostly pictures of it moving, and GIF is a 1987 format: 256 colours a
+    mostly pictures of it moving, and GIF is a 1987 format: 256 colors a
     frame and next to no compression between frames.  Measured on one of
     Heckers Sketch's own recordings, 17 September 2026:
 
     | Format | Size |
     |---|---|
     | GIF, as shipped | 1,221 KB |
-    | GIF, tuned (8 fps, 64 colours) | 848 KB |
+    | GIF, tuned (8 fps, 64 colors) | 848 KB |
     | Animated WebP, q55 | 452 KB |
     | WebM (VP9) / MP4 | ~100 KB |
 
@@ -782,7 +782,7 @@ In rough order of value to other Lazarus developers:
 ### Code blocks and syntax highlighting
 
 **This decision changed on 17 September 2026.**  It used to say LazInk
-would not color code at all.  Tony: "cant we do our own basic syntax
+would not color code at all.  From a note: "cant we do our own basic syntax
 highlighting... like the bare minimum of one... i think i have seen bare
 minimums in other programs", and "we will parse and syntax highlight
 everything the same and yes knowing we will mostly get it wrong but at

@@ -1758,7 +1758,7 @@ end;
 { --- nothing a block paints may leak into the next one --- }
 procedure BrushLeakChecks;
 const
-  { the rule's colour is red only so a stray fill can be told from the text }
+  { the rule's color is red only so a stray fill can be told from the text }
   CSS = 'body { background: #eceef1; color: #5e6670; font-size: 14px } ' +
         'hr { color: #ff0000 }';
   Doc = 'Paragraph before the rule.' + LineEnding + LineEnding +
@@ -1798,7 +1798,7 @@ begin
     Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
     Probe.RenderTo(Shot.Canvas);
     { every pixel across the bullet's line, at a height where its text sits:
-      the page's background may show, the text's colour may show, the rule's
+      the page's background may show, the text's color may show, the rule's
       red may not }
     Red := 0; Looked := 0;
     Y := Bullet.TextBounds.Top + (Bullet.TextBounds.Bottom - Bullet.TextBounds.Top) div 2
@@ -1811,7 +1811,7 @@ begin
       end;
     Check(Looked > 0, 'the bullet is on screen');
     Check(Red = 0, Format('a list item after a rule is not painted in the rule''s ' +
-      'colour (%d of %d pixels were)', [Red, Looked]));
+      'color (%d of %d pixels were)', [Red, Looked]));
 
     { and the same for the paragraph that follows the list }
     Red := 0;

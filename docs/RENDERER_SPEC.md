@@ -461,7 +461,7 @@ in is how the old engine ended up hard to replace.
 ## 8. Code blocks - open questions
 
 Code blocks are the one place where the current behavior is a decision
-rather than a limitation, and Tony wants to settle it before the new engine
+rather than a limitation, and the owner wants to settle it before the new engine
 is built, because it changes what the renderer has to support.
 
 **Settled on 17 September 2026:** LazInk colors code itself, a little.
@@ -746,7 +746,7 @@ here as what would have to come after them.
 5. **Text shaping and font fallback.**  Arabic, Hebrew and the Indic scripts
    need a shaper (HarfBuzz); a missing glyph needs a fallback font; emoji
    need color fonts; and bidirectional text needs the Unicode algorithm.
-   This is the one item on the list that is not realistically ours to write,
+   This is the one item on the list that is not realiztically ours to write,
    and the honest answer for anyone who needs it is a platform text API or a
    binding.
 

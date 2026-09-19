@@ -7,7 +7,7 @@ program repro;
     DISPLAY=:77 ./repro repro.css repro.md
 
   Take the picture with anything - import -window root will do.  What you
-  are looking for is a solid block of colour behind the bullets, and no
+  are looking for is a solid block of color behind the bullets, and no
   block behind the paragraphs.  See README.md beside this. }
 
 {$mode objfpc}{$H+}

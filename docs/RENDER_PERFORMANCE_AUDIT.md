@@ -183,22 +183,147 @@ resized, so the picture has to be added again at the new size — otherwise the
 run falls back to the placeholder and the geometry does not move for the
 reason the test meant.
 
-## Still open
+## Follow-up review at `f7ad2c4`
 
-| Priority | Finding | Proposed change and constraints |
-|---|---|---|
-| 1 | Page painting scans every block against the viewport, and engine painting scans all layout lines even with a retained layout. At 2,000 blocks the scan is cheap (1.75 ms) but it grows with the document, not the window. | Index conservative paint bounds and locate the visible interval. Include quote bars that extend into the margin, folded blocks, and spanning cells. Table and nested-table line records are **not** sorted by Y: do not binary-search the line array or stop at the first offscreen row. |
-| 2 | The page compares blocks against the whole viewport, although a WebP timer can invalidate one image rectangle. Text is laid out before the engine applies its canvas clip. | Intersect the invalid region with the viewport before dispatching block painting, preserving decorations and selection. |
-| 3 | Initial layout of many small blocks (285 ms for 2,000 paragraphs) is the largest remaining cost. Each block is tokenized, styled and measured through the shared engine, and the result is thrown away before paint builds it again. | Let the layout pass fill the same cache the paint pass reads, so a block is built once. Needs a cache big enough for the document, or a two-tier scheme, or the thrash will cost more than the sharing saves — a 128-entry cache over 2,000 blocks evicts everything before paint runs. |
-| 4 | The word-width cache is unbounded and shared by every block through the engine. | Bound it with explicit font/device identity. Benchmark repetitive prose *and* mostly-unique identifiers or log data; the two behave very differently. |
-| 5 | `InkCSS.Value` still visits every rule on a miss, and `TStringList.Values[Prop]` is itself a linear scan of the rule. | Parse selectors when rules are added and index declarations by property, so a lookup visits only the rules that can answer it. The memo already hides most of this; it would show on a first paint of a very large stylesheet. |
-| 6 | Tokens, styled runs, lines and cells grow their arrays one element at a time. | Reserve capacity or grow geometrically where profiling shows it matters. Do not assume a cached box is only its height: some measurement callbacks also emit runs into the layout. |
+These findings come from a read-only source review after the retained-layout,
+CSS memoization, metric, animation-list, and subsequent rendering fixes.
+They are proposals for a later implementation pass: **no new timings were
+collected, no GUI tests were launched, and no rendering code was changed
+for this review**. The measurements above describe earlier passes, not the
+cost of each finding below. Priority reflects the expected benefit and
+implementation risk; it is not a measured speedup ranking.
 
-The largest remaining win is eliminating the duplicated build between layout
-and paint (3 above), not threads. **Do not move LCL canvas or font operations
-to worker threads.** And a same-source early return in `Tokenize` is not a
-substitute for the cache: the shared engine alternates between blocks, and
-the option and metric keys do not fully describe device and image state.
+### 1. Reject vertically offscreen runs inside tall cells
+
+In `InkRender.TInkRenderer.PaintLayout`, vertical rejection happens at the
+line level, while individual runs are rejected only horizontally. A table
+cell's line record can cover its full height. If a small part of a tall cell
+is visible, its offscreen text can still be submitted to the canvas; clipping
+limits the pixels drawn but does not eliminate the submission work.
+
+Add conservative vertical rejection for individual paint operations. Keep
+`OnRun` callback behavior intact rather than silently dropping callbacks
+when adding the paint rejection. Include superscripts, subscripts, spanning
+cell backgrounds, and borders in the bounds checks. This is the first
+candidate for a relatively small improvement. Validate with a cell much
+taller than the viewport, at its top, middle, and bottom, and count drawing
+calls as well as comparing pixels.
+
+### 2. Remove repeated work in nested tables
+
+`InkRender.TInkRenderer.LayoutTable` adds an enclosing cell line whose run
+range includes the runs emitted by nested tables. Those runs also belong to
+the nested tables' own line records. `PaintLayout` visits both ranges, so
+nested content can be submitted more than once. More nesting adds more
+visits; clipping alone does not remove that duplication.
+
+Establish one paint traversal for each operation. This needs careful testing:
+the current traversal also determines when enclosing backgrounds and borders
+are painted. Merely skipping a repeated run could leave it covered by a
+later background. Preserve callback behavior, link hits, and selection.
+
+There is a separate layout cost: `MeasureNested` builds a complete temporary
+layout to obtain a height, frees it, and placement later builds the nested
+table again. This repeats recursively with nesting depth. Retain child
+geometry at its final width and translate it during placement, preserving
+rowspan sizing, alignment, padding, and paint order. Benchmark nesting depth
+separately from row count to expose the repeated work.
+
+### 3. Move decoration parsing out of repaint; dispatch only dirty blocks
+
+`PaintLayout` rebuilds a `TStringList` from each cell decoration's `R.Meta`
+and resolves colors, border flags, sides, and radius on each repaint. Store
+resolved decoration fields in the immutable layout instead. Preserve current
+scaling and color semantics; compare rounded corners, partial borders,
+inherited cell colors, and transparent backgrounds.
+
+`InkPage.TInkCustomPage.RenderTo` filters blocks against the full viewport,
+even when a WebP update invalidates only one image rectangle. Intersect the
+canvas's dirty clip with the viewport before dispatching block painting.
+Use conservative bounds that include quote bars extending into gaps, block
+decorations, and selection. These are smaller changes to try before the
+larger indexing work below.
+
+### 4. Avoid hashing the entire source on every cache hit
+
+`InkDraw.IdentityHash` walks every source byte each time
+`THTMLLayoutCache.Acquire` is called, including successful paint and hit-test
+lookups. An enormous table is one block, so scrolling or moving the pointer
+over it repeatedly reads the whole table's markup.
+
+Compute a source fingerprint when markup changes, or use a stable block
+identity plus a source revision for page-owned entries. Preserve collision-safe
+matching and the complete geometry identity. Revisions must change for
+resolved markup changes, including CSS-driven markup and rebuilt flex tables;
+a raw string pointer is not a safe replacement. Keep the general drawing API
+correct for callers without page-owned identities. Measure warm cache lookup
+cost as source size increases while the viewport stays fixed.
+
+### 5. Share spatial lookup between painting and interaction
+
+`RenderTo` visits every page block, and `PaintLayout` visits every retained
+line. `MouseMove` can cause separate scans through `HitTestLink`, `BlockAt`,
+and the text-cursor check. Thus both scrolling and pointer movement retain
+costs that grow with the document rather than only its visible content.
+
+Index conservative block and run bounds and share lookup results where
+possible. Include folded blocks, quote-bar extensions, rowspans, and nested
+cells. Existing table line records are **not sorted by Y**: do not simply
+binary-search that array or stop at the first offscreen line. Preserve paint
+order among the operations found by the index. Benchmark pointer movement
+near the end of a large document as well as repainting it.
+
+### 6. Share initial measurement with first paint without cache thrashing
+
+`InkPage.TInkCustomPage.Layout` calls `HTMLTextExtentOpt` without the page's
+retained cache. The first paint then builds geometry again for visible blocks.
+Retain measured layouts for the viewport and a modest surrounding region, or
+use a two-tier strategy that keeps useful geometry within a memory budget.
+
+Simply passing the existing 128-entry cache through the entire layout loop
+would mostly retain the tail of a 2,000-block document and evict the top before
+painting it. Preserve canvas/device compatibility when sharing measurement
+results; rendering to a bitmap is not automatically the same as rendering to
+the control. Measure load-to-first-paint, cold scrolling, warm repaint, resize,
+and retained memory separately.
+
+### 7. Bound the builder's measurement caches separately
+
+The layout cache's byte budget does not include the retained builder's
+word-width and metric caches. `THTMLLayoutCache.Clear` releases layout entries
+but leaves `FBuilder` alive. Unique widths continue accumulating through
+`TInkRenderer.MeasureRun`, including across document replacements, and sorted
+list insertion becomes more expensive as those caches grow.
+
+Give measurement caches their own limits and explicit font/device identity;
+retain the benefit of sharing common words between blocks. Consider releasing
+obsolete builder working data on document replacement. Test repetitive prose,
+mostly-unique identifiers, and repeated navigation through unrelated documents.
+Measure total retained memory, not only `THTMLLayoutCache.Bytes`. The existing
+exception that permits one oversized retained layout also means the layout
+budget itself is a soft limit.
+
+### Additional profiling candidates
+
+- `InkCSS.Value` still visits every rule on a memo miss and reparses matching
+  candidates' selectors; each rule's `Values[Prop]` lookup is also linear.
+  Precompile selectors and index declarations by property if first-load
+  profiling of large stylesheets justifies it. Memoization already handles
+  repeated contexts, so this is no longer the first general optimization.
+- Tokens, styled runs, lines, cells, and box-child arrays grow one element at
+  a time. Consider reserved capacity or geometric growth where allocation
+  profiling shows a benefit. Avoid assuming every resize copies the entire
+  array, and account for memory retained by spare capacity.
+
+**Suggested implementation order:** individual-run clipping and resolved
+decorations first; nested-table duplication next; then source revisions and
+spatial indexing. Initial-layout sharing deserves a separate first-paint
+benchmark, and builder memory limits deserve a long-session benchmark.
+
+Keep LCL canvas and font operations on the UI thread. Validate optimizations
+against the recently corrected table sizing, wrapping, and heading margins,
+using pixel comparisons and callback/interaction checks rather than timings
+alone. No speedup is promised until measured on representative documents.
 
 ## How to reproduce
 
@@ -217,5 +342,6 @@ Set `LCL_WIDGETSET` to another built widgetset to audit it separately. Use
 fresh processes and compare both timing and geometry; the tool prints block
 count and document height before and after resizing. Compare PNG pixels
 between revisions rather than just checking that a render succeeded.
-`tools/renderer_dryrun.pas` benchmarks the direct engine API, which does not
-exercise the page wrapper's repeated `Tokenize` calls.
+`tools/renderer_dryrun.pas` benchmarks the direct engine API. It does not
+exercise page-level cache lookup, block dispatch, or the separate initial
+measurement and paint paths; use `render_bench` for those costs.

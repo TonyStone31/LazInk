@@ -65,7 +65,7 @@ at first.
 ## What it costs, meanwhile
 
 Heckers Sketch's manual in the program has no heading hierarchy - a page is
-one flat wall of 15-pixel text, headings only marked by colour and weight.
+one flat wall of 15-pixel text, headings only marked by color and weight.
 The same pages in a browser are fine, so this is the in-program reader only.
 The release going out today ships with it; the pages are written the way a
 browser reads them and will simply get better when this is fixed - nothing

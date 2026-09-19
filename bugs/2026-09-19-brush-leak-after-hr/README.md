@@ -1,8 +1,8 @@
-# A list after a rule gets the rule's colour painted behind its text
+# A list after a rule gets the rule's color painted behind its text
 
 Found 19 September 2026 while looking at Heckers Sketch's "What's new"
 window, which is a `TInkPage` in Markdown mode.  Every bullet was a solid
-block of colour with the text invisible inside it - see `before.png`.  It is
+block of color with the text invisible inside it - see `before.png`.  It is
 not that program's CSS: the same thing happens in the twenty-line repro
 beside this, and it happens in both a light and a dark palette.
 
@@ -28,8 +28,8 @@ Paragraph after the rule, plain text that should be readable.
 Another paragraph at the end.
 ```
 
-with a stylesheet that gives the rule a colour of its own (`repro.css`; the
-colour is red here only so it can be told apart from the text colour):
+with a stylesheet that gives the rule a color of its own (`repro.css`; the
+color is red here only so it can be told apart from the text color):
 
 ```css
 body { background: #eceef1; color: #5e6670; font-size: 14px; padding: 6px }
@@ -38,8 +38,8 @@ hr { color: #ff0000 }
 
 Every **list item after the `hr`** is drawn with a solid red background
 behind its text, wrapped lines and all.  Paragraphs and headings after the
-same `hr` are fine.  A list *before* any `hr` is fine.  The colour is always
-the `hr`'s colour.
+same `hr` are fine.  A list *before* any `hr` is fine.  The color is always
+the `hr`'s color.
 
 The repro is `repro.pas` - a form, a `TInkPage`, `TextFormat := itfMarkdown`,
 the stylesheet and the Markdown, and nothing else.
@@ -48,7 +48,7 @@ the stylesheet and the Markdown, and nothing else.
 
 Three things in a row, and it takes all three:
 
-**1. `TInkCustomPage.Paint` leaves the brush colour behind after an `hr`.**
+**1. `TInkCustomPage.Paint` leaves the brush color behind after an `hr`.**
 In `inkpage.pas` the `hr` branch fills the rule and leaves the loop:
 
 ```pascal
@@ -62,7 +62,7 @@ end;
 ```
 
 The next block sets `Brush.Style := bsClear` again, so the *style* is put
-back - but the *colour* stays the rule's from here to the end of the paint.
+back - but the *color* stays the rule's from here to the end of the paint.
 On its own that is harmless.
 
 **2. `TInkRenderer.Paint` puts the brush back in the wrong order.**
@@ -73,9 +73,9 @@ finally Canvas.Font.Assign(OldFont); Canvas.Brush.Style:=OldBrushStyle; Canvas.B
 ```
 
 `TBrush.SetColor` in the LCL sets `Style := bsSolid` as a side effect - the
-same behaviour the VCL has, on the reasoning that if you are choosing a
-colour you must want to paint with it.  So restoring the style first and the
-colour second undoes the restore: every call to `Paint` returns with the
+same behavior the VCL has, on the reasoning that if you are choosing a
+color you must want to paint with it.  So restoring the style first and the
+color second undoes the restore: every call to `Paint` returns with the
 canvas brush **solid**, whatever it was on the way in.
 
 Measured, with the restore as it is:
@@ -101,17 +101,17 @@ HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);                                { draws t
 
 So the marker's own `HTMLDrawOpt` hands the canvas back with a solid brush,
 and the text draw that follows it paints `Canvas.TextOut` over an opaque
-background in the leftover colour.  A paragraph has no marker, so its one
+background in the leftover color.  A paragraph has no marker, so its one
 `HTMLDrawOpt` is entered while the brush is still clear and the damage only
 shows up after the text is already on the canvas - which is why only lists
 show it.
 
-That is also why it needs an `hr`: without one, the leftover colour happens
+That is also why it needs an `hr`: without one, the leftover color happens
 to be the page background and nobody notices.
 
 ## The fix
 
-One line, in `inkrender.pas`, `TInkRenderer.Paint` - restore the colour
+One line, in `inkrender.pas`, `TInkRenderer.Paint` - restore the color
 first, then the style, so the style's restore is the last word:
 
 ```pascal
@@ -127,14 +127,14 @@ Worth doing as well, and cheap:
   again after the marker is drawn, or once more just before the text
   `HTMLDrawOpt`.  Nothing that draws text should depend on what the last
   thing to draw left behind.
-* **the `hr` branch** - put the brush colour back, or set both colour and
+* **the `hr` branch** - put the brush color back, or set both color and
   style at the top of every block rather than only the style.
 * **the same restore-order trap elsewhere** - anywhere that saves and
-  restores a brush, the colour must go back before the style.  Worth a grep
+  restores a brush, the color must go back before the style.  Worth a grep
   for `Brush.Style:=` near `Brush.Color:=`.
 * **a regression test** - `tests/render_tests.pas` could render
   `repro.md` with `repro.css` and assert that a pixel in the middle of the
-  bullet's line box is the page background, not the rule's colour.  That is
+  bullet's line box is the page background, not the rule's color.  That is
   the whole fault in one pixel.
 
 ## Where it was seen

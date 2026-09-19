@@ -1448,8 +1448,8 @@ object frmMain: TfrmMain
         Width = 1138
         Lines.Strings = (
           '<font size="17"><b>LazInk — credits and origins</b></font>'
-          'LazInk started with a Lazarus forum thread Tony Stone began in August 2021, <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">Memo Component that supports HTML markup</a>, asking for a simple way to decorate list box text with a little HTML.'
-          'wp suggested taking what was needed from the HTML drawing code in Project JEDI''s JVCL and helped make it happen, with a standalone unit and an owner-drawn list box example. Tony''s demo built on that example - the List box tab here - is where the idea for LazInk was born. The components have been LazInk''s own since.'
+          'LazInk started with a Lazarus forum thread the owner Stone began in August 2021, <a href="https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html">Memo Component that supports HTML markup</a>, asking for a simple way to decorate list box text with a little HTML.'
+          'wp suggested taking what was needed from the HTML drawing code in Project JEDI''s JVCL and helped make it happen, with a standalone unit and an owner-drawn list box example. The owner''s demo built on that example - the List box tab here - is where the idea for LazInk was born. The components have been LazInk''s own since.'
           'AI assistants helped teach the component creation process and worked on design, implementation and debugging.'
           '<font size="15"><b>Project JEDI / JVCL</b></font>'
           'The HTML renderer used to be adapted JVCL code from JvHTControls and JvJVCLUtils. It has been replaced by LazInk''s own and deleted; the credit stays, because that code is what got LazInk off the ground.'
