@@ -1,44 +1,16 @@
-{ InkWebP - reading a WebP file's structure, so LazInk can show one.
-
-  **This is a skeleton with a hole in the middle.**  Everything about the
-  *container* is here and works: RIFF chunks, the canvas size, whether the
-  file is lossy (VP8 ), lossless (VP8L) or extended (VP8X), whether it is
-  animated, and every frame's position, size, duration, disposal and blend.
-  What is not here is the **pixel decoder**: DecodeFrame always returns
-  False, and that is the piece to write or bind.
-
-  Why bother.  A page that teaches a program is mostly pictures of it
-  moving, and GIF is a 1987 format: 256 colors a frame and next to no
-  compression between frames.  One of Heckers Sketch's own recordings is
-  1,221 KB as GIF and 452 KB as animated WebP - see ROADMAP.md section 4,
-  item 17, which also sets out the two ways to fill the hole:
-
-    * bind libwebp at run time - a small job, a well-tested decoder, and a
-      shared library to find;
-    * write the decoder in Pascal - no dependency at all, and real work:
-      lossless (VP8L) alone is a far smaller job than lossy (VP8) and would
-      already cover screenshots.
-
-  Whichever way it goes, **GIF stays**: pages in the wild use it, and a
-  WebP that cannot be decoded must fall back rather than show a hole.
-  TInkWebP.Decoded says whether there are pixels to draw; until a decoder
-  is plugged in it is False and a caller shows the alt text.
-
-  The container side is tested in tests/render_tests.pas (WebPChecks): the
-  test builds WebP files byte by byte - a still and an animation - and
-  checks what this unit reads back from them.  Add to those as the decoder
-  grows.
-
+{ WebP container reader and pure Pascal animation compositor.
+  Frames are decoded on demand; only the current canvas is retained.
   SPDX-License-Identifier: 0BSD
   Copyright (c) 2026 LazInk contributors }
 unit InkWebP;
 
 {$mode objfpc}{$H+}
+{$pointermath on}
 
 interface
 
 uses
-  Classes, SysUtils, Graphics, Types, Math;
+  Classes, SysUtils, Graphics, Types, Math, GraphType, InkWebPLossless, InkWebPVP8;
 
 type
   { what kind of image the file holds }
@@ -51,6 +23,7 @@ type
     { where in the file the frame's own image data starts, and how long it
       is: what a decoder will be handed }
     Offset, Size: Integer;
+    AlphaOffset, AlphaSize: Integer;
     { the frame's place on the canvas, and its size }
     X, Y, Width, Height: Integer;
     { how long it is shown, in milliseconds }
@@ -64,23 +37,23 @@ type
     HasAlpha: Boolean;
   end;
 
-  { A WebP file, read as far as its structure goes.
-
-    Create it with a stream; Valid says whether it was a WebP at all.  Then
-    Width, Height, Animated, FrameCount and Frame() describe it, and
-    Advance / Bitmap play it, exactly as TInkGIF does - once DecodeFrame
-    knows how to fill a bitmap. }
   TInkWebP = class
   private
     FData: RawByteString;
     FFrames: array of TInkWebPFrame;
     FBitmap: TBitmap;
-    FIndex: Integer;
+    FIndex, FCompletedLoops: Integer;
+    FCanvas: TInkWebPPixels;
+    FBackgroundAlpha: Byte;
+    FFinished: Boolean;
     FDue: QWord;
     FValid, FAnimated, FDecoded: Boolean;
+    FAnimationFlag, FHasAnimationHeader: Boolean;
     FWidth, FHeight, FLoops: Integer;
     FKind: TInkWebPKind;
     FBackground: TColor;
+    function DrawFrame(Index: Integer): Boolean;
+    procedure PublishBitmap;
     function ByteAt(A: Integer): Byte;
     function Read16(A: Integer): Integer;
     function Read24(A: Integer): Integer;
@@ -90,20 +63,22 @@ type
   public
     constructor Create(Stream: TStream);
     destructor Destroy; override;
-    { Draws frame Index into Bitmap.  **Not implemented**: it returns False,
-      which is what makes this a skeleton.  A decoder plugged in here - a
-      libwebp binding, or Pascal - is the whole job, and nothing else in
-      LazInk has to change when it lands. }
+    { Random access replays preceding frames to preserve compositing.
+      Sequential access decodes only one frame. UI thread only. }
     function DecodeFrame(Index: Integer): Boolean;
     { the next frame, if its time has come; True when the picture changed }
-    function Advance: Boolean;
+    function Advance: Boolean; overload;
+    function Advance(ANow: QWord): Boolean; overload;
+    procedure Restart;
+    property Finished: Boolean read FFinished;
+    property FrameIndex: Integer read FIndex;
     function FrameCount: Integer;
     function Frame(Index: Integer): TInkWebPFrame;
     { a WebP at all, and readable as far as its structure }
     property Valid: Boolean read FValid;
     { more than one frame }
     property Animated: Boolean read FAnimated;
-    { whether Bitmap holds real pixels - False until a decoder exists }
+    { whether Bitmap holds real pixels - False if decoding failed }
     property Decoded: Boolean read FDecoded;
     property Width: Integer read FWidth;
     property Height: Integer read FHeight;
@@ -111,6 +86,7 @@ type
     property Loops: Integer read FLoops;
     property Kind: TInkWebPKind read FKind;
     property Background: TColor read FBackground;
+    property BackgroundAlpha: Byte read FBackgroundAlpha;
     property Bitmap: TBitmap read FBitmap;
   end;
 
@@ -119,6 +95,10 @@ type
 function InkIsWebP(const AData: RawByteString): Boolean;
 
 implementation
+
+const
+  MaxInputBytes = 256 * 1024 * 1024;
+  MaxCanvasPixels = 16 * 1024 * 1024;
 
 function InkIsWebP(const AData: RawByteString): Boolean;
 begin
@@ -131,26 +111,24 @@ var Size: Integer;
 begin
   inherited Create;
   FBitmap := TBitmap.Create;
-  FIndex := 0; FDue := 0; FLoops := 0; FKind := wkNone;
+  FIndex := -1; FDue := 0; FLoops := 0; FKind := wkNone;
   FBackground := clNone;
+  if (Stream.Size < 12) or (Stream.Size > MaxInputBytes) then Exit;
   Stream.Position := 0;
   SetLength(FData, Stream.Size);
   if Length(FData) > 0 then Stream.ReadBuffer(FData[1], Length(FData));
   if not InkIsWebP(FData) then Exit;
-  { RIFF says how much of the file is payload; trust the smaller of that
-    and what is actually here }
-  Size := Read32(5) + 8;
-  if (Size < 12) or (Size > Length(FData)) then Size := Length(FData);
+  { Require the complete declared RIFF body; ignore trailing file data. }
+  Size := Read32(5);
+  if (Size < 4) or (Size > Length(FData)-8) then Exit;
+  Inc(Size, 8);
+  SetLength(FData, Size);
   FValid := True;
   ReadChunks(13, Size);
-  if FWidth <= 0 then FValid := False;
-  if FValid then
-  begin
-    FBitmap.SetSize(FWidth, FHeight);
-    FBitmap.Canvas.Brush.Color := clWhite;
-    FBitmap.Canvas.FillRect(0, 0, FWidth, FHeight);
-  end;
+  if (FWidth <= 0) or (FHeight <= 0) or (FrameCount = 0) or
+    (QWord(FWidth)*QWord(FHeight) > MaxCanvasPixels) then FValid := False;
   FAnimated := Length(FFrames) > 1;
+  if FValid then DecodeFrame(0);
 end;
 
 destructor TInkWebP.Destroy;
@@ -181,24 +159,41 @@ end;
   four-character name, a 32-bit size, the payload, and a pad byte when the
   size is odd. }
 procedure TInkWebP.ReadChunks(AStart, AEnd: Integer);
-var P, Size, N: Integer; Name: string;
+var P, Size, N, AlphaOffset, AlphaSize: Integer; Name: string;
 begin
-  P := AStart;
-  while P + 8 <= AEnd do
+  P := AStart; AlphaOffset := 0; AlphaSize := 0;
+  while P <= AEnd - 7 do
   begin
     Name := Copy(FData, P, 4);
     Size := Read32(P+4);
-    if (Size < 0) or (P + 8 + Size > AEnd + 1) then Break;
+    if (Size < 0) or (Size > AEnd-P-7) or
+      ((Size and 1) > AEnd-P-7-Size) then
+    begin FValid := False; Exit end;
+    if ((Name = 'VP8X') and (Size <> 10)) or
+      ((Name = 'VP8 ') and (Size < 10)) or
+      ((Name = 'VP8L') and (Size < 5)) or
+      ((Name = 'ANIM') and (Size <> 6)) or
+      ((Name = 'ANMF') and (Size < 16)) then
+    begin FValid := False; Exit end;
     if Name = 'VP8X' then
     begin
       { the extended header: flags, then canvas width and height as
         one-less, 24 bits each }
+      if (P <> 13) or (FKind <> wkNone) then begin FValid := False; Exit end;
+      FAnimationFlag := (ByteAt(P+8) and 2) <> 0;
       FKind := wkExtended;
       FWidth := Read24(P+12) + 1;
       FHeight := Read24(P+15) + 1;
     end
+    else if Name = 'ALPH' then
+    begin
+      if (FKind <> wkExtended) or FAnimationFlag or (FrameCount <> 0) or
+        (AlphaSize <> 0) or (Size < 1) then begin FValid := False; Exit end;
+      AlphaOffset := P+8; AlphaSize := Size;
+    end
     else if Name = 'VP8 ' then
     begin
+      if FAnimationFlag or (FrameCount <> 0) then begin FValid := False; Exit end;
       if FKind = wkNone then FKind := wkLossy;
       if FWidth <= 0 then
       begin
@@ -213,10 +208,14 @@ begin
         FFrames[0].Offset := P+8; FFrames[0].Size := Size;
         FFrames[0].Width := FWidth; FFrames[0].Height := FHeight;
         FFrames[0].Kind := wkLossy;
+        FFrames[0].AlphaOffset := AlphaOffset; FFrames[0].AlphaSize := AlphaSize;
+        FFrames[0].HasAlpha := AlphaSize > 0;
       end;
     end
     else if Name = 'VP8L' then
     begin
+      if FAnimationFlag or (FrameCount <> 0) or (AlphaSize <> 0) then
+      begin FValid := False; Exit end;
       if FKind = wkNone then FKind := wkLossless;
       if FWidth <= 0 then
       begin
@@ -232,18 +231,28 @@ begin
         FFrames[0].Offset := P+8; FFrames[0].Size := Size;
         FFrames[0].Width := FWidth; FFrames[0].Height := FHeight;
         FFrames[0].Kind := wkLossless;
+        FFrames[0].HasAlpha := (ByteAt(P+12) and $10) <> 0;
       end;
     end
     else if Name = 'ANIM' then
     begin
+      if not FAnimationFlag or FHasAnimationHeader or (FrameCount <> 0) then
+      begin FValid := False; Exit end;
+      FHasAnimationHeader := True;
       { the background color the canvas is cleared to, and the loop count }
+      FBackgroundAlpha := ByteAt(P+11);
       FBackground := RGBToColor(ByteAt(P+10), ByteAt(P+9), ByteAt(P+8));
       FLoops := Read16(P+12);
     end
     else if Name = 'ANMF' then
+    begin
+      if not FHasAnimationHeader then begin FValid := False; Exit end;
       ReadAnimationFrame(P+8, Size);
+    end;
+    if not FValid then Exit;
     Inc(P, 8 + Size + (Size and 1));
   end;
+  if P <> AEnd+1 then FValid := False;
 end;
 
 { One animation frame: where it goes, how big it is, how long it stays, and
@@ -252,7 +261,7 @@ procedure TInkWebP.ReadAnimationFrame(AStart, ASize: Integer);
 var N, P, Sub, SubSize: Integer; Name: string; F: TInkWebPFrame;
 begin
   FillChar(F, SizeOf(F), 0);
-  { positions and sizes are in units of two pixels, and one less than real }
+  { Positions are doubled; dimensions store the actual size minus one. }
   F.X := Read24(AStart) * 2;
   F.Y := Read24(AStart+3) * 2;
   F.Width := Read24(AStart+6) + 1;
@@ -262,25 +271,41 @@ begin
   if (N and 1) <> 0 then F.Disposal := wdBackground else F.Disposal := wdNone;
   { bit 1 set means "do not blend", so the flag reads the other way round }
   F.Blend := (N and 2) = 0;
+  if (F.X > FWidth-F.Width) or (F.Y > FHeight-F.Height) or
+    ((N and $FC) <> 0) then begin FValid := False; Exit end;
   { and inside the frame, the chunks that hold its pixels }
   P := AStart + 16;
-  while P + 8 <= AStart + ASize do
+  while P <= AStart + ASize - 8 do
   begin
     Name := Copy(FData, P, 4);
     SubSize := Read32(P+4);
-    if (SubSize < 0) or (P + 8 + SubSize > AStart + ASize + 1) then Break;
-    if Name = 'ALPH' then F.HasAlpha := True
+    if (SubSize < 0) or (SubSize > AStart+ASize-P-8) or
+      ((SubSize and 1) > AStart+ASize-P-8-SubSize) then
+    begin FValid := False; Exit end;
+    if Name = 'ALPH' then
+    begin
+      if (F.AlphaSize <> 0) or (F.Size <> 0) or (SubSize < 1) then
+      begin FValid := False; Exit end;
+      F.HasAlpha := True; F.AlphaOffset := P+8; F.AlphaSize := SubSize;
+    end
     else if Name = 'VP8 ' then
     begin
+      if (F.Size <> 0) or (SubSize < 10) then begin FValid := False; Exit end;
       F.Offset := P+8; F.Size := SubSize; F.Kind := wkLossy;
     end
     else if Name = 'VP8L' then
     begin
+      if (F.Size <> 0) or (F.AlphaSize <> 0) or (SubSize < 5) then
+      begin FValid := False; Exit end;
       F.Offset := P+8; F.Size := SubSize; F.Kind := wkLossless;
+      F.HasAlpha := (ByteAt(P+12) and $10) <> 0;
     end;
     Inc(P, 8 + SubSize + (SubSize and 1));
   end;
+  if (P <> AStart+ASize) or (F.Size = 0) then
+  begin FValid := False; Exit end;
   Sub := Length(FFrames);
+  if Sub >= 65536 then begin FValid := False; Exit end;
   SetLength(FFrames, Sub+1);
   FFrames[Sub] := F;
 end;
@@ -294,49 +319,165 @@ begin
   else Result := FFrames[Index];
 end;
 
-function TInkWebP.DecodeFrame(Index: Integer): Boolean;
+function BlendPixel(S, D: LongWord): LongWord; inline;
+var SA, DA, A, Weight, C, Shift: LongWord;
 begin
-  { ---------------------------------------------------------------------
-    THE HOLE.  Everything above knows where frame Index's pixels are:
-    Frame(Index).Offset and .Size point into FData, and .Kind says whether
-    they are VP8 (lossy) or VP8L (lossless).  What is missing is turning
-    those bytes into pixels and drawing them into FBitmap at .X, .Y, with
-    .Disposal and .Blend honored.
+  SA := S shr 24;
+  if SA = 255 then Exit(S);
+  if SA = 0 then Exit(D);
+  DA := D shr 24;
+  { Eight-bit fixed-point source-over, including the alpha channel. }
+  Weight := (DA*(256-SA)) shr 8;
+  A := SA+Weight;
+  Result := A shl 24;
+  for Shift := 0 to 2 do
+  begin
+    C := (((S shr (Shift*8)) and 255)*SA+
+      ((D shr (Shift*8)) and 255)*Weight) div A;
+    Result := Result or (C shl (Shift*8));
+  end;
+end;
 
-    Two ways to fill it, and the choice matters more than the feature - see
-    ROADMAP.md section 4, item 17:
-
-      1. libwebp, loaded at run time.  WebPDecodeBGRA on the frame's bytes
-         gives a buffer to blit into FBitmap; the unit keeps working when
-         the library is missing, because this returns False and the caller
-         falls back to the GIF or the alt text.
-      2. A decoder in Pascal.  Start with VP8L: it is a far smaller job
-         than VP8, it is lossless, and it already covers screenshots, which
-         is most of what a manual shows.  Check it against libwebp's own
-         output bit for bit, the way the AVIF/HEIC port checks itself
-         against dav1d.
-
-    Whichever it is, set FDecoded := True when FBitmap holds real pixels.
-    Nothing else in LazInk needs to change.
-    --------------------------------------------------------------------- }
+function DecodeAlpha(Data: PByte; Size, W, H: Integer;
+  var Pixels: TInkWebPPixels): Boolean;
+var Values: TInkWebPPixels; Alpha: TBytes;
+    Compression, Filter, X,Y,I,Prediction,Value: Integer;
+begin
   Result := False;
+  if Size < 1 then Exit;
+  Compression := Data[0] and 3; Filter := (Data[0] shr 2) and 3;
+  if Compression > 1 then Exit;
+  SetLength(Alpha,W*H);
+  if Compression = 0 then
+  begin
+    if Size-1 <> W*H then Exit;
+    Move(Data[1],Alpha[0],Length(Alpha));
+  end
+  else
+  begin
+    if not InkDecodeVP8L(Data+1,Size-1,W,H,Values,False) then Exit;
+    for I := 0 to High(Alpha) do Alpha[I] := (Values[I] shr 8) and 255;
+  end;
+  for Y := 0 to H-1 do for X := 0 to W-1 do
+  begin
+    I := Y*W+X; Prediction := 0;
+    if Filter <> 0 then
+      if (X = 0) and (Y = 0) then Prediction := 0
+      else if Y = 0 then Prediction := Alpha[I-1]
+      else if X = 0 then Prediction := Alpha[I-W]
+      else case Filter of
+        1: Prediction := Alpha[I-1];
+        2: Prediction := Alpha[I-W];
+        3: Prediction := EnsureRange(Integer(Alpha[I-1])+Integer(Alpha[I-W])-Integer(Alpha[I-W-1]),0,255);
+      end;
+    Value := (Integer(Alpha[I])+Prediction) and 255; Alpha[I] := Value;
+    Pixels[I] := (Pixels[I] and $FFFFFF) or (LongWord(Value) shl 24);
+  end;
+  Result := True;
+end;
+
+function TInkWebP.DrawFrame(Index: Integer): Boolean;
+var Pixels: TInkWebPPixels; F, Previous: TInkWebPFrame;
+    X, Y, Source, Dest: Integer;
+begin
+  Result := False; F := FFrames[Index];
+  if F.Kind = wkLossless then
+  begin
+    if not InkDecodeVP8L(PByte(@FData[F.Offset]), F.Size, F.Width, F.Height, Pixels) then Exit;
+  end
+  else if F.Kind = wkLossy then
+  begin
+    if not InkDecodeVP8(PByte(@FData[F.Offset]), F.Size, F.Width, F.Height, Pixels) then Exit;
+    if (F.AlphaSize > 0) and not DecodeAlpha(PByte(@FData[F.AlphaOffset]),
+      F.AlphaSize,F.Width,F.Height,Pixels) then Exit;
+  end
+  else Exit;
+  { Transparent canvas is the application-defined background, like a browser.
+    ANIM's suggested background (including alpha) remains available as metadata. }
+  if Index > 0 then
+  begin
+    Previous := FFrames[Index-1];
+    if Previous.Disposal = wdBackground then
+      for Y := Previous.Y to Previous.Y+Previous.Height-1 do
+        FillChar(FCanvas[Y*FWidth+Previous.X], Previous.Width*4, 0);
+  end;
+  for Y := 0 to F.Height-1 do
+  begin
+    Source := Y*F.Width; Dest := (Y+F.Y)*FWidth+F.X;
+    if not F.Blend then Move(Pixels[Source], FCanvas[Dest], F.Width*4)
+    else for X := 0 to F.Width-1 do
+      FCanvas[Dest+X] := BlendPixel(Pixels[Source+X], FCanvas[Dest+X]);
+  end;
+  Result := True;
+end;
+
+procedure TInkWebP.PublishBitmap;
+var Raw: TRawImage;
+begin
+  Raw.Init;
+  Raw.Description.Init_BPP32_B8G8R8A8_BIO_TTB(FWidth, FHeight);
+  Raw.Data := PByte(@FCanvas[0]);
+  Raw.DataSize := SizeUInt(FWidth)*SizeUInt(FHeight)*4;
+  FBitmap.LoadFromRawImage(Raw, False);
+end;
+
+function TInkWebP.DecodeFrame(Index: Integer): Boolean;
+var I: Integer;
+begin
+  Result := False;
+  if not FValid or (Index < 0) or (Index >= FrameCount) then Exit;
+  if FDecoded and (Index = FIndex) then Exit(True);
+  if (Index <= FIndex) or not FDecoded then
+  begin
+    FIndex := -1;
+    SetLength(FCanvas, FWidth*FHeight);
+    FillChar(FCanvas[0], Length(FCanvas)*SizeOf(LongWord), 0);
+  end;
+  for I := FIndex+1 to Index do
+    if not DrawFrame(I) then
+    begin FFinished := True; FIndex := -1; Exit end;
+  PublishBitmap;
+  FIndex := Index; FDecoded := True;
+  Result := True;
+end;
+
+procedure TInkWebP.Restart;
+begin
+  FDue := 0; FCompletedLoops := 0; FFinished := False; FIndex := -1;
+  FDecoded := False;
+  DecodeFrame(0);
 end;
 
 function TInkWebP.Advance: Boolean;
-var Now_: QWord; Wait: Integer;
+begin
+  Result := Advance(GetTickCount64);
+end;
+
+function TInkWebP.Advance(ANow: QWord): Boolean;
+var Next, Delay: Integer;
 begin
   Result := False;
-  if not FAnimated or (Length(FFrames) = 0) then Exit;
-  Now_ := GetTickCount64;
-  if FDue = 0 then FDue := Now_ + Cardinal(Max(1, FFrames[FIndex].Duration));
-  if Now_ < FDue then Exit;
-  FIndex := (FIndex + 1) mod Length(FFrames);
-  Wait := FFrames[FIndex].Duration;
-  { a frame with no duration of its own is shown for a tenth of a second,
-    the same rule GIF playback uses for a zero delay }
-  if Wait <= 0 then Wait := 100;
-  FDue := Now_ + Cardinal(Wait);
-  Result := DecodeFrame(FIndex);
+  if not FAnimated or not FDecoded or FFinished then Exit;
+  Delay := FFrames[FIndex].Duration;
+  if Delay <= 0 then Delay := 100;
+  if FDue = 0 then begin FDue := ANow + QWord(Delay); Exit end;
+  if ANow < FDue then Exit;
+  Next := FIndex+1;
+  if Next = FrameCount then
+  begin
+    Inc(FCompletedLoops);
+    if (FLoops > 0) and (FCompletedLoops >= FLoops) then
+    begin FFinished := True; Exit end;
+    Next := 0;
+  end;
+  Result := DecodeFrame(Next);
+  if not Result then Exit;
+  Delay := FFrames[FIndex].Duration;
+  if Delay <= 0 then Delay := 100;
+  { Preserve deadlines during normal playback; bound work to one frame per
+    tick after stalls/offscreen periods instead of blocking the UI to catch up. }
+  Inc(FDue, QWord(Delay));
+  if FDue <= ANow then FDue := ANow + QWord(Delay);
 end;
 
 end.

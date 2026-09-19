@@ -384,6 +384,9 @@ then add `LazInk` to your project's required packages.
 LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 
 * No JavaScript, forms, video or web fonts.
+* Pictures: PNG, JPEG and the rest of what FPC decodes, animated GIF, and
+  **WebP** - still and animated, lossy and lossless, with alpha - decoded in
+  Pascal, with no library to install.
 * CSS is a small reader, not CSS conformance - no positioning and no
   pseudo-classes; descendant selectors only inside tables and flex/grid
   containers; flex and grid lay out as rows of cards, not the full
