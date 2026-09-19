@@ -1505,6 +1505,105 @@ begin
   finally Anim.Free end;
 end;
 
+{ --- nothing a block paints may leak into the next one --- }
+procedure BrushLeakChecks;
+const
+  { the rule's colour is red only so a stray fill can be told from the text }
+  CSS = 'body { background: #eceef1; color: #5e6670; font-size: 14px } ' +
+        'hr { color: #ff0000 }';
+  Doc = 'Paragraph before the rule.' + LineEnding + LineEnding +
+        '---' + LineEnding + LineEnding +
+        'Paragraph after the rule.' + LineEnding + LineEnding +
+        '### A heading after the rule' + LineEnding + LineEnding +
+        '- a bullet after the rule' + LineEnding +
+        '- another bullet' + LineEnding + LineEnding +
+        'Another paragraph at the end.';
+var
+  Shot: TBitmap; I, X, Y, Red, Looked: Integer; B: TInkPageBlock; SL: TStringList;
+  Bullet, Para: TInkPageBlock;
+begin
+  SL := TStringList.Create;
+  try
+    SL.Text := CSS;
+    Probe.StyleSheet := SL;
+  finally SL.Free end;
+  Probe.SetBounds(0, 0, 420, 400);
+  Probe.TextFormat := itfMarkdown;
+  Probe.LoadMarkdown(Doc);
+  Probe.ScrollTo(0);
+
+  Bullet := nil; Para := nil;
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    if (Bullet = nil) and (B.Tag = 'li') then Bullet := B;
+    if (Para = nil) and (B.Tag = 'p') and (Pos('at the end', B.Source) > 0) then Para := B;
+  end;
+  Check(Bullet <> nil, 'there is a list item after the rule');
+  Check(Para <> nil, 'and a paragraph after that');
+  if (Bullet = nil) or (Para = nil) then Exit;
+
+  Shot := TBitmap.Create;
+  try
+    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+    Probe.RenderTo(Shot.Canvas);
+    { every pixel across the bullet's line, at a height where its text sits:
+      the page's background may show, the text's colour may show, the rule's
+      red may not }
+    Red := 0; Looked := 0;
+    Y := Bullet.TextBounds.Top + (Bullet.TextBounds.Bottom - Bullet.TextBounds.Top) div 2
+      - Probe.ScrollY;
+    if (Y >= 0) and (Y < Shot.Height) then
+      for X := Bullet.TextBounds.Left to Min(Bullet.TextBounds.Right, Shot.Width - 1) do
+      begin
+        Inc(Looked);
+        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
+      end;
+    Check(Looked > 0, 'the bullet is on screen');
+    Check(Red = 0, Format('a list item after a rule is not painted in the rule''s ' +
+      'colour (%d of %d pixels were)', [Red, Looked]));
+
+    { and the same for the paragraph that follows the list }
+    Red := 0;
+    Y := Para.TextBounds.Top + (Para.TextBounds.Bottom - Para.TextBounds.Top) div 2
+      - Probe.ScrollY;
+    if (Y >= 0) and (Y < Shot.Height) then
+      for X := Para.TextBounds.Left to Min(Para.TextBounds.Right, Shot.Width - 1) do
+        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
+    Check(Red = 0, Format('nor is the paragraph after it (%d)', [Red]));
+
+    { the rule itself is still red, or the test above proves nothing }
+    Red := 0;
+    for I := 0 to Probe.BlockCount - 1 do
+      if Probe.Block(I).Tag = 'hr' then
+      begin
+        Y := Probe.Block(I).TextBounds.Top - Probe.ScrollY;
+        if (Y >= 0) and (Y < Shot.Height) then
+          for X := Probe.Block(I).TextBounds.Left to
+            Min(Probe.Block(I).TextBounds.Right, Shot.Width - 1) do
+            if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
+      end;
+    Check(Red > 0, 'and the rule is drawn in it');
+  finally Shot.Free end;
+
+  { the canvas a control was handed back is the canvas it lent out }
+  Shot := TBitmap.Create;
+  try
+    Shot.SetSize(200, 60);
+    Shot.Canvas.Brush.Style := bsClear;
+    Shot.Canvas.Brush.Color := clLime;
+    Shot.Canvas.Brush.Style := bsClear;
+    HTMLDrawOpt(Shot.Canvas, Rect(0, 0, 200, 60), [], 'some words', DefaultHTMLOptions);
+    Check(Shot.Canvas.Brush.Style = bsClear,
+      'drawing leaves the brush style as it found it');
+  finally Shot.Free end;
+
+  Probe.TextFormat := itfHTML;
+  SL := TStringList.Create;
+  try Probe.StyleSheet := SL finally SL.Free end;
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 { --- every link in a page, wherever it sits, answers a click --- }
 procedure LinkReachChecks;
 const
@@ -2572,6 +2671,7 @@ begin
     TagChecks;
     CodeChecks;
     IconChecks;
+    BrushLeakChecks;
     TableLinkChecks;
     LinkReachChecks;
     ScrolledLinkChecks;

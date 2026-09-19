@@ -2424,6 +2424,9 @@ begin
       ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
       TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
       ACanvas.FillRect(TR);
+      { and put the brush back: a rule's colour has no business being the
+        canvas's colour for the rest of the page }
+      ACanvas.Brush.Color := FPageBack; ACanvas.Brush.Style := bsClear;
       Continue;
     end;
     if B.BackColor<>clNone then begin ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid; ACanvas.FillRect(R) end;
@@ -2440,6 +2443,9 @@ begin
     if B.Marker<>'' then
       HTMLDrawOpt(ACanvas,Rect(TR.Left-B.MarkerWidth,TR.Top,TR.Left,TR.Bottom),[],
         HTMLEscape(B.Marker),O);
+    { nothing that draws text depends on what the last thing to draw left
+      behind: the marker's own draw is a draw like any other }
+    ACanvas.Brush.Style := bsClear;
     O := BlockOptions(I);
     if B.NoWrap then
     begin
