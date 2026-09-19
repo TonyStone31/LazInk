@@ -237,6 +237,31 @@ convention: a positive size is points, a negative one is pixels, exactly as
 or a percentage. Without it, a line is as tall as the font in it - which is
 what a browser does too.
 
+### What the body says, everything inherits
+
+`font-size`, `font-family` and `line-height` set on `body` reach every block
+that does not name its own, which is how pages are actually written:
+
+```css
+body { font-size: 15px; font-family: sans-serif; line-height: 1.5 }
+h1   { font-size: 28px }          /* its own size, the body's family */
+```
+
+The body's `font-size` is also what every heading, margin and indent is a
+multiple of, so it is the one declaration worth getting right. Other
+properties are not inherited - a `color` on `body` colors the page's text,
+but a `color` on a `div` does not reach the paragraphs inside it.
+
+### Font families
+
+A stack is tried in order and the first face this machine actually has is
+used: `font-family: "Helvetica Neue", Arial, sans-serif`. The generic names
+work too - `serif` and `monospace` pick a face, and `sans-serif`,
+`system-ui` and `ui-sans-serif` keep the control's own font, which is the
+one the platform already resolves a generic sans to. Naming a real family
+is worth it when a page must look the same everywhere; leaving it generic is
+worth it when it should look native.
+
 ---
 
 ## What it does not do

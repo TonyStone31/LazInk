@@ -37,3 +37,9 @@ tests/results/
 *~
 .DS_Store
 Thumbs.db
+
+# browser screenshots for the side-by-side comparison, which tools/compare.sh
+# takes again whenever the page is newer than the picture
+tests/compare/*-browser.png
+tests/compare/*-snap-*.png
+tests/compare/*-dryrun.png

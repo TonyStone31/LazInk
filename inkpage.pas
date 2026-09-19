@@ -290,6 +290,7 @@ type
     procedure StyleBlock(B: TInkPageBlock); virtual;
     function Options: THTMLOptions; virtual;
     { the options a block is drawn with - a hovered link, say }
+    function BaseFontPixels: Integer;
     procedure FindAnimations;
     function BlockOptions(Index: Integer): THTMLOptions; virtual;
     function HitLink(X,Y: Integer): string;
@@ -568,6 +569,63 @@ end;
   width="50%", or the same three written in a style attribute, where a width
   may also be a max-width.  A width on its own keeps the aspect ratio, which
   is what a help page writing <img src="shot.png" width="520"> wants. }
+{ A CSS font stack, resolved to one face this machine actually has.
+  "Helvetica Neue", Arial, sans-serif tries each in turn and falls back to
+  what the generic name means here; '' means "whatever the control is set
+  to", which is what a page that names no family gets. }
+function InkResolveFace(const AStack: string): string;
+  function Have(const AName: string): Boolean;
+  begin
+    Result := (AName<>'') and (Screen.Fonts.IndexOf(AName)>=0);
+  end;
+  function FirstOf(const ANames: array of string): string;
+  var K: Integer;
+  begin
+    for K := 0 to High(ANames) do
+      if Have(ANames[K]) then Exit(ANames[K]);
+    Result := '';
+  end;
+var Names: TStringList; I: Integer; N: string;
+begin
+  Result := '';
+  if Trim(AStack)='' then Exit;
+  Names := TStringList.Create;
+  try
+    Names.Delimiter := ','; Names.StrictDelimiter := True;
+    Names.DelimitedText := AStack;
+    for I := 0 to Names.Count-1 do
+    begin
+      N := Trim(Names[I]);
+      { a family may be quoted, and CSS allows either quote }
+      if (Length(N)>=2) and ((N[1]='"') or (N[1]='''')) and (N[Length(N)]=N[1]) then
+        N := Copy(N,2,Length(N)-2);
+      N := Trim(N);
+      if N='' then Continue;
+      if Have(N) then Exit(N);
+      { the generic families, as this machine spells them }
+      case LowerCase(N) of
+        'monospace','ui-monospace':
+          begin
+            Result := FirstOf(['DejaVu Sans Mono','Liberation Mono','Noto Sans Mono',
+              'Consolas','Menlo','Courier New']);
+            if Result='' then Result := InkMonoFace;
+            Exit;
+          end;
+        'serif':
+          Exit(FirstOf(['DejaVu Serif','Liberation Serif','Noto Serif',
+            'Times New Roman','Georgia','Serif']));
+        'sans-serif','ui-sans-serif','system-ui':
+          { the control's own font, left alone.  It is the widgetset's
+            default, which is what the platform resolves a generic sans to -
+            naming a face here instead would be this machine's guess against
+            the system's answer, and on this one that came out eleven per
+            cent wider than the browser. }
+          Exit('');
+        'cursive','fantasy': Exit('');
+      end;
+    end;
+  finally Names.Free end;
+end;
 { CSS line-height, which a page may write four ways: a bare number that
   multiplies the font's own size, a length in px or em, a percentage of the
   size, or "normal" - which is no line-height at all. }
@@ -1553,7 +1611,7 @@ var
       if Closing then Exit('</font>');
       K := FStyles.Pixels('small',Cls,'font-size',-1,Context);
       if K>0 then K := -K
-      else K := -Max(1,Round(FLayoutBase*0.83));
+      else K := -Max(1,Round(BaseFontPixels*0.83));
       C := FStyles.Color('small',Cls,'color',clNone,Context);
       FG := '';
       if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
@@ -2341,6 +2399,23 @@ begin
   if Result<0 then Result := FStyles.Box('body','','padding',Rect(-1,-1,-1,-1)).Top;
   if Result<0 then Result := 8;
 end;
+{ The size everything on the page is a multiple of, in pixels.  Wanted
+  while parsing as well as while laying out - <small> has to name a size in
+  the markup it emits - so it cannot live in the layout pass. }
+function TInkCustomPage.BaseFontPixels: Integer;
+begin
+  { the control's font, in pixels: a point size rounds to whole points and
+    lands up to half a point from what the page asked for }
+  if Font.Height<>0 then Result := Abs(Font.Height)
+  else if Font.Size>0 then Result := Round(Font.Size*4/3)
+  else if Screen.SystemFont.Height<>0 then Result := Abs(Screen.SystemFont.Height)
+  else if Screen.SystemFont.Size>0 then Result := Round(Screen.SystemFont.Size*4/3)
+  else Result := 15;
+  { and the page's own word on it wins, as it does in a browser: the
+    control's font is what a document that says nothing is drawn in, not a
+    ceiling on one that asks for a size }
+  Result := Max(1,FStyles.Pixels('body','','font-size',Result));
+end;
 procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
 var J,X,K,Em: Integer; BorderSpec,V: string; Base: Integer; C: TColor;
   Margins: TRect;
@@ -2371,8 +2446,11 @@ begin
   { a table's caption is a smaller line above it }
   else if B.Tag='caption' then K := Max(1,Round(Base*0.92));
   B.PointSize := -Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',K));
-  B.LineHeight := LineHeightOf(FStyles.Value(B.Tag,B.CSSClass,'line-height',''),
-    Abs(B.PointSize));
+  { a line-height is inherited, and a page sets it on the body far more
+    often than on every element }
+  V := FStyles.Value(B.Tag,B.CSSClass,'line-height','');
+  if V='' then V := FStyles.Value('body','','line-height','');
+  B.LineHeight := LineHeightOf(V,Abs(B.PointSize));
   { a browser leaves a summary in the page's own weight; only the triangle
     marks it out }
   B.Bold := IsHeadingTag(B.Tag);
@@ -2381,7 +2459,15 @@ begin
     { the same triangles a browser draws, at the size it draws them }
     if (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead] then B.Marker := '▼'
     else B.Marker := '▶';
-  if B.Pre then B.FaceName := InkMonoFace else B.FaceName := '';
+  { the face the page asked for, if it asked for one and this machine has
+    something that answers to it.  A family is inherited, and a page nearly
+    always sets it once on the body rather than on every element, so the
+    body's is what a block wears when it names none of its own.  A code
+    block keeps the fixed face unless the page names one for it. }
+  V := FStyles.Value(B.Tag,B.CSSClass,'font-family','');
+  if (V='') and not B.Pre then V := FStyles.Value('body','','font-family','');
+  B.FaceName := InkResolveFace(V);
+  if B.Pre and (B.FaceName='') then B.FaceName := InkMonoFace;
   B.NoWrap := B.Pre;
   { white-space: a block told not to wrap keeps its line and is cut off at
     the column's edge, the way a code block is }
@@ -2509,14 +2595,7 @@ begin
     Y := Prev.Bounds.Bottom; Pending := Prev.GapAfter;
   end;
   O := Options;
-  { the base size in pixels, which is the unit a page's CSS talks in.  A
-    point size rounds to whole points and lands up to half a point away from
-    what the page asked for; pixels land where it asked. }
-  if Font.Height<>0 then FLayoutBase := Abs(Font.Height)
-  else if Font.Size>0 then FLayoutBase := Round(Font.Size*4/3)
-  else if Screen.SystemFont.Height<>0 then FLayoutBase := Abs(Screen.SystemFont.Height)
-  else if Screen.SystemFont.Size>0 then FLayoutBase := Round(Screen.SystemFont.Size*4/3)
-  else FLayoutBase := 15;
+  FLayoutBase := BaseFontPixels;
   { a list's indent is room for its markers; a quote's, room for its bar }
   Canvas.Font.Assign(Font); Canvas.Font.Height := -FLayoutBase;
   FListWidth := Max(Scale96ToFont(24),Canvas.TextWidth('00. '));
@@ -3111,7 +3190,10 @@ begin
   begin
     Text := AText; Left := ALeft; Top := ATop; Width := AWidth; Height := AHeight;
     Line := ALine; Part := APart; LineHeight := AHeight;
-    FontName := AFont.Name; FontSize := AFont.Size; FontStyle := AFont.Style;
+    FontName := AFont.Name; FontStyle := AFont.Style;
+    { pixels when the font carries them, points otherwise - the same
+      convention the renderer and TFont itself use }
+    if AFont.Height<>0 then FontSize := AFont.Height else FontSize := AFont.Size;
     FontColor := AFont.Color;
   end;
   Inc(B.RunCount);
@@ -3166,7 +3248,7 @@ end;
 procedure TInkCustomPage.RunFont(ACanvas: TCanvas; const R: TInkPageRun);
 begin
   ACanvas.Font.Name := R.FontName;
-  ACanvas.Font.Size := R.FontSize;
+  HTMLFontSize(ACanvas,R.FontSize);
   ACanvas.Font.Style := R.FontStyle;
 end;
 

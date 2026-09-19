@@ -29,7 +29,8 @@ function InkRenderColor(const S: string; Default: TColor = clBlack): TColor;
 function InkRenderContrastColor(Background: TColor): TColor;
 function InkRenderShadeColor(Color: TColor; Percent: Integer): TColor;
 function InkRenderIsCJK(const Text: string): Boolean;
-procedure InkRenderApplySize(const Canvas: TCanvas; ASize: Integer);
+procedure InkRenderApplySize(const Canvas: TCanvas; ASize: Integer); overload;
+procedure InkRenderApplySize(const AFont: TFont; ASize: Integer); overload;
 function InkRenderTimes(ASize, AFactor: Integer): Integer;
 function InkRenderSmaller(ASize: Integer; AFactor: Double): Integer;
 function InkRenderScalePx(Value, Scale: Integer): Integer;
@@ -484,6 +485,15 @@ begin
   else Canvas.Font.Size := ASize;
 end;
 
+{ the same, on a font of its own: a run reported to a host carries its size
+  the way the rest of the engine spells one, and assigning a pixel size to
+  TFont.Size would be a size in points with the sign still on it }
+procedure InkRenderApplySize(const AFont: TFont; ASize: Integer);
+begin
+  if ASize < 0 then AFont.Height := ASize
+  else AFont.Size := ASize;
+end;
+
 { the same size, several times over, for measuring a font more finely than
   the platform will report it }
 function InkRenderTimes(ASize, AFactor: Integer): Integer;
@@ -761,14 +771,19 @@ end;
 function TInkRenderer.StyleFor(const Stack: array of TInkRenderStyle): TInkRenderStyle;
 var I: Integer;
 begin
-  Result.Face := ''; Result.Size := 10;
+  { the same convention as everywhere else: points when positive, pixels
+    when negative, and nought meaning the level said nothing about size.
+    This read "Size > 0" until sizes could be negative, which quietly threw
+    away every size on the stack and drew the whole document at ten points
+    - headings included. }
+  Result.Face := ''; Result.Size := -13;
   Result.Color := clWindowText; Result.BackColor := clNone; Result.Align := naLeft;
   Result.Styles := []; Result.Script := nsNormal; Result.LinkIndex := 0;
   Result.LinkName := ''; Result.Indent := 0;
   for I := 0 to High(Stack) do
   begin
     if Stack[I].Face <> '' then Result.Face := Stack[I].Face;
-    if Stack[I].Size > 0 then Result.Size := Stack[I].Size;
+    if Stack[I].Size <> 0 then Result.Size := Stack[I].Size;
     if Stack[I].Color <> clDefault then Result.Color := Stack[I].Color;
     if Stack[I].BackColor <> clNone then Result.BackColor := Stack[I].BackColor;
     Result.Styles := Result.Styles + Stack[I].Styles;

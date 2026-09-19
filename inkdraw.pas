@@ -161,7 +161,8 @@ function HTMLContrastColor(ABackground: TColor): TColor;
 function HTMLShadeColor(AColor: TColor; APercent: Integer): TColor;
 { a size the LCL's way: points when positive, pixels when negative, exactly
   as TFont.Size and TFont.Height spell it }
-procedure HTMLFontSize(const ACanvas: TCanvas; ASize: Integer);
+procedure HTMLFontSize(const ACanvas: TCanvas; ASize: Integer); overload;
+procedure HTMLFontSize(const AFont: TFont; ASize: Integer); overload;
 function HTMLIsCJK(const AChar: string): Boolean;
 
 { measure and hit test in one pass, for a control that wants both }
@@ -204,7 +205,7 @@ end;
 procedure TRunRelay.Run(const ARun: TInkRenderRun);
 begin
   FFont.Name := ARun.Style.Face;
-  FFont.Size := ARun.Style.Size;
+  InkRenderApplySize(FFont, ARun.Style.Size);
   FFont.Style := ARun.Style.Styles;
   FFont.Color := ARun.Style.Color;
   FHandler(ARun.Text, ARun.Bounds.Left, ARun.Bounds.Top,
@@ -605,6 +606,9 @@ begin Result := InkRenderShadeColor(AColor, APercent) end;
 
 procedure HTMLFontSize(const ACanvas: TCanvas; ASize: Integer);
 begin InkRenderApplySize(ACanvas, ASize) end;
+
+procedure HTMLFontSize(const AFont: TFont; ASize: Integer);
+begin InkRenderApplySize(AFont, ASize) end;
 
 function HTMLIsCJK(const AChar: string): Boolean;
 begin Result := InkRenderIsCJK(AChar) end;
