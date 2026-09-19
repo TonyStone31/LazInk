@@ -1523,14 +1523,15 @@ end;
 { rowspan, line-height, image sizing, text-transform and white-space: the
   five things a help page asks for that LazInk used not to read }
 procedure AuthorChecks;
-var I, J, Plain, Airy, Tall, Short: Integer; B: TInkPageBlock; S: string;
+var I, J, Plain, Airy, Tall, Short, Mid, Deep: Integer; B: TInkPageBlock; S: string;
 
 begin
   { a cell that reaches down two rows is as tall as both of them }
   Probe.SetBounds(0, 0, 500, 400);
   Probe.LoadHTML('<html><body><table border="1">' +
-    '<tr><td rowspan="2">deep</td><td>one</td></tr>' +
+    '<tr><td rowspan="3">deep</td><td>one</td></tr>' +
     '<tr><td>two</td></tr>' +
+    '<tr><td>middle</td></tr>' +
     '<tr><td>three</td><td>four</td></tr>' +
     '</table></body></html>');
   Probe.ScrollTo(0);
@@ -1539,14 +1540,25 @@ begin
     if Probe.Block(I).Tag = 'table' then begin B := Probe.Block(I); Probe.BlockText(I) end;
   Check(B <> nil, 'the rowspan table is there');
   if B = nil then Exit;
-  Check(Pos('rowspan="2"', B.Source) > 0, 'the page passes rowspan on');
-  Tall := -1; Short := -1; Plain := -1;
+  Check(Pos('rowspan="3"', B.Source) > 0, 'the page passes rowspan on');
+  Tall := -1; Short := -1; Plain := -1; Mid := -1; Deep := -1;
   for J := 0 to B.RunCount - 1 do
   begin
-    if Trim(B.Runs[J].Text) = 'deep' then Tall := B.Runs[J].Top;
-    if Trim(B.Runs[J].Text) = 'two' then Short := B.Runs[J].Top;
+    if Trim(B.Runs[J].Text) = 'deep' then
+      begin Tall := B.Runs[J].Top; Deep := B.Runs[J].Left end;
+    if Trim(B.Runs[J].Text) = 'two' then
+      begin Short := B.Runs[J].Top; Mid := B.Runs[J].Left end;
     if Trim(B.Runs[J].Text) = 'three' then Plain := B.Runs[J].Top;
   end;
+  { every row a rowspan covers starts to the right of it, and the row after
+    it starts back in the first column }
+  Check(Mid > Deep,
+    Format('a row under a rowspan starts past it (%d against %d)', [Mid, Deep]));
+  for J := 0 to B.RunCount - 1 do
+    if Trim(B.Runs[J].Text) = 'middle' then
+      Check(B.Runs[J].Left > Deep,
+        Format('and so does the third row it covers (%d against %d)',
+          [B.Runs[J].Left, Deep]));
   Check((Tall >= 0) and (Short >= 0) and (Plain >= 0),
     Format('every cell was laid out (deep %d, two %d, three %d)', [Tall, Short, Plain]));
   Check(Short > Tall,
@@ -1602,6 +1614,52 @@ begin
   Check(Tall = 60, Format('width="60" draws the picture 60 wide (%d)', [Tall]));
   Check((Short > 0) and (Short < 200),
     Format('width="25%%" is a quarter of the column (%d)', [Short]));
+
+  { a cell's own text-transform: a table is one block, so a th's uppercase
+    cannot be done to the block as a whole }
+  Probe.SetBounds(0, 0, 500, 300);
+  Probe.LoadHTML('<html><head><style>' +
+    'table.span th { text-transform: uppercase }' +
+    '</style></head><body><table class="span">' +
+    '<tr><th>Release</th><th>Part</th></tr>' +
+    '<tr><td>quiet</td><td>also quiet</td></tr>' +
+    '</table></body></html>');
+  Probe.ScrollTo(0);
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then
+    begin
+      S := Probe.Block(I).Source;
+      Check(Pos('RELEASE', S) > 0, 'a th wears its uppercase: ' + Copy(S, 1, 120));
+      Check(Pos('PART', S) > 0, 'and so does the next one');
+      Check(Pos('quiet', S) > 0, 'and a td is left alone');
+      Check(Pos('QUIET', S) = 0, 'really left alone: ' + Copy(S, 1, 120));
+    end;
+
+  { border-left, which is how a documentation page draws a callout }
+  Probe.SetBounds(0, 0, 400, 300);
+  Probe.LoadHTML('<html><head><style>' +
+    '.note { background: #f4f6f8; border-left: 4px solid #176bbd; padding: 8px }' +
+    '.plain { background: #f4f6f8 }' +
+    '.gone { border-left: none }' +
+    '</style></head><body>' +
+    '<div class="note">a callout</div><div class="plain">no stripe</div>' +
+    '<div class="gone">nor here</div></body></html>');
+  Probe.ScrollTo(0);
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    if Pos('note', B.CSSClass) > 0 then
+    begin
+      Check(ColorToRGB(B.EdgeColor[0]) = RGBToColor($17, $6B, $BD),
+        'border-left takes its color');
+      Check(B.EdgeWidth[0] = 4, Format('and its width (%d)', [B.EdgeWidth[0]]));
+      Check(B.EdgeColor[1] = clNone, 'and leaves the other sides alone');
+    end
+    else if Pos('plain', B.CSSClass) > 0 then
+      Check(B.EdgeColor[0] = clNone, 'a block with no border-left has no stripe')
+    else if Pos('gone', B.CSSClass) > 0 then
+      Check(B.EdgeColor[0] = clNone, 'border-left: none is no stripe');
+  end;
 
   { text-transform and white-space }
   Probe.LoadHTML('<html><head><style>p.shout { text-transform: uppercase }' +

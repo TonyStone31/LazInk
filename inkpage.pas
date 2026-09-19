@@ -119,6 +119,10 @@ type
     { where the bars of the quotes it is in are drawn, from the column's left }
     Bars: array of Integer;
     BorderColor: TColor;
+    { a border on one side only, the way a callout box is drawn: the color
+      of each edge, clNone where there is none, and how thick it is }
+    EdgeColor: array[0..3] of TColor;   { left, top, right, bottom }
+    EdgeWidth: array[0..3] of Integer;
     TextColor, BackColor, BarColor: TColor;
     { where each run of its text was drawn, and its words as they are
       copied - filled in when first needed, after each layout }
@@ -722,6 +726,37 @@ begin
     end;
   end;
 end;
+const
+  { the four sides, in the order TRect keeps them for an edge }
+  EdgeProp: array[0..3] of string =
+    ('border-left','border-top','border-right','border-bottom');
+
+{ "4px solid #176bbd", in any order: the width, the color, and a style that
+  says none takes the edge away again }
+procedure EdgeOf(const ASpec: string; out AColor: TColor; out AWidth: Integer);
+var Parts: TStringList; I: Integer; T: string; C: TColor; N: Integer;
+begin
+  AColor := clNone; AWidth := 0;
+  Parts := TStringList.Create;
+  try
+    Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+    Parts.DelimitedText := Trim(ASpec);
+    for I := 0 to Parts.Count-1 do
+    begin
+      T := LowerCase(Trim(Parts[I]));
+      if T='' then Continue;
+      if (T='none') or (T='hidden') then begin AColor := clNone; AWidth := 0; Exit end;
+      if (T='solid') or (T='dashed') or (T='dotted') or (T='double') or
+        (T='groove') or (T='ridge') or (T='inset') or (T='outset') then Continue;
+      N := CSSPixels(T,-1);
+      if N>=0 then begin AWidth := N; Continue end;
+      C := CSSColor(T,clNone);
+      if C<>clNone then AColor := C;
+    end;
+  finally Parts.Free end;
+  if AColor=clNone then AWidth := 0
+  else if AWidth<=0 then AWidth := 1;
+end;
 function TagName(const Tag: string): string;
 var P,Q: Integer;
 begin
@@ -1274,6 +1309,10 @@ var
   PendingStyle: string;
   { <center>, and <div align=center> around several blocks }
   CenterDepth, RightDepth: Integer;
+  { where the text of the cell being read starts in Buffer, and what case
+    its stylesheet asks for, one per level of nested table }
+  CellFrom: array[0..15] of Integer;
+  CellCase: array[0..15] of string;
   { the <details> the parser is inside, innermost last, and the fold each
     block being made belongs to }
   Folds: array of Integer;
@@ -1827,6 +1866,7 @@ begin
   FlexItems := TStringList.Create;
   P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := ''; Nest := '';
   PendingAnchor := ''; PendingMarker := ''; TableDepth := 0; SkipDepth := 0; PreDepth := 0;
+  for I := 0 to High(CellCase) do begin CellCase[I] := ''; CellFrom[I] := 0 end;
   PendingStyle := ''; PendingAlign := ''; CenterDepth := 0; RightDepth := 0;
   CaptionDepth := 0; CaptionText := ''; CurFold := -1; PendingHead := -1;
   CodeRaw := ''; CodeLang := ''; CodeMarked := False;
@@ -2013,10 +2053,37 @@ begin
           else if Closing then Buffer := Buffer+'</'+Element+'></tr>'
           else Buffer := Buffer+'<tr><'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
         end
-        else if Closing then Buffer := Buffer+'</'+Element+'>'
+        else if Closing then
+        begin
+          { a cell's own text-transform, applied to what was buffered
+            between its tags: a table is one block, so the transform on a
+            th cannot be done to the block as a whole }
+          if (Element<>'tr') and (TableDepth<=High(CellCase)) and
+            (CellCase[TableDepth]<>'') and (CellFrom[TableDepth]<Length(Buffer)) then
+          begin
+            Buffer := Copy(Buffer,1,CellFrom[TableDepth])+
+              Transformed(Copy(Buffer,CellFrom[TableDepth]+1,MaxInt),
+                CellCase[TableDepth]);
+            CellCase[TableDepth] := '';
+          end;
+          Buffer := Buffer+'</'+Element+'>';
+        end
         else if Element='tr' then Buffer := Buffer+'<tr>'
-        else Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+
-          Spans(Raw)+'>'+CellAlign;
+        else
+        begin
+          Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+
+            Spans(Raw)+'>'+CellAlign;
+          if TableDepth<=High(CellCase) then
+          begin
+            CellFrom[TableDepth] := Length(Buffer);
+            CellCase[TableDepth] := LowerCase(Trim(
+              FStyles.Value(Element,Cls,'text-transform','',TableCtx)));
+            if (CellCase[TableDepth]<>'uppercase') and
+              (CellCase[TableDepth]<>'lowercase') and
+              (CellCase[TableDepth]<>'capitalize') then
+              CellCase[TableDepth] := '';
+          end;
+        end;
         if (Element<>'tr') then
         begin
           if Closing then ItemCtx := ''
@@ -2508,6 +2575,14 @@ begin
   B.GapBefore := Max(0,Margins.Top);
   B.GapAfter := Max(0,Margins.Bottom);
   B.BorderColor := clNone;
+  { border-left and its three companions, which is how a documentation page
+    draws a callout: a stripe down one edge and nothing on the others }
+  for K := 0 to 3 do
+  begin
+    B.EdgeColor[K] := clNone; B.EdgeWidth[K] := 0;
+    V := FStyles.Value(B.Tag,B.CSSClass,EdgeProp[K],'');
+    if V<>'' then EdgeOf(V,B.EdgeColor[K],B.EdgeWidth[K]);
+  end;
   BorderSpec := FStyles.Value(B.Tag,B.CSSClass,'border','');
   K := Pos('var(',BorderSpec);
   if K>0 then BorderSpec := Copy(BorderSpec,K,MaxInt)
@@ -2773,6 +2848,29 @@ begin
     if B.BackColor<>clNone then begin ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid; ACanvas.FillRect(R) end;
     ACanvas.Brush.Style := bsClear;
     if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
+    { a stripe down one edge, drawn over the background and inside the block }
+    ACanvas.Brush.Style := bsSolid;
+    if B.EdgeColor[0]<>clNone then
+    begin
+      ACanvas.Brush.Color := B.EdgeColor[0];
+      ACanvas.FillRect(Rect(R.Left,R.Top,R.Left+B.EdgeWidth[0],R.Bottom));
+    end;
+    if B.EdgeColor[1]<>clNone then
+    begin
+      ACanvas.Brush.Color := B.EdgeColor[1];
+      ACanvas.FillRect(Rect(R.Left,R.Top,R.Right,R.Top+B.EdgeWidth[1]));
+    end;
+    if B.EdgeColor[2]<>clNone then
+    begin
+      ACanvas.Brush.Color := B.EdgeColor[2];
+      ACanvas.FillRect(Rect(R.Right-B.EdgeWidth[2],R.Top,R.Right,R.Bottom));
+    end;
+    if B.EdgeColor[3]<>clNone then
+    begin
+      ACanvas.Brush.Color := B.EdgeColor[3];
+      ACanvas.FillRect(Rect(R.Left,R.Bottom-B.EdgeWidth[3],R.Right,R.Bottom));
+    end;
+    ACanvas.Brush.Style := bsClear;
     if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
     begin
       R := B.ImageRect; OffsetRect(R,0,-FScroll.Position);
