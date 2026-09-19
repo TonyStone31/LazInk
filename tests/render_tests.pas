@@ -545,7 +545,7 @@ begin
     if (At.Block <> 0) or ((At.Offset <> K) and not ((K > 0) and (Words[K] = ' ') and (At.Offset = K - 1))) then
     begin
       Inc(Wrong);
-      if Wrong < 8 then WriteLn('  k=', K, ' at=', At.Block, ':', At.Offset, ' pt=', P.X, ',', P.Y);
+      if Wrong < 30 then WriteLn('  k=', K, ' at=', At.Block, ':', At.Offset, ' pt=', P.X, ',', P.Y);
     end;
   end;
   Check(Wrong = 0, Format('PositionAt(PositionPoint(k)) = k (%d wrong)', [Wrong]));
@@ -2226,6 +2226,57 @@ end;
 
 { --- the palette icons the IDE shows --- }
 { a page with nothing moving on it does not run the animation tick }
+{ the page's own words about size and face reach the glyphs that are drawn.
+  Every one of these was broken at once, and the total height of a document
+  hid it: the sizes were computed correctly and then thrown away. }
+procedure InheritedTextChecks;
+var I, Base, H1, H2, P1, Small: Integer; B: TInkPageBlock;
+begin
+  Probe.SetBounds(0, 0, 500, 400);
+  Probe.LoadHTML('<html><head><style>' +
+    'body { font-size: 20px; font-family: monospace; line-height: 2 }' +
+    'h1 { font-size: 40px } h2 { font-size: 30px }' +
+    '</style></head><body>' +
+    '<h1>a heading</h1><p>a paragraph with <small>small print</small> in it</p>' +
+    '<h2>another heading</h2></body></html>');
+  Probe.ScrollTo(0);
+  Base := 0; H1 := 0; H2 := 0; P1 := 0;
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    if B.Tag = 'h1' then H1 := B.PointSize
+    else if B.Tag = 'h2' then H2 := B.PointSize
+    else if (B.Tag = 'p') and (P1 = 0) then
+    begin
+      P1 := B.PointSize; Base := B.LineHeight;
+      { <small> names its size in the markup the parser emits, and the
+        parser runs before any layout: it used to read a base size that was
+        still nought and ask for one pixel of text }
+      Small := Pos('size="-1"', B.Source);
+      Check(Small = 0, 'small print is not one pixel: ' + Copy(B.Source, 1, 90));
+      Check(Pos('size="-17"', B.Source) > 0,
+        'small is 0.83 of the body''s twenty pixels: ' + Copy(B.Source, 1, 90));
+    end;
+  end;
+  { body font-size is inherited - everything else is a multiple of it }
+  Check(P1 = -20, Format('body font-size: 20px reaches a paragraph (%d)', [P1]));
+  Check(H1 = -40, Format('and h1 keeps its own 40px (%d)', [H1]));
+  Check(H2 = -30, Format('and h2 its 30px (%d)', [H2]));
+  { line-height is inherited too }
+  Check(Base = 40, Format('line-height: 2 on the body reaches a paragraph (%d)', [Base]));
+
+  { and the size survives into the runs that are actually drawn, which is
+    where it used to be replaced by a flat ten points }
+  Probe.BlockText(0);   { asking for a block's words lays out its runs }
+  B := Probe.Block(0);
+  Check(B.RunCount > 0, 'the heading has runs');
+  Check(B.Runs[0].FontSize = -40,
+    Format('a drawn run carries the heading''s size (%d)', [B.Runs[0].FontSize]));
+  { a monospace family named on the body reaches the block }
+  Check(B.FaceName <> '', 'font-family on the body reaches a heading');
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 procedure AnimationTimerChecks;
 var Base: string;
 begin
@@ -2877,6 +2928,7 @@ begin
     CodeChecks;
     IconChecks;
     AnimationTimerChecks;
+    InheritedTextChecks;
     BrushLeakChecks;
     ColspanChecks;
   AuthorChecks;

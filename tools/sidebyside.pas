@@ -31,7 +31,7 @@ program sidebyside;
 {$mode objfpc}{$H+}
 
 uses
-  Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType,
+  Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, Math,
   ExtCtrls, StdCtrls, Process, InkPage, InkMemo, InkListBox, InkLabel, InkDraw;
 
 type
@@ -48,7 +48,7 @@ type
     FLeft: TPaintBox;
     FBar: TPanel;
     FCaption: TLabel;
-    FPath, FBrowserShot: string;
+    FPath, FBrowserShot, FMarkup: string;
     FTop: Integer;
     FLocked: Boolean;
     FShown: Integer;
@@ -59,6 +59,7 @@ type
     procedure Snap;
     procedure Tell;
   protected
+    procedure DoShow; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
       MousePos: TPoint): Boolean; override;
@@ -96,32 +97,18 @@ begin
   Html := TStringList.Create;
   try
     Html.LoadFromFile(APage);
-
-    FPage := TInkPage.Create(Self);
-    FPage.Parent := Self;
-    FPage.SetBounds(Half + 12, 24, Half, ClientHeight - 24);
-    FPage.Anchors := [akLeft, akTop, akRight, akBottom];
-    FPage.LoadFromFile(APage);
-
-    { the same markup in the other controls, so the one renderer can be seen
-      doing its work in each of them }
-    FMemo := TInkMemo.Create(Self);
-    FMemo.Parent := Self; FMemo.SetBounds(Half + 12, 24, Half, ClientHeight - 24);
-    FMemo.Anchors := FPage.Anchors; FMemo.Visible := False;
-    FMemo.WordWrap := True;
-    FMemo.Lines.Text := Html.Text;
-
-    FList := TInkListBox.Create(Self);
-    FList.Parent := Self; FList.SetBounds(Half + 12, 24, Half, ClientHeight - 24);
-    FList.Anchors := FPage.Anchors; FList.Visible := False;
-    FList.Items.Text := Html.Text;
-
-    FLabel := TInkLabel.Create(Self);
-    FLabel.Parent := Self; FLabel.SetBounds(Half + 12, 24, Half, ClientHeight - 24);
-    FLabel.Anchors := FPage.Anchors; FLabel.Visible := False;
-    FLabel.WordWrap := True;
-    FLabel.Caption := Html.Text;
+    FMarkup := Html.Text;
   finally Html.Free end;
+
+  FPage := TInkPage.Create(Self);
+  FPage.Parent := Self;
+  FPage.SetBounds(Half + 12, 24, Half, ClientHeight - 24);
+  FPage.Anchors := [akLeft, akTop, akRight, akBottom];
+  FPage.LoadFromFile(APage);
+
+  { the other three controls are built the first time they are asked for:
+    pouring seventy kilobytes of markup into a label is slow, and a run that
+    only ever looks at the page should not wait for it }
 
   Tell;
 end;
@@ -134,10 +121,26 @@ end;
 
 procedure TCompareForm.Tell;
 const Names: array[1..4] of string = ('TInkPage', 'TInkMemo', 'TInkListBox', 'TInkLabel');
+var Drift: Integer; Sign: string;
 begin
-  FCaption.Caption := Format('  browser  |  %s   -   scroll with the wheel or the keys,' +
-    ' S for a snapshot, 1-4 to change the control, L to %s the sides, Q to quit   (y=%d)',
-    [Names[FShown], BoolToStr(FLocked, 'unlock', 'lock'), FTop]);
+  { both heights, so a page that drifts says by how much }
+  Drift := FPage.ContentHeight - FShot.Height;
+  if Drift >= 0 then Sign := '+' else Sign := '-';
+  FCaption.Caption := Format('  browser %d  |  %s %d  (%s%d)   -   y=%d   ' +
+    'wheel/keys scroll, S snapshot, 1-4 control, L %s, Q quit',
+    [FShot.Height, Names[FShown], FPage.ContentHeight, Sign, Abs(Drift), FTop,
+     BoolToStr(FLocked, 'unlock', 'lock')]);
+end;
+
+procedure TCompareForm.DoShow;
+begin
+  inherited DoShow;
+  { the page has no height until it has been laid out, and it lays out when
+    it paints: make it paint, then ask, or the caption says nought }
+  Application.ProcessMessages;
+  FPage.Repaint;
+  Application.ProcessMessages;
+  Tell;
 end;
 
 procedure TCompareForm.PaintLeft(Sender: TObject);
@@ -169,19 +172,45 @@ begin
   if FLocked then
   begin
     FPage.ScrollTo(FTop);
-    FMemo.ScrollTo(FTop);
+    if FMemo <> nil then FMemo.ScrollTo(FTop);
   end;
   FLeft.Invalidate;
   Tell;
 end;
 
 procedure TCompareForm.ShowWhich(N: Integer);
+var Where: TRect;
 begin
+  Where := Rect(FPage.Left, FPage.Top, FPage.Left + FPage.Width,
+    FPage.Top + FPage.Height);
+  { the same markup in the other controls, so the one renderer can be seen
+    doing its work in each of them - made here, not at startup }
+  if (N = 2) and (FMemo = nil) then
+  begin
+    FMemo := TInkMemo.Create(Self);
+    FMemo.Parent := Self; FMemo.BoundsRect := Where;
+    FMemo.Anchors := FPage.Anchors; FMemo.WordWrap := True;
+    FMemo.Lines.Text := FMarkup;
+  end;
+  if (N = 3) and (FList = nil) then
+  begin
+    FList := TInkListBox.Create(Self);
+    FList.Parent := Self; FList.BoundsRect := Where;
+    FList.Anchors := FPage.Anchors;
+    FList.Items.Text := FMarkup;
+  end;
+  if (N = 4) and (FLabel = nil) then
+  begin
+    FLabel := TInkLabel.Create(Self);
+    FLabel.Parent := Self; FLabel.BoundsRect := Where;
+    FLabel.Anchors := FPage.Anchors; FLabel.WordWrap := True;
+    FLabel.Caption := FMarkup;
+  end;
   FShown := N;
   FPage.Visible := N = 1;
-  FMemo.Visible := N = 2;
-  FList.Visible := N = 3;
-  FLabel.Visible := N = 4;
+  if FMemo <> nil then FMemo.Visible := N = 2;
+  if FList <> nil then FList.Visible := N = 3;
+  if FLabel <> nil then FLabel.Visible := N = 4;
   Tell;
 end;
 
