@@ -158,6 +158,12 @@ type
     FRoot: TInkBox;
     FOpt: TInkRenderOptions;
     FWidthKeys, FWidthValues: TStringList;
+    { the style the last cache key was built from, and the key it made }
+    FKeyFace, FKeyText: string;
+    FKeySize, FKeyBits, FKeyScript: Integer;
+    { and what the last call to Metrics worked out, for the run after it }
+    FMetFace: string;
+    FMetSize, FMetBits, FMetScript, FMetLine, FMetHeight, FMetAscent: Integer;
     FNextLink: Integer;
     function HashSource(const S: string): Cardinal;
     function HashOptions(const Options: TInkRenderOptions): Cardinal;
@@ -170,6 +176,10 @@ type
     procedure BuildStyles(const Options: TInkRenderOptions);
     procedure AddStyledText(const Text: string; const Style: TInkRenderStyle;
       APart: Integer);
+    { the part of a cache key that a run's style makes, kept between runs:
+      a paragraph's words nearly all share one style, and building it again
+      for every word was four IntToStr and a handful of concatenations }
+    function StyleKey(const AStyle: TInkRenderStyle): string;
     function MeasureRun(const Canvas: TCanvas; const Run: TInkRenderRun): TSize;
     { the height of a run's line, and how it sits on its baseline }
     function Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
@@ -915,12 +925,25 @@ end;
 function TInkRenderer.IsCJK(C: Cardinal): Boolean;
 begin Result := ((C>=$2E80) and (C<=$A4CF)) or ((C>=$AC00) and (C<=$D7A3)) or ((C>=$F900) and (C<=$FAFF)) or ((C>=$20000) and (C<=$2FA1F)) end;
 
+function TInkRenderer.StyleKey(const AStyle: TInkRenderStyle): string;
+var Bits: Integer;
+begin
+  Bits := InkRenderStyleBits(AStyle.Styles);
+  if (AStyle.Size=FKeySize) and (Bits=FKeyBits) and
+    (Integer(AStyle.Script)=FKeyScript) and (AStyle.Face=FKeyFace) then
+    Exit(FKeyText);
+  FKeySize := AStyle.Size; FKeyBits := Bits;
+  FKeyScript := Integer(AStyle.Script); FKeyFace := AStyle.Face;
+  FKeyText := AStyle.Face+#1+IntToStr(AStyle.Size)+#1+IntToStr(Bits)+#1+
+    IntToStr(Integer(AStyle.Script))+#1;
+  Result := FKeyText;
+end;
+
 function TInkRenderer.MeasureRun(const Canvas: TCanvas; const Run: TInkRenderRun): TSize;
 var Old: TFont; S,Key: string; N: Integer;
 begin
   S := Run.Text;
-  Key := Run.Style.Face+#1+IntToStr(Run.Style.Size)+#1+
-    IntToStr(InkRenderStyleBits(Run.Style.Styles))+#1+IntToStr(Integer(Run.Style.Script))+#1+S;
+  Key := StyleKey(Run.Style)+S;
   { the width itself, beside its key: turning every hit back from a string
     cost more than measuring some of the words did }
   if FWidthKeys.Find(Key,N) then
@@ -948,10 +971,27 @@ end;
 function TInkRenderer.Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
   out AAscent, ADescent: Integer): Integer;
 var Key: string; N, Big, Asc10, Desc10: Integer; Old: TFont; TM: TTextMetric;
+  { what this call worked out, for the next run to answer from }
+  procedure Remember;
+  begin
+    FMetFace := Run.Style.Face; FMetSize := Run.Style.Size;
+    FMetBits := InkRenderStyleBits(Run.Style.Styles);
+    FMetScript := Integer(Run.Style.Script); FMetLine := FOpt.LineHeight;
+    FMetHeight := Result; FMetAscent := AAscent;
+  end;
 begin
-  Key := Run.Style.Face + #1 + IntToStr(Run.Style.Size) + #1 +
-    IntToStr(InkRenderStyleBits(Run.Style.Styles)) + #1 +
-    IntToStr(Integer(Run.Style.Script)) + #1 + IntToStr(FOpt.LineHeight);
+  { the run before this one nearly always wore the same style: answering
+    from that costs a few comparisons instead of a key and a search }
+  if (Run.Style.Size=FMetSize) and (Run.Style.Face=FMetFace) and
+    (InkRenderStyleBits(Run.Style.Styles)=FMetBits) and
+    (Integer(Run.Style.Script)=FMetScript) and (FOpt.LineHeight=FMetLine) and
+    (FMetHeight>0) then
+  begin
+    Result := FMetHeight; AAscent := FMetAscent;
+    ADescent := Max(0,Result-AAscent);
+    Exit;
+  end;
+  Key := StyleKey(Run.Style)+IntToStr(FOpt.LineHeight);
   { the height and the ascent packed into the key's own pointer: both fit
     in sixteen bits many times over, and a hit then costs no parsing }
   if FMetricKeys.Find(Key,N) then
@@ -962,6 +1002,7 @@ begin
     if Result<1 then Result := Canvas.TextHeight('Tg');
     if AAscent<1 then AAscent := Max(1,Round(Result*0.78));
     ADescent := Max(0,Result-AAscent);
+    Remember;
     Exit;
   end;
   Old := TFont.Create; Old.PixelsPerInch := Canvas.Font.PixelsPerInch; Old.Assign(Canvas.Font);
@@ -1008,6 +1049,7 @@ begin
   end;
   FMetricKeys.AddObject(Key,
     TObject(PtrInt((Min($FFFF,AAscent) shl 16) or Min($FFFF,Result))));
+  Remember;
   Canvas.Font.Assign(Old); Old.Free;
 end;
 
@@ -1026,7 +1068,7 @@ var
   RowHeights, ColWidths, ColMin, ColMax, RowOffsets, ColOffsets: array of Integer;
   DefaultPad: TRect;
   R: TInkRenderRun; L: TInkRenderLine; Box: TInkBox; St: TInkBoxStyle;
-  Drop, MI, CellW: Integer; VA: string;
+  Drop, MI, CellW, Share, Over, ShareMin, OverMin: Integer; VA: string;
   InCell, FixedLayout, FillWidth: Boolean;
   TableAttrs, CellAttrs, Merge: TStringList;
   WidthText: string; WidthPercent: Integer;
@@ -1413,11 +1455,22 @@ begin
       else
       begin
         { a cell across N columns asks each of them for its share, and no
-          more: the columns a single-column cell sizes come first }
+          more: the columns a single-column cell sizes come first.  The
+          pixels that do not divide evenly go to the first columns rather
+          than being dropped - losing them made a spanning cell a pixel or
+          two narrower than its own text, which is a whole wrapped line. }
+        Share := (W-Spacing*(Cells[I].Span-1)) div Cells[I].Span;
+        Over := (W-Spacing*(Cells[I].Span-1)) mod Cells[I].Span;
+        ShareMin := (H-Spacing*(Cells[I].Span-1)) div Cells[I].Span;
+        OverMin := (H-Spacing*(Cells[I].Span-1)) mod Cells[I].Span;
         for J := Cells[I].Col to Min(Cols-1,Cells[I].Col+Cells[I].Span-1) do
         begin
-          ColMax[J] := Max(ColMax[J],(W-Spacing*(Cells[I].Span-1)) div Cells[I].Span);
-          ColMin[J] := Max(ColMin[J],(H-Spacing*(Cells[I].Span-1)) div Cells[I].Span);
+          if J-Cells[I].Col<Over then
+            ColMax[J] := Max(ColMax[J],Share+1)
+          else ColMax[J] := Max(ColMax[J],Share);
+          if J-Cells[I].Col<OverMin then
+            ColMin[J] := Max(ColMin[J],ShareMin+1)
+          else ColMin[J] := Max(ColMin[J],ShareMin);
         end;
       end;
     end;
@@ -1429,7 +1482,11 @@ begin
 
     Total := 0; for I := 0 to Cols-1 do Inc(Total,ColMax[I]);
     if FixedLayout then
-      for I := 0 to Cols-1 do ColWidths[I] := Max(1,TableWidth div Cols)
+      { equal columns, with the pixels that do not divide evenly given to
+        the first of them rather than dropped off the end }
+      for I := 0 to Cols-1 do
+        if I<TableWidth mod Cols then ColWidths[I] := Max(1,TableWidth div Cols+1)
+        else ColWidths[I] := Max(1,TableWidth div Cols)
     else if FillWidth and (Total<TableWidth) then
     begin
       { a table told to fill the width shares the slack out by how much
@@ -1596,6 +1653,7 @@ function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
 var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
   R: TInkRenderRun; Sz, ImgSz: TSize; Text,Atom: string; Start,Bytes: Integer;
+  CanBreak: Boolean;
   C: Cardinal; L: TInkRenderLine;
   { every run on the line is placed so its baseline is at the same height:
     the largest ascent on the line.  The line is that plus the largest
@@ -1642,11 +1700,14 @@ var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
     if L.Align=naCenter then Shift:=(Avail-(X-FOpt.Borders.Left)) div 2 else if L.Align=naRight then Shift:=Avail-(X-FOpt.Borders.Left) else Shift:=0;
     for K:=First to First+Count-1 do begin Inc(FLayout.FRuns[K].Bounds.Left,Shift); Inc(FLayout.FRuns[K].Bounds.Right,Shift); FLayout.FRuns[K].Line:=Line end;
     SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale)); X:=FOpt.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=0;
+    { a fresh line may break wherever its first words allow }
+    CanBreak:=True;
   end;
 begin
   { the inline pass, over the runs this box covers and no further }
   Avail:=AWidth; if Avail<1 then Avail:=1;
   X:=FOpt.Borders.Left; Y:=AY; First:=Length(FLayout.FRuns); Count:=0;
+  CanBreak:=True;
   { a line is as tall as the words on it, and no taller: starting from the
     canvas font's TextHeight put a floor under every line that the platform
     had already rounded up, which is a pixel a line a browser does not spend }
@@ -1687,7 +1748,12 @@ begin
       end;
       if R.IsImage then Sz:=ImgSz else Sz:=MeasureRun(Canvas,R);
       W:=Sz.cx;
-      if (Count>0) and not FOpt.NoWrap and (X+W>FOpt.Width-FOpt.Borders.Right) and
+      { a line breaks where the text allows it - after a space, or between
+        two CJK characters - and nowhere else.  The end of a run is not a
+        break: "<code>x</code>." is one word with a full stop on it, and
+        breaking there put the stop alone at the start of the next line. }
+      if (Count>0) and CanBreak and not FOpt.NoWrap and
+        (X+W>FOpt.Width-FOpt.Borders.Right) and
         (Atom[1]<>' ') and (Atom[1]<>#9) then FinishLine;
       if Count=0 then First:=Length(FLayout.FRuns);
       if R.IsImage then
@@ -1700,6 +1766,15 @@ begin
       { a provisional place; AlignBaselines settles it when the line ends }
       R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W); MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
+      { where the next break may fall: after whitespace, or after a CJK
+        character, which needs no space to break beside }
+      CanBreak := (Atom[1]=' ') or (Atom[1]=#9) or R.IsImage;
+      if not CanBreak then
+      begin
+        Bytes := 1; Start := Length(Atom);
+        while (Start>1) and ((Ord(Atom[Start]) and $C0)=$80) do Dec(Start);
+        CanBreak := IsCJK(CodepointAt(Atom,Start,Bytes));
+      end;
     end;
     Inc(I);
   end;

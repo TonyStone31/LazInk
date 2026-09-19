@@ -74,7 +74,7 @@ begin
   inherited CreateNew(nil);
   FPath := APage; FBrowserShot := AShot; FLocked := True; FShown := 1;
   Half := AWidth;
-  SetBounds(0, 0, Half * 2 + 12, 900);
+  SetBounds(0, 0, Half * 2 + 40, 900);
   Caption := 'Browser | LazInk - ' + ExtractFileName(APage);
   KeyPreview := True;
   Color := clWhite;
@@ -102,7 +102,11 @@ begin
 
   FPage := TInkPage.Create(Self);
   FPage.Parent := Self;
-  FPage.SetBounds(Half + 12, 24, Half, ClientHeight - 24);
+  { wider than the browser's half by exactly its scrollbar, so the two text
+    columns are the same width.  A headless browser screenshot reserves no
+    room for a scrollbar; LazInk does, and without this the right-hand text
+    wraps a word early all the way down the page. }
+  FPage.SetBounds(Half + 12, 24, Half + FPage.ScrollBar.Width, ClientHeight - 24);
   FPage.Anchors := [akLeft, akTop, akRight, akBottom];
   FPage.LoadFromFile(APage);
 

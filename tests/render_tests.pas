@@ -1615,6 +1615,25 @@ begin
   Check((Short > 0) and (Short < 200),
     Format('width="25%%" is a quarter of the column (%d)', [Short]));
 
+  { the end of an inline tag is not a place to break a line }
+  Probe.SetBounds(0, 0, 220, 300);
+  Probe.LoadHTML('<html><body><p>one two three four five ' +
+    '<code>anchor</code>. And more words after it.</p></body></html>');
+  Probe.ScrollTo(0);
+  Probe.BlockText(0);
+  B := Probe.Block(0);
+  Plain := -1; Short := -1;
+  for J := 0 to B.RunCount - 1 do
+  begin
+    if Trim(B.Runs[J].Text) = 'anchor' then Plain := B.Runs[J].Line;
+    if (Trim(B.Runs[J].Text) = '.') and (Short < 0) then Short := B.Runs[J].Line;
+  end;
+  Check(Plain >= 0, 'the code span was laid out');
+  if Short >= 0 then
+    Check(Short = Plain,
+      Format('a full stop stays with the word before it (line %d against %d)',
+        [Short, Plain]));
+
   { a cell's own text-transform: a table is one block, so a th's uppercase
     cannot be done to the block as a whole }
   Probe.SetBounds(0, 0, 500, 300);

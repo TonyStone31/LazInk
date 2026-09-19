@@ -41,6 +41,29 @@ pixels against the browser's 3,199, and the retained-layout checks compare
 painted pixels and callback traces rather than only asserting a render
 succeeded.
 
+### A later pass
+
+Two more, once the renderer was drawing at the right sizes and layout was
+the remaining cost:
+
+* **The cache key a run makes from its style is kept between runs.** It was
+  four `IntToStr` calls and a handful of concatenations *per word*; a
+  paragraph's words nearly all share one style, so it is now built when the
+  style changes and reused otherwise.
+* **`Metrics` answers from the run before it.** Its result depends only on
+  the style and the line height, and consecutive runs almost always share
+  both, so a few comparisons replace a key and a binary search.
+
+Layout and re-layout, before and after that pass:
+
+| Workload | Initial layout | Resize/layout |
+|---|---:|---:|
+| 2,000 paragraphs | 293 → **231** | 278 → **211** |
+| 250-row table | 50 → **40** | 43 → **34** |
+| 60-row nested table | 36 → **29** | 29 → **19** |
+| 60-row spans table | 37 → **30** | 29 → **19** |
+| 500 paragraphs / 360 CSS rules | 143 → **126** | 70 → **52** |
+
 ## What was changed
 
 **Retained layout (the big one for tables).** `InkDraw.HTMLDrawOpt` always
