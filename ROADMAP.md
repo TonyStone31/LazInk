@@ -704,7 +704,17 @@ help pages already use and LazInk currently drops (see
 16. **Speed** - lay a page out once per width and cache it; paint only
     what is on screen; re-lay out only what changed.  Use the 38-page
     Heckers Sketch manual as the benchmark and keep a timing for it.
-17. **Animated WebP, beside PNG and GIF.**  A page that teaches a tool is
+17. **Animated WebP, beside PNG and GIF - done, 18 September 2026.**  LazInk
+    reads WebP itself: `inkwebp.pas` for the container and the animation
+    compositor, `inkwebplossless.pas` for VP8L, `inkwebpvp8.pas` for VP8,
+    all in Pascal, no library to find and no DLL to ship.  Still and
+    animated, lossy and lossless, with alpha.  Checked against fixtures,
+    against every truncation of the payload, and against 8,000 deterministic
+    mutations - which is how a codec should be shown correct.  GIF stays, as
+    this said it must.  The rest of the item is the reasoning as it was
+    written.
+
+    A page that teaches a tool is
     mostly pictures of it moving, and GIF is a 1987 format: 256 colours a
     frame and next to no compression between frames.  Measured on one of
     Heckers Sketch's own recordings, 17 September 2026:

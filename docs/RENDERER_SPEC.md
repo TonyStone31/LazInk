@@ -670,14 +670,14 @@ invention.
 Not work for the first version.  They are here because each one is cheap to
 allow for now and expensive to retrofit.
 
-* **WebP, and pictures as boxes with a source of frames.**  `inkwebp.pas`
-  reads a WebP file's structure today - RIFF chunks, canvas size, lossy,
-  lossless or extended, every frame's position, size, duration, disposal and
-  blend - and `DecodeFrame` is deliberately a hole: it returns False, and
-  filling it (a libwebp binding, or a Pascal VP8L decoder to start with) is
-  the whole remaining job.  `tests/render_tests.pas` (WebPChecks) builds
-  WebP files byte by byte and checks what comes back, so the decoder has
-  something to grow against.  Nothing in the engine has to change for it:  Today an image run is an
+* **WebP is read, and pictures are boxes with a source of frames.**  Done,
+  18 September 2026: `inkwebp.pas` reads the container and composites the
+  animation, `inkwebplossless.pas` decodes VP8L and `inkwebpvp8.pas` decodes
+  VP8, all in Pascal with nothing to install.  A drawing decodes in about a
+  tenth of a millisecond lossy, a thirtieth lossless.  The codec is checked
+  against fixtures, against every truncation of its input, and against 8,000
+  deterministic mutations of it.  Nothing in the engine had to change for
+  it, which was the point:  Today an image run is an
   image-list index of a fixed size.  A page's pictures are files - PNG, GIF
   and, if ROADMAP item 17 happens, **animated WebP** - with a real size, a
   current frame, and a clock.  Give an image run a size the caller sets and

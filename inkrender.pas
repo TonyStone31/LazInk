@@ -1463,7 +1463,10 @@ begin
         end;
         Result.CharacterOffset:=Lo; Exit;
       end;
-      Break;
+      { and on to the next line that covers this point.  A table's cells are
+        each a line of their own with the same top and bottom, so stopping at
+        the first one to match would only ever find the leftmost column -
+        which is exactly what used to happen. }
     end;
   finally Canvas.Font.Assign(F); F.Free end;
 end;

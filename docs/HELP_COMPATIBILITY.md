@@ -22,7 +22,9 @@ Supported content in this site:
 - Bold, italic/emphasis, code and keyboard labels. Code/key labels use a
   monospace face and their stylesheet background color.
 - Table rows, headers, cells, wrapping, and cell links.
-- PNG screenshots and animated GIFs, constrained to the available width.
+- PNG screenshots, animated GIFs, and WebP - still or animated, lossy or
+  lossless, with alpha - all constrained to the available width.  The WebP
+  decoder is LazInk's own Pascal code; nothing has to be installed.
 - Figures/captions and visible text in screenshot placeholders.
 - Numeric HTML entities and every named entity used in the audited site.
 - Relative local page, stylesheet, and image references; anchor navigation;

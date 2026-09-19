@@ -3,7 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
-  InkWebP,
+  InkWebP, WebP_Checks,
   LResources, LazInkReg,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
@@ -76,6 +76,7 @@ type
     procedure MoveTo(X, Y: Integer);
     procedure Let(X, Y: Integer);
     procedure LinkHit(Sender: TObject; const URL: string);
+    function LinkAt(X, Y: Integer): string;
     procedure Highlight(Sender: TObject; const ACode, ALanguage: string; var AMarkup: string);
     { a finger, at a time of the test's choosing }
     procedure Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
@@ -146,6 +147,11 @@ end;
 procedure TPageProbe.LinkHit(Sender: TObject; const URL: string);
 begin
   Clicked := URL;
+end;
+
+function TPageProbe.LinkAt(X, Y: Integer): string;
+begin
+  Result := HitLink(X, Y);
 end;
 
 procedure TPageProbe.Highlight(Sender: TObject; const ACode, ALanguage: string;
@@ -1349,7 +1355,7 @@ begin
   Probe.SetBounds(0, 0, 400, 200);
 end;
 
-{ --- WebP: the container, which is all there is so far --- }
+{ --- WebP: synthetic container metadata (intentionally invalid compressed pixels) --- }
 procedure WebPChecks;
 var
   Still, Anim: TMemoryStream; W: TInkWebP; F: TInkWebPFrame;
@@ -1464,10 +1470,9 @@ begin
       Check(not W.Animated, 'one frame is not an animation');
       Check(W.FrameCount = 1, 'and there is one frame');
       Check(W.Frame(0).Size > 0, 'whose bytes it can point at');
-      { the hole: there is no decoder yet, and the unit says so rather than
-        pretending }
-      Check(not W.DecodeFrame(0), 'DecodeFrame is the piece still to write');
-      Check(not W.Decoded, 'so there are no pixels to draw yet');
+      { Metadata-only fixture, not a decodable VP8L image. }
+      Check(not W.DecodeFrame(0), 'invalid synthetic compressed pixels are rejected');
+      Check(not W.Decoded, 'no fabricated pixels after a decoding failure');
     finally W.Free end;
   finally Still.Free end;
 
@@ -1495,9 +1500,455 @@ begin
       Check(F.Duration = 80, 'for its own time');
       Check(F.Disposal = wdBackground, 'and the canvas is cleared after it');
       Check((F.Kind = wkLossless) and (F.Size > 0), 'its pixels are lossless, and located');
-      Check(not W.DecodeFrame(1), 'still no decoder');
+      Check(not W.DecodeFrame(1), 'invalid synthetic animation pixels are rejected');
     finally W.Free end;
   finally Anim.Free end;
+end;
+
+{ --- every link in a page, wherever it sits, answers a click --- }
+procedure LinkReachChecks;
+const
+  { each link's words are its own, so a run can be matched back to the href
+    it should fire }
+  Doc =
+    '<html><head><style>.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}' +
+    '.card{background:#eef;padding:4px}</style></head><body>' +
+    '<p>in a paragraph: <a href="l1.html">Lone</a>, and <b><a href="l2.html">Ltwo</a></b> in bold</p>' +
+    '<ul><li><a href="l3.html">Lthree</a> in a list item</li></ul>' +
+    '<blockquote><a href="l4.html">Lfour</a> in a quote</blockquote>' +
+    '<table><tr><td><a href="l5.html">Lfive</a></td><td><a href="l6.html">Lsix</a></td>' +
+    '<td><a href="l7.html">Lseven</a></td></tr>' +
+    '<tr><td colspan="1"><a href="l8.html">Leight</a></td><td>plain</td>' +
+    '<td><table><tr><td><a href="l9.html">Lnine</a></td></tr></table></td></tr></table>' +
+    '<div class="grid"><a class="card" href="l10.html">Lten</a>' +
+    '<a class="card" href="l11.html">Leleven</a>' +
+    '<a class="card" href="l12.html">Ltwelve</a></div>' +
+    '<p>a link whose words <a href="l13.html">Lthirteen wraps across more than one line ' +
+    'because it is long enough to need a second line of its own</a> here</p>' +
+    '</body></html>';
+  Names: array[0..12] of string = ('Lone', 'Ltwo', 'Lthree', 'Lfour', 'Lfive', 'Lsix',
+    'Lseven', 'Leight', 'Lnine', 'Lten', 'Leleven', 'Ltwelve', 'Lthirteen');
+  Wanted: array[0..12] of string = ('l1.html', 'l2.html', 'l3.html', 'l4.html', 'l5.html',
+    'l6.html', 'l7.html', 'l8.html', 'l9.html', 'l10.html', 'l11.html', 'l12.html', 'l13.html');
+var
+  I, J, K, Reached, Missing: Integer; B: TInkPageBlock; Seen: array[0..12] of Boolean;
+  Report: string;
+begin
+  Probe.SetBounds(0, 0, 460, 400);
+  Probe.LoadHTML(Doc);
+  Probe.ScrollTo(0);
+  for K := 0 to High(Seen) do Seen[K] := False;
+  Reached := 0;
+
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    Probe.BlockText(I);
+    for J := 0 to B.RunCount - 1 do
+      for K := 0 to High(Names) do
+        if (not Seen[K]) and (Trim(B.Runs[J].Text) = Names[K]) then
+        begin
+          Seen[K] := True;
+          Probe.ScrollTo(Max(0, B.Runs[J].Top - 40));
+          Probe.Clicked := '';
+          Probe.Press(B.Runs[J].Left + B.Runs[J].Width div 2,
+            B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+          Probe.Let(B.Runs[J].Left + B.Runs[J].Width div 2,
+            B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+          if Pos(Wanted[K], Probe.Clicked) > 0 then Inc(Reached)
+          else Report := Report + Format(' %s wanted %s got "%s";',
+            [Names[K], Wanted[K], Probe.Clicked]);
+        end;
+  end;
+
+  Missing := 0;
+  for K := 0 to High(Seen) do
+    if not Seen[K] then
+    begin
+      Inc(Missing);
+      Report := Report + ' ' + Names[K] + ' was never laid out;';
+    end;
+  Check(Missing = 0, 'every link is in the page:' + Report);
+  Check(Reached = Length(Names),
+    Format('every link answers a click (%d of %d):%s', [Reached, Length(Names), Report]));
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
+{ --- clicking where the page has been scrolled, and in awkward cells --- }
+procedure ScrolledLinkChecks;
+var
+  I, J, Y, Tries: Integer; B: TInkPageBlock; Doc: string;
+begin
+  { a long page with a link near the bottom: the reader scrolls to it and
+    clicks it where it now is on the screen }
+  Doc := '<html><body>';
+  for I := 1 to 60 do Doc := Doc + '<p>paragraph number ' + IntToStr(I) + '</p>';
+  Doc := Doc + '<table><tr><td>left</td><td><a href="far.html">far away</a></td></tr></table>' +
+    '</body></html>';
+  Probe.SetBounds(0, 0, 500, 300);
+  Probe.LoadHTML(Doc);
+  Probe.ScrollTo(0);
+
+  B := nil;
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then begin B := Probe.Block(I); Probe.BlockText(I) end;
+  Check(B <> nil, 'the table at the bottom is there');
+  if B = nil then Exit;
+
+  { scroll so the table is on screen, the way a reader would }
+  Probe.ScrollTo(Max(0, B.Bounds.Top - 60));
+  Tries := 0;
+  for J := 0 to B.RunCount - 1 do
+    if Pos('far', B.Runs[J].Text) > 0 then
+    begin
+      Inc(Tries);
+      Y := B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY;
+      Probe.Clicked := '';
+      Probe.Press(B.Runs[J].Left + 4, Y);
+      Probe.Let(B.Runs[J].Left + 4, Y);
+      Check(Pos('far.html', Probe.Clicked) > 0,
+        Format('a link in a scrolled table cell is clickable at y=%d ("%s")',
+          [Y, Probe.Clicked]));
+    end;
+  Check(Tries > 0, 'the link was laid out');
+
+  { a cell whose words sit at its bottom - the run moved, so the click has
+    to move with it }
+  Probe.LoadHTML('<html><head><style>td{vertical-align:bottom}</style></head><body>' +
+    '<table><tr><td>tall<br>cell<br>here</td>' +
+    '<td valign="bottom"><a href="low.html">low link</a></td></tr></table></body></html>');
+  Probe.ScrollTo(0);
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then
+    begin
+      B := Probe.Block(I); Probe.BlockText(I);
+      for J := 0 to B.RunCount - 1 do
+        if Pos('low', B.Runs[J].Text) > 0 then
+        begin
+          Probe.Clicked := '';
+          Probe.Press(B.Runs[J].Left + 4, B.Runs[J].Top + 4 - Probe.ScrollY);
+          Probe.Let(B.Runs[J].Left + 4, B.Runs[J].Top + 4 - Probe.ScrollY);
+          Check(Pos('low.html', Probe.Clicked) > 0,
+            'a link in a cell that sits low is clickable ("' + Probe.Clicked + '")');
+          Break;
+        end;
+      Break;
+    end;
+
+  { a link inside a table inside a table }
+  Probe.LoadHTML('<html><body><table><tr><td>outer</td>' +
+    '<td><table><tr><td>inner</td><td><a href="nested.html">deep link</a></td></tr></table>' +
+    '</td></tr></table></body></html>');
+  Probe.ScrollTo(0);
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then
+    begin
+      B := Probe.Block(I); Probe.BlockText(I);
+      for J := 0 to B.RunCount - 1 do
+        if Pos('deep', B.Runs[J].Text) > 0 then
+        begin
+          Probe.Clicked := '';
+          Probe.Press(B.Runs[J].Left + 4, B.Runs[J].Top + 4 - Probe.ScrollY);
+          Probe.Let(B.Runs[J].Left + 4, B.Runs[J].Top + 4 - Probe.ScrollY);
+          Check(Pos('nested.html', Probe.Clicked) > 0,
+            'a link in a table inside a table ("' + Probe.Clicked + '")');
+          Break;
+        end;
+      Break;
+    end;
+
+  { and the same link after the control is made narrower, which lays the
+    page out again }
+  Probe.SetBounds(0, 0, 320, 300);
+  Probe.ScrollTo(0);
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then
+    begin
+      B := Probe.Block(I); Probe.BlockText(I);
+      for J := 0 to B.RunCount - 1 do
+        if Pos('deep', B.Runs[J].Text) > 0 then
+        begin
+          Probe.Clicked := '';
+          Probe.Press(B.Runs[J].Left + 4, B.Runs[J].Top + 4 - Probe.ScrollY);
+          Probe.Let(B.Runs[J].Left + 4, B.Runs[J].Top + 4 - Probe.ScrollY);
+          Check(Pos('nested.html', Probe.Clicked) > 0,
+            'and still clickable after a resize ("' + Probe.Clicked + '")');
+          Break;
+        end;
+      Break;
+    end;
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
+{ --- Back and Forward over more than two pages --- }
+procedure HistoryChecks;
+var
+  Dir, P1, P2, P3: string; SL: TStringList; I, Deep: Integer;
+begin
+  Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'lazink-hist-' + IntToStr(GetProcessID);
+  ForceDirectories(Dir);
+  P1 := Dir + PathDelim + 'one.html';
+  P2 := Dir + PathDelim + 'two.html';
+  P3 := Dir + PathDelim + 'three.html';
+  SL := TStringList.Create;
+  try
+    SL.Text := '<html><head><title>One</title></head><body>' +
+      '<p><a href="two.html">to two</a></p>' +
+      '<p id="far">a place further down</p></body></html>';
+    SL.SaveToFile(P1);
+    SL.Text := '<html><head><title>Two</title></head><body>' +
+      '<table><tr><td>plain</td><td><a href="three.html">to three</a></td></tr></table>' +
+      '</body></html>';
+    SL.SaveToFile(P2);
+    SL.Text := '<html><head><title>Three</title></head><body><p>the end</p></body></html>';
+    SL.SaveToFile(P3);
+  finally SL.Free end;
+
+  Probe.OnLinkClick := nil;
+  Probe.ClearHistory;
+  Probe.LoadFromFile(P1);
+  Probe.ClearHistory;
+  Probe.LoadFromFile(P2);
+  Probe.LoadFromFile(P3);
+  Check(Probe.DocumentTitle = 'Three', 'three pages deep');
+  Check(Probe.CanGoBack and not Probe.CanGoForward, 'Back, and nothing forward');
+
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'Two', 'Back once');
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'One', 'Back twice');
+  Check(not Probe.CanGoBack, 'and that is the first page');
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'One', 'Back at the start does nothing');
+  Probe.Forward;
+  Check(Probe.DocumentTitle = 'Two', 'Forward once');
+  Probe.Forward;
+  Check(Probe.DocumentTitle = 'Three', 'Forward twice');
+  Check(not Probe.CanGoForward, 'and that is the last');
+  Probe.Forward;
+  Check(Probe.DocumentTitle = 'Three', 'Forward at the end does nothing');
+
+  { going somewhere new from the middle throws the forward pages away, the
+    way every browser does }
+  Probe.Back; Probe.Back;
+  Check(Probe.DocumentTitle = 'One', 'back to the start');
+  Probe.LoadFromFile(P3);
+  Check(Probe.DocumentTitle = 'Three', 'and off somewhere new');
+  Check(not Probe.CanGoForward, 'which clears Forward');
+  Check(Probe.CanGoBack, 'but not Back');
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'One', 'and Back returns where it came from');
+
+  { a link followed from a table cell - the second column, which is where
+    clicking used to do nothing }
+  Probe.LoadFromFile(P2);
+  Probe.ClearHistory;
+  Probe.Clicked := '';
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then
+    begin
+      Probe.BlockText(I);
+      for Deep := 0 to Probe.Block(I).RunCount - 1 do
+        if Pos('three', Probe.Block(I).Runs[Deep].Text) > 0 then
+        begin
+          Probe.Press(Probe.Block(I).Runs[Deep].Left + 4,
+            Probe.Block(I).Runs[Deep].Top + 4 - Probe.ScrollY);
+          Probe.Let(Probe.Block(I).Runs[Deep].Left + 4,
+            Probe.Block(I).Runs[Deep].Top + 4 - Probe.ScrollY);
+          Break;
+        end;
+      Break;
+    end;
+  Check(Probe.DocumentTitle = 'Three', 'a link in a table cell navigates: ' + Probe.DocumentTitle);
+  Check(Probe.CanGoBack, 'and it can be gone back from');
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'Two', 'back to the page with the table');
+
+  { a page the program made, rather than one from a file, comes back too }
+  Probe.ClearHistory;
+  Probe.LoadHTML('<html><head><title>Made up</title></head><body><p>from the program</p></body></html>');
+  Probe.LoadFromFile(P1);
+  Check(Probe.CanGoBack, 'a generated page is in the history');
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'Made up',
+    'and Back shows it again: ' + Probe.DocumentTitle);
+  Check(Pos('from the program', Probe.PlainText) > 0, 'with its words');
+  Probe.Forward;
+  Check(Probe.DocumentTitle = 'One', 'and Forward returns to the file');
+
+  { a link to a place on another page: it goes there and lands on the place }
+  SL := TStringList.Create;
+  try
+    SL.Text := '<html><head><title>Long</title></head><body><p>top</p><p>' +
+      StringOfChar('e', 60) + ' ' + StringOfChar('f', 60) + '</p>';
+    for I := 1 to 60 do SL.Text := SL.Text + '<p>filler paragraph ' + IntToStr(I) + '</p>';
+    SL.Text := SL.Text + '<h2 id="deep">Deep</h2><p>the deep part</p></body></html>';
+    SL.SaveToFile(Dir + PathDelim + 'long.html');
+    SL.Text := '<html><head><title>Jumper</title></head><body>' +
+      '<p><a href="long.html#deep">to the deep part</a></p></body></html>';
+    SL.SaveToFile(Dir + PathDelim + 'jump.html');
+  finally SL.Free end;
+  Probe.ClearHistory;
+  Probe.LoadFromFile(Dir + PathDelim + 'jump.html');
+  for I := 0 to Probe.BlockCount - 1 do
+    if Pos('deep part', Probe.Block(I).Source) > 0 then
+    begin
+      Probe.BlockText(I);
+      Probe.Press(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4 - Probe.ScrollY);
+      Probe.Let(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4 - Probe.ScrollY);
+      Break;
+    end;
+  Check(Probe.DocumentTitle = 'Long', 'a link with #anchor loads the page: ' + Probe.DocumentTitle);
+  Check(Probe.ScrollY > 0, Format('and scrolls to the anchor (%d)', [Probe.ScrollY]));
+  Deep := Probe.ScrollY;
+  Probe.Back;
+  Check(Probe.DocumentTitle = 'Jumper', 'and Back returns to the page with the link');
+  Probe.Forward;
+  Check(Probe.DocumentTitle = 'Long', 'Forward returns to the page');
+  Check(Probe.ScrollY = Deep,
+    Format('at the anchor, not the top (%d, was %d)', [Probe.ScrollY, Deep]));
+
+  { a link to an anchor on the page already showing }
+  SL := TStringList.Create;
+  try
+    SL.Text := '<html><head><title>Same</title></head><body>' +
+      '<p><a href="#bottom">jump down</a></p>';
+    for I := 1 to 60 do SL.Text := SL.Text + '<p>filler paragraph ' + IntToStr(I) + '</p>';
+    SL.Text := SL.Text + '<h2 id="bottom">Bottom</h2></body></html>';
+    SL.SaveToFile(Dir + PathDelim + 'same.html');
+  finally SL.Free end;
+  Probe.ClearHistory;
+  Probe.LoadFromFile(Dir + PathDelim + 'same.html');
+  Probe.ScrollTo(0);
+  for I := 0 to Probe.BlockCount - 1 do
+    if Pos('jump down', Probe.Block(I).Source) > 0 then
+    begin
+      Probe.BlockText(I);
+      Probe.Press(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4);
+      Probe.Let(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4);
+      Break;
+    end;
+  Check(Probe.ScrollY > 0, Format('an anchor on this page scrolls to it (%d)', [Probe.ScrollY]));
+  Deep := Probe.ScrollY;
+  Probe.Back;
+  Check(Probe.ScrollY < Deep,
+    Format('and Back returns to where the reader was (%d, was %d)', [Probe.ScrollY, Deep]));
+
+  DeleteFile(Dir + PathDelim + 'long.html'); DeleteFile(Dir + PathDelim + 'jump.html');
+  DeleteFile(Dir + PathDelim + 'same.html');
+
+  DeleteFile(P1); DeleteFile(P2); DeleteFile(P3); RemoveDir(Dir);
+end;
+
+{ --- links everywhere in a table, not just the first column --- }
+procedure TableLinkChecks;
+var
+  I, J, K, Hits: Integer; B: TInkPageBlock; Wanted: string;
+  Found: array[0..2] of Boolean;
+const
+  Words: array[0..2] of string = ('alpha', 'beta', 'gamma');
+  Hrefs: array[0..2] of string = ('one.html', 'two.html', 'three.html');
+  Cards: array[0..2] of string = ('first', 'second', 'third');
+begin
+  Probe.SetBounds(0, 0, 500, 300);
+  Probe.LoadHTML('<html><body><table>' +
+    '<tr><td><a href="one.html">alpha</a></td>' +
+    '<td><a href="two.html">beta</a></td>' +
+    '<td><a href="three.html">gamma</a></td></tr>' +
+    '<tr><td>plain</td><td><a href="four.html">delta</a></td><td>plain</td></tr>' +
+    '</table></body></html>');
+  Probe.ScrollTo(0);
+
+  { the table's block, and its runs, so the test can click where the words
+    actually are rather than where it guesses they are }
+  B := nil;
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then
+    begin
+      B := Probe.Block(I); Probe.BlockText(I); Break;
+    end;
+  Check(B <> nil, 'the table is a block');
+  if B = nil then Exit;
+
+  for K := 0 to 2 do Found[K] := False;
+  Hits := 0;
+  for J := 0 to B.RunCount - 1 do
+    for K := 0 to 2 do
+      if Trim(B.Runs[J].Text) = Words[K] then
+      begin
+        Found[K] := True;
+        Probe.Clicked := '';
+        Probe.Press(B.Runs[J].Left + B.Runs[J].Width div 2,
+          B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+        Probe.Let(B.Runs[J].Left + B.Runs[J].Width div 2,
+          B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+        Wanted := Hrefs[K];
+        Check(Pos(Wanted, Probe.Clicked) > 0,
+          Format('a link in column %d is clickable (wanted %s, got "%s")',
+            [K + 1, Wanted, Probe.Clicked]));
+        if Pos(Wanted, Probe.Clicked) > 0 then Inc(Hits);
+      end;
+  Check(Found[0] and Found[1] and Found[2], 'all three links were laid out');
+  Check(Hits = 3, Format('every column answered (%d of 3)', [Hits]));
+
+  { and the second row's middle cell, which is neither the first column nor
+    the first row }
+  for J := 0 to B.RunCount - 1 do
+    if Trim(B.Runs[J].Text) = 'delta' then
+    begin
+      Probe.Clicked := '';
+      Probe.Press(B.Runs[J].Left + B.Runs[J].Width div 2,
+        B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+      Probe.Let(B.Runs[J].Left + B.Runs[J].Width div 2,
+        B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+      Check(Pos('four.html', Probe.Clicked) > 0,
+        'a link in the second row, middle column: "' + Probe.Clicked + '"');
+    end;
+
+  { hovering reads the same way clicking does }
+  for J := 0 to B.RunCount - 1 do
+    if Trim(B.Runs[J].Text) = 'gamma' then
+    begin
+      Wanted := Probe.LinkAt(B.Runs[J].Left + B.Runs[J].Width div 2,
+        B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+      Check(Pos('three.html', Wanted) > 0,
+        'and the pointer over it knows: "' + Wanted + '"');
+    end;
+
+  { the card index: a grid, which is laid out as a table, so a link in the
+    second or third card is a link in the second or third column }
+  Probe.SetBounds(0, 0, 500, 300);
+  Probe.LoadHTML('<html><head><style>' +
+    '.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px } ' +
+    '.card { background: #eef; padding: 6px }' +
+    '</style></head><body><div class="grid">' +
+    '<a class="card" href="card1.html">first</a>' +
+    '<a class="card" href="card2.html">second</a>' +
+    '<a class="card" href="card3.html">third</a>' +
+    '</div></body></html>');
+  Probe.ScrollTo(0);
+  Hits := 0;
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Flex then
+    begin
+      Probe.BlockText(I);
+      for J := 0 to Probe.Block(I).RunCount - 1 do
+        for K := 0 to 2 do
+          if Trim(Probe.Block(I).Runs[J].Text) = Cards[K] then
+          begin
+            Probe.Clicked := '';
+            Probe.Press(Probe.Block(I).Runs[J].Left + 4,
+              Probe.Block(I).Runs[J].Top + 4 - Probe.ScrollY);
+            Probe.Let(Probe.Block(I).Runs[J].Left + 4,
+              Probe.Block(I).Runs[J].Top + 4 - Probe.ScrollY);
+            Check(Pos('card' + IntToStr(K + 1), Probe.Clicked) > 0,
+              Format('card %d is clickable ("%s")', [K + 1, Probe.Clicked]));
+            if Pos('card' + IntToStr(K + 1), Probe.Clicked) > 0 then Inc(Hits);
+          end;
+      Break;
+    end;
+  Check(Hits = 3, Format('every card answered (%d of 3)', [Hits]));
+  Probe.SetBounds(0, 0, 400, 200);
 end;
 
 { --- the palette icons the IDE shows --- }
@@ -2121,7 +2572,12 @@ begin
     TagChecks;
     CodeChecks;
     IconChecks;
+    TableLinkChecks;
+    LinkReachChecks;
+    ScrolledLinkChecks;
+    HistoryChecks;
     WebPChecks;
+    RunWebPChecks;
     FindChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }

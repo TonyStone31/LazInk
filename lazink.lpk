@@ -26,6 +26,8 @@
       <Item><Filename Value="inkcss.pas"/><UnitName Value="InkCSS"/></Item>
       <Item><Filename Value="inkcode.pas"/><UnitName Value="InkCode"/></Item>
       <Item><Filename Value="inkwebp.pas"/><UnitName Value="InkWebP"/></Item>
+      <Item><Filename Value="inkwebplossless.pas"/><UnitName Value="InkWebPLossless"/></Item>
+      <Item><Filename Value="inkwebpvp8.pas"/><UnitName Value="InkWebPVP8"/></Item>
       <Item><Filename Value="inkbox.pas"/><UnitName Value="InkBox"/></Item>
       <Item><Filename Value="inkrender.pas"/><UnitName Value="InkRender"/></Item>
       <Item><Filename Value="inkdraw.pas"/><UnitName Value="InkDraw"/></Item>

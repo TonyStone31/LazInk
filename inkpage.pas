@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Everything about a clicked link. }
@@ -71,6 +71,7 @@ type
     Nest: string;
     Picture: TPicture;
     Animation: TInkGIF;
+    WebP: TInkWebP;
     { a picture: where it came from, where it is drawn, and the link around
       it, if any (href as in markup) }
     ImageSrc, LinkHref, LinkTarget: string;
@@ -735,7 +736,7 @@ begin
   FoldGroup := -1; FoldHead := -1;
 end;
 destructor TInkPageBlock.Destroy;
-begin Animation.Free; Picture.Free; inherited end;
+begin WebP.Free; Animation.Free; Picture.Free; inherited end;
 constructor TInkCustomPage.Create(AOwner: TComponent);
 begin
   inherited; Width := 640; Height := 480; TabStop := True;
@@ -884,12 +885,18 @@ end;
 function TInkCustomPage.CopyBlockCaption: string;
 begin Result := SInkCopyParagraph end;
 procedure TInkCustomPage.Animate(Sender: TObject);
-var I: Integer; B: TInkPageBlock;
+var I: Integer; B: TInkPageBlock; R: TRect;
 begin
   if not Visible then Exit;
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]);
+    if Assigned(B.WebP) and (B.Bounds.Bottom>=FScroll.Position) and
+      (B.Bounds.Top<=FScroll.Position+ClientHeight) and B.WebP.Advance then
+    begin
+      R := B.ImageRect; OffsetRect(R,0,-FScroll.Position);
+      if HandleAllocated then LCLIntf.InvalidateRect(Handle,@R,False);
+    end;
     if Assigned(B.Animation) and (B.Bounds.Bottom>=FScroll.Position) and
       (B.Bounds.Top<=FScroll.Position+ClientHeight) and B.Animation.Advance then
     begin B.Picture.Assign(B.Animation.Bitmap); Invalidate end;
@@ -1067,6 +1074,7 @@ var
   Closing: Boolean;
   B: TInkPageBlock;
   ImageData: TMemoryStream;
+  ImageHeader: RawByteString;
   Containers: array of TPageContainer;
   CodeBack, PageBack: TColor;
   { the link open where the parser is, so a picture inside it is clickable,
@@ -1757,13 +1765,19 @@ begin
       end
       else
       begin
-        Flush; BlockTag := 'table'; BlockClass := Cls; Inc(TableDepth);
-        if TableDepth=1 then
+        if TableDepth=0 then
         begin
+          { a table of its own starts a block }
+          Flush; BlockTag := 'table'; BlockClass := Cls;
           TableCtx := 'table'+DotClasses(Cls);
           Buffer := '<table'+TableAttrs+'>';
         end
-        else Buffer := '<table>';
+        else
+          { a table inside a cell is part of the block it is in: flushing
+            here would cut the outer table in half and lose the rows read so
+            far, which is what used to happen }
+          Buffer := Buffer+'<table>';
+        Inc(TableDepth);
       end;
       Continue;
     end;
@@ -1909,7 +1923,17 @@ begin
         try
           if ReadResource(ResolveURL(Attribute(Raw,'src')),ImageData) then
           begin
-            B.Picture.LoadFromStream(ImageData);
+            SetLength(ImageHeader, Min(12, ImageData.Size));
+            ImageData.Position := 0;
+            if ImageHeader <> '' then ImageData.ReadBuffer(ImageHeader[1], Length(ImageHeader));
+            ImageData.Position := 0;
+            if InkIsWebP(ImageHeader) then
+            begin
+              B.WebP := TInkWebP.Create(ImageData);
+              if B.WebP.Decoded then B.Picture.Assign(B.WebP.Bitmap)
+              else FreeAndNil(B.WebP);
+            end
+            else B.Picture.LoadFromStream(ImageData);
             if B.Picture.Graphic is TGIFImage then
             begin
               B.Animation := TInkGIF.Create(ImageData);
@@ -2408,7 +2432,8 @@ begin
     if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
     begin
       R := B.ImageRect; OffsetRect(R,0,-FScroll.Position);
-      ACanvas.StretchDraw(R,B.Picture.Graphic);
+      if Assigned(B.WebP) then ACanvas.StretchDraw(R,B.WebP.Bitmap)
+      else ACanvas.StretchDraw(R,B.Picture.Graphic);
       Continue;
     end;
     TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
