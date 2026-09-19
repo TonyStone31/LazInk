@@ -2562,7 +2562,7 @@ begin
   begin
     { a browser's own margins, which are ems of the heading's own size and
       grow as the heading shrinks: an h6 stands further from its
-      neighbours than an h1 does, in proportion to itself }
+      neighbors than an h1 does, in proportion to itself }
     case B.Tag[2] of
       '1': K := Round(Em*0.67);
       '2': K := Round(Em*0.83);
@@ -2756,7 +2756,7 @@ begin
       { whatever was asked for, a picture never runs past its column }
       if ImageW>TextW then begin ImageW := TextW; ImageH := 0 end;
       ImageW := Max(1,ImageW);
-      { a width and a height together are both honoured, however the picture
+      { a width and a height together are both honored, however the picture
         is shaped; a width on its own keeps the shape }
       if (B.ImageWantW>0) and (B.ImageWantH>0) and (ImageW=B.ImageWantW) then
         ImageH := B.ImageWantH;
@@ -2848,8 +2848,8 @@ begin
       ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
       TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
       ACanvas.FillRect(TR);
-      { and put the brush back: a rule's colour has no business being the
-        canvas's colour for the rest of the page }
+      { and put the brush back: a rule's color has no business being the
+        canvas's color for the rest of the page }
       ACanvas.Brush.Color := FPageBack; ACanvas.Brush.Style := bsClear;
       Continue;
     end;

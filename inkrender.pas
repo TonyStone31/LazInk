@@ -255,7 +255,7 @@ begin
   { the names a page writes, which are not the LCL's clXxx spellings }
   if V='white' then Exit(clWhite);
   if (V='black') then Exit(clBlack);
-  if (V='gray') or (V='grey') then Exit(clGray);
+  if (V='gray') or (V='gray') then Exit(clGray);
   if V='silver' then Exit(RGBToColor($C0,$C0,$C0));
   if V='red' then Exit(clRed);
   if V='maroon' then Exit(clMaroon);
@@ -1994,9 +1994,9 @@ begin
       end;
     end;
   finally
-    { the colour first and the style second, always: setting a brush colour
+    { the color first and the style second, always: setting a brush color
       makes it solid as a side effect, so restoring the style before the
-      colour undoes the restore and every caller gets its canvas back with a
+      color undoes the restore and every caller gets its canvas back with a
       solid brush }
     Canvas.Font.Assign(OldFont); Canvas.Brush.Color:=OldBrushColor;
     Canvas.Brush.Style:=OldBrushStyle; OldFont.Free; BoxAttrs.Free;

@@ -8,7 +8,7 @@ August 2021,
 asking for a simple way to decorate list box and memo text with a little
 HTML.  wp suggested using the HTML drawing code from Project JEDI's JVCL and
 helped extract it into a standalone unit with an owner-drawn list box
-example.  Tony's demo built on that example is where LazInk was born; the
+example.  His demo built on that example is where LazInk was born; the
 components have been developed as LazInk's own since.
 
 **The JVCL-derived renderer was removed on 18 September 2026.**  LazInk draws

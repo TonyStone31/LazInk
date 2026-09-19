@@ -7,7 +7,7 @@
   label, memo and list box renderer draws, so a new Markdown feature is added
   once and every control gets it.
 
-  Read: GitHub-flavoured Markdown, the parts real documents use - ATX and
+  Read: GitHub-flavored Markdown, the parts real documents use - ATX and
   setext headings (with GitHub's anchors), paragraphs joined across wrapped
   lines, hard breaks, bullet and numbered lists with wrapped and lazy
   continuation lines and nesting by indentation, task lists, fenced code
