@@ -1,0 +1,9 @@
+html { scrollbar-color: #176bbd #b1b2b5; scrollbar-width: thin }
+ body { background: #eceef1; color: #5e6670; font-size: 14px; padding: 6px }
+ h2 { color: #176bbd; font-size: 20px; margin-top: 20px }
+ h3 { color: #5e6670; font-size: 13px; margin-top: 8px }
+ strong, b { color: #22262c }
+ li { margin-bottom: 6px }
+ code { background: #3e444c }
+ hr { color: #ff0000 }
+ a { color: #176bbd }
