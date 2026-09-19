@@ -1177,30 +1177,117 @@ var
 
   { the width a cell would like, and the width it cannot go below (its
     longest single word), both without the padding }
+  { the text of one run, added to a line being measured }
+  procedure WidthOfRun(const ARun: TInkRenderRun; var ALineW, AWant, ALeast: Integer);
+  var P, Start, Bytes: Integer; Run: TInkRenderRun; Text, Atom: string;
+    C: Cardinal; Sz: TSize;
+  begin
+    Run := ARun; Text := Run.Text; P := 1;
+    while P<=Length(Text) do
+    begin
+      if Text[P]=#10 then begin Inc(P); ALineW := 0; Continue end;
+      Start := P;
+      if Text[P] in [' ',#9] then
+        while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
+      else
+        while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
+        begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
+      Atom := Copy(Text,Start,P-Start);
+      Run.Text := Atom; Sz := MeasureRun(Canvas,Run);
+      Inc(ALineW,Sz.cx); AWant := Max(AWant,ALineW);
+      if not (Atom[1] in [' ',#9]) then ALeast := Max(ALeast,Sz.cx);
+    end;
+  end;
+
+  { where a table that starts at AFrom ends }
+  function TableEnd(AFrom, ALimit: Integer): Integer;
+  var J, Depth: Integer;
+  begin
+    J := AFrom+1; Depth := 1;
+    while (J<=ALimit) and (Depth>0) do
+    begin
+      if FStyled[J].Control=1 then Inc(Depth)
+      else if FStyled[J].Control=6 then Dec(Depth);
+      if Depth>0 then Inc(J);
+    end;
+    Result := J;
+  end;
+
+  { How wide a table nested inside a cell wants to be: the widest its rows
+    want, and the least they can be squeezed to.  This used to be skipped
+    over - the control runs were ignored and the text inside them measured
+    as if it were one long line - so a cell holding a small table asked for
+    the width of every one of its cells laid end to end. }
+  procedure NestedWidths(AFrom, ATo: Integer; out AWant, ALeast: Integer);
+  var I, J, RowWant, RowLeast, CellWant, CellLeast, W2, L2, LineW: Integer;
+    InCell: Boolean; Pad, TablePad: TRect; Attrs: TStringList;
+  begin
+    AWant := 0; ALeast := 0;
+    RowWant := 0; RowLeast := 0; CellWant := 0; CellLeast := 0;
+    InCell := False; LineW := 0;
+    Attrs := TStringList.Create;
+    try
+      { this table's own default padding, then each cell's over it - a cell
+        measured with the outer table's padding comes out narrower than it
+        is drawn, and the column it is in is squeezed by the difference }
+      Attrs.Text := FStyled[AFrom].Meta;
+      TablePad := PadOf(Attrs.Values['cellpadding'],2,FOpt.Scale);
+      Pad := TablePad;
+      I := AFrom+1;
+      while (I<=ATo-1) and (I<Length(FStyled)) do
+      begin
+        case FStyled[I].Control of
+          1: begin
+               J := TableEnd(I,ATo-1);
+               NestedWidths(I,J,W2,L2);
+               Inc(CellWant,W2); CellLeast := Max(CellLeast,L2);
+               I := J+1; Continue;
+             end;
+          2: begin
+               AWant := Max(AWant,RowWant); ALeast := Max(ALeast,RowLeast);
+               RowWant := 0; RowLeast := 0;
+             end;
+          3: begin
+               InCell := True; CellWant := 0; CellLeast := 0; LineW := 0;
+               Attrs.Text := FStyled[I].Meta;
+               if Attrs.Values['cellpadding']<>'' then
+                 Pad := PadOf(Attrs.Values['cellpadding'],2,FOpt.Scale)
+               else Pad := TablePad;
+             end;
+          4: begin
+               InCell := False;
+               Inc(RowWant,CellWant+Pad.Left+Pad.Right);
+               Inc(RowLeast,CellLeast+Pad.Left+Pad.Right);
+             end;
+          0: if InCell then WidthOfRun(FStyled[I],LineW,CellWant,CellLeast);
+        end;
+        Inc(I);
+      end;
+    finally Attrs.Free end;
+    AWant := Max(AWant,RowWant); ALeast := Max(ALeast,RowLeast);
+  end;
+
   procedure CellWidths(Index: Integer; out AWant, ALeast: Integer);
-  var RunIndex, P, Start, Bytes, LineW: Integer; Run: TInkRenderRun;
-    Text, Atom: string; C: Cardinal; Sz: TSize;
+  var RunIndex, LineW, W2, L2, Stop: Integer;
   begin
     AWant := 0; ALeast := 0; LineW := 0;
-    for RunIndex := Cells[Index].StartRun to Cells[Index].EndRun do
+    RunIndex := Cells[Index].StartRun;
+    while RunIndex<=Cells[Index].EndRun do
     begin
-      if (RunIndex<0) or (RunIndex>=Length(FStyled)) or
-        (FStyled[RunIndex].Control<>0) then Continue;
-      Run := FStyled[RunIndex]; Text := Run.Text; P := 1;
-      while P<=Length(Text) do
+      if (RunIndex<0) or (RunIndex>=Length(FStyled)) then Break;
+      if FStyled[RunIndex].Control=1 then
       begin
-        if Text[P]=#10 then begin Inc(P); LineW := 0; Continue end;
-        Start := P;
-        if Text[P] in [' ',#9] then
-          while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
-        else
-          while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
-          begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
-        Atom := Copy(Text,Start,P-Start);
-        Run.Text := Atom; Sz := MeasureRun(Canvas,Run);
-        Inc(LineW,Sz.cx); AWant := Max(AWant,LineW);
-        if not (Atom[1] in [' ',#9]) then ALeast := Max(ALeast,Sz.cx);
+        { a table in this cell is one thing of its own width, not a line
+          of loose words }
+        Stop := TableEnd(RunIndex,Cells[Index].EndRun);
+        NestedWidths(RunIndex,Stop,W2,L2);
+        Inc(LineW,W2);
+        AWant := Max(AWant,LineW); ALeast := Max(ALeast,L2);
+        RunIndex := Stop+1; Continue;
       end;
+      if FStyled[RunIndex].Control=0 then
+        WidthOfRun(FStyled[RunIndex],LineW,AWant,ALeast);
+      Inc(RunIndex);
     end;
   end;
 
@@ -1224,7 +1311,11 @@ var
   var K: Integer;
   begin
     if ACol+ASpan>Length(Busy) then SetLength(Busy,ACol+ASpan);
-    for K := ACol to ACol+ASpan-1 do Busy[K] := ADown-1;
+    { ADown, not ADown-1: every row takes one off the count before it looks
+      at it, so the row the cell is in spends the first of them.  Taking one
+      off here as well let a rowspan of three cover only two rows, and the
+      third row's cells fell back into the column the cell was still in. }
+    for K := ACol to ACol+ASpan-1 do Busy[K] := ADown;
   end;
 begin
   SetLength(Cells,0); TableAttrs := TStringList.Create; CellAttrs := TStringList.Create;
