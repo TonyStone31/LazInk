@@ -2560,9 +2560,17 @@ begin
   Em := Max(1,Abs(B.PointSize));
   if IsHeadingTag(B.Tag) then
   begin
-    if B.Tag='h1' then K := Round(Em*0.67)
-    else if B.Tag='h2' then K := Round(Em*0.83)
-    else K := Em;
+    { a browser's own margins, which are ems of the heading's own size and
+      grow as the heading shrinks: an h6 stands further from its
+      neighbours than an h1 does, in proportion to itself }
+    case B.Tag[2] of
+      '1': K := Round(Em*0.67);
+      '2': K := Round(Em*0.83);
+      '4': K := Round(Em*1.33);
+      '5': K := Round(Em*1.67);
+      '6': K := Round(Em*2.33);
+    else K := Em;          { h3 }
+    end;
   end
   else if B.Tag='li' then K := 0
   else if (B.Tag='dd') or (B.Tag='dt') then K := 0

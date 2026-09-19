@@ -468,6 +468,19 @@ LAZARUS_DIR=... FPC=... tools/run_render_bench.sh table 250
 [docs/RENDER_PERFORMANCE_AUDIT.md](docs/RENDER_PERFORMANCE_AUDIT.md) has the
 numbers, what they came from, and what is still worth doing.
 
+To find *where* a page disagrees with a browser rather than looking for it:
+
+```sh
+LAZARUS_DIR=... FPC=... tools/drift.sh tests/compare/long.html
+```
+
+It asks a browser where every heading of the page landed - with a script
+injected into a copy of it, so the numbers are the browser's own layout and
+not something read off a picture - asks LazInk the same, and prints the two
+beside each other with the drift at each heading and how much each section
+grew between them.  The long page is currently within thirteen pixels of the
+browser over thirty-six thousand.
+
 ## Where it is going
 
 [ROADMAP.md](ROADMAP.md) is the plan: touch scrolling on Linux, copying and
