@@ -425,6 +425,13 @@ Notes that are part of the contract:
 
 ## 6. Performance
 
+The [19 September rendering audit](RENDER_PERFORMANCE_AUDIT.md) measures the
+`TInkPage` path, records what was changed and what it bought, and prioritizes
+what is left.  A page now keeps its blocks' finished geometry, so painting,
+measuring and hit testing share one layout: a table repaints and scrolls
+about thirty times faster than it did, and a stylesheet-heavy page parses
+sixteen times faster.
+
 The benchmark is Heckers Sketch's manual: 38 pages, and a 118 KB Markdown
 document laid out in **0.19 s** today (it was 0.9 s before the old engine
 was made to measure each word once and remember font metrics).  The new

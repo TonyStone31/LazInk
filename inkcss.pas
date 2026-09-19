@@ -21,10 +21,18 @@ type
   TInkStyleSheet = class
   private
     FRules, FVars, FConditions: TStringList;
+    { what a lookup last worked out, so a page of five hundred paragraphs
+      wearing forty classes asks the rules forty times and not five hundred }
+    FMemoKeys, FMemoValues: TStringList;
+    { the two lists a lookup takes apart selectors with, kept rather than
+      made and thrown away on every property of every block }
+    FParts, FAncestors: TStringList;
     FMediaWidth: Integer;
     { the @media block being read }
     FMin, FMax: Integer;
     FNever, FInMedia: Boolean;
+    procedure SetMediaWidth(AValue: Integer);
+    procedure Forget;
     procedure ReadMedia(const Condition, Body: string);
   public
     function Resolve(const S: string): string;
@@ -49,9 +57,11 @@ type
       out Sides: string; const Context: TInkCSSContext = ''): Boolean;
     { a property of one selector exactly as written - '::selection' }
     function RuleValue(const Selector, Prop, Fallback: string): string;
+    { how many lookups the sheet is remembering, for a test or a benchmark }
+    function MemoCount: Integer;
     { The width, in pixels, @media width queries are judged against - the
       page's own width.  1024 until a page says otherwise. }
-    property MediaWidth: Integer read FMediaWidth write FMediaWidth;
+    property MediaWidth: Integer read FMediaWidth write SetMediaWidth;
     { which of the sheet's width queries hold at AWidth, as a string that
       changes when any of them does - '' when there are none }
     function MediaState(AWidth: Integer): string;
@@ -171,11 +181,37 @@ constructor TInkStyleSheet.Create;
 begin
   inherited;
   FRules := TStringList.Create; FVars := TStringList.Create;
+  FMemoKeys := TStringList.Create;
+  { byte comparison, not the locale's: these keys are tags, classes and
+    property names the sheet made itself, and AnsiCompareText on every step
+    of the binary search costs more than the lookup saves }
+  FMemoKeys.CaseSensitive := True;
+  FMemoKeys.Sorted := True;
+  FMemoKeys.Duplicates := dupIgnore;
+  FMemoValues := TStringList.Create;
+  FParts := TStringList.Create; FAncestors := TStringList.Create;
   FConditions := TStringList.Create; FConditions.Sorted := True; FConditions.Duplicates := dupIgnore;
   FMediaWidth := 1024;
 end;
 destructor TInkStyleSheet.Destroy;
-begin Clear; FRules.Free; FVars.Free; FConditions.Free; inherited end;
+begin
+  Clear; FRules.Free; FVars.Free; FConditions.Free;
+  FMemoKeys.Free; FMemoValues.Free; FParts.Free; FAncestors.Free;
+  inherited
+end;
+function TInkStyleSheet.MemoCount: Integer;
+begin Result := FMemoKeys.Count end;
+procedure TInkStyleSheet.Forget;
+begin
+  FMemoKeys.Clear; FMemoValues.Clear;
+end;
+procedure TInkStyleSheet.SetMediaWidth(AValue: Integer);
+begin
+  if FMediaWidth=AValue then Exit;
+  FMediaWidth := AValue;
+  { which rules apply has changed, so nothing worked out before still holds }
+  Forget;
+end;
 { "(max-width: 600px)", "screen and (min-width:40em)", "print" }
 procedure TInkStyleSheet.ReadMedia(const Condition, Body: string);
 var C, Feature: string; P, Q: Integer; OldMin, OldMax: Integer; OldNever, OldIn: Boolean;
@@ -222,7 +258,7 @@ procedure TInkStyleSheet.Clear;
 var I: Integer;
 begin
   for I := 0 to FRules.Count-1 do FRules.Objects[I].Free;
-  FRules.Clear; FVars.Clear; FConditions.Clear;
+  FRules.Clear; FVars.Clear; FConditions.Clear; Forget;
 end;
 procedure TInkStyleSheet.Add(const CSS: string);
 var S, Selector, Body, Pair, Name: string; P,Q,Depth,I: Integer; Props, Selectors: TStringList;
@@ -261,7 +297,7 @@ begin
         Name := LowerCase(Trim(Copy(Pair,1,P-1)));
         Props.Values[Name] := Trim(Copy(Pair,P+1,MaxInt));
         if (Selector=':root') and (Copy(Name,1,2)='--') and not FInMedia then
-          FVars.Values[Name] := Props.Values[Name];
+          FVars.Values[Name] := Props.Values[Name]; Forget;
       end;
       Selectors := TStringList.Create;
       try
@@ -271,7 +307,7 @@ begin
           Rule := TInkRule.Create;
           Rule.Assign(Props);
           Rule.MinWidth := FMin; Rule.MaxWidth := FMax; Rule.Never := FNever;
-          FRules.AddObject(Trim(Selectors[I]),Rule);
+          FRules.AddObject(Trim(Selectors[I]),Rule); Forget;
         end;
       finally Selectors.Free end;
     finally Props.Free end;
@@ -306,12 +342,22 @@ begin
 end;
 function TInkStyleSheet.Value(const Tag, Classes, Prop, Fallback: string;
   const Context: TInkCSSContext): string;
-var I,K,J,Score,Part,Best: Integer; Sel,V,Tok,TokTag,TokClasses: string;
-  Parts, Ancestors: TStringList; Matched: Boolean;
+var I,K,J,Score,Part,Best,N: Integer; Sel,V,Tok,TokTag,TokClasses: string;
+  Parts, Ancestors: TStringList; Matched: Boolean; Key, Found: string;
 begin
-  Result := Fallback; Best := -1;
-  Parts := TStringList.Create;
-  Ancestors := TStringList.Create;
+  { what the rules say, remembered apart from what this caller wants when
+    they say nothing: the fallback belongs to the call, the value to the
+    sheet }
+  Key := Tag+#1+Classes+#1+Prop+#1+Context;
+  if FMemoKeys.Find(Key,N) then
+  begin
+    Result := FMemoValues[PtrInt(FMemoKeys.Objects[N])];
+    if Result='' then Result := Fallback;
+    Exit;
+  end;
+  Found := ''; Best := -1;
+  Parts := FParts;
+  Ancestors := FAncestors;
   try
     Ancestors.Delimiter := ' '; Ancestors.StrictDelimiter := False;
     Ancestors.DelimitedText := Context;
@@ -325,6 +371,10 @@ begin
       end;
       if Pos(':',Sel)>0 then Continue;
       if not TInkRule(FRules.Objects[I]).Applies(FMediaWidth) then Continue;
+      { Most rules cannot supply this property. Skip their selector parsing
+        and ancestor matching before allocating/populating those lists. }
+      V := TStringList(FRules.Objects[I]).Values[Prop];
+      if V='' then Continue;
       Sel := StringReplace(Sel,'>',' ',[rfReplaceAll]);
       Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
       Parts.DelimitedText := Sel;
@@ -356,16 +406,19 @@ begin
         if not Matched then Break;
       end;
       if not Matched then Continue;
-      V := TStringList(FRules.Objects[I]).Values[Prop];
       { a value whose var() cannot be resolved is invalid, and an invalid
         declaration is dropped - it does not wipe out one that was valid }
       if V<>'' then V := Resolve(V);
-      if (V<>'') and (Score>=Best) then begin Result := V; Best := Score end;
+      if (V<>'') and (Score>=Best) then begin Found := V; Best := Score end;
     end;
   finally
-    Parts.Free;
-    Ancestors.Free;
+    Parts.Clear;
+    Ancestors.Clear;
   end;
+  FMemoValues.Add(Found);
+  FMemoKeys.AddObject(Key,TObject(PtrInt(FMemoValues.Count-1)));
+  Result := Found;
+  if Result='' then Result := Fallback;
 end;
 function TInkStyleSheet.RuleValue(const Selector, Prop, Fallback: string): string;
 var I: Integer; V: string;

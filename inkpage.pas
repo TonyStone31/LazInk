@@ -136,6 +136,11 @@ type
   TInkCustomPage = class(TCustomControl)
   private
     FBlocks: TList;
+    { the blocks with a moving picture in them, so the twenty-millisecond
+      tick has a short list to walk instead of the whole document - and so
+      it can be switched off altogether when there is nothing to move }
+    FAnimated: TList;
+    FRenderCache: THTMLLayoutCache;
     FStyles: TInkStyleSheet;
     FScroll: TInkScrollBar;
     FTimer: TTimer;
@@ -285,6 +290,7 @@ type
     procedure StyleBlock(B: TInkPageBlock); virtual;
     function Options: THTMLOptions; virtual;
     { the options a block is drawn with - a hovered link, say }
+    procedure FindAnimations;
     function BlockOptions(Index: Integer): THTMLOptions; virtual;
     function HitLink(X,Y: Integer): string;
     function HitTestLink(X,Y: Integer; out ABlock: Integer; out AHit: THTMLHitInfo): Boolean;
@@ -406,6 +412,10 @@ type
     { the page's <title>, or its first heading when it has none }
     property DocumentTitle: string read FTitle;
     property ContentHeight: Integer read FContentHeight;
+    { whether anything on the page is moving.  A page of still pictures
+      stops the twenty-millisecond tick altogether rather than waking up to
+      look at every block fifty times a second. }
+    function Animating: Boolean;
     { how far down the page is scrolled, in pixels }
     property ScrollY: Integer read GetScrollY;
     { The page's own scrollbar, drawn by LazInk and colored from the page's
@@ -848,7 +858,9 @@ constructor TInkCustomPage.Create(AOwner: TComponent);
 begin
   inherited; Width := 640; Height := 480; TabStop := True;
   FHoverBlock := -1; FHighlightCode := True;
-  FBlocks := TList.Create; FStyles := TInkStyleSheet.Create;
+  FBlocks := TList.Create; FAnimated := TList.Create;
+  FStyles := TInkStyleSheet.Create;
+  FRenderCache := THTMLLayoutCache.Create;
   FStyleSheet := TStringList.Create; FStyleSheet.OnChange := @StyleSheetChanged;
   FHistory := TStringList.Create; FHistory.OwnsObjects := True; FHistoryIndex := -1;
   FScroll := TInkScrollBar.Create(Self); FScroll.Parent := Self;
@@ -867,8 +879,9 @@ begin
 end;
 destructor TInkCustomPage.Destroy;
 begin
-  FTimer.Enabled := False; FFlickTimer.Enabled := False; FAutoScroll.Enabled := False; ClearBlocks; FBlocks.Free; FStyles.Free; FHistory.Free;
+  FTimer.Enabled := False; FFlickTimer.Enabled := False; FAutoScroll.Enabled := False; ClearBlocks; FBlocks.Free; FAnimated.Free; FStyles.Free; FHistory.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
+  FreeAndNil(FRenderCache);
   inherited;
 end;
 procedure TInkCustomPage.BeginDocument;
@@ -913,6 +926,9 @@ end;
 procedure TInkCustomPage.ClearBlocks;
 var I: Integer;
 begin
+  if FRenderCache<>nil then FRenderCache.Clear;
+  if FAnimated<>nil then FAnimated.Clear;
+  FTimer.Enabled := False;
   for I := 0 to FBlocks.Count-1 do TObject(FBlocks[I]).Free;
   FBlocks.Clear;
   SetLength(FFoldOpen,0); SetLength(FFoldParent,0);
@@ -959,6 +975,7 @@ procedure TInkCustomPage.AddBlock(B: TInkPageBlock);
 begin FBlocks.Add(B) end;
 procedure TInkCustomPage.InvalidateLayout(FromIndex: Integer);
 begin
+  if FRenderCache<>nil then FRenderCache.Clear;
   if not FLayoutDirty or (FromIndex<FLayoutFrom) then FLayoutFrom := Max(0,FromIndex);
   FLayoutDirty := True;
   Invalidate;
@@ -997,9 +1014,9 @@ procedure TInkCustomPage.Animate(Sender: TObject);
 var I: Integer; B: TInkPageBlock; R: TRect;
 begin
   if not Visible then Exit;
-  for I := 0 to FBlocks.Count-1 do
+  for I := 0 to FAnimated.Count-1 do
   begin
-    B := TInkPageBlock(FBlocks[I]);
+    B := TInkPageBlock(FAnimated[I]);
     if Assigned(B.WebP) and (B.Bounds.Bottom>=FScroll.Position) and
       (B.Bounds.Top<=FScroll.Position+ClientHeight) and B.WebP.Advance then
     begin
@@ -2190,7 +2207,22 @@ begin
         FTitle := Trim(HTMLPlainText(TInkPageBlock(FBlocks[I]).Source));
         Break;
       end;
+  FindAnimations;
   FScroll.Position := 0; InvalidateLayout(0);
+end;
+function TInkCustomPage.Animating: Boolean;
+begin Result := FTimer.Enabled end;
+procedure TInkCustomPage.FindAnimations;
+var I: Integer; B: TInkPageBlock;
+begin
+  FAnimated.Clear;
+  for I := 0 to FBlocks.Count-1 do
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    if Assigned(B.WebP) or Assigned(B.Animation) then FAnimated.Add(B);
+  end;
+  { a page of still pictures has no reason to wake up fifty times a second }
+  FTimer.Enabled := FAnimated.Count>0;
 end;
 function TInkCustomPage.Options: THTMLOptions;
 var Link: TColor;
@@ -2672,7 +2704,7 @@ begin
     TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
     if B.Marker<>'' then
       HTMLDrawOpt(ACanvas,Rect(TR.Left-B.MarkerWidth,TR.Top,TR.Left,TR.Bottom),[],
-        HTMLEscape(B.Marker),O);
+        HTMLEscape(B.Marker),O,FRenderCache);
     { nothing that draws text depends on what the last thing to draw left
       behind: the marker's own draw is a draw like any other }
     ACanvas.Brush.Style := bsClear;
@@ -2683,14 +2715,14 @@ begin
       Saved := SaveDC(ACanvas.Handle);
       try
         IntersectClipRect(ACanvas.Handle,R.Left,R.Top,R.Right,R.Bottom);
-        HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);
+        HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O,FRenderCache);
         if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
           PaintSelection(ACanvas,I,B,SelFrom,SelTo);
       finally RestoreDC(ACanvas.Handle,Saved) end;
     end
     else
     begin
-      HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O);
+      HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O,FRenderCache);
       if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
         PaintSelection(ACanvas,I,B,SelFrom,SelTo);
     end;
@@ -2726,7 +2758,7 @@ begin
     if B.Wrapped='' then Continue;
     BlockFont(Canvas,B);
     R := B.TextBounds; OffsetRect(R,0,-FScroll.Position);
-    AHit := HTMLHitTest(Canvas,R,B.Wrapped,Options,X,Y);
+    AHit := HTMLHitTest(Canvas,R,B.Wrapped,BlockOptions(I),X,Y,FRenderCache);
     if AHit.OnLink then
     begin
       ABlock := I;
@@ -3093,11 +3125,12 @@ begin
   B.RunsReady := True; B.RunCount := 0; SetLength(B.Runs,0); B.Words := '';
   if B.Wrapped='' then Exit;
   BlockFont(Canvas,B);
-  O := Options; O.OnRun := @CollectRun; O.RunPart := 0;
+  O := Options; O.LineHeight := B.LineHeight; O.NoWrap := B.NoWrap;
+  O.OnRun := @CollectRun; O.RunPart := 0;
   FRunBlock := B;
   try
     { the same layout the block is drawn with, measured instead of painted }
-    HTMLMeasureAndHit(Canvas,B.TextBounds,B.Wrapped,O,-1,-1,W,H,Hit);
+    HTMLMeasureAndHit(Canvas,B.TextBounds,B.Wrapped,O,-1,-1,W,H,Hit,FRenderCache);
   finally FRunBlock := nil end;
   SetLength(B.Runs,B.RunCount);
   { every run on a line is as tall as the line }

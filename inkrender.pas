@@ -122,6 +122,7 @@ type
 
   TInkRenderLayout = class
   private
+    FReferences: Integer;
     FRuns: array of TInkRenderRun;
     FLines: array of TInkRenderLine;
     FSize: TSize;
@@ -129,6 +130,11 @@ type
     FWidth, FScale: Integer;
   public
     procedure Clear;
+    { Conservative payload size, including managed strings (which may be shared). }
+    function StorageBytes: SizeUInt;
+    { Pins for cache clients: a callback may clear/evict its own cache. }
+    procedure Retain;
+    procedure Release;
     function RunCount: Integer;
     function LineCount: Integer;
     function RunAt(Index: Integer): TInkRenderRun;
@@ -204,6 +210,17 @@ type
     { X and Y in the coordinates Paint was given, offsets included }
     function HitTest(const Canvas: TCanvas; X, Y: Integer;
       AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkRenderHit;
+    { Transfer the finished geometry without retaining tokens, box trees or
+      measurement caches. The caller owns the result. }
+    function DetachLayout: TInkRenderLayout;
+    procedure PaintLayout(Canvas: TCanvas; const Bounds: TRect;
+      const Options: TInkRenderOptions; ALayout: TInkRenderLayout;
+      AOffsetX: Integer = 0; AOffsetY: Integer = 0);
+    procedure ReportLayoutRuns(const Options: TInkRenderOptions;
+      ALayout: TInkRenderLayout; AOffsetX: Integer = 0; AOffsetY: Integer = 0);
+    function HitTestLayout(const Canvas: TCanvas; X, Y: Integer;
+      ALayout: TInkRenderLayout; AOffsetX: Integer = 0;
+      AOffsetY: Integer = 0): TInkRenderHit;
     property CachedLayout: TInkRenderLayout read FLayout;
   end;
 
@@ -535,6 +552,35 @@ begin
   FSourceHash := 0; FWidth := -1; FScale := 100;
 end;
 
+procedure TInkRenderLayout.Retain;
+begin
+  Inc(FReferences);
+end;
+
+procedure TInkRenderLayout.Release;
+begin
+  Dec(FReferences);
+  if FReferences=0 then Free;
+end;
+
+function TInkRenderLayout.StorageBytes: SizeUInt;
+var I: Integer;
+begin
+  Result := InstanceSize + SizeUInt(Length(FRuns))*SizeOf(TInkRenderRun) +
+    SizeUInt(Length(FLines))*SizeOf(TInkRenderLine);
+  for I := 0 to High(FRuns) do
+    with FRuns[I] do
+      Inc(Result, Length(Text)+Length(Meta)+Length(Style.Face)+
+        Length(Style.LinkName)+4*32);
+end;
+
+function TInkRenderer.DetachLayout: TInkRenderLayout;
+begin
+  Result := FLayout;
+  FLayout := TInkRenderLayout.Create;
+  FLayout.Clear;
+end;
+
 function TInkRenderLayout.RunCount: Integer;
 begin Result := Length(FRuns) end;
 
@@ -573,6 +619,7 @@ destructor TInkRenderer.Destroy;
 var I: Integer;
 begin
   for I := 0 to High(FTokens) do FTokens[I].Attributes.Free;
+  FRoot.Free;
   FLayout.Free;
   FMetricKeys.Free; FMetricHeights.Free;
   FWidthKeys.Free; FWidthValues.Free;
@@ -854,19 +901,25 @@ function TInkRenderer.IsCJK(C: Cardinal): Boolean;
 begin Result := ((C>=$2E80) and (C<=$A4CF)) or ((C>=$AC00) and (C<=$D7A3)) or ((C>=$F900) and (C<=$FAFF)) or ((C>=$20000) and (C<=$2FA1F)) end;
 
 function TInkRenderer.MeasureRun(const Canvas: TCanvas; const Run: TInkRenderRun): TSize;
-var Old: TFont; S,Key,V: string; N: Integer;
+var Old: TFont; S,Key: string; N: Integer;
 begin
   S := Run.Text;
   Key := Run.Style.Face+#1+IntToStr(Run.Style.Size)+#1+
     IntToStr(InkRenderStyleBits(Run.Style.Styles))+#1+IntToStr(Integer(Run.Style.Script))+#1+S;
-  N:=FWidthKeys.IndexOf(Key);
-  if N>=0 then begin Result:=Types.Size(StrToIntDef(FWidthValues[N],0),MetricHeight(Canvas,Run)); Exit end;
-  Old := TFont.Create; Old.Assign(Canvas.Font); Canvas.Font.Name := Run.Style.Face;
+  { the width itself, beside its key: turning every hit back from a string
+    cost more than measuring some of the words did }
+  if FWidthKeys.Find(Key,N) then
+  begin
+    Result:=Types.Size(PtrInt(FWidthKeys.Objects[N]),MetricHeight(Canvas,Run));
+    Exit;
+  end;
+  Old := TFont.Create; Old.PixelsPerInch := Canvas.Font.PixelsPerInch; Old.Assign(Canvas.Font); Canvas.Font.Name := Run.Style.Face;
   InkRenderApplySize(Canvas,Run.Style.Size); Canvas.Font.Style := Run.Style.Styles;
   if Run.Style.Script<>nsNormal then
     InkRenderApplySize(Canvas,InkRenderSmaller(Run.Style.Size,0.7));
-  V:=IntToStr(Canvas.TextWidth(S));
-  N:=FWidthKeys.Add(Key); FWidthValues.Insert(N,V); Result := Types.Size(StrToInt(V),MetricHeight(Canvas,Run));
+  N:=Canvas.TextWidth(S);
+  FWidthKeys.AddObject(Key,TObject(PtrInt(N)));
+  Result := Types.Size(N,MetricHeight(Canvas,Run));
   Canvas.Font.Assign(Old); Old.Free;
 end;
 
@@ -879,21 +932,24 @@ end;
 
 function TInkRenderer.Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
   out AAscent, ADescent: Integer): Integer;
-var Key, V: string; N, Big, Asc10, Desc10: Integer; Old: TFont; TM: TTextMetric;
+var Key: string; N, Big, Asc10, Desc10: Integer; Old: TFont; TM: TTextMetric;
 begin
   Key := Run.Style.Face + #1 + IntToStr(Run.Style.Size) + #1 +
     IntToStr(InkRenderStyleBits(Run.Style.Styles)) + #1 +
     IntToStr(Integer(Run.Style.Script)) + #1 + IntToStr(FOpt.LineHeight);
-  N := FMetricKeys.IndexOf(Key);
-  if N >= 0 then
+  { the height and the ascent packed into the key's own pointer: both fit
+    in sixteen bits many times over, and a hit then costs no parsing }
+  if FMetricKeys.Find(Key,N) then
   begin
-    V := FMetricHeights[N];
-    Result := StrToIntDef(Copy(V,1,Pos(',',V)-1),Canvas.TextHeight('Tg'));
-    AAscent := StrToIntDef(Copy(V,Pos(',',V)+1,MaxInt),Max(1,Round(Result*0.78)));
+    Big := PtrInt(FMetricKeys.Objects[N]);
+    Result := Big and $FFFF;
+    AAscent := (Big shr 16) and $FFFF;
+    if Result<1 then Result := Canvas.TextHeight('Tg');
+    if AAscent<1 then AAscent := Max(1,Round(Result*0.78));
     ADescent := Max(0,Result-AAscent);
     Exit;
   end;
-  Old := TFont.Create; Old.Assign(Canvas.Font);
+  Old := TFont.Create; Old.PixelsPerInch := Canvas.Font.PixelsPerInch; Old.Assign(Canvas.Font);
   Canvas.Font.Name := Run.Style.Face;
   InkRenderApplySize(Canvas,Run.Style.Size);
   Canvas.Font.Style := Run.Style.Styles;
@@ -935,8 +991,8 @@ begin
     Result := Max(1,FOpt.LineHeight);
     ADescent := Max(0,Result-AAscent);
   end;
-  V := IntToStr(Result)+','+IntToStr(AAscent);
-  N := FMetricKeys.Add(Key); FMetricHeights.Insert(N,V);
+  FMetricKeys.AddObject(Key,
+    TObject(PtrInt((Min($FFFF,AAscent) shl 16) or Min($FFFF,Result))));
   Canvas.Font.Assign(Old); Old.Free;
 end;
 
@@ -944,14 +1000,15 @@ procedure TInkRenderer.LayoutTable(const Canvas: TCanvas;
   const Options: TInkRenderOptions; AStart, AEnd: Integer; var X, Y, Line: Integer;
   ALeft: Integer = -1; AWidth: Integer = -1; ABox: TInkBox = nil);
 type
-  TCell = record StartRun, EndRun, Row, Col, Span, Down: Integer; Pad: TRect; AttrText: string end;
+  TCell = record StartRun, EndRun, Row, Col, Span, Down: Integer;
+    MeasuredHeight: Integer; Pad: TRect; AttrText: string end;
 var
   Cells: array of TCell;
   { how many more rows each column is still covered for by a cell above it }
   Busy: array of Integer;
   I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing,
     SX, SY, W, H, Want, Extra, Total, CellX, CellY: Integer;
-  RowHeights, ColWidths, ColMin, ColMax: array of Integer;
+  RowHeights, ColWidths, ColMin, ColMax, RowOffsets, ColOffsets: array of Integer;
   DefaultPad: TRect;
   R: TInkRenderRun; L: TInkRenderLine; Box: TInkBox; St: TInkBoxStyle;
   Drop, MI, CellW: Integer; VA: string;
@@ -1310,6 +1367,9 @@ begin
         if J>Cells[I].Col then Inc(W,Spacing);
       end;
       H := LayCell(I,0,0,Max(1,W-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
+      { Columns are final: reuse this content height for rowspan and
+        vertical alignment instead of recursively measuring the cell again. }
+      Cells[I].MeasuredHeight := H;
       { a cell that reaches down over several rows does not make any one of
         them tall: the rows are sized by the cells that sit in one row, and
         only what is left over is added to the last row it covers }
@@ -1319,13 +1379,7 @@ begin
     for I := 0 to High(Cells) do
       if Cells[I].Down>1 then
       begin
-        W := 0;
-        for J := Cells[I].Col to Min(Cols-1,Cells[I].Col+Max(1,Cells[I].Span)-1) do
-        begin
-          Inc(W,ColWidths[J]);
-          if J>Cells[I].Col then Inc(W,Spacing);
-        end;
-        H := LayCell(I,0,0,Max(1,W-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
+        H := Cells[I].MeasuredHeight;
         Want := CellHeight(I);
         if H>Want then
         begin
@@ -1336,12 +1390,18 @@ begin
     for I := 0 to Rows-1 do
       if RowHeights[I]=0 then RowHeights[I] := DefaultPad.Top+DefaultPad.Bottom+Canvas.TextHeight('Tg');
 
+    { Prefix offsets keep placement linear in the number of cells rather
+      than summing all preceding rows and columns again for every cell. }
+    SetLength(RowOffsets,Rows+1); SetLength(ColOffsets,Cols+1);
+    RowOffsets[0] := 0; ColOffsets[0] := 0;
+    for I := 0 to Rows-1 do RowOffsets[I+1] := RowOffsets[I]+RowHeights[I]+Spacing;
+    for I := 0 to Cols-1 do ColOffsets[I+1] := ColOffsets[I]+ColWidths[I]+Spacing;
     { and now place them, each as a box of its own }
     SX := ALeft+Spacing; SY := Y+Spacing;
     for I := 0 to High(Cells) do
     begin
-      CellX := SX; for J := 0 to Cells[I].Col-1 do Inc(CellX,ColWidths[J]+Spacing);
-      CellY := SY; for J := 0 to Cells[I].Row-1 do Inc(CellY,RowHeights[J]+Spacing);
+      CellX := SX+ColOffsets[Cells[I].Col];
+      CellY := SY+RowOffsets[Cells[I].Row];
       CellW := 0;
       for J := Cells[I].Col to Min(Cols-1,Cells[I].Col+Max(1,Cells[I].Span)-1) do
       begin
@@ -1408,7 +1468,7 @@ begin
       Drop := 0;
       if ABox<>nil then
       begin
-        H := LayCell(I,0,0,Max(1,CellW-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
+        H := Cells[I].MeasuredHeight;
         case Box.Style.Content of
           ibMiddle: Drop := Max(0,(CellHeight(I)-H) div 2);
           ibBottom: Drop := Max(0,CellHeight(I)-H);
@@ -1429,7 +1489,7 @@ end;
 function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
 var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
-  R: TInkRenderRun; Sz: TSize; Text,Atom: string; Start,Bytes: Integer;
+  R: TInkRenderRun; Sz, ImgSz: TSize; Text,Atom: string; Start,Bytes: Integer;
   C: Cardinal; L: TInkRenderLine;
   { every run on the line is placed so its baseline is at the same height:
     the largest ascent on the line.  The line is that plus the largest
@@ -1490,12 +1550,16 @@ begin
   begin
     R:=FStyled[I];
     if R.Control<>0 then begin Inc(I); Continue end;
+    ImgSz:=Types.Size(0,0);
     if R.IsImage then
     begin
-      Sz:=Types.Size(InkRenderScalePx(16,FOpt.Scale),InkRenderScalePx(16,FOpt.Scale));
+      { the picture's own size, kept aside: the run's text is a placeholder
+        character and measuring that would say nothing about the picture }
+      ImgSz:=Types.Size(InkRenderScalePx(16,FOpt.Scale),InkRenderScalePx(16,FOpt.Scale));
       if (FOpt.Images<>nil) and (R.ImageIndex>=0) and
         (R.ImageIndex<FOpt.Images.Count) then
-        Sz:=Types.Size(InkRenderScalePx(FOpt.Images.Width,FOpt.Scale),InkRenderScalePx(FOpt.Images.Height,FOpt.Scale));
+        ImgSz:=Types.Size(InkRenderScalePx(FOpt.Images.Width,FOpt.Scale),
+          InkRenderScalePx(FOpt.Images.Height,FOpt.Scale));
       Text:=#1
     end else Text:=R.Text;
     P:=1;
@@ -1515,11 +1579,18 @@ begin
           X:=FOpt.Borders.Left+Round(R.Style.Indent*FOpt.Scale/100)
         else X:=FOpt.Borders.Left+R.Style.Indent;
       end;
-      Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
+      if R.IsImage then Sz:=ImgSz else Sz:=MeasureRun(Canvas,R);
+      W:=Sz.cx;
       if (Count>0) and not FOpt.NoWrap and (X+W>FOpt.Width-FOpt.Borders.Right) and
         (Atom[1]<>' ') and (Atom[1]<>#9) then FinishLine;
       if Count=0 then First:=Length(FLayout.FRuns);
-      Metrics(Canvas,R,RunAsc,RunDesc); R.Ascent:=RunAsc; R.Descent:=RunDesc;
+      if R.IsImage then
+      begin
+        { a picture sits on the baseline, as one does in a browser }
+        RunAsc:=Max(1,Sz.cy); RunDesc:=0;
+      end
+      else Metrics(Canvas,R,RunAsc,RunDesc);
+      R.Ascent:=RunAsc; R.Descent:=RunDesc;
       { a provisional place; AlignBaselines settles it when the line ends }
       R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W); MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
@@ -1646,20 +1717,27 @@ begin
 end;
 
 procedure TInkRenderer.Paint(Canvas: TCanvas; const Bounds: TRect; const Options: TInkRenderOptions;
-  AOffsetX: Integer = 0; AOffsetY: Integer = 0);
+  AOffsetX: Integer; AOffsetY: Integer);
+begin
+  PaintLayout(Canvas,Bounds,Options,Layout(Canvas,Options),AOffsetX,AOffsetY);
+end;
+
+procedure TInkRenderer.PaintLayout(Canvas: TCanvas; const Bounds: TRect;
+  const Options: TInkRenderOptions; ALayout: TInkRenderLayout;
+  AOffsetX: Integer; AOffsetY: Integer);
 var I,J,DX,DY: Integer; L: TInkRenderLine; R: TInkRenderRun; Clip: TRect; C,BG: TColor; DrawRect: TRect;
   BoxAttrs: TStringList; Sides: string; BorderColor: TColor; BorderOn: Boolean; Radius: Integer;
   OldFont: TFont; OldBrushStyle: TBrushStyle; OldBrushColor: TColor;
 begin
-  Layout(Canvas,Options); Clip:=Bounds; IntersectRect(Clip,Clip,Canvas.ClipRect);
+  Clip:=Bounds; IntersectRect(Clip,Clip,Canvas.ClipRect);
   { the offsets move the text inside Bounds; the clip does not move with it,
     which is what makes them a scroll rather than a second layout }
   DX:=Bounds.Left+AOffsetX; DY:=Bounds.Top+AOffsetY;
-  OldFont:=TFont.Create; OldFont.Assign(Canvas.Font); OldBrushStyle:=Canvas.Brush.Style; OldBrushColor:=Canvas.Brush.Color; BoxAttrs:=TStringList.Create;
+  OldFont:=TFont.Create; OldFont.PixelsPerInch:=Canvas.Font.PixelsPerInch; OldFont.Assign(Canvas.Font); OldBrushStyle:=Canvas.Brush.Style; OldBrushColor:=Canvas.Brush.Color; BoxAttrs:=TStringList.Create;
   try
-    for I:=0 to High(FLayout.FLines) do begin L:=FLayout.FLines[I]; if (L.Bounds.Bottom+DY<Clip.Top) or (L.Bounds.Top+DY>Clip.Bottom) then Continue;
+    for I:=0 to High(ALayout.FLines) do begin L:=ALayout.FLines[I]; if (L.Bounds.Bottom+DY<Clip.Top) or (L.Bounds.Top+DY>Clip.Bottom) then Continue;
       for J:=L.FirstRun to L.FirstRun+L.RunCount-1 do begin
-        R:=FLayout.FRuns[J];
+        R:=ALayout.FRuns[J];
         if (R.Bounds.Right+DX<Clip.Left) or (R.Bounds.Left+DX>Clip.Right) then Continue;
         DrawRect:=Rect(R.Bounds.Left+DX,R.Bounds.Top+DY,R.Bounds.Right+DX,R.Bounds.Bottom+DY);
         if R.Control=8 then
@@ -1745,13 +1823,19 @@ begin
 end;
 
 procedure TInkRenderer.ReportRuns(const Options: TInkRenderOptions;
-  AOffsetX: Integer = 0; AOffsetY: Integer = 0);
+  AOffsetX: Integer; AOffsetY: Integer);
+begin
+  ReportLayoutRuns(Options,FLayout,AOffsetX,AOffsetY);
+end;
+
+procedure TInkRenderer.ReportLayoutRuns(const Options: TInkRenderOptions;
+  ALayout: TInkRenderLayout; AOffsetX: Integer; AOffsetY: Integer);
 var I: Integer; R: TInkRenderRun;
 begin
-  if not Assigned(Options.OnRun) or (FLayout=nil) then Exit;
-  for I := 0 to High(FLayout.FRuns) do
+  if not Assigned(Options.OnRun) or (ALayout=nil) then Exit;
+  for I := 0 to High(ALayout.FRuns) do
   begin
-    R := FLayout.FRuns[I];
+    R := ALayout.FRuns[I];
     if R.Control<>0 then Continue;
     R.Bounds := Rect(R.Bounds.Left+AOffsetX,R.Bounds.Top+AOffsetY,
       R.Bounds.Right+AOffsetX,R.Bounds.Bottom+AOffsetY);
@@ -1761,25 +1845,31 @@ begin
 end;
 
 function TInkRenderer.HitTest(const Canvas: TCanvas; X, Y: Integer;
-  AOffsetX: Integer = 0; AOffsetY: Integer = 0): TInkRenderHit;
+  AOffsetX: Integer; AOffsetY: Integer): TInkRenderHit;
+begin
+  Result := HitTestLayout(Canvas,X,Y,FLayout,AOffsetX,AOffsetY);
+end;
+
+function TInkRenderer.HitTestLayout(const Canvas: TCanvas; X, Y: Integer;
+  ALayout: TInkRenderLayout; AOffsetX: Integer; AOffsetY: Integer): TInkRenderHit;
 var I,K,Lo,Hi,Mid: Integer; R: TInkRenderRun; W: Integer; F: TFont; L: TInkRenderLine;
 begin
   Result.OnLink := False; Result.LinkIndex := 0; Result.LinkName := '';
   Result.LinkText := ''; Result.RunIndex := -1; Result.CharacterOffset := 0;
-  if FLayout=nil then Exit;
+  if ALayout=nil then Exit;
   Dec(X,AOffsetX); Dec(Y,AOffsetY);
-  F:=TFont.Create; try
-    for K:=0 to High(FLayout.FLines) do
+  F:=TFont.Create; F.PixelsPerInch:=Canvas.Font.PixelsPerInch; F.Assign(Canvas.Font); try
+    for K:=0 to High(ALayout.FLines) do
     begin
-      L:=FLayout.FLines[K];
+      L:=ALayout.FLines[K];
       if (Y<L.Bounds.Top) or (Y>L.Bounds.Bottom) then Continue;
       for I:=L.FirstRun to L.FirstRun+L.RunCount-1 do
       begin
-        R:=FLayout.FRuns[I];
+        R:=ALayout.FRuns[I];
         if not PtInRect(R.Bounds,Point(X,Y)) or (R.Style.LinkIndex=0) then Continue;
         Result.OnLink:=True; Result.LinkIndex:=R.Style.LinkIndex; Result.LinkName:=R.Style.LinkName; Result.RunIndex:=I; Result.CharacterOffset:=0; Result.LinkText:='';
-        for W:=0 to High(FLayout.FRuns) do
-          if FLayout.FRuns[W].Style.LinkIndex=R.Style.LinkIndex then Result.LinkText:=Result.LinkText+FLayout.FRuns[W].Text;
+        for W:=0 to High(ALayout.FRuns) do
+          if ALayout.FRuns[W].Style.LinkIndex=R.Style.LinkIndex then Result.LinkText:=Result.LinkText+ALayout.FRuns[W].Text;
         F.Assign(Canvas.Font); Canvas.Font.Name:=R.Style.Face;
         InkRenderApplySize(Canvas,R.Style.Size); Canvas.Font.Style:=R.Style.Styles;
         Lo:=0; Hi:=Length(R.Text);

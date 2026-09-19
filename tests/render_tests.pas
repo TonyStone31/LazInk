@@ -3,9 +3,22 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
-  InkWebP, WebP_Checks,
+  InkWebP, WebP_Checks, Layout_Cache_Checks,
   LResources, LazInkReg,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
+type
+  TTestExceptions = class
+    procedure Handle(Sender: TObject; E: Exception);
+  end;
+var TestExceptions: TTestExceptions;
+
+procedure TTestExceptions.Handle(Sender: TObject; E: Exception);
+begin
+  WriteLn(StdErr,E.ClassName,': ',E.Message);
+  DumpExceptionBackTrace(StdErr);
+  Halt(1);
+end;
+
 var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
   List: TInkListBox; Page: TInkPage; CSS: TInkStyleSheet;
@@ -2212,6 +2225,27 @@ begin
 end;
 
 { --- the palette icons the IDE shows --- }
+{ a page with nothing moving on it does not run the animation tick }
+procedure AnimationTimerChecks;
+var Base: string;
+begin
+  Base := FilenameToURI(ExpandFileName('tests/fixtures/webp/page.html'));
+  Probe.LoadHTML('<html><body><p>just words</p>' +
+    '<p><img src="../../../images/palette.png" alt="a still picture"></p>' +
+    '</body></html>', Base);
+  Probe.ScrollTo(0);
+  Check(not Probe.Animating, 'a page of still pictures stops the tick');
+
+  Probe.LoadHTML('<html><body><p>and now one that moves</p>' +
+    '<p><img src="animation.webp" alt="an animated WebP"></p></body></html>', Base);
+  Probe.ScrollTo(0);
+  Check(Probe.Animating, 'a page with an animation runs the tick');
+
+  Probe.LoadHTML('<html><body><p>still again</p></body></html>', Base);
+  Probe.ScrollTo(0);
+  Check(not Probe.Animating, 'and it stops again when the page is replaced');
+end;
+
 procedure IconChecks;
 const
   Components: array[0..5] of string =
@@ -2557,7 +2591,7 @@ const
   E = LineEnding;
 var
   B, B2: TInkPageBlock;
-  K, J, Lines, Rules: Integer;
+  K, J, Lines, Rules, SavedHeight: Integer;
   Doc: string;
   Styles: TStringList;
   Shot: TBitmap;
@@ -2651,9 +2685,16 @@ begin
     Check(Rules = 0, Format('a long line of code does not run past the block (%d)', [Rules]));
   finally Shot.Free end;
 
-  APage.ScrollTo(0);
-  APage.JumpToAnchor('section-two');
-  Check(APage.ScrollY > 0, 'a heading''s anchor can be jumped to');
+  { Font/layout changes can make this document fit the normal viewport.
+    An anchor-scroll assertion needs an explicitly scrollable page. }
+  SavedHeight := APage.Height;
+  try
+    APage.Height := 200;
+    APage.ScrollTo(0);
+    Check(APage.ContentHeight > APage.ClientHeight, 'anchor fixture is scrollable');
+    APage.JumpToAnchor('section-two');
+    Check(APage.ScrollY > 0, 'a heading''s anchor can be jumped to');
+  finally APage.Height := SavedHeight end;
   Check(FindBlock(APage, 'h2', 'Section two').Anchor = 'section-two',
     'the anchor belongs to the heading, not to an empty block before it');
 
@@ -2707,6 +2748,9 @@ end;
 
 begin
   Application.Initialize;
+  TestExceptions := TTestExceptions.Create;
+  Application.OnException := @TestExceptions.Handle;
+  LayoutCacheChecks;
   { a failed check ends the run with its message and stack trace, instead of
     waiting behind LCL's exception dialog once the test form is showing }
   Application.CaptureExceptions := False;
@@ -2832,6 +2876,7 @@ begin
     TagChecks;
     CodeChecks;
     IconChecks;
+    AnimationTimerChecks;
     BrushLeakChecks;
     ColspanChecks;
   AuthorChecks;
@@ -3021,4 +3066,5 @@ begin
     end;
     WriteLn('All renderer and Markdown tests passed.');
   finally F.Free; B.Free end;
+  Application.OnException := nil; TestExceptions.Free;
 end.

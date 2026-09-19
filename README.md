@@ -83,7 +83,8 @@ events — `OnLinkClick`, `OnLinkEnter`, `OnLinkLeave`, `OnLinkRightClick`.
 <center> <right> <left>                whole-line alignment
 <ind="20">                             indent
 <a href="...">text</a>                 links (OnLinkClick, hover styling)
-<img src="n">                          entry n of the control's Images list
+<img src="n">                          entry n of the control's Images list,
+                                       at that list's own size
 &amp; &lt; &gt; &quot; &nbsp; &copy; &reg; &trade; &euro;
 ```
 
@@ -439,6 +440,19 @@ LAZARUS_DIR=... FPC=... tests/run.sh pages.txt results/
 Given those two, it also checks that every visible piece of text in the source
 pages survived into the rendered page (`tests/check_help_text.pas`, which reads
 the pages with the FCL's own HTML reader rather than LazInk's).
+
+A page keeps its blocks' finished geometry, so painting, measuring and hit
+testing share one layout rather than each rebuilding it.
+`tests/layout_cache_checks.pas` renders the same markup with and without that
+cache and compares painted pixels and the run callbacks, not merely that a
+render happened.  To measure rather than check:
+
+```sh
+LAZARUS_DIR=... FPC=... tools/run_render_bench.sh table 250
+```
+
+[docs/RENDER_PERFORMANCE_AUDIT.md](docs/RENDER_PERFORMANCE_AUDIT.md) has the
+numbers, what they came from, and what is still worth doing.
 
 ## Where it is going
 
