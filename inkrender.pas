@@ -29,6 +29,9 @@ function InkRenderColor(const S: string; Default: TColor = clBlack): TColor;
 function InkRenderContrastColor(Background: TColor): TColor;
 function InkRenderShadeColor(Color: TColor; Percent: Integer): TColor;
 function InkRenderIsCJK(const Text: string): Boolean;
+procedure InkRenderApplySize(const Canvas: TCanvas; ASize: Integer);
+function InkRenderTimes(ASize, AFactor: Integer): Integer;
+function InkRenderSmaller(ASize: Integer; AFactor: Double): Integer;
 function InkRenderScalePx(Value, Scale: Integer): Integer;
 
 type
@@ -98,6 +101,11 @@ type
     VertAlign: TInkRenderVertAlign;
     Scale: Integer;
     LineSpacing: Integer;
+    { a line's height in pixels, as CSS line-height asks for it: the extra
+      room is split evenly above and below the font's own ascent and
+      descent, which is what a browser calls half-leading.  Zero leaves
+      every line the height of the font in it. }
+    LineHeight: Integer;
     Borders: TRect;
     LinkColor, LinkBackColor: TColor;
     LinkUnderline: Boolean;
@@ -449,6 +457,30 @@ begin
     Max(0,InkRenderScalePx(N[1],AScale)),Max(0,InkRenderScalePx(N[2],AScale)));
 end;
 
+{ A size the LCL's way: points when positive, pixels when negative, exactly
+  as TFont.Size and TFont.Height spell it.  A page whose CSS says 14px then
+  gets fourteen pixels of text rather than the ten and a half points it
+  would otherwise round to. }
+procedure InkRenderApplySize(const Canvas: TCanvas; ASize: Integer);
+begin
+  if ASize < 0 then Canvas.Font.Height := ASize
+  else Canvas.Font.Size := ASize;
+end;
+
+{ the same size, several times over, for measuring a font more finely than
+  the platform will report it }
+function InkRenderTimes(ASize, AFactor: Integer): Integer;
+begin
+  if ASize < 0 then Result := ASize*AFactor else Result := ASize*AFactor;
+end;
+
+{ the same size, smaller, for a superscript or a subscript }
+function InkRenderSmaller(ASize: Integer; AFactor: Double): Integer;
+begin
+  if ASize < 0 then Result := Min(-1,Round(ASize*AFactor))
+  else Result := Max(1,Round(ASize*AFactor));
+end;
+
 function InkRenderScalePx(Value, Scale: Integer): Integer;
 begin
   if Scale<=0 then Scale:=100;
@@ -652,9 +684,10 @@ begin
   if fsItalic in Options.BaseFont.Style then Inc(StyleBits, 2);
   if fsUnderline in Options.BaseFont.Style then Inc(StyleBits, 4);
   if fsStrikeOut in Options.BaseFont.Style then Inc(StyleBits, 8);
-  S := Options.BaseFont.Name + '|' + IntToStr(Options.BaseFont.Size) + '|' +
+  S := Options.BaseFont.Name + '|' + IntToStr(Options.BaseFont.Height) + '|' +
     IntToStr(Options.BaseFont.Color) + '|' + IntToStr(StyleBits) +
     '|' + IntToStr(Options.Scale) + '|' + IntToStr(Options.LineSpacing) +
+    '|' + IntToStr(Options.LineHeight) +
     '|' + IntToStr(Ord(Options.NoWrap)) +
     '|' + IntToStr(Options.Height) + '|' + IntToStr(Integer(Options.VertAlign)) +
     '|' + IntToStr(Options.Borders.Left) + '|' + IntToStr(Options.Borders.Top) +
@@ -665,8 +698,13 @@ end;
 function TInkRenderer.BaseStyle(const Options: TInkRenderOptions): TInkRenderStyle;
 begin
   Result.Face := Options.BaseFont.Name;
-  Result.Size := Options.BaseFont.Size; if Result.Size <= 0 then Result.Size := 10;
-  if Options.Scale > 0 then Result.Size := Max(1, Round(Result.Size * Options.Scale / 100));
+  { the control's own font, in pixels: TFont keeps Height and Size in step,
+    and pixels are what a page's CSS talks in }
+  if Options.BaseFont.Height <> 0 then Result.Size := -Abs(Options.BaseFont.Height)
+  else if Options.BaseFont.Size > 0 then Result.Size := -Round(Options.BaseFont.Size*4/3)
+  else Result.Size := -13;
+  { scaling keeps the sign: a pixel size stays a pixel size }
+  if Options.Scale > 0 then Result.Size := InkRenderSmaller(Result.Size, Options.Scale / 100);
   Result.Color := Options.BaseFont.Color; Result.BackColor := clNone;
   Result.Styles := Options.BaseFont.Style; Result.Script := nsNormal;
   Result.LinkIndex := 0; Result.LinkName := '';
@@ -756,7 +794,9 @@ begin
           else if T.Name='font' then
           begin
             S.Face := InkRenderAttr(T.Attributes,'face');
-            N := StrToIntDef(InkRenderAttr(T.Attributes,'size'),0); if N>0 then S.Size := N;
+            { a size the LCL's way: points when positive, pixels when
+              negative, and zero meaning the tag said nothing }
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'size'),0); if N<>0 then S.Size := N;
             S.Color := InkRenderColor(InkRenderAttr(T.Attributes,'color'),S.Color);
             S.BackColor := InkRenderColor(InkRenderAttr(T.Attributes,'bgcolor'),S.BackColor);
           end
@@ -822,8 +862,9 @@ begin
   N:=FWidthKeys.IndexOf(Key);
   if N>=0 then begin Result:=Types.Size(StrToIntDef(FWidthValues[N],0),MetricHeight(Canvas,Run)); Exit end;
   Old := TFont.Create; Old.Assign(Canvas.Font); Canvas.Font.Name := Run.Style.Face;
-  Canvas.Font.Size := Run.Style.Size; Canvas.Font.Style := Run.Style.Styles;
-  if Run.Style.Script<>nsNormal then Canvas.Font.Size := Max(1,Round(Canvas.Font.Size*0.7));
+  InkRenderApplySize(Canvas,Run.Style.Size); Canvas.Font.Style := Run.Style.Styles;
+  if Run.Style.Script<>nsNormal then
+    InkRenderApplySize(Canvas,InkRenderSmaller(Run.Style.Size,0.7));
   V:=IntToStr(Canvas.TextWidth(S));
   N:=FWidthKeys.Add(Key); FWidthValues.Insert(N,V); Result := Types.Size(StrToInt(V),MetricHeight(Canvas,Run));
   Canvas.Font.Assign(Old); Old.Free;
@@ -838,10 +879,11 @@ end;
 
 function TInkRenderer.Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
   out AAscent, ADescent: Integer): Integer;
-var Key, V: string; N: Integer; Old: TFont; TM: TTextMetric;
+var Key, V: string; N, Big, Asc10, Desc10: Integer; Old: TFont; TM: TTextMetric;
 begin
   Key := Run.Style.Face + #1 + IntToStr(Run.Style.Size) + #1 +
-    IntToStr(InkRenderStyleBits(Run.Style.Styles)) + #1 + IntToStr(Integer(Run.Style.Script));
+    IntToStr(InkRenderStyleBits(Run.Style.Styles)) + #1 +
+    IntToStr(Integer(Run.Style.Script)) + #1 + IntToStr(FOpt.LineHeight);
   N := FMetricKeys.IndexOf(Key);
   if N >= 0 then
   begin
@@ -852,23 +894,46 @@ begin
     Exit;
   end;
   Old := TFont.Create; Old.Assign(Canvas.Font);
-  Canvas.Font.Name := Run.Style.Face; Canvas.Font.Size := Run.Style.Size;
+  Canvas.Font.Name := Run.Style.Face;
+  InkRenderApplySize(Canvas,Run.Style.Size);
   Canvas.Font.Style := Run.Style.Styles;
-  if Run.Style.Script<>nsNormal then Canvas.Font.Size := Max(1,Round(Canvas.Font.Size*0.7));
+  if Run.Style.Script<>nsNormal then
+    InkRenderApplySize(Canvas,InkRenderSmaller(Run.Style.Size,0.7));
   { the font's own metrics, not a guess: a browser's "normal" line is the
     font's ascent plus its descent, without the internal leading the
     platform adds on top - which is why a page used to come out with every
-    line a couple of pixels taller than the same page in a browser }
+    line a couple of pixels taller than the same page in a browser.
+
+    Measured at ten times the size and scaled back down.  The platform
+    hands back whole pixels, so asking at the size the text is drawn rounds
+    the ascent up and the descent up again, and a line ends up most of a
+    pixel taller than the font really is.  Over a page of a hundred and
+    fifty lines that is a hundred pixels - which is exactly the amount
+    LazInk used to run longer than the same page in a browser. }
+  Big := InkRenderTimes(Run.Style.Size,10);
+  if Run.Style.Script<>nsNormal then Big := InkRenderTimes(InkRenderSmaller(Run.Style.Size,0.7),10);
+  InkRenderApplySize(Canvas,Big);
   if GetTextMetrics(Canvas.Handle,TM) then
   begin
-    AAscent := Max(1,TM.tmAscent-TM.tmInternalLeading);
-    ADescent := Max(0,TM.tmDescent);
-    Result := AAscent+ADescent;
+    Asc10 := Max(1,TM.tmAscent-TM.tmInternalLeading);
+    Desc10 := Max(0,TM.tmDescent);
+    Result := Max(1,Round((Asc10+Desc10)/10));
+    AAscent := Max(1,Round(Asc10/10));
+    ADescent := Max(0,Result-AAscent);
   end
   else
   begin
+    InkRenderApplySize(Canvas,Run.Style.Size);
     Result := Canvas.TextHeight('Tg');
     AAscent := Max(1,Round(Result*0.78)); ADescent := Max(0,Result-AAscent);
+  end;
+  { line-height: the page asked for a line of its own height, so the room
+    it added goes half above the text and half below it }
+  if FOpt.LineHeight>0 then
+  begin
+    AAscent := Max(1,AAscent+(FOpt.LineHeight-Result) div 2);
+    Result := Max(1,FOpt.LineHeight);
+    ADescent := Max(0,Result-AAscent);
   end;
   V := IntToStr(Result)+','+IntToStr(AAscent);
   N := FMetricKeys.Add(Key); FMetricHeights.Insert(N,V);
@@ -879,9 +944,11 @@ procedure TInkRenderer.LayoutTable(const Canvas: TCanvas;
   const Options: TInkRenderOptions; AStart, AEnd: Integer; var X, Y, Line: Integer;
   ALeft: Integer = -1; AWidth: Integer = -1; ABox: TInkBox = nil);
 type
-  TCell = record StartRun, EndRun, Row, Col, Span: Integer; Pad: TRect; AttrText: string end;
+  TCell = record StartRun, EndRun, Row, Col, Span, Down: Integer; Pad: TRect; AttrText: string end;
 var
   Cells: array of TCell;
+  { how many more rows each column is still covered for by a cell above it }
+  Busy: array of Integer;
   I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing,
     SX, SY, W, H, Want, Extra, Total, CellX, CellY: Integer;
   RowHeights, ColWidths, ColMin, ColMax: array of Integer;
@@ -1065,6 +1132,28 @@ var
     end;
   end;
 
+  { a cell's height: the rows it covers, and the spacing between them }
+  function CellHeight(Index: Integer): Integer;
+  var K: Integer;
+  begin
+    Result := 0;
+    for K := Cells[Index].Row to Min(High(RowHeights),Cells[Index].Row+Cells[Index].Down-1) do
+    begin
+      Inc(Result,RowHeights[K]);
+      if K>Cells[Index].Row then Inc(Result,Spacing);
+    end;
+  end;
+  { the next column in this row that nothing above has claimed }
+  procedure SkipBusy(var ACol: Integer);
+  begin
+    while (ACol<Length(Busy)) and (Busy[ACol]>0) do Inc(ACol);
+  end;
+  procedure Claim(ACol, ASpan, ADown: Integer);
+  var K: Integer;
+  begin
+    if ACol+ASpan>Length(Busy) then SetLength(Busy,ACol+ASpan);
+    for K := ACol to ACol+ASpan-1 do Busy[K] := ADown-1;
+  end;
 begin
   SetLength(Cells,0); TableAttrs := TStringList.Create; CellAttrs := TStringList.Create;
   Merge := TStringList.Create;
@@ -1085,6 +1174,7 @@ begin
 
     { the cells, as ranges into the styled runs - no tree is needed for this }
     Row := -1; Col := 0; Rows := 0; Cols := 0; InCell := False;
+    SetLength(Busy,0);
     I := AStart+1;
     while I<=AEnd-1 do
     begin
@@ -1102,7 +1192,12 @@ begin
         I := J+1; Continue;
       end;
       case FStyled[I].Control of
-        2: begin Inc(Row); Col := 0; Rows := Max(Rows,Row+1) end;
+        2: begin
+             Inc(Row); Rows := Max(Rows,Row+1);
+             { a row that starts under a rowspan begins to its right }
+             for J := 0 to High(Busy) do if Busy[J]>0 then Dec(Busy[J]);
+             Col := 0; SkipBusy(Col);
+           end;
         3: if not InCell then
            begin
              InCell := True; CellIndex := Length(Cells); SetLength(Cells,CellIndex+1);
@@ -1111,6 +1206,10 @@ begin
              Cells[CellIndex].AttrText := FStyled[I].Meta;
              CellAttrs.Text := FStyled[I].Meta;
              Cells[CellIndex].Span := Max(1,StrToIntDef(CellAttrs.Values['colspan'],1));
+             Cells[CellIndex].Down := Max(1,StrToIntDef(CellAttrs.Values['rowspan'],1));
+             { the rows this cell reaches down into are the table's too }
+             Rows := Max(Rows,Cells[CellIndex].Row+Cells[CellIndex].Down);
+             Claim(Cells[CellIndex].Col,Cells[CellIndex].Span,Cells[CellIndex].Down);
              if CellAttrs.Values['cellpadding']<>'' then
                Cells[CellIndex].Pad := PadOf(CellAttrs.Values['cellpadding'],2,Options.Scale)
              else Cells[CellIndex].Pad := DefaultPad;
@@ -1119,7 +1218,7 @@ begin
         4: if InCell then
            begin
              Cells[CellIndex].EndRun := I-1; InCell := False;
-             Inc(Col,Cells[CellIndex].Span);
+             Inc(Col,Cells[CellIndex].Span); SkipBusy(Col);
            end;
       end;
       Inc(I);
@@ -1211,8 +1310,29 @@ begin
         if J>Cells[I].Col then Inc(W,Spacing);
       end;
       H := LayCell(I,0,0,Max(1,W-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
-      RowHeights[Cells[I].Row] := Max(RowHeights[Cells[I].Row],H);
+      { a cell that reaches down over several rows does not make any one of
+        them tall: the rows are sized by the cells that sit in one row, and
+        only what is left over is added to the last row it covers }
+      if Cells[I].Down<=1 then
+        RowHeights[Cells[I].Row] := Max(RowHeights[Cells[I].Row],H);
     end;
+    for I := 0 to High(Cells) do
+      if Cells[I].Down>1 then
+      begin
+        W := 0;
+        for J := Cells[I].Col to Min(Cols-1,Cells[I].Col+Max(1,Cells[I].Span)-1) do
+        begin
+          Inc(W,ColWidths[J]);
+          if J>Cells[I].Col then Inc(W,Spacing);
+        end;
+        H := LayCell(I,0,0,Max(1,W-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
+        Want := CellHeight(I);
+        if H>Want then
+        begin
+          J := Min(Rows-1,Cells[I].Row+Cells[I].Down-1);
+          Inc(RowHeights[J],H-Want);
+        end;
+      end;
     for I := 0 to Rows-1 do
       if RowHeights[I]=0 then RowHeights[I] := DefaultPad.Top+DefaultPad.Bottom+Canvas.TextHeight('Tg');
 
@@ -1273,11 +1393,11 @@ begin
         else if VA='bottom' then St.Content := ibBottom;
         Box.Style := St;
         Box.FBoundsForCell(Rect(CellX,CellY,CellX+CellW,
-          CellY+RowHeights[Cells[I].Row]));
+          CellY+CellHeight(I)));
       end;
       { the run the cell is painted from, filled in from that same style }
       R.Text := ''; R.Style := BaseStyle(Options);
-      R.Bounds := Rect(CellX,CellY,CellX+CellW,CellY+RowHeights[Cells[I].Row]);
+      R.Bounds := Rect(CellX,CellY,CellX+CellW,CellY+CellHeight(I));
       R.Line := Length(FLayout.FLines); R.Part := Cells[I].Row*1000+Cells[I].Col;
       R.IsImage := False; R.ImageIndex := -1; R.Control := 8;
       R.Meta := CellAttrs.Text;
@@ -1290,13 +1410,13 @@ begin
       begin
         H := LayCell(I,0,0,Max(1,CellW-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
         case Box.Style.Content of
-          ibMiddle: Drop := Max(0,(RowHeights[Cells[I].Row]-H) div 2);
-          ibBottom: Drop := Max(0,RowHeights[Cells[I].Row]-H);
+          ibMiddle: Drop := Max(0,(CellHeight(I)-H) div 2);
+          ibBottom: Drop := Max(0,CellHeight(I)-H);
         else Drop := 0;   { the top, which is where a cell starts by default }
         end;
       end;
       LayCell(I,CellX,CellY+Drop,Max(1,CellW-Cells[I].Pad.Left-Cells[I].Pad.Right),True);
-      AddLine(J,Length(FLayout.FRuns)-J,CellY,RowHeights[Cells[I].Row],
+      AddLine(J,Length(FLayout.FRuns)-J,CellY,CellHeight(I),
         Cells[I].Row*1000+Cells[I].Col);
     end;
 
@@ -1347,19 +1467,24 @@ var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
     begin
       { <p> asks for two breaks in a row; the second one is a blank line,
         not nothing }
-      if Forced then Inc(Y,MaxLineH+InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale));
+      if Forced then
+        Inc(Y,Max(MaxLineH,Canvas.TextHeight('Tg'))+
+          InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale));
       Exit;
     end;
     AlignBaselines(First,Count,MaxLineH,Base); L.Baseline := Base; L.Bounds:=Rect(0,Y,Avail,Y+MaxLineH); L.FirstRun:=First; L.RunCount:=Count; L.Align:=FLayout.FRuns[First].Style.Align; L.Part:=FLayout.FRuns[First].Part;
     if L.Align=naCenter then Shift:=(Avail-(X-FOpt.Borders.Left)) div 2 else if L.Align=naRight then Shift:=Avail-(X-FOpt.Borders.Left) else Shift:=0;
     for K:=First to First+Count-1 do begin Inc(FLayout.FRuns[K].Bounds.Left,Shift); Inc(FLayout.FRuns[K].Bounds.Right,Shift); FLayout.FRuns[K].Line:=Line end;
-    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale)); X:=FOpt.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=Canvas.TextHeight('Tg');
+    SetLength(FLayout.FLines,Length(FLayout.FLines)+1); FLayout.FLines[High(FLayout.FLines)]:=L; Inc(Line); Inc(Y,MaxLineH+InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale)); X:=FOpt.Borders.Left; First:=Length(FLayout.FRuns); Count:=0; MaxLineH:=0;
   end;
 begin
   { the inline pass, over the runs this box covers and no further }
   Avail:=AWidth; if Avail<1 then Avail:=1;
   X:=FOpt.Borders.Left; Y:=AY; First:=Length(FLayout.FRuns); Count:=0;
-  Line:=Length(FLayout.FLines); MaxLineH:=Canvas.TextHeight('Tg');
+  { a line is as tall as the words on it, and no taller: starting from the
+    canvas font's TextHeight put a floor under every line that the platform
+    had already rounded up, which is a pixel a line a browser does not spend }
+  Line:=Length(FLayout.FLines); MaxLineH:=0;
   I := ABox.Tag;
   while (I<=ABox.TagEnd) and (I<=High(FStyled)) do
   begin
@@ -1582,11 +1707,12 @@ begin
           R.Bounds:=DrawRect; R.Part:=Options.RunPart;
           Options.OnRun(R);
         end;
-        Canvas.Font.Name:=R.Style.Face; Canvas.Font.Size:=R.Style.Size; Canvas.Font.Style:=R.Style.Styles;
+        Canvas.Font.Name:=R.Style.Face; InkRenderApplySize(Canvas,R.Style.Size);
+        Canvas.Font.Style:=R.Style.Styles;
         { a superscript is drawn as small as it was measured; its place on
           the line was settled from its baseline }
         if R.Style.Script<>nsNormal then
-          Canvas.Font.Size:=Max(1,Round(R.Style.Size*0.7));
+          InkRenderApplySize(Canvas,InkRenderSmaller(R.Style.Size,0.7));
         C:=R.Style.Color; BG:=R.Style.BackColor;
         if R.Style.LinkIndex>0 then begin C:=Options.LinkColor; if Options.LinkUnderline then Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline]; if R.Style.LinkIndex=Options.HoverIndex then begin C:=Options.HoverColor; BG:=Options.HoverBackColor; if Options.HoverUnderline then Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline] end end;
         if odSelected in Options.OwnerState then begin C:=clHighlightText; BG:=clHighlight end
@@ -1654,7 +1780,8 @@ begin
         Result.OnLink:=True; Result.LinkIndex:=R.Style.LinkIndex; Result.LinkName:=R.Style.LinkName; Result.RunIndex:=I; Result.CharacterOffset:=0; Result.LinkText:='';
         for W:=0 to High(FLayout.FRuns) do
           if FLayout.FRuns[W].Style.LinkIndex=R.Style.LinkIndex then Result.LinkText:=Result.LinkText+FLayout.FRuns[W].Text;
-        F.Assign(Canvas.Font); Canvas.Font.Name:=R.Style.Face; Canvas.Font.Size:=R.Style.Size; Canvas.Font.Style:=R.Style.Styles;
+        F.Assign(Canvas.Font); Canvas.Font.Name:=R.Style.Face;
+        InkRenderApplySize(Canvas,R.Style.Size); Canvas.Font.Style:=R.Style.Styles;
         Lo:=0; Hi:=Length(R.Text);
         while Lo<Hi do
         begin

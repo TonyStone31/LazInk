@@ -142,6 +142,12 @@ CSS grid cards become a vertical list. No browser engine is added.
 InkPage1.LoadFromFile('/path/to/help/index.html');
 ```
 
+**Writing pages for it:** [docs/HTML_SUPPORT.md](docs/HTML_SUPPORT.md) lists
+every tag and CSS property it reads, with examples - tables with `colspan` and
+`rowspan`, cards, pictures sized in pixels or percentages, WebP, folding
+sections, `line-height`, `text-transform`.  Sizes are pixels, the way a
+browser reads them.
+
 It reads Markdown just as well - a `.md` file is recognized by its name, and
 `LoadMarkdown` takes a string. Relative images and links are resolved against
 the document. A Markdown document has no stylesheet of its own, so
@@ -387,15 +393,16 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 * Pictures: PNG, JPEG and the rest of what FPC decodes, animated GIF, and
   **WebP** - still and animated, lossy and lossless, with alpha - decoded in
   Pascal, with no library to install.
-* CSS is a small reader, not CSS conformance - no positioning and no
-  pseudo-classes; descendant selectors only inside tables and flex/grid
-  containers; flex and grid lay out as rows of cards, not the full
-  specification; `@media` understands only `min-width` and `max-width`.  A
-  `style` attribute is read for color, background, size, weight, slant,
-  decoration and alignment, on a word or on a whole block.
-* Tables take widths, equal columns, spacing, padding, cell colors, borders
-  and rounded corners from CSS, but have no row or column spans and no nested
-  tables.
+* CSS is a small reader, not CSS conformance - no positioning, no
+  pseudo-classes and no `#id` selectors; descendant selectors only inside
+  tables and flex/grid containers; flex and grid lay out as rows of cards,
+  not the full specification; `@media` understands only `min-width` and
+  `max-width`.  A `style` attribute is read for color, background, size,
+  weight, slant, decoration and alignment, on a word or on a whole block.
+  No floats, and no text flowing around a picture.
+* Tables take widths, columns, spacing, padding, cell colors, borders and
+  rounded corners from CSS, and read `colspan`, `rowspan` and a table inside
+  a cell.  They have no `<col>`/`<colgroup>` widths.
 * The Markdown is GitHub's, as documents use it, not CommonMark-complete:
   emphasis follows simpler rules than the specification, a link reference
   definition has to fit on one line, and footnotes are not read.
@@ -410,7 +417,10 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 * No built-in HTTP downloads - a host supplies remote content through
   `OnResource`.
 
-[docs/HELP_COMPATIBILITY.md](docs/HELP_COMPATIBILITY.md) has the exact list.
+**[docs/HTML_SUPPORT.md](docs/HTML_SUPPORT.md) is the reference for writing
+pages** - every tag and every CSS property LazInk reads, with examples.
+[docs/HELP_COMPATIBILITY.md](docs/HELP_COMPATIBILITY.md) is the audit of one
+real help site against it.
 
 ## Tests
 

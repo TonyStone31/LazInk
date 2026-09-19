@@ -665,6 +665,7 @@ invention.
 
 ---
 
+
 ## 11. Room to leave for what comes later
 
 Not work for the first version.  They are here because each one is cheap to
@@ -763,3 +764,30 @@ same order.  What differs, and is not a bug: LazInk takes its colors from
 the control's theme rather than the page's light or dark scheme, it does not
 read `line-height` (so the text is tighter) or `text-transform` (so a table
 heading is not shouted), and it draws no form controls.
+
+## 13. Measured against a browser
+
+`tests/compare/page.html` is drawn by a browser and by LazInk at the same
+width and the two heights compared.  As of the pixel-sizing work the page
+comes out **3,194 pixels in LazInk against 3,199 in the browser** - five
+pixels over three thousand.
+
+Two things got it there, and both are worth keeping:
+
+1. **Sizes are pixels.**  A page asking for `font-size: 15px` used to be
+   rounded to eleven points, which is 14.67 pixels, and every glyph came out
+   narrow: `TextWidth('Hamburgefonstiv')` was 113 where the browser drew 123.
+   `TInkRenderStyle.Size` now carries the LCL's own convention - positive is
+   points, negative is pixels - and `InkRenderApplySize` is the only place
+   that touches `Canvas.Font`.
+
+2. **A line is as tall as the words on it.**  `MeasureInline` used to start
+   every line at `Canvas.TextHeight('Tg')`, which the platform has already
+   rounded up, so a line was a pixel taller than the font in it.  Over a
+   hundred and fifty lines that was most of the difference.  It now starts at
+   zero and `AlignBaselines` sets it from the runs.  Metrics are measured at
+   ten times the size and scaled back down, so the ascent and the descent are
+   rounded once between them rather than once each.
+
+What still differs is listed in docs/HTML_SUPPORT.md: floats, form controls,
+and text flowing around a picture.

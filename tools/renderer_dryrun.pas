@@ -32,7 +32,7 @@ const
   W = 430;
 
 var
-  Sheet: TBitmap; PNG: TPortableNetworkGraphic;
+  Sheet: TBitmap; PNG: TPortableNetworkGraphic; Shot: string;
   N: TInkRenderOptions; R: TInkRenderer; L: TInkRenderLayout;
   Samples, Names: array of string;
   I, Y, K, LinkX, LinkY: Integer;
@@ -191,8 +191,12 @@ begin
   end;
 
   PNG := TPortableNetworkGraphic.Create;
-  PNG.Assign(Sheet); PNG.SaveToFile(ParamStr(1));
-  WriteLn('wrote ', ParamStr(1));
+  { beside whatever was named, never over it: this used to save the picture
+    to ParamStr(1) and so ate the page it had just been given }
+  Shot := ChangeFileExt(ParamStr(1), '') + '-dryrun.png';
+  if ParamStr(1) = '' then Shot := 'renderer_dryrun.png';
+  PNG.Assign(Sheet); PNG.SaveToFile(Shot);
+  WriteLn('wrote ', Shot);
   WriteLn;
   WriteLn('--- speed ---');
   Bench;

@@ -1115,7 +1115,8 @@ begin
   Check(Pos('styled block', B.Source) > 0, 'the styled block is where it should be');
   Check(ColorToRGB(B.TextColor) = RGBToColor(0, $88, 0), 'a block''s style attribute beats its class');
   Check(ColorToRGB(B.BackColor) = RGBToColor($10, $10, $10), 'and gives it a background');
-  Check(B.PointSize = 18, Format('font-size: 24px is 18 points (%d)', [B.PointSize]));
+  { sizes are pixels, negative the way TFont.Height spells them }
+  Check(B.PointSize = -24, Format('font-size: 24px is 24 pixels (%d)', [B.PointSize]));
 
   Check((Middled >= 0) and (Pos('<center>', Probe.Block(Middled).Source) = 1),
     'style="text-align: center" centers a block');
@@ -1152,7 +1153,7 @@ begin
   Check(Secret >= 0, 'and what it hides is a block too');
   Check(not Probe.BlockVisible(Secret), '<details> starts folded away');
   Check(Probe.Block(Secret).Bounds.Bottom - Probe.Block(Secret).Bounds.Top = 0, 'taking up no room');
-  Check(Probe.Block(Summary).Marker = #$E2#$96#$B8, 'the summary points right while it is shut');
+  Check(Probe.Block(Summary).Marker = #$E2#$96#$B6, 'the summary points right while it is shut');
   B := Probe.Block(Summary);
   WasHigh := Probe.Block(Probe.BlockCount - 1).Bounds.Bottom;
   Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
@@ -1160,7 +1161,7 @@ begin
   Check(Probe.BlockVisible(Secret), 'a click on the summary opens it');
   Check(Probe.Block(Secret).Bounds.Bottom - Probe.Block(Secret).Bounds.Top > 0, 'and it takes room');
   Check(Probe.Block(Probe.BlockCount - 1).Bounds.Bottom > WasHigh, 'so the page grows');
-  Check(Probe.Block(Summary).Marker = #$E2#$96#$BE, 'and the summary points down');
+  Check(Probe.Block(Summary).Marker = #$E2#$96#$BC, 'and the summary points down');
   Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
   Probe.Let(B.Bounds.Left + 4, B.Bounds.Top + 2);
   Check(not Probe.BlockVisible(Secret), 'and another click shuts it again');
@@ -1506,6 +1507,122 @@ begin
 end;
 
 { --- a cell that reaches across columns --- }
+{ rowspan, line-height, image sizing, text-transform and white-space: the
+  five things a help page asks for that LazInk used not to read }
+procedure AuthorChecks;
+var I, J, Plain, Airy, Tall, Short: Integer; B: TInkPageBlock; S: string;
+
+begin
+  { a cell that reaches down two rows is as tall as both of them }
+  Probe.SetBounds(0, 0, 500, 400);
+  Probe.LoadHTML('<html><body><table border="1">' +
+    '<tr><td rowspan="2">deep</td><td>one</td></tr>' +
+    '<tr><td>two</td></tr>' +
+    '<tr><td>three</td><td>four</td></tr>' +
+    '</table></body></html>');
+  Probe.ScrollTo(0);
+  B := nil;
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then begin B := Probe.Block(I); Probe.BlockText(I) end;
+  Check(B <> nil, 'the rowspan table is there');
+  if B = nil then Exit;
+  Check(Pos('rowspan="2"', B.Source) > 0, 'the page passes rowspan on');
+  Tall := -1; Short := -1; Plain := -1;
+  for J := 0 to B.RunCount - 1 do
+  begin
+    if Trim(B.Runs[J].Text) = 'deep' then Tall := B.Runs[J].Top;
+    if Trim(B.Runs[J].Text) = 'two' then Short := B.Runs[J].Top;
+    if Trim(B.Runs[J].Text) = 'three' then Plain := B.Runs[J].Top;
+  end;
+  Check((Tall >= 0) and (Short >= 0) and (Plain >= 0),
+    Format('every cell was laid out (deep %d, two %d, three %d)', [Tall, Short, Plain]));
+  Check(Short > Tall,
+    Format('the second row starts below the spanning cell (%d against %d)', [Short, Tall]));
+  Check(Plain > Short,
+    Format('and the third row is below that (%d against %d)', [Plain, Short]));
+  { the cell under the spanning one starts in the first column again }
+  for J := 0 to B.RunCount - 1 do
+    if Trim(B.Runs[J].Text) = 'three' then
+      for I := 0 to B.RunCount - 1 do
+        if Trim(B.Runs[I].Text) = 'deep' then
+          Check(Abs(B.Runs[J].Left - B.Runs[I].Left) < 4,
+            Format('a row under a rowspan starts in the first column (%d against %d)',
+              [B.Runs[J].Left, B.Runs[I].Left]));
+
+  { line-height: the same words, further apart }
+  Probe.LoadHTML('<html><head><style>p.airy { line-height: 2.4 }</style></head>' +
+    '<body><p>one word and then enough more words that the line has to wrap ' +
+    'at least once in this narrow column</p>' +
+    '<p class="airy">one word and then enough more words that the line has to wrap ' +
+    'at least once in this narrow column</p></body></html>');
+  Probe.SetBounds(0, 0, 220, 400);
+  Probe.ScrollTo(0);
+  Plain := 0; Airy := 0;
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    if B.Tag <> 'p' then Continue;
+    if Pos('airy', B.CSSClass) > 0 then Airy := B.Bounds.Bottom - B.Bounds.Top
+    else if Plain = 0 then Plain := B.Bounds.Bottom - B.Bounds.Top;
+  end;
+  Check((Plain > 0) and (Airy > 0),
+    Format('both paragraphs were laid out (%d and %d)', [Plain, Airy]));
+  Check(Airy > Plain + 8,
+    Format('line-height: 2.4 makes a paragraph taller (%d against %d)', [Airy, Plain]));
+
+  { a picture at the size the page asked for }
+  Probe.SetBounds(0, 0, 500, 400);
+  Probe.LoadHTML('<html><body><p><img src="palette.png" alt="a"></p>' +
+    '<p><img src="palette.png" alt="b" width="60"></p>' +
+    '<p><img src="palette.png" alt="c" width="25%"></p></body></html>',
+    FilenameToURI(ExpandFileName('images/page.html')));
+  Probe.ScrollTo(0);
+  Plain := 0; Tall := 0; Short := 0;
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    if B.Tag <> 'img' then Continue;
+    if B.ImageWantW = 60 then Tall := B.ImageRect.Right - B.ImageRect.Left
+    else if B.ImagePercent = 25 then Short := B.ImageRect.Right - B.ImageRect.Left
+    else if Plain = 0 then Plain := B.ImageRect.Right - B.ImageRect.Left;
+  end;
+  Check(Tall = 60, Format('width="60" draws the picture 60 wide (%d)', [Tall]));
+  Check((Short > 0) and (Short < 200),
+    Format('width="25%%" is a quarter of the column (%d)', [Short]));
+
+  { text-transform and white-space }
+  Probe.LoadHTML('<html><head><style>p.shout { text-transform: uppercase }' +
+    ' p.keep { white-space: nowrap }</style></head>' +
+    '<body><p class="shout">quiet words &amp; <b>bold</b> ones</p>' +
+    '<p class="keep">a line that is far too long to fit inside this ' +
+    'narrow column and would wrap several times if it were allowed to</p>' +
+    '<p>a line that is far too long to fit inside this ' +
+    'narrow column and would wrap several times if it were allowed to</p>' +
+    '</body></html>');
+  Probe.SetBounds(0, 0, 200, 400);
+  Probe.ScrollTo(0);
+  Plain := 0; Short := 0;
+  for I := 0 to Probe.BlockCount - 1 do
+  begin
+    B := Probe.Block(I);
+    if B.Tag <> 'p' then Continue;
+    S := B.Source;
+    if Pos('shout', B.CSSClass) > 0 then
+    begin
+      Check(Pos('QUIET WORDS', S) > 0, 'text-transform: uppercase shouts: ' + Copy(S, 1, 60));
+      Check(Pos('<b>', S) > 0, 'and leaves the markup alone');
+      Check(Pos('&amp;', S) > 0, 'and the entities too');
+    end
+    else if Pos('keep', B.CSSClass) > 0 then Short := B.Bounds.Bottom - B.Bounds.Top
+    else if Plain = 0 then Plain := B.Bounds.Bottom - B.Bounds.Top;
+  end;
+  Check((Short > 0) and (Plain > 0),
+    Format('both long lines were laid out (%d and %d)', [Short, Plain]));
+  Check(Short < Plain,
+    Format('white-space: nowrap keeps a line to one row (%d against %d)', [Short, Plain]));
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 procedure ColspanChecks;
 var
   I, J, Wide, Narrow: Integer; B: TInkPageBlock;
@@ -2717,6 +2834,7 @@ begin
     IconChecks;
     BrushLeakChecks;
     ColspanChecks;
+  AuthorChecks;
     TableLinkChecks;
     LinkReachChecks;
     ScrolledLinkChecks;

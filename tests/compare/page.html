@@ -29,6 +29,10 @@
           text-decoration: none; display: block }
   .note { background: #f4f6f8; border-left: 4px solid #176bbd; padding: 8px 10px }
   .right { text-align: right }
+  .airy { line-height: 1.9 }
+  .shout { text-transform: uppercase }
+  .keep { white-space: nowrap }
+  table.span th { text-transform: uppercase }
   .middle { text-align: center }
   @media (max-width: 420px) {
     .grid { grid-template-columns: 1fr }
@@ -127,6 +131,29 @@ table:</p>
   </tr>
 </table>
 
+<p>A table with a cell that reaches down two rows, and one that reaches
+across two columns:</p>
+
+<table class="span">
+  <tr><th>Release</th><th>Part</th><th>What changed</th></tr>
+  <tr>
+    <td rowspan="2">1.4</td>
+    <td>renderer</td><td>font sizes in pixels</td>
+  </tr>
+  <tr><td>tables</td><td>rowspan as well as colspan</td></tr>
+  <tr><td colspan="2">1.3, both parts</td><td>the first release</td></tr>
+</table>
+
+<h2>Spacing and case</h2>
+
+<p class="airy">A paragraph with line-height 1.9, so its lines stand well
+apart. It runs on for long enough to wrap two or three times, because a
+line-height is only visible between lines and never above a single one.</p>
+
+<p class="shout">A line the stylesheet shouts in uppercase.</p>
+
+<p class="keep">A line that says white-space: nowrap, so it runs off the edge of the column instead of wrapping onto a second line.</p>
+
 <h2>Cards</h2>
 
 <table class="cards">
@@ -180,6 +207,12 @@ and some padding, which is how most documentation sites draw a callout.</div>
 <p><img src="../../images/TInkPage.png" alt="the TInkPage icon"></p>
 <p><img src="../../images/palette.png" alt="the LazInk palette"></p>
 
+<p>The same palette three more times: at a width in pixels, at half the
+column, and inside a <code>&lt;picture&gt;</code>:</p>
+<p><img src="../../images/palette.png" alt="the palette at 120 pixels" width="120"></p>
+<p><img src="../../images/palette.png" alt="the palette at half the column" width="50%"></p>
+<p><picture><source srcset="../../images/palette.png" type="image/png"><img src="../../images/palette.png" alt="the palette in a picture element" style="width: 80px"></picture></p>
+
 <p>A WebP, which LazInk decodes itself:</p>
 <p><img src="../fixtures/webp/drawing-lossless.webp" alt="a lossless WebP drawing"></p>
 
@@ -212,8 +245,8 @@ with mixed sizes sits on its baseline.</p>
 <hr>
 
 <p><small>The end. If the two sides diverge anywhere above, that is the bug
-- except for the things LazInk says it does not do: colspan, line-height,
-text-transform, floats and form controls.</small></p>
+- except for the things LazInk says it does not do: floats, form controls
+and text that flows around a picture.</small></p>
 
 </body>
 </html>

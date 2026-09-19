@@ -76,6 +76,13 @@ type
       it, if any (href as in markup) }
     ImageSrc, LinkHref, LinkTarget: string;
     ImageRect: TRect;
+    { how big the page asked for the picture: pixels in ImageWant, or a
+      percentage of the column in ImagePercent, and zero for "say nothing,
+      draw it at its own size".  A width alone keeps the aspect ratio. }
+    ImageWantW, ImageWantH, ImagePercent, ImageMaxW: Integer;
+    { a line's height in pixels when the page asked for one, zero when it
+      left every line the height of the font in it }
+    LineHeight: Integer;
     { the target of each text link in the block, in order }
     LinkTargets: array of string;
     { the title of each text link, in the same order: its tooltip }
@@ -547,6 +554,106 @@ begin
     P := Pos(Name,Lower,P+1);
   end;
 end;
+{ How big a page asked for a picture: <img width=300 height=200>, or
+  width="50%", or the same three written in a style attribute, where a width
+  may also be a max-width.  A width on its own keeps the aspect ratio, which
+  is what a help page writing <img src="shot.png" width="520"> wants. }
+{ CSS line-height, which a page may write four ways: a bare number that
+  multiplies the font's own size, a length in px or em, a percentage of the
+  size, or "normal" - which is no line-height at all. }
+function LineHeightOf(const AValue: string; AFontPixels: Integer): Integer;
+var V: string; F: Double;
+begin
+  Result := 0;
+  V := LowerCase(Trim(AValue));
+  if (V='') or (V='normal') or (V='inherit') then Exit;
+  if V[Length(V)]='%' then
+  begin
+    Result := Max(1,Round(AFontPixels*StrToIntDef(Trim(Copy(V,1,Length(V)-1)),100)/100));
+    Exit;
+  end;
+  { a bare number is a multiplier - "line-height: 1.5" is the usual way a
+    page asks for airier text }
+  if TryStrToFloat(StringReplace(V,'.',DefaultFormatSettings.DecimalSeparator,[]),F) then
+  begin
+    if F<=0 then Exit;
+    Exit(Max(1,Round(AFontPixels*F)));
+  end;
+  Result := Max(0,CSSPixels(V,0));
+end;
+procedure ImageSize(B: TInkPageBlock; const Raw: string);
+  function Want(const V: string; out APercent: Integer): Integer;
+  var T: string;
+  begin
+    APercent := 0; Result := 0;
+    T := Trim(V);
+    if T='' then Exit;
+    if T[Length(T)]='%' then
+      APercent := Max(1,Min(100,StrToIntDef(Trim(Copy(T,1,Length(T)-1)),0)))
+    else Result := Max(0,CSSPixels(T,0));
+  end;
+var Style: string; Pct: Integer;
+begin
+  B.ImageWantW := Want(Attribute(Raw,'width'),B.ImagePercent);
+  B.ImageWantH := Want(Attribute(Raw,'height'),Pct);
+  Style := Attribute(Raw,'style');
+  if Style='' then Exit;
+  if StyleValue(Style,'width')<>'' then
+    B.ImageWantW := Want(StyleValue(Style,'width'),B.ImagePercent);
+  if StyleValue(Style,'height')<>'' then
+    B.ImageWantH := Want(StyleValue(Style,'height'),Pct);
+  { a max-width is a ceiling, not a size: the picture keeps its own size
+    until it is wider than that }
+  if StyleValue(Style,'max-width')<>'' then
+    B.ImageMaxW := Want(StyleValue(Style,'max-width'),Pct);
+end;
+{ CSS text-transform, over markup: the words change case, the tags and the
+  entities between them do not. }
+function Transformed(const AMarkup, AKind: string): string;
+var P,Start: Integer; Piece: string; Fresh: Boolean;
+begin
+  Result := '';
+  Fresh := True;
+  P := 1;
+  while P<=Length(AMarkup) do
+  begin
+    if AMarkup[P]='<' then
+    begin
+      Start := P;
+      while (P<=Length(AMarkup)) and (AMarkup[P]<>'>') do Inc(P);
+      if P<=Length(AMarkup) then Inc(P);
+      Result := Result+Copy(AMarkup,Start,P-Start);
+      Continue;
+    end;
+    if AMarkup[P]='&' then
+    begin
+      Start := P;
+      while (P<=Length(AMarkup)) and (AMarkup[P]<>';') and (P-Start<12) do Inc(P);
+      if (P<=Length(AMarkup)) and (AMarkup[P]=';') then Inc(P);
+      Result := Result+Copy(AMarkup,Start,P-Start);
+      Fresh := False;
+      Continue;
+    end;
+    Start := P;
+    while (P<=Length(AMarkup)) and not (AMarkup[P] in ['<','&']) do Inc(P);
+    Piece := Copy(AMarkup,Start,P-Start);
+    if AKind='uppercase' then Result := Result+UTF8UpperCase(Piece)
+    else if AKind='lowercase' then Result := Result+UTF8LowerCase(Piece)
+    else
+    begin
+      { capitalize: the first letter of every word }
+      for Start := 1 to Length(Piece) do
+      begin
+        if Piece[Start] in [' ',#9,#10,#13,'-','(','"'] then Fresh := True
+        else if Fresh then
+        begin
+          Piece[Start] := UpCase(Piece[Start]); Fresh := False;
+        end;
+      end;
+      Result := Result+Piece;
+    end;
+  end;
+end;
 function TagName(const Tag: string): string;
 var P,Q: Integer;
 begin
@@ -861,6 +968,8 @@ var B: TInkPageBlock;
 begin
   Result := Options;
   B := TInkPageBlock(FBlocks[Index]);
+  Result.LineHeight := B.LineHeight;
+  Result.NoWrap := B.NoWrap;
   if B.NoLinkUnderline then Result.LinkUnderline := False;
   if B.LinkColor<>clNone then Result.LinkColor := B.LinkColor;
 end;
@@ -1315,6 +1424,8 @@ var
     Result := '';
     N := StrToIntDef(Attribute(ATag,'colspan'),1);
     if N>1 then Result := Result+' colspan="'+IntToStr(N)+'"';
+    N := StrToIntDef(Attribute(ATag,'rowspan'),1);
+    if N>1 then Result := Result+' rowspan="'+IntToStr(N)+'"';
   end;
   function CellAlign: string;
   var A: string;
@@ -1356,9 +1467,9 @@ var
       C := CSSColor(FStyles.Resolve(V),clNone);
       if C<>clNone then BG := ' bgcolor="'+ColorAttr(C)+'"';
     end;
-    { a size in pixels, as CSS writes it, is three quarters of it in points }
+    { a size in pixels, negative, the way TFont.Height spells one }
     K := CSSPixels(StyleValue(AStyle,'font-size'),-1);
-    if K>0 then Sz := ' size="'+IntToStr(Max(1,K*3 div 4))+'"';
+    if K>0 then Sz := ' size="'+IntToStr(-K)+'"';
     if (FG<>'') or (BG<>'') or (Sz<>'') then
     begin
       Result := '<font'+Sz+FG+BG+'>'; AClose := '</font>';
@@ -1424,9 +1535,8 @@ var
     begin
       if Closing then Exit('</font>');
       K := FStyles.Pixels('small',Cls,'font-size',-1,Context);
-      if K>0 then K := Max(1,K*3 div 4)
-      else if Font.Size>0 then K := Max(1,Round(Font.Size*0.85))
-      else K := 9;
+      if K>0 then K := -K
+      else K := -Max(1,Round(FLayoutBase*0.83));
       C := FStyles.Color('small',Cls,'color',clNone,Context);
       FG := '';
       if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
@@ -1930,6 +2040,7 @@ begin
       Flush; B := TInkPageBlock.Create; B.Tag := 'img'; B.Source := Attribute(Raw,'alt');
       B.Nest := Nest;
       B.ImageSrc := ResolveURL(Attribute(Raw,'src'));
+      ImageSize(B,Raw);
       B.LinkHref := OpenHref; B.LinkTarget := OpenTarget;
       B.Anchor := PendingAnchor; PendingAnchor := ''; ImageData := TMemoryStream.Create;
       try
@@ -2097,7 +2208,7 @@ begin
 end;
 procedure TInkCustomPage.BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
 begin
-  ACanvas.Font.Assign(Font); ACanvas.Font.Size := B.PointSize; ACanvas.Font.Color := B.TextColor;
+  ACanvas.Font.Assign(Font); HTMLFontSize(ACanvas,B.PointSize); ACanvas.Font.Color := B.TextColor;
   if B.Bold then ACanvas.Font.Style := ACanvas.Font.Style+[fsBold];
   if B.FaceName<>'' then ACanvas.Font.Name := B.FaceName;
 end;
@@ -2215,23 +2326,41 @@ begin
     end
     else Inc(X,FListWidth);
   B.Indent := X;
-  B.PointSize := Base;
-  if B.Tag='h1' then B.PointSize := Round(Base*1.9)
-  else if B.Tag='h2' then B.PointSize := Round(Base*1.36)
-  else if B.Tag='h3' then B.PointSize := Round(Base*1.15)
-  else if (B.Tag='h5') or (B.Tag='h6') then B.PointSize := Max(1,Round(Base*0.9));
-  B.PointSize := Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',B.PointSize*4 div 3)*3 div 4);
+  { sizes are pixels, written negative the way TFont.Height spells them, so
+    a page that says "font-size: 15px" gets fifteen pixels of text and not
+    the eleven points it nearly rounds to.  The multipliers are a browser's
+    own defaults for the heading levels. }
+  K := Base;
+  if B.Tag='h1' then K := Round(Base*2.0)
+  else if B.Tag='h2' then K := Round(Base*1.5)
+  else if B.Tag='h3' then K := Round(Base*1.17)
+  else if B.Tag='h5' then K := Max(1,Round(Base*0.83))
+  else if B.Tag='h6' then K := Max(1,Round(Base*0.67))
   { a table's caption is a smaller line above it }
-  if B.Tag='caption' then
-    B.PointSize := Max(1,FStyles.Pixels('caption',B.CSSClass,'font-size',
-      Round(Base*0.92)*4 div 3)*3 div 4);
-  B.Bold := IsHeadingTag(B.Tag) or (B.Tag='summary');
+  else if B.Tag='caption' then K := Max(1,Round(Base*0.92));
+  B.PointSize := -Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',K));
+  B.LineHeight := LineHeightOf(FStyles.Value(B.Tag,B.CSSClass,'line-height',''),
+    Abs(B.PointSize));
+  { a browser leaves a summary in the page's own weight; only the triangle
+    marks it out }
+  B.Bold := IsHeadingTag(B.Tag);
   { a <summary> wears the triangle that says which way it goes }
   if B.FoldHead>=0 then
-    if (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead] then B.Marker := '▾'
-    else B.Marker := '▸';
+    { the same triangles a browser draws, at the size it draws them }
+    if (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead] then B.Marker := '▼'
+    else B.Marker := '▶';
   if B.Pre then B.FaceName := InkMonoFace else B.FaceName := '';
   B.NoWrap := B.Pre;
+  { white-space: a block told not to wrap keeps its line and is cut off at
+    the column's edge, the way a code block is }
+  V := LowerCase(Trim(FStyles.Value(B.Tag,B.CSSClass,'white-space','')));
+  if (V='nowrap') or (V='pre') then B.NoWrap := True
+  else if (V='normal') or (V='pre-wrap') or (V='pre-line') then B.NoWrap := B.Pre;
+  { text-transform, which a page most often puts on a heading or a table's
+    headers }
+  V := LowerCase(Trim(FStyles.Value(B.Tag,B.CSSClass,'text-transform','')));
+  if (V='uppercase') or (V='lowercase') or (V='capitalize') then
+    B.Source := Transformed(B.Source,V);
   if Length(B.Bars)>0 then
     B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FQuoteText)
   else
@@ -2243,7 +2372,7 @@ begin
   { what a browser gives a block when its stylesheet says nothing: an em of
     its own size above and below a paragraph, less for a heading, none for a
     list item.  Ems, not pixels, so a bigger heading pushes further. }
-  Em := Max(1,Round(B.PointSize*4/3));
+  Em := Max(1,Abs(B.PointSize));
   if IsHeadingTag(B.Tag) then
   begin
     if B.Tag='h1' then K := Round(Em*0.67)
@@ -2285,7 +2414,7 @@ begin
     if V='' then V := StyleValue(B.StyleAttr,'background');
     if V<>'' then B.BackColor := CSSColor(FStyles.Resolve(V),B.BackColor);
     K := CSSPixels(StyleValue(B.StyleAttr,'font-size'),-1);
-    if K>0 then B.PointSize := Max(1,K*3 div 4);
+    if K>0 then B.PointSize := -K;
     V := LowerCase(StyleValue(B.StyleAttr,'font-weight'));
     if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then B.Bold := True
     else if (V='normal') or (V='400') then B.Bold := False;
@@ -2348,11 +2477,16 @@ begin
     Y := Prev.Bounds.Bottom; Pending := Prev.GapAfter;
   end;
   O := Options;
-  FLayoutBase := Font.Size;
-  if FLayoutBase<=0 then FLayoutBase := Screen.SystemFont.Size;
-  if FLayoutBase<=0 then FLayoutBase := 11;
+  { the base size in pixels, which is the unit a page's CSS talks in.  A
+    point size rounds to whole points and lands up to half a point away from
+    what the page asked for; pixels land where it asked. }
+  if Font.Height<>0 then FLayoutBase := Abs(Font.Height)
+  else if Font.Size>0 then FLayoutBase := Round(Font.Size*4/3)
+  else if Screen.SystemFont.Height<>0 then FLayoutBase := Abs(Screen.SystemFont.Height)
+  else if Screen.SystemFont.Size>0 then FLayoutBase := Round(Screen.SystemFont.Size*4/3)
+  else FLayoutBase := 15;
   { a list's indent is room for its markers; a quote's, room for its bar }
-  Canvas.Font.Assign(Font); Canvas.Font.Size := FLayoutBase;
+  Canvas.Font.Assign(Font); Canvas.Font.Height := -FLayoutBase;
   FListWidth := Max(Scale96ToFont(24),Canvas.TextWidth('00. '));
   FQuoteWidth := Scale96ToFont(18);
   FBodyText := FStyles.Color('body','','color',Font.Color);
@@ -2377,7 +2511,7 @@ begin
       last, which a browser gives the <ul> the items sit in }
     if ItemTag(B.Tag) then
     begin
-      Em := Max(1,Round(B.PointSize*4/3));
+      Em := Max(1,Abs(B.PointSize));
       if (I=0) or not ItemTag(TInkPageBlock(FBlocks[I-1]).Tag) or
         (LevelOf(TInkPageBlock(FBlocks[I-1]).Nest)<LevelOf(B.Nest)) then
         B.GapBefore := Max(B.GapBefore,Em);
@@ -2391,6 +2525,10 @@ begin
       out a third longer than a browser draws it }
     Inc(Y,Max(Pending,B.GapBefore)); Pending := 0;
     BlockFont(Canvas,B);
+    { the line-height this block asked for, if it asked for one, and
+      whether its words may wrap at all }
+    O.LineHeight := B.LineHeight;
+    O.NoWrap := B.NoWrap;
     B.MarkerWidth := 0;
     if B.Tag='hr' then
     begin
@@ -2402,16 +2540,34 @@ begin
     else if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) and (B.Picture.Height>0) then
     begin
       TextW := W-B.Indent;
-      case FImageFit of
-        iifWidth: ImageW := TextW;
-        iifWindow:
-          ImageW := Min(TextW,Round(B.Picture.Width*
-            (Max(1,ClientHeight-2*LayoutTop-B.GapBefore-B.GapAfter-2*B.Padding)/B.Picture.Height)));
+      ImageH := 0;
+      if B.ImagePercent>0 then ImageW := Max(1,TextW*B.ImagePercent div 100)
+      else if B.ImageWantW>0 then ImageW := B.ImageWantW
+      else if B.ImageWantH>0 then
+      begin
+        { a height alone still keeps the picture's shape }
+        ImageH := B.ImageWantH;
+        ImageW := Max(1,Round(B.Picture.Width*ImageH/B.Picture.Height));
+      end
       else
-        ImageW := Min(TextW,B.Picture.Width);
-      end;
+        case FImageFit of
+          iifWidth: ImageW := TextW;
+          iifWindow:
+            ImageW := Min(TextW,Round(B.Picture.Width*
+              (Max(1,ClientHeight-2*LayoutTop-B.GapBefore-B.GapAfter-2*B.Padding)/B.Picture.Height)));
+        else
+          ImageW := B.Picture.Width;
+        end;
+      if (B.ImageMaxW>0) and (ImageW>B.ImageMaxW) then begin ImageW := B.ImageMaxW; ImageH := 0 end;
+      { whatever was asked for, a picture never runs past its column }
+      if ImageW>TextW then begin ImageW := TextW; ImageH := 0 end;
       ImageW := Max(1,ImageW);
-      ImageH := Max(1,Round(B.Picture.Height*ImageW/B.Picture.Width));
+      { a width and a height together are both honoured, however the picture
+        is shaped; a width on its own keeps the shape }
+      if (B.ImageWantW>0) and (B.ImageWantH>0) and (ImageW=B.ImageWantW) then
+        ImageH := B.ImageWantH;
+      if ImageH<=0 then ImageH := Round(B.Picture.Height*ImageW/B.Picture.Width);
+      ImageH := Max(1,ImageH);
       Sz.cx := ImageW; Sz.cy := ImageH;
       B.Wrapped := '';
     end

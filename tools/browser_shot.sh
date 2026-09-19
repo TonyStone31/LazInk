@@ -12,8 +12,9 @@
 #   (then your own TInkPage render at the same width)
 #
 # What is expected to differ, and is not a bug: LazInk takes its colors from
-# the control's theme rather than the page's light/dark scheme, it does not
-# read line-height or text-transform, and it draws no form controls.
+# the control's theme rather than the page's light/dark scheme, it draws no
+# form controls, and it does not float anything or flow text around a
+# picture.  See docs/HTML_SUPPORT.md.
 #
 # SPDX-License-Identifier: 0BSD
 set -eu

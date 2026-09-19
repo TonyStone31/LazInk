@@ -35,6 +35,11 @@ Supported content in this site:
   strings, numbers and keywords, from the language in `class="language-x"`
   or, when there is none, by rules most languages share. A page that colored
   its own code with spans keeps its own colors.
+- Tables with `colspan` and `rowspan`, and a table inside a cell.
+- Pictures at the size the page asks for: `width`/`height` as attributes or
+  in a style, in pixels or as a percentage of the column, and `max-width` as
+  a ceiling.  `<picture>` falls back to the `<img>` inside it.
+- `line-height`, `text-transform` and `white-space`.
 - Blockquotes with a bar, horizontal rules, `<dl>`/`<dt>`/`<dd>`,
   `<del>`/`<ins>`/`<mark>`, task-list checkboxes, `<q>` (quotation marks).
 - `<details>`/`<summary>`: what a `<details>` holds is folded away behind its

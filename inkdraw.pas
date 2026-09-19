@@ -44,6 +44,9 @@ type
     Scale: Integer;
     { extra pixels between lines }
     LineSpacing: Integer;
+    { a line's height in pixels, as CSS line-height asks for it; zero leaves
+      every line the height of the font in it }
+    LineHeight: Integer;
     { margins taken off the drawing rectangle: Left, Top, Right, Bottom }
     Borders: TRect;
     VertAlign: TInkVertAlign;
@@ -127,6 +130,9 @@ function HTMLUnescape(const Text: string): string;
 function HTMLStringToColor(AText: string; ADefColor: TColor = clBlack): TColor;
 function HTMLContrastColor(ABackground: TColor): TColor;
 function HTMLShadeColor(AColor: TColor; APercent: Integer): TColor;
+{ a size the LCL's way: points when positive, pixels when negative, exactly
+  as TFont.Size and TFont.Height spell it }
+procedure HTMLFontSize(const ACanvas: TCanvas; ASize: Integer);
 function HTMLIsCJK(const AChar: string): Boolean;
 
 { measure and hit test in one pass, for a control that wants both }
@@ -187,6 +193,7 @@ begin
   end;
   Result.Scale := Options.Scale; if Result.Scale<=0 then Result.Scale := 100;
   Result.LineSpacing := Options.LineSpacing;
+  Result.LineHeight := Options.LineHeight;
   Result.Borders := Options.Borders;
   Result.LinkColor := Options.LinkColor;
   Result.LinkBackColor := Options.LinkBackColor;
@@ -217,6 +224,7 @@ begin
   Result.SuperSubScriptRatio := ASuperSubScriptRatio;
   Result.Scale := AScale;
   Result.LineSpacing := 0;
+  Result.LineHeight := 0;
   Result.Borders := Rect(0,0,0,0);
   Result.VertAlign := ivaTop;
   Result.HorzAlign := ihaLeft;
@@ -351,6 +359,9 @@ begin Result := InkRenderContrastColor(ABackground) end;
 
 function HTMLShadeColor(AColor: TColor; APercent: Integer): TColor;
 begin Result := InkRenderShadeColor(AColor, APercent) end;
+
+procedure HTMLFontSize(const ACanvas: TCanvas; ASize: Integer);
+begin InkRenderApplySize(ACanvas, ASize) end;
 
 function HTMLIsCJK(const AChar: string): Boolean;
 begin Result := InkRenderIsCJK(AChar) end;
