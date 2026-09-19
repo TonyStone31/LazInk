@@ -1415,7 +1415,14 @@ begin
         else if not R.IsImage then Canvas.TextOut(DrawRect.Left,DrawRect.Top,R.Text);
       end;
     end;
-  finally Canvas.Font.Assign(OldFont); Canvas.Brush.Style:=OldBrushStyle; Canvas.Brush.Color:=OldBrushColor; OldFont.Free; BoxAttrs.Free end;
+  finally
+    { the colour first and the style second, always: setting a brush colour
+      makes it solid as a side effect, so restoring the style before the
+      colour undoes the restore and every caller gets its canvas back with a
+      solid brush }
+    Canvas.Font.Assign(OldFont); Canvas.Brush.Color:=OldBrushColor;
+    Canvas.Brush.Style:=OldBrushStyle; OldFont.Free; BoxAttrs.Free;
+  end;
 end;
 
 procedure TInkRenderer.ReportRuns(const Options: TInkRenderOptions;
