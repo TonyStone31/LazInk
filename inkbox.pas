@@ -174,7 +174,11 @@ function TInkBox.AddChild(AKind: TInkBoxKind): TInkBox;
 var N: Integer;
 begin
   N:=Length(FChildren); SetLength(FChildren,N+1);
-  FChildren[N]:=TInkBox.Create(AKind); Result:=FChildren[N]; Invalidate;
+  FChildren[N]:=TInkBox.Create(AKind); Result:=FChildren[N];
+  { only this box has to measure itself again: a new child says nothing
+    about the children already in it, and walking them all on every append
+    made building a wide row of cells cost the square of their number }
+  FMeasured:=False; FOrderDirty:=True;
 end;
 
 procedure TInkBox.Invalidate;

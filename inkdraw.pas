@@ -18,7 +18,7 @@ unit InkDraw;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, StdCtrls, Types, Math, InkRender;
+  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, LCLIntf, StdCtrls, Types, Math, InkRender;
 
 type
   { where a block sits when the rectangle is bigger than the text }
@@ -68,6 +68,32 @@ type
     RunPart: Integer;
   end;
 
+  { A bounded, owner-scoped LRU of immutable layouts. Painting and interaction
+    share geometry; source/options/device changes select a new entry. It keeps
+    no tokens, box trees or per-block word caches. Use on the LCL thread. }
+  THTMLLayoutCache = class
+  private
+    FEntries: TList;
+    FBytes, FMaxBytes: SizeUInt;
+    FMaxEntries: Integer;
+    FHits, FMisses: QWord;
+    { one renderer, kept for its word and metric caches }
+    FBuilder: TInkRenderer;
+    FBuilderDPIX, FBuilderDPIY, FBuilderFontDPI: Integer;
+    procedure RemoveOldest;
+    function Acquire(Canvas: TCanvas; const Text: string;
+      const Options: TInkRenderOptions): TInkRenderLayout;
+  public
+    constructor Create(AMaxEntries: Integer = 128;
+      AMaxBytes: SizeUInt = 16*1024*1024);
+    destructor Destroy; override;
+    procedure Clear;
+    function Count: Integer;
+    property Bytes: SizeUInt read FBytes;
+    property Hits: QWord read FHits;
+    property Misses: QWord read FMisses;
+  end;
+
   { how a link is painted, as a published property }
   TInkLinkStyle = class(TPersistent)
   private
@@ -114,11 +140,14 @@ function InkOptions(ARatio: Double; AScale, ALineSpacing: Integer;
   ALink, AHover: TInkLinkStyle; AHoverIndex: Integer): THTMLOptions;
 
 procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
-  const Text: string; const Options: THTMLOptions);
+  const Text: string; const Options: THTMLOptions;
+  Cache: THTMLLayoutCache = nil);
 function HTMLTextExtentOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
-  const Text: string; const Options: THTMLOptions): TSize;
+  const Text: string; const Options: THTMLOptions;
+  Cache: THTMLLayoutCache = nil): TSize;
 function HTMLHitTest(Canvas: TCanvas; Rect: TRect; const Text: string;
-  const AOpts: THTMLOptions; MouseX, MouseY: Integer): THTMLHitInfo;
+  const AOpts: THTMLOptions; MouseX, MouseY: Integer;
+  Cache: THTMLLayoutCache = nil): THTMLHitInfo;
 { Both engines are asked to re-flow markup to a width.  This one wraps while
   it lays out, so there is nothing to insert: the text comes back as it went
   in, and the wrapping happens when it is measured or drawn at that width. }
@@ -138,37 +167,49 @@ function HTMLIsCJK(const AChar: string): Boolean;
 { measure and hit test in one pass, for a control that wants both }
 procedure HTMLMeasureAndHit(Canvas: TCanvas; Rect: TRect; const Text: string;
   const AOpts: THTMLOptions; MouseX, MouseY: Integer;
-  out Width, Height: Integer; out AHit: THTMLHitInfo);
+  out Width, Height: Integer; out AHit: THTMLHitInfo;
+  Cache: THTMLLayoutCache = nil);
 
 implementation
 
 var
-  { one engine, reused: it keeps a layout per source and options, so drawing
-    the same text again costs nothing }
+  { Scratch engine for callers without an owner-scoped layout cache. }
   GEngine: TInkRenderer;
-  GRunFont: TFont;
-  GRunHandler: THTMLRunEvent;
-  GRunPart: Integer;
 
 type
   { turns the engine's runs into the call the controls expect }
   TRunRelay = class
+  private
+    FFont: TFont;
+    FHandler: THTMLRunEvent;
+    FPart: Integer;
+  public
+    constructor Create(AHandler: THTMLRunEvent; APart: Integer);
+    destructor Destroy; override;
     procedure Run(const ARun: TInkRenderRun);
   end;
 
-var
-  GRelay: TRunRelay;
+constructor TRunRelay.Create(AHandler: THTMLRunEvent; APart: Integer);
+begin
+  inherited Create;
+  FFont := TFont.Create; FHandler := AHandler; FPart := APart;
+end;
+
+destructor TRunRelay.Destroy;
+begin
+  FFont.Free;
+  inherited Destroy;
+end;
 
 procedure TRunRelay.Run(const ARun: TInkRenderRun);
 begin
-  if not Assigned(GRunHandler) then Exit;
-  GRunFont.Name := ARun.Style.Face;
-  GRunFont.Size := ARun.Style.Size;
-  GRunFont.Style := ARun.Style.Styles;
-  GRunFont.Color := ARun.Style.Color;
-  GRunHandler(ARun.Text, ARun.Bounds.Left, ARun.Bounds.Top,
+  FFont.Name := ARun.Style.Face;
+  FFont.Size := ARun.Style.Size;
+  FFont.Style := ARun.Style.Styles;
+  FFont.Color := ARun.Style.Color;
+  FHandler(ARun.Text, ARun.Bounds.Left, ARun.Bounds.Top,
     ARun.Bounds.Right-ARun.Bounds.Left, ARun.Bounds.Bottom-ARun.Bounds.Top,
-    ARun.Line, GRunPart, GRunFont);
+    ARun.Line, FPart, FFont);
 end;
 
 function Engine: TInkRenderer;
@@ -205,6 +246,197 @@ begin
   Result.NoWrap := Options.NoWrap;
   Result.OwnerState := State;
   Result.RunPart := Options.RunPart;
+end;
+
+type
+  TLayoutIdentity = record
+    Canvas, Device: PtrUInt;
+    DPIX, DPIY, FontDPI, FontHeight, FontSize, Orientation: Integer;
+    CharSet: TFontCharSet;
+    Pitch: TFontPitch;
+    Quality: TFontQuality;
+    Styles: TFontStyles;
+    Color: TColor;
+    Width, Height, Scale, LineSpacing, LineHeight: Integer;
+    Borders: TRect;
+    VertAlign: TInkRenderVertAlign;
+    NoWrap: Boolean;
+    OwnerState: TOwnerDrawState;
+    Images: PtrUInt;
+    ImageWidth, ImageHeight, ImageCount: Integer;
+  end;
+
+  TLayoutEntry = class
+    { the identity as a record rather than a string: comparing it needs no
+      allocation, and the hash settles almost every entry in one integer }
+    Ident: TLayoutIdentity;
+    Face, Source: string;
+    Hash: QWord;
+    Layout: TInkRenderLayout;
+    Bytes: SizeUInt;
+    destructor Destroy; override;
+  end;
+
+{ FNV-1a over the identity, the face and the source.  The hash only decides
+  which entry to compare properly; a collision costs a comparison, never the
+  wrong text. }
+function IdentityHash(const AIdent: TLayoutIdentity;
+  const AFace, ASource: string): QWord;
+const Prime = QWord(1099511628211);
+var I: Integer; P: PByte;
+begin
+  Result := QWord(14695981039346656037);
+  P := @AIdent;
+  for I := 0 to SizeOf(AIdent)-1 do
+  begin
+    Result := (Result xor P[I])*Prime;
+  end;
+  for I := 1 to Length(AFace) do Result := (Result xor Byte(AFace[I]))*Prime;
+  for I := 1 to Length(ASource) do Result := (Result xor Byte(ASource[I]))*Prime;
+end;
+
+destructor TLayoutEntry.Destroy;
+begin
+  if Layout<>nil then Layout.Release;
+  inherited Destroy;
+end;
+
+constructor THTMLLayoutCache.Create(AMaxEntries: Integer; AMaxBytes: SizeUInt);
+begin
+  inherited Create;
+  FEntries := TList.Create;
+  FMaxEntries := Max(1,AMaxEntries);
+  FMaxBytes := AMaxBytes;
+end;
+
+destructor THTMLLayoutCache.Destroy;
+begin
+  Clear;
+  FEntries.Free;
+  FBuilder.Free;
+  inherited Destroy;
+end;
+
+procedure THTMLLayoutCache.RemoveOldest;
+var E: TLayoutEntry;
+begin
+  E := TLayoutEntry(FEntries[0]);
+  Dec(FBytes,E.Bytes);
+  FEntries.Delete(0);
+  E.Free;
+end;
+
+procedure THTMLLayoutCache.Clear;
+begin
+  while FEntries.Count>0 do RemoveOldest;
+end;
+
+function THTMLLayoutCache.Count: Integer;
+begin
+  Result := FEntries.Count;
+end;
+
+function THTMLLayoutCache.Acquire(Canvas: TCanvas; const Text: string;
+  const Options: TInkRenderOptions): TInkRenderLayout;
+var Identity: TLayoutIdentity; Face: string; I: Integer; Hash: QWord;
+  E: TLayoutEntry; Builder: TInkRenderer; SavedFont: TFont;
+begin
+  { Exact identity, not a hash: a collision must never display other text.
+    Zero padding before serializing the fixed-size portion. Position, clip,
+    hover, run callbacks and selection colors are deliberately not geometry. }
+  FillChar(Identity,SizeOf(Identity),0);
+  Identity.Canvas := PtrUInt(Canvas);
+  Identity.Device := PtrUInt(Canvas.Handle);
+  Identity.DPIX := GetDeviceCaps(Canvas.Handle,LOGPIXELSX);
+  Identity.DPIY := GetDeviceCaps(Canvas.Handle,LOGPIXELSY);
+  with Options.BaseFont do
+  begin
+    Identity.FontDPI := PixelsPerInch;
+    Identity.FontHeight := Height; Identity.FontSize := Size;
+    Identity.Orientation := Orientation; Identity.CharSet := CharSet;
+    Identity.Pitch := Pitch; Identity.Quality := Quality;
+    Identity.Styles := Style; Identity.Color := Color;
+  end;
+  Identity.Width := Options.Width;
+  if Options.VertAlign<>nvaTop then Identity.Height := Options.Height;
+  Identity.Scale := Options.Scale;
+  Identity.LineSpacing := Options.LineSpacing;
+  Identity.LineHeight := Options.LineHeight;
+  Identity.Borders := Options.Borders;
+  Identity.VertAlign := Options.VertAlign;
+  Identity.NoWrap := Options.NoWrap;
+  { Only odReserved1 changes layout (indent scaling). Other owner states
+    are applied by PaintLayout to the current draw. }
+  Identity.OwnerState := Options.OwnerState * [odReserved1];
+  Identity.Images := PtrUInt(Options.Images);
+  if Options.Images<>nil then
+  begin
+    Identity.ImageWidth := Options.Images.Width;
+    Identity.ImageHeight := Options.Images.Height;
+    Identity.ImageCount := Options.Images.Count;
+  end;
+  Face := Options.BaseFont.Name;
+  Hash := IdentityHash(Identity,Face,Text);
+  for I := FEntries.Count-1 downto 0 do
+  begin
+    E := TLayoutEntry(FEntries[I]);
+    if (E.Hash=Hash) and CompareMem(@E.Ident,@Identity,SizeOf(Identity)) and
+      (E.Face=Face) and (E.Source=Text) then
+    begin
+      Inc(FHits);
+      FEntries.Move(I,FEntries.Count-1);
+      Result := E.Layout; Result.Retain;
+      Exit;
+    end;
+  end;
+  Inc(FMisses);
+  E := TLayoutEntry.Create;
+  try
+    E.Ident := Identity; E.Face := Face; E.Source := Text; E.Hash := Hash;
+    { One builder, kept: its word widths and font metrics are the expensive
+      part of measuring, and a page's blocks share most of their words.  It
+      is thrown away when the device it measured against changes, which is
+      what the caches are keyed on but cannot see. }
+    if (FBuilder<>nil) and ((FBuilderDPIX<>Identity.DPIX) or
+      (FBuilderDPIY<>Identity.DPIY) or (FBuilderFontDPI<>Identity.FontDPI)) then
+      FreeAndNil(FBuilder);
+    if FBuilder=nil then
+    begin
+      FBuilder := TInkRenderer.Create;
+      FBuilderDPIX := Identity.DPIX; FBuilderDPIY := Identity.DPIY;
+      FBuilderFontDPI := Identity.FontDPI;
+    end;
+    Builder := FBuilder;
+    SavedFont := TFont.Create;
+    SavedFont.PixelsPerInch := Canvas.Font.PixelsPerInch;
+    SavedFont.Assign(Canvas.Font);
+    try
+      Builder.Tokenize(Text);
+      Builder.Layout(Canvas,Options);
+      E.Layout := Builder.DetachLayout;
+      E.Layout.Retain;
+    finally
+      Canvas.Font.Assign(SavedFont);
+      SavedFont.Free;
+    end;
+    E.Bytes := E.Layout.StorageBytes+SizeUInt(Length(E.Source))+
+      SizeUInt(SizeOf(TLayoutIdentity))+256;
+    { Keep one oversized layout rather than repeatedly rebuilding a giant
+      table. All other entries are evicted; active callers pin their layout. }
+    while (FEntries.Count>0) and ((FEntries.Count>=FMaxEntries) or
+      (FBytes+E.Bytes>FMaxBytes)) do RemoveOldest;
+    FEntries.Add(E); Inc(FBytes,E.Bytes);
+    Result := E.Layout; Result.Retain;
+    E := nil;
+  finally E.Free end;
+end;
+
+function PreparedLayout(Canvas: TCanvas; const Text: string;
+  const Options: TInkRenderOptions; Cache: THTMLLayoutCache): TInkRenderLayout;
+begin
+  if Cache<>nil then Exit(Cache.Acquire(Canvas,Text,Options));
+  Engine.Tokenize(Text);
+  Result := Engine.Layout(Canvas,Options);
 end;
 
 { a block the control wants centered or right-aligned says so in its markup }
@@ -266,42 +498,48 @@ begin
 end;
 
 procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
-  const Text: string; const Options: THTMLOptions);
-var O: TInkRenderOptions;
+  const Text: string; const Options: THTMLOptions;
+  Cache: THTMLLayoutCache = nil);
+var O: TInkRenderOptions; L: TInkRenderLayout; Relay: TRunRelay;
 begin
   O := EngineOptions(Canvas, Options, Rect.Right-Rect.Left, Rect.Bottom-Rect.Top, State);
+  Relay := nil;
   if Assigned(Options.OnRun) then
   begin
-    GRunHandler := Options.OnRun; GRunPart := Options.RunPart;
-    O.OnRun := @GRelay.Run;
+    Relay := TRunRelay.Create(Options.OnRun,Options.RunPart);
+    O.OnRun := @Relay.Run;
   end;
   try
-    Engine.Tokenize(Aligned(Text, Options.HorzAlign));
-    Engine.Paint(Canvas, Rect, O);
-  finally GRunHandler := nil end;
+    L := PreparedLayout(Canvas,Aligned(Text,Options.HorzAlign),O,Cache);
+    try Engine.PaintLayout(Canvas,Rect,O,L)
+    finally if Cache<>nil then L.Release end;
+  finally Relay.Free end;
 end;
 
 function HTMLTextExtentOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
-  const Text: string; const Options: THTMLOptions): TSize;
-var O: TInkRenderOptions; W: Integer;
+  const Text: string; const Options: THTMLOptions;
+  Cache: THTMLLayoutCache = nil): TSize;
+var O: TInkRenderOptions; W: Integer; L: TInkRenderLayout;
 begin
   W := Rect.Right-Rect.Left;
   if W<=0 then W := 32767;
   O := EngineOptions(Canvas, Options, W, 0, State);
-  Engine.Tokenize(Aligned(Text, Options.HorzAlign));
-  Result := Engine.Layout(Canvas, O).Size;
+  L := PreparedLayout(Canvas,Aligned(Text,Options.HorzAlign),O,Cache);
+  try Result := L.Size
+  finally if Cache<>nil then L.Release end;
 end;
 
 function HTMLHitTest(Canvas: TCanvas; Rect: TRect; const Text: string;
-  const AOpts: THTMLOptions; MouseX, MouseY: Integer): THTMLHitInfo;
-var O: TInkRenderOptions; Hit: TInkRenderHit;
+  const AOpts: THTMLOptions; MouseX, MouseY: Integer;
+  Cache: THTMLLayoutCache = nil): THTMLHitInfo;
+var O: TInkRenderOptions; Hit: TInkRenderHit; L: TInkRenderLayout;
 begin
   Result.OnLink := False; Result.LinkName := ''; Result.LinkText := '';
   Result.LinkIndex := 0;
   O := EngineOptions(Canvas, AOpts, Rect.Right-Rect.Left, Rect.Bottom-Rect.Top, []);
-  Engine.Tokenize(Aligned(Text, AOpts.HorzAlign));
-  Engine.Layout(Canvas, O);
-  Hit := Engine.HitTest(Canvas, MouseX, MouseY, Rect.Left, Rect.Top);
+  L := PreparedLayout(Canvas,Aligned(Text,AOpts.HorzAlign),O,Cache);
+  try Hit := Engine.HitTestLayout(Canvas,MouseX,MouseY,L,Rect.Left,Rect.Top)
+  finally if Cache<>nil then L.Release end;
   Result.OnLink := Hit.OnLink;
   Result.LinkName := Hit.LinkName;
   Result.LinkText := Hit.LinkText;
@@ -310,29 +548,34 @@ end;
 
 procedure HTMLMeasureAndHit(Canvas: TCanvas; Rect: TRect; const Text: string;
   const AOpts: THTMLOptions; MouseX, MouseY: Integer;
-  out Width, Height: Integer; out AHit: THTMLHitInfo);
-var O: TInkRenderOptions; Sz: TSize; Hit: TInkRenderHit;
+  out Width, Height: Integer; out AHit: THTMLHitInfo;
+  Cache: THTMLLayoutCache = nil);
+var O: TInkRenderOptions; Sz: TSize; Hit: TInkRenderHit; L: TInkRenderLayout;
+  Relay: TRunRelay;
 begin
   AHit.OnLink := False; AHit.LinkName := ''; AHit.LinkText := ''; AHit.LinkIndex := 0;
   O := EngineOptions(Canvas, AOpts, Rect.Right-Rect.Left, Rect.Bottom-Rect.Top, []);
+  Relay := nil;
   if Assigned(AOpts.OnRun) then
   begin
-    GRunHandler := AOpts.OnRun; GRunPart := AOpts.RunPart;
-    O.OnRun := @GRelay.Run;
+    Relay := TRunRelay.Create(AOpts.OnRun,AOpts.RunPart);
+    O.OnRun := @Relay.Run;
   end;
   try
-    Engine.Tokenize(Aligned(Text, AOpts.HorzAlign));
-    Sz := Engine.Layout(Canvas, O).Size;
-    Width := Sz.cx; Height := Sz.cy;
-    { the words, without drawing them: measuring must not need a clip }
-    if Assigned(AOpts.OnRun) then Engine.ReportRuns(O, Rect.Left, Rect.Top);
-    if (MouseX>=0) and (MouseY>=0) then
-    begin
-      Hit := Engine.HitTest(Canvas, MouseX, MouseY, Rect.Left, Rect.Top);
-      AHit.OnLink := Hit.OnLink; AHit.LinkName := Hit.LinkName;
-      AHit.LinkText := Hit.LinkText; AHit.LinkIndex := Hit.LinkIndex;
-    end;
-  finally GRunHandler := nil end;
+    L := PreparedLayout(Canvas,Aligned(Text,AOpts.HorzAlign),O,Cache);
+    try
+      Sz := L.Size;
+      Width := Sz.cx; Height := Sz.cy;
+      { the words, without drawing them: measuring must not need a clip }
+      if Assigned(AOpts.OnRun) then Engine.ReportLayoutRuns(O,L,Rect.Left,Rect.Top);
+      if (MouseX>=0) and (MouseY>=0) then
+      begin
+        Hit := Engine.HitTestLayout(Canvas,MouseX,MouseY,L,Rect.Left,Rect.Top);
+        AHit.OnLink := Hit.OnLink; AHit.LinkName := Hit.LinkName;
+        AHit.LinkText := Hit.LinkText; AHit.LinkIndex := Hit.LinkIndex;
+      end;
+    finally if Cache<>nil then L.Release end;
+  finally Relay.Free end;
 end;
 
 function HTMLWordWrap(Canvas: TCanvas; const Text: string; MaxWidth: Integer;
@@ -437,13 +680,7 @@ begin
   else inherited Assign(Source);
 end;
 
-initialization
-  GRunFont := TFont.Create;
-  GRelay := TRunRelay.Create;
-
 finalization
   GEngine.Free;
-  GRelay.Free;
-  GRunFont.Free;
 
 end.
