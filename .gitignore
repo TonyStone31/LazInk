@@ -43,3 +43,7 @@ Thumbs.db
 tests/compare/*-browser.png
 tests/compare/*-snap-*.png
 tests/compare/*-dryrun.png
+
+# Python bytecode from the page generator
+__pycache__/
+*.pyc
