@@ -20,7 +20,7 @@ unit InkRender;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, Types, Math, InkBox;
+  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, LCLIntf, Types, Math, InkBox;
 
 function InkRenderEscape(const Text: string): string;
 function InkRenderUnescape(const Text: string): string;
@@ -264,6 +264,77 @@ begin
   if P > Start then Result := Result + Copy(Text,Start,P-Start);
 end;
 
+{ &#233; and &#xE9; }
+function InkRenderNumbered(const Name: string): string;
+var N: LongInt;
+begin
+  Result := '';
+  if (Length(Name)>2) and ((Name[2]='x') or (Name[2]='X')) then
+  begin
+    if not TryStrToInt('$'+Copy(Name,3,MaxInt),N) then Exit;
+  end
+  else if not TryStrToInt(Copy(Name,2,MaxInt),N) then Exit;
+  if (N<=0) or (N>$10FFFF) or ((N>=$D800) and (N<=$DFFF)) then Exit;
+  Result := UTF8Encode(WideString(WideChar(N)));
+end;
+
+{ The named entities documents actually use - the ones a page writes when it
+  means a symbol it cannot type.  Not the whole HTML table. }
+function InkRenderNamed(const Name: string): string;
+begin
+  Result := '';
+  case Name of
+    'nbsp': Result := ' ';
+    'ensp', 'emsp', 'thinsp': Result := ' ';
+    'shy', 'zwj', 'zwnj': Result := '';
+    'copy': Result := #$C2#$A9;
+    'reg': Result := #$C2#$AE;
+    'trade': Result := #$E2#$84#$A2;
+    'deg': Result := #$C2#$B0;
+    'plusmn': Result := #$C2#$B1;
+    'times': Result := #$C3#$97;
+    'divide': Result := #$C3#$B7;
+    'middot': Result := #$C2#$B7;
+    'bull': Result := #$E2#$80#$A2;
+    'hellip': Result := #$E2#$80#$A6;
+    'ndash': Result := #$E2#$80#$93;
+    'mdash': Result := #$E2#$80#$94;
+    'lsquo': Result := #$E2#$80#$98;
+    'rsquo': Result := #$E2#$80#$99;
+    'ldquo': Result := #$E2#$80#$9C;
+    'rdquo': Result := #$E2#$80#$9D;
+    'laquo': Result := #$C2#$AB;
+    'raquo': Result := #$C2#$BB;
+    'lsaquo': Result := #$E2#$80#$B9;
+    'rsaquo': Result := #$E2#$80#$BA;
+    'larr': Result := #$E2#$86#$90;
+    'uarr': Result := #$E2#$86#$91;
+    'rarr': Result := #$E2#$86#$92;
+    'darr': Result := #$E2#$86#$93;
+    'harr': Result := #$E2#$86#$94;
+    'euro': Result := #$E2#$82#$AC;
+    'pound': Result := #$C2#$A3;
+    'yen': Result := #$C2#$A5;
+    'cent': Result := #$C2#$A2;
+    'sect': Result := #$C2#$A7;
+    'para': Result := #$C2#$B6;
+    'dagger': Result := #$E2#$80#$A0;
+    'permil': Result := #$E2#$80#$B0;
+    'frac12': Result := #$C2#$BD;
+    'frac14': Result := #$C2#$BC;
+    'frac34': Result := #$C2#$BE;
+    'sup2': Result := #$C2#$B2;
+    'sup3': Result := #$C2#$B3;
+    'micro': Result := #$C2#$B5;
+    'infin': Result := #$E2#$88#$9E;
+    'ne': Result := #$E2#$89#$A0;
+    'le': Result := #$E2#$89#$A4;
+    'ge': Result := #$E2#$89#$A5;
+    'check': Result := #$E2#$9C#$93;
+    'star': Result := #$E2#$98#$85;
+  end;
+end;
+
 function InkRenderUnescape(const Text: string): string;
 var P, Q: Integer; Name: string;
 begin
@@ -285,6 +356,8 @@ begin
     else if Name = 'amp' then Result := Result+'&'
     else if Name = 'quot' then Result := Result+'"'
     else if Name = 'apos' then Result := Result+''''
+    else if (Name<>'') and (Name[1]='#') then Result := Result+InkRenderNumbered(Name)
+    else if InkRenderNamed(Name)<>'' then Result := Result+InkRenderNamed(Name)
     else Result := Result+Copy(Text,P,Q-P+1);
     P := Q+1;
   end;
@@ -343,6 +416,37 @@ begin
   U:=Ord(Text[1]);
   Result:=((U>=$2E80) and (U<=$A4CF)) or ((U>=$AC00) and (U<=$D7A3)) or
     ((U>=$F900) and (U<=$FAFF)) or ((U>=$20000) and (U<=$2FA1F));
+end;
+
+{ "6", "6 10" or "6 10 6 10", the way CSS writes padding: one value for
+  every side, two for vertical and horizontal, four for top, right, bottom,
+  left.  A page writes all four, and reading only the first was why a table
+  whose stylesheet asked for room came out tight. }
+function PadOf(const S: string; ADefault, AScale: Integer): TRect;
+var Parts: TStringList; N: array[0..3] of Integer; I: Integer;
+begin
+  for I := 0 to 3 do N[I] := ADefault;
+  Parts := TStringList.Create;
+  try
+    Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+    Parts.DelimitedText := Trim(S);
+    case Parts.Count of
+      1: for I := 0 to 3 do N[I] := StrToIntDef(Parts[0],ADefault);
+      2: begin
+           N[0] := StrToIntDef(Parts[0],ADefault); N[2] := N[0];
+           N[1] := StrToIntDef(Parts[1],ADefault); N[3] := N[1];
+         end;
+      3: begin
+           N[0] := StrToIntDef(Parts[0],ADefault);
+           N[1] := StrToIntDef(Parts[1],ADefault); N[3] := N[1];
+           N[2] := StrToIntDef(Parts[2],ADefault);
+         end;
+      4: for I := 0 to 3 do N[I] := StrToIntDef(Parts[I],ADefault);
+    end;
+  finally Parts.Free end;
+  { top, right, bottom, left - into a TRect's Top, Right, Bottom, Left }
+  Result := Rect(Max(0,InkRenderScalePx(N[3],AScale)),Max(0,InkRenderScalePx(N[0],AScale)),
+    Max(0,InkRenderScalePx(N[1],AScale)),Max(0,InkRenderScalePx(N[2],AScale)));
 end;
 
 function InkRenderScalePx(Value, Scale: Integer): Integer;
@@ -734,7 +838,7 @@ end;
 
 function TInkRenderer.Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
   out AAscent, ADescent: Integer): Integer;
-var Key, V: string; N: Integer; Old: TFont;
+var Key, V: string; N: Integer; Old: TFont; TM: TTextMetric;
 begin
   Key := Run.Style.Face + #1 + IntToStr(Run.Style.Size) + #1 +
     IntToStr(InkRenderStyleBits(Run.Style.Styles)) + #1 + IntToStr(Integer(Run.Style.Script));
@@ -751,10 +855,21 @@ begin
   Canvas.Font.Name := Run.Style.Face; Canvas.Font.Size := Run.Style.Size;
   Canvas.Font.Style := Run.Style.Styles;
   if Run.Style.Script<>nsNormal then Canvas.Font.Size := Max(1,Round(Canvas.Font.Size*0.7));
-  Result := Canvas.TextHeight('Tg');
-  { the LCL gives a height, not a baseline; this is the one approximation,
-    and a platform text backend can replace it without moving any layout }
-  AAscent := Max(1,Round(Result*0.78)); ADescent := Max(0,Result-AAscent);
+  { the font's own metrics, not a guess: a browser's "normal" line is the
+    font's ascent plus its descent, without the internal leading the
+    platform adds on top - which is why a page used to come out with every
+    line a couple of pixels taller than the same page in a browser }
+  if GetTextMetrics(Canvas.Handle,TM) then
+  begin
+    AAscent := Max(1,TM.tmAscent-TM.tmInternalLeading);
+    ADescent := Max(0,TM.tmDescent);
+    Result := AAscent+ADescent;
+  end
+  else
+  begin
+    Result := Canvas.TextHeight('Tg');
+    AAscent := Max(1,Round(Result*0.78)); ADescent := Max(0,Result-AAscent);
+  end;
   V := IntToStr(Result)+','+IntToStr(AAscent);
   N := FMetricKeys.Add(Key); FMetricHeights.Insert(N,V);
   Canvas.Font.Assign(Old); Old.Free;
@@ -764,14 +879,15 @@ procedure TInkRenderer.LayoutTable(const Canvas: TCanvas;
   const Options: TInkRenderOptions; AStart, AEnd: Integer; var X, Y, Line: Integer;
   ALeft: Integer = -1; AWidth: Integer = -1; ABox: TInkBox = nil);
 type
-  TCell = record StartRun, EndRun, Row, Col, Pad: Integer; AttrText: string end;
+  TCell = record StartRun, EndRun, Row, Col, Span: Integer; Pad: TRect; AttrText: string end;
 var
   Cells: array of TCell;
-  I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing, DefaultPad,
+  I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing,
     SX, SY, W, H, Want, Extra, Total, CellX, CellY: Integer;
   RowHeights, ColWidths, ColMin, ColMax: array of Integer;
+  DefaultPad: TRect;
   R: TInkRenderRun; L: TInkRenderLine; Box: TInkBox; St: TInkBoxStyle;
-  Drop, MI: Integer; VA: string;
+  Drop, MI, CellW: Integer; VA: string;
   InCell, FixedLayout, FillWidth: Boolean;
   TableAttrs, CellAttrs, Merge: TStringList;
   WidthText: string; WidthPercent: Integer;
@@ -801,9 +917,28 @@ var
   { Lays one cell's runs out inside AWidth, wrapping the way body text does.
     With Emit off it only measures, which is how a row learns its height
     before anything is placed.  Returns the height the cell needs. }
+  { a cell's line has ended: if its words asked to be centered or pushed
+    right, move them now that their width is known }
+  procedure AlignCellLine(AFirst, AX, AWidth, ACX: Integer; Emit: Boolean);
+  var K, Shift: Integer;
+  begin
+    if not Emit or (AFirst>High(FLayout.FRuns)) then Exit;
+    case FLayout.FRuns[AFirst].Style.Align of
+      naCenter: Shift := (AWidth-(ACX-AX)) div 2;
+      naRight: Shift := AWidth-(ACX-AX);
+    else Exit;
+    end;
+    if Shift<=0 then Exit;
+    for K := AFirst to High(FLayout.FRuns) do
+    begin
+      Inc(FLayout.FRuns[K].Bounds.Left,Shift);
+      Inc(FLayout.FRuns[K].Bounds.Right,Shift);
+    end;
+  end;
+
   function LayCell(Index, AX, AY, AWidth: Integer; Emit: Boolean): Integer;
-  var RunIndex, CX, CY, LineH, RW, P, Start, Bytes, Pad,
-    Inner, Depth, InnerX, InnerLine: Integer;
+  var RunIndex, CX, CY, LineH, RW, P, Start, Bytes,
+    Inner, Depth, InnerX, InnerLine, LineFirst, K, Shift: Integer; Pad: TRect;
     Run: TInkRenderRun; Sz: TSize; Text, Atom: string; C: Cardinal;
     Attrs: TStringList; BG, FG: TColor;
   begin
@@ -814,7 +949,8 @@ var
       BG := InkRenderColor(Attrs.Values['bgcolor'], clNone);
       FG := InkRenderColor(Attrs.Values['color'], clNone);
     finally Attrs.Free end;
-    CX := AX+Pad; CY := AY+Pad; LineH := 0;
+    CX := AX+Pad.Left; CY := AY+Pad.Top; LineH := 0;
+    LineFirst := Length(FLayout.FRuns);
     RunIndex := Cells[Index].StartRun;
     while RunIndex<=Cells[Index].EndRun do
     begin
@@ -832,14 +968,14 @@ var
         end;
         if Inner<=Cells[Index].EndRun then
         begin
-          if CX>AX+Pad then
+          if CX>AX+Pad.Left then
           begin
             if LineH=0 then LineH := Canvas.TextHeight('Tg');
-            Inc(CY,LineH); CX := AX+Pad; LineH := 0;
+            Inc(CY,LineH); CX := AX+Pad.Left; LineH := 0;
           end;
-          InnerX := AX+Pad; InnerLine := Length(FLayout.FLines);
+          InnerX := AX+Pad.Left; InnerLine := Length(FLayout.FLines);
           if Emit then
-            LayoutTable(Canvas,FOpt,RunIndex,Inner,InnerX,CY,InnerLine,AX+Pad,AWidth)
+            LayoutTable(Canvas,FOpt,RunIndex,Inner,InnerX,CY,InnerLine,AX+Pad.Left,AWidth)
           else Inc(CY,MeasureNested(Canvas,RunIndex,Inner,AWidth));
           LineH := 0;
         end;
@@ -858,7 +994,9 @@ var
           { a break inside a cell starts another line in the same cell }
           Inc(P);
           if LineH=0 then LineH := Canvas.TextHeight('Tg');
-          Inc(CY,LineH); CX := AX+Pad; LineH := 0;
+          AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
+          Inc(CY,LineH); CX := AX+Pad.Left; LineH := 0;
+          LineFirst := Length(FLayout.FRuns);
           Continue;
         end;
         Start := P;
@@ -869,11 +1007,13 @@ var
           begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
         Atom := Copy(Text,Start,P-Start);
         Run.Text := Atom; Sz := MeasureRun(Canvas,Run); RW := Sz.cx;
-        if (CX>AX+Pad) and (CX+RW>AX+Pad+AWidth) and
+        if (CX>AX+Pad.Left) and (CX+RW>AX+Pad.Left+AWidth) and
           (Atom[1]<>' ') and (Atom[1]<>#9) then
         begin
           if LineH=0 then LineH := Sz.cy;
-          Inc(CY,LineH); CX := AX+Pad; LineH := 0;
+          AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
+          Inc(CY,LineH); CX := AX+Pad.Left; LineH := 0;
+          LineFirst := Length(FLayout.FRuns);
         end;
         if Emit then
         begin
@@ -891,8 +1031,9 @@ var
       end;
       Inc(RunIndex);
     end;
+    AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
     if LineH=0 then LineH := Canvas.TextHeight('Tg');
-    Result := (CY+LineH) - AY + Pad;
+    Result := (CY+LineH) - AY + Pad.Bottom;
   end;
 
   { the width a cell would like, and the width it cannot go below (its
@@ -938,7 +1079,9 @@ begin
     end
     else if WidthText<>'' then FillWidth := True;
     Spacing := InkRenderScalePx(StrToIntDef(TableAttrs.Values['cellspacing'],0),Options.Scale);
-    DefaultPad := Max(0,InkRenderScalePx(StrToIntDef(TableAttrs.Values['cellpadding'],6),Options.Scale));
+    { a cell a page says nothing about gets what a browser gives it: room
+      enough to clear its border, and no more }
+    DefaultPad := PadOf(TableAttrs.Values['cellpadding'],2,Options.Scale);
 
     { the cells, as ranges into the styled runs - no tree is needed for this }
     Row := -1; Col := 0; Rows := 0; Cols := 0; InCell := False;
@@ -967,12 +1110,17 @@ begin
              Cells[CellIndex].Row := Max(0,Row); Cells[CellIndex].Col := Col;
              Cells[CellIndex].AttrText := FStyled[I].Meta;
              CellAttrs.Text := FStyled[I].Meta;
-             Cells[CellIndex].Pad := Max(0,InkRenderScalePx(
-               StrToIntDef(CellAttrs.Values['cellpadding'],
-               StrToIntDef(TableAttrs.Values['cellpadding'],6)),Options.Scale));
-             Cols := Max(Cols,Col+1);
+             Cells[CellIndex].Span := Max(1,StrToIntDef(CellAttrs.Values['colspan'],1));
+             if CellAttrs.Values['cellpadding']<>'' then
+               Cells[CellIndex].Pad := PadOf(CellAttrs.Values['cellpadding'],2,Options.Scale)
+             else Cells[CellIndex].Pad := DefaultPad;
+             Cols := Max(Cols,Col+Cells[CellIndex].Span);
            end;
-        4: if InCell then begin Cells[CellIndex].EndRun := I-1; InCell := False; Inc(Col) end;
+        4: if InCell then
+           begin
+             Cells[CellIndex].EndRun := I-1; InCell := False;
+             Inc(Col,Cells[CellIndex].Span);
+           end;
       end;
       Inc(I);
     end;
@@ -993,12 +1141,27 @@ begin
     for I := 0 to High(Cells) do
     begin
       CellWidths(I,W,H);
-      ColMax[Cells[I].Col] := Max(ColMax[Cells[I].Col],W+Cells[I].Pad*2);
-      ColMin[Cells[I].Col] := Max(ColMin[Cells[I].Col],H+Cells[I].Pad*2);
+      Inc(W,Cells[I].Pad.Left+Cells[I].Pad.Right);
+      Inc(H,Cells[I].Pad.Left+Cells[I].Pad.Right);
+      if Cells[I].Span<=1 then
+      begin
+        ColMax[Cells[I].Col] := Max(ColMax[Cells[I].Col],W);
+        ColMin[Cells[I].Col] := Max(ColMin[Cells[I].Col],H);
+      end
+      else
+      begin
+        { a cell across N columns asks each of them for its share, and no
+          more: the columns a single-column cell sizes come first }
+        for J := Cells[I].Col to Min(Cols-1,Cells[I].Col+Cells[I].Span-1) do
+        begin
+          ColMax[J] := Max(ColMax[J],(W-Spacing*(Cells[I].Span-1)) div Cells[I].Span);
+          ColMin[J] := Max(ColMin[J],(H-Spacing*(Cells[I].Span-1)) div Cells[I].Span);
+        end;
+      end;
     end;
     for I := 0 to Cols-1 do
     begin
-      if ColMax[I]=0 then ColMax[I] := DefaultPad*2+12;
+      if ColMax[I]=0 then ColMax[I] := DefaultPad.Left+DefaultPad.Right+12;
       ColMin[I] := Min(ColMin[I],ColMax[I]);
     end;
 
@@ -1041,11 +1204,17 @@ begin
     for I := 0 to Rows-1 do RowHeights[I] := 0;
     for I := 0 to High(Cells) do
     begin
-      H := LayCell(I,0,0,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),False);
+      W := 0;
+      for J := Cells[I].Col to Min(Cols-1,Cells[I].Col+Max(1,Cells[I].Span)-1) do
+      begin
+        Inc(W,ColWidths[J]);
+        if J>Cells[I].Col then Inc(W,Spacing);
+      end;
+      H := LayCell(I,0,0,Max(1,W-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
       RowHeights[Cells[I].Row] := Max(RowHeights[Cells[I].Row],H);
     end;
     for I := 0 to Rows-1 do
-      if RowHeights[I]=0 then RowHeights[I] := DefaultPad*2+Canvas.TextHeight('Tg');
+      if RowHeights[I]=0 then RowHeights[I] := DefaultPad.Top+DefaultPad.Bottom+Canvas.TextHeight('Tg');
 
     { and now place them, each as a box of its own }
     SX := ALeft+Spacing; SY := Y+Spacing;
@@ -1053,6 +1222,12 @@ begin
     begin
       CellX := SX; for J := 0 to Cells[I].Col-1 do Inc(CellX,ColWidths[J]+Spacing);
       CellY := SY; for J := 0 to Cells[I].Row-1 do Inc(CellY,RowHeights[J]+Spacing);
+      CellW := 0;
+      for J := Cells[I].Col to Min(Cols-1,Cells[I].Col+Max(1,Cells[I].Span)-1) do
+      begin
+        Inc(CellW,ColWidths[J]);
+        if J>Cells[I].Col then Inc(CellW,Spacing);
+      end;
       J := Length(FLayout.FRuns);
       { the cell's box, with the style it carries: its padding, its colors,
         its borders and how round its corners are.  Two cells in a row can
@@ -1070,13 +1245,19 @@ begin
         the cell says otherwise" }
       if (CellAttrs.Values['bgcolor']='') and (CellAttrs.Values['cellbg']<>'') then
         CellAttrs.Values['bgcolor'] := CellAttrs.Values['cellbg'];
+      { a cell that draws its own border is not silenced by a table that
+        says it has none: a grid of cards is a borderless table of bordered
+        cells, and each card has to keep its outline }
+      if (Merge.Values['border']='') and
+        ((Merge.Values['sides']<>'') or (Merge.Values['bordercolor']<>'')) then
+        CellAttrs.Values['border'] := '';
       if ABox<>nil then
       begin
         Box := ABox.AddChild(ibCell);
         Box.Tag := Cells[I].StartRun; Box.TagEnd := Cells[I].EndRun;
         Box.Meta := CellAttrs.Text;
         St := Box.Style;
-        St.Padding := Rect(Cells[I].Pad,Cells[I].Pad,Cells[I].Pad,Cells[I].Pad);
+        St.Padding := Cells[I].Pad;
         St.BackColor := InkRenderColor(CellAttrs.Values['bgcolor'],clNone);
         St.Color := InkRenderColor(CellAttrs.Values['color'],clNone);
         if LowerCase(Trim(CellAttrs.Values['border']))='none' then
@@ -1091,13 +1272,12 @@ begin
         if VA='middle' then St.Content := ibMiddle
         else if VA='bottom' then St.Content := ibBottom;
         Box.Style := St;
-        Box.FBoundsForCell(Rect(CellX,CellY,CellX+ColWidths[Cells[I].Col],
+        Box.FBoundsForCell(Rect(CellX,CellY,CellX+CellW,
           CellY+RowHeights[Cells[I].Row]));
       end;
       { the run the cell is painted from, filled in from that same style }
       R.Text := ''; R.Style := BaseStyle(Options);
-      R.Bounds := Rect(CellX,CellY,CellX+ColWidths[Cells[I].Col],
-        CellY+RowHeights[Cells[I].Row]);
+      R.Bounds := Rect(CellX,CellY,CellX+CellW,CellY+RowHeights[Cells[I].Row]);
       R.Line := Length(FLayout.FLines); R.Part := Cells[I].Row*1000+Cells[I].Col;
       R.IsImage := False; R.ImageIndex := -1; R.Control := 8;
       R.Meta := CellAttrs.Text;
@@ -1108,14 +1288,14 @@ begin
       Drop := 0;
       if ABox<>nil then
       begin
-        H := LayCell(I,0,0,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),False);
+        H := LayCell(I,0,0,Max(1,CellW-Cells[I].Pad.Left-Cells[I].Pad.Right),False);
         case Box.Style.Content of
           ibMiddle: Drop := Max(0,(RowHeights[Cells[I].Row]-H) div 2);
           ibBottom: Drop := Max(0,RowHeights[Cells[I].Row]-H);
         else Drop := 0;   { the top, which is where a cell starts by default }
         end;
       end;
-      LayCell(I,CellX,CellY+Drop,Max(1,ColWidths[Cells[I].Col]-Cells[I].Pad*2),True);
+      LayCell(I,CellX,CellY+Drop,Max(1,CellW-Cells[I].Pad.Left-Cells[I].Pad.Right),True);
       AddLine(J,Length(FLayout.FRuns)-J,CellY,RowHeights[Cells[I].Row],
         Cells[I].Row*1000+Cells[I].Col);
     end;
@@ -1366,6 +1546,10 @@ begin
           Sides:=LowerCase(BoxAttrs.Values['sides']); if Sides='' then Sides:='trbl';
           Radius:=InkRenderScalePx(StrToIntDef(BoxAttrs.Values['radius'],0),Options.Scale);
           BorderColor:=InkRenderColor(BoxAttrs.Values['bordercolor'],clBlack);
+          { a cell with no background and no border has nothing to draw, and
+            asking the canvas to draw it anyway is how an empty card ended up
+            with an outline }
+          if (BG=clNone) and not BorderOn then Continue;
           if (Radius>0) and (Sides='trbl') then
           begin
             { a rounded box is filled and outlined in one go: a square fill
@@ -1408,7 +1592,16 @@ begin
         if odSelected in Options.OwnerState then begin C:=clHighlightText; BG:=clHighlight end
         else if odDisabled in Options.OwnerState then begin C:=clGrayText; BG:=clNone end;
         Canvas.Font.Color:=C;
-        if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG; Canvas.FillRect(DrawRect) end;
+        { a run with a background of its own fills it; one without draws
+          over what is there.  Saying so every time is what keeps a
+          highlight from running on into the words after it: TextOut paints
+          its own background whenever the brush is solid. }
+        if BG<>clNone then
+        begin
+          Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG;
+          Canvas.FillRect(DrawRect);
+        end
+        else Canvas.Brush.Style:=bsClear;
         if R.Control=7 then begin Canvas.Pen.Color:=C; Canvas.Line(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Top); Continue end;
         if R.IsImage and (Options.Images<>nil) and (R.ImageIndex>=0) and (R.ImageIndex<Options.Images.Count) then
           Options.Images.Draw(Canvas,DrawRect.Left,DrawRect.Top,R.ImageIndex)

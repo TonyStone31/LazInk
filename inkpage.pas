@@ -1307,6 +1307,15 @@ var
     V := StringReplace(V,' bgcolor=',' cellbg=',[]);
     Result := Result+V;
   end;
+  { a cell that reaches across columns says so in the markup the renderer
+    reads, the way it says everything else }
+  function Spans(const ATag: string): string;
+  var N: Integer;
+  begin
+    Result := '';
+    N := StrToIntDef(Attribute(ATag,'colspan'),1);
+    if N>1 then Result := Result+' colspan="'+IntToStr(N)+'"';
+  end;
   function CellAlign: string;
   var A: string;
   begin
@@ -1318,6 +1327,9 @@ var
       else if Pos('text-align:right',A)>0 then A := 'right'
       else A := LowerCase(FStyles.Value(Element,Cls,'text-align','',TableCtx));
     end;
+    { a heading cell is centered unless the page says otherwise, which is
+      what a browser does with <th> }
+    if (A='') and (Element='th') then A := 'center';
     if A='center' then Result := '<center>'
     else if A='right' then Result := '<right>'
     else Result := '';
@@ -1818,7 +1830,8 @@ begin
         end
         else if Closing then Buffer := Buffer+'</'+Element+'>'
         else if Element='tr' then Buffer := Buffer+'<tr>'
-        else Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
+        else Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+
+          Spans(Raw)+'>'+CellAlign;
         if (Element<>'tr') then
         begin
           if Closing then ItemCtx := ''
@@ -2177,10 +2190,17 @@ begin
 end;
 function TInkCustomPage.LayoutTop: Integer;
 begin
-  if FImageFit=iifWindow then Result := 8 else Result := 24;
+  { where the first block starts: the page's own top padding, and the eight
+    pixels a browser gives a body that says nothing.  A page that sets its
+    padding gets what it asked for and no more. }
+  if FImageFit=iifWindow then Exit(8);
+  Result := FStyles.Pixels('body','','padding-top',-1);
+  if Result<0 then Result := FStyles.Box('body','','padding',Rect(-1,-1,-1,-1)).Top;
+  if Result<0 then Result := 8;
 end;
 procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
-var J,X,K: Integer; BorderSpec,V: string; Base: Integer; C: TColor;
+var J,X,K,Em: Integer; BorderSpec,V: string; Base: Integer; C: TColor;
+  Margins: TRect;
   function Defaulted(const Prop: string; Fallback: Integer): Integer;
   begin
     Result := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,Prop,Fallback));
@@ -2205,7 +2225,7 @@ begin
   if B.Tag='caption' then
     B.PointSize := Max(1,FStyles.Pixels('caption',B.CSSClass,'font-size',
       Round(Base*0.92)*4 div 3)*3 div 4);
-  B.Bold := IsHeadingTag(B.Tag) or (B.Tag='dt') or (B.Tag='summary');
+  B.Bold := IsHeadingTag(B.Tag) or (B.Tag='summary');
   { a <summary> wears the triangle that says which way it goes }
   if B.FoldHead>=0 then
     if (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead] then B.Marker := '▾'
@@ -2216,12 +2236,30 @@ begin
     B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FQuoteText)
   else
     B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FBodyText);
-  if B.Pre then B.Padding := Defaulted('padding',10)
-  else if B.Tag='table' then B.Padding := Defaulted('padding',0)
-  else B.Padding := Defaulted('padding',6);
-  B.GapBefore := Defaulted('margin-top',0);
-  if B.Tag='li' then B.GapAfter := Defaulted('margin-bottom',2)
-  else B.GapAfter := Defaulted('margin-bottom',12);
+  { a browser gives a block no padding of its own unless its stylesheet
+    says so - only code blocks, which sit on a shade, are inset by default }
+  if B.Pre then K := 6 else K := 0;
+  B.Padding := Max(0,FStyles.Box(B.Tag,B.CSSClass,'padding',Rect(K,K,K,K)).Left);
+  { what a browser gives a block when its stylesheet says nothing: an em of
+    its own size above and below a paragraph, less for a heading, none for a
+    list item.  Ems, not pixels, so a bigger heading pushes further. }
+  Em := Max(1,Round(B.PointSize*4/3));
+  if IsHeadingTag(B.Tag) then
+  begin
+    if B.Tag='h1' then K := Round(Em*0.67)
+    else if B.Tag='h2' then K := Round(Em*0.83)
+    else K := Em;
+  end
+  else if B.Tag='li' then K := 0
+  else if (B.Tag='dd') or (B.Tag='dt') then K := 0
+  else if B.Tag='table' then K := 0
+  else if (B.Tag='summary') or (B.Tag='details') then K := 0
+  else K := Em;
+  { the shorthand first - a page writes "margin: 0" or "margin: 1em 0" far
+    more often than it writes margin-top - then the longhands over it }
+  Margins := FStyles.Box(B.Tag,B.CSSClass,'margin',Rect(K,K,K,K));
+  B.GapBefore := Max(0,Margins.Top);
+  B.GapAfter := Max(0,Margins.Bottom);
   B.BorderColor := clNone;
   BorderSpec := FStyles.Value(B.Tag,B.CSSClass,'border','');
   K := Pos('var(',BorderSpec);
@@ -2265,8 +2303,24 @@ begin
       FStyles.Color('hr',B.CSSClass,'border-color',
       FStyles.Color('hr',B.CSSClass,'background',MixColor(FBodyText,FPageBack,0.7))));
 end;
+{ a block that is an item of a list or a definition list: the list itself
+  has the margins, and they belong to the first and last of these }
+function ItemTag(const ATag: string): Boolean;
+begin
+  Result := (ATag='li') or (ATag='dt') or (ATag='dd');
+end;
+
+{ how many lists deep a block sits }
+function LevelOf(const ANest: string): Integer;
+var I: Integer;
+begin
+  Result := 0;
+  for I := 1 to Length(ANest) do if ANest[I]='l' then Inc(Result);
+end;
+
 procedure TInkCustomPage.Layout;
-var I,Y,W,BlockLeft,ImageW,ImageH,ImageX,TextW,Thick,Start,KeepY,Cols: Integer;
+var I,Y,W,BlockLeft,ImageW,ImageH,ImageX,TextW,Thick,Start,KeepY,Cols,Pending,
+  Em: Integer;
   B,Prev: TInkPageBlock; Sz: TSize; O: THTMLOptions;
 begin
   if not FLayoutDirty then Exit;
@@ -2286,11 +2340,12 @@ begin
   if Start>=FBlocks.Count then Start := FBlocks.Count;
   FLayoutFrom := MaxInt;
   FColumnLeft := BlockLeft; FColumnWidth := W; FLayoutWidth := ClientWidth;
+  Pending := 0;
   if Start=0 then Y := LayoutTop
   else
   begin
     Prev := TInkPageBlock(FBlocks[Start-1]);
-    Y := Prev.Bounds.Bottom+Prev.GapAfter;
+    Y := Prev.Bounds.Bottom; Pending := Prev.GapAfter;
   end;
   O := Options;
   FLayoutBase := Font.Size;
@@ -2318,12 +2373,29 @@ begin
       B.ImageRect := B.Bounds; B.Wrapped := ''; B.MarkerWidth := 0;
       Continue;
     end;
-    Inc(Y,B.GapBefore);
+    { a list has margins of its own, above its first item and below its
+      last, which a browser gives the <ul> the items sit in }
+    if ItemTag(B.Tag) then
+    begin
+      Em := Max(1,Round(B.PointSize*4/3));
+      if (I=0) or not ItemTag(TInkPageBlock(FBlocks[I-1]).Tag) or
+        (LevelOf(TInkPageBlock(FBlocks[I-1]).Nest)<LevelOf(B.Nest)) then
+        B.GapBefore := Max(B.GapBefore,Em);
+      if (I=FBlocks.Count-1) or not ItemTag(TInkPageBlock(FBlocks[I+1]).Tag) or
+        (LevelOf(TInkPageBlock(FBlocks[I+1]).Nest)<LevelOf(B.Nest)) then
+        B.GapAfter := Max(B.GapAfter,Em);
+    end;
+    { the space between two blocks is the larger of what the one above
+      wanted below it and what this one wants above it, not the two added
+      together: margins collapse, which is most of why a page used to come
+      out a third longer than a browser draws it }
+    Inc(Y,Max(Pending,B.GapBefore)); Pending := 0;
     BlockFont(Canvas,B);
     B.MarkerWidth := 0;
     if B.Tag='hr' then
     begin
-      Thick := Max(1,Scale96ToFont(2));
+      { a rule is a hairline, as a browser draws it }
+      Thick := 1;
       Sz.cx := W-B.Indent; Sz.cy := Thick;
       B.Wrapped := '';
     end
@@ -2374,13 +2446,15 @@ begin
     ImageX := B.Bounds.Left;
     if FImageFit=iifWindow then ImageX := B.Bounds.Left+Max(0,(W-B.Indent-Sz.cx) div 2);
     B.ImageRect := Rect(ImageX,Y,ImageX+Sz.cx,Y+Sz.cy);
-    Inc(Y,Sz.cy+B.Padding*2+B.GapAfter);
+    Inc(Y,Sz.cy+B.Padding*2); Pending := B.GapAfter;
   end;
   if (Start>0) and (Start>=FBlocks.Count) and (FBlocks.Count>0) then
   begin
     Prev := TInkPageBlock(FBlocks[FBlocks.Count-1]);
-    Y := Prev.Bounds.Bottom+Prev.GapAfter;
+    Y := Prev.Bounds.Bottom; Pending := Prev.GapAfter;
   end;
+  { the last block's own bottom margin still ends the page }
+  Inc(Y,Pending);
   if FBlocks.Count=0 then Y := LayoutTop;
   FContentHeight := Y;
   FScroll.SetParams(Min(FScroll.Position,Max(0,Y-ClientHeight)),0,Max(ClientHeight,Y),Max(1,ClientHeight));

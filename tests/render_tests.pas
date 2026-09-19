@@ -1505,6 +1505,49 @@ begin
   finally Anim.Free end;
 end;
 
+{ --- a cell that reaches across columns --- }
+procedure ColspanChecks;
+var
+  I, J, Wide, Narrow: Integer; B: TInkPageBlock;
+begin
+  Probe.SetBounds(0, 0, 500, 300);
+  Probe.LoadHTML('<html><body><table border="1">' +
+    '<tr><td>alpha</td><td>beta</td><td>gamma</td></tr>' +
+    '<tr><td colspan="2">spanned</td><td>tail</td></tr>' +
+    '<tr><td colspan="3">everything</td></tr>' +
+    '</table></body></html>');
+  Probe.ScrollTo(0);
+  B := nil;
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'table' then begin B := Probe.Block(I); Probe.BlockText(I) end;
+  Check(B <> nil, 'the table is there');
+  if B = nil then Exit;
+  Check(Pos('colspan="2"', B.Source) > 0, 'the page passes colspan on: ' + Copy(B.Source, 1, 120));
+
+  { the words of a spanning cell start where the first column starts, and
+    the cell reaches past where the second one would end }
+  Wide := 0; Narrow := 0;
+  for J := 0 to B.RunCount - 1 do
+  begin
+    if Trim(B.Runs[J].Text) = 'spanned' then Wide := B.Runs[J].Left;
+    if Trim(B.Runs[J].Text) = 'beta' then Narrow := B.Runs[J].Left;
+  end;
+  Check((Wide > 0) and (Narrow > 0),
+    Format('both cells were laid out (spanned at %d, beta at %d)', [Wide, Narrow]));
+  Check(Wide < Narrow,
+    Format('a cell that spans two columns starts in the first (%d against %d)',
+      [Wide, Narrow]));
+  Check(Pos('everything', Probe.BlockText(0)) > 0, 'and the three-column one is there');
+
+  { the cell beside a spanning one sits past the columns it covers }
+  for J := 0 to B.RunCount - 1 do
+    if Trim(B.Runs[J].Text) = 'tail' then
+      Check(B.Runs[J].Left > Narrow,
+        Format('the cell after a spanning one sits after it (%d against %d)',
+          [B.Runs[J].Left, Narrow]));
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 { --- nothing a block paints may leak into the next one --- }
 procedure BrushLeakChecks;
 const
@@ -1633,6 +1676,7 @@ var
   I, J, K, Reached, Missing: Integer; B: TInkPageBlock; Seen: array[0..12] of Boolean;
   Report: string;
 begin
+  Report := '';
   Probe.SetBounds(0, 0, 460, 400);
   Probe.LoadHTML(Doc);
   Probe.ScrollTo(0);
@@ -2672,6 +2716,7 @@ begin
     CodeChecks;
     IconChecks;
     BrushLeakChecks;
+    ColspanChecks;
     TableLinkChecks;
     LinkReachChecks;
     ScrolledLinkChecks;

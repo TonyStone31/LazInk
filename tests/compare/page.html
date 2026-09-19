@@ -1,0 +1,219 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>LazInk against a browser</title>
+<style>
+  body { background: #ffffff; color: #22262c; font-size: 14px; padding: 12px;
+         font-family: sans-serif }
+  h1 { color: #14315c; font-size: 26px }
+  h2 { color: #176bbd; font-size: 20px; margin-top: 22px }
+  h3 { color: #5e6670; font-size: 15px }
+  a { color: #176bbd }
+  code, kbd { background: #eef0f3; color: #22262c }
+  pre { background: #f4f6f8; padding: 10px }
+  blockquote { color: #5e6670 }
+  hr { color: #c8ccd2 }
+  small { color: #7a828c }
+  mark { background: #fff3a0 }
+  table { border-collapse: collapse; margin: 8px 0 }
+  th, td { border: 1px solid #c8ccd2; padding: 6px 10px }
+  th { background: #eef2f7 }
+  table.cards { width: 100%; table-layout: fixed; border-spacing: 10px;
+                border-collapse: separate }
+  table.cards td { background: #f4f7ff; border: 1px solid #c7d2fe;
+                   border-radius: 8px; padding: 10px 12px }
+  table.cards td.empty { background: none; border: none }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px }
+  .card { background: #f4f7ff; border: 1px solid #c7d2fe; padding: 10px;
+          text-decoration: none; display: block }
+  .note { background: #f4f6f8; border-left: 4px solid #176bbd; padding: 8px 10px }
+  .right { text-align: right }
+  .middle { text-align: center }
+  @media (max-width: 420px) {
+    .grid { grid-template-columns: 1fr }
+    body { font-size: 13px }
+  }
+</style>
+</head>
+<body>
+
+<h1>LazInk against a browser</h1>
+
+<p>This page is drawn twice: once by a real browser and once by LazInk, side
+by side, so the two can be compared by eye. It uses everything LazInk claims
+to support, and a few things it does not, so the differences are visible
+rather than guessed at.</p>
+
+<h2>Text</h2>
+
+<p>Ordinary words, then <b>bold</b>, <i>italic</i>, <u>underlined</u>,
+<s>struck through</s>, <code>code</code>, <kbd>Ctrl</kbd>+<kbd>C</kbd>,
+<mark>highlighted</mark>, <del>deleted</del>, <ins>inserted</ins>,
+<small>small print</small>, H<sub>2</sub>O and E=mc<sup>2</sup>, and a
+<a href="#tables">link to further down the page</a>.</p>
+
+<p>Entities: &amp; &lt; &gt; &quot; &copy; &rarr; &mdash; &hellip; &nbsp;
+and a <q>quotation inside a sentence</q>.</p>
+
+<p>A long paragraph, so that wrapping can be compared: the quick brown fox
+jumps over the lazy dog, and then keeps jumping, because a single line is
+not enough to show where a renderer chooses to break and where it does not.
+Short words and averylongunbreakablewordthatcannotbesplitanywhere sit
+together in the same paragraph on purpose.</p>
+
+<p class="middle">A centered line.</p>
+<p class="right">And one against the right edge.</p>
+
+<hr>
+
+<h2>Lists</h2>
+
+<ul>
+  <li>a bullet, with enough words in it that the line wraps and the wrapped
+      part has to line up under the first word rather than under the bullet</li>
+  <li>another bullet
+    <ul>
+      <li>a nested one</li>
+      <li>and another, with <a href="#code">a link</a> in it</li>
+    </ul>
+  </li>
+  <li>a third</li>
+</ul>
+
+<ol>
+  <li>first</li>
+  <li>second</li>
+  <li>third, which wraps in the same way a bullet does when the text in it
+      runs past the edge of the column</li>
+</ol>
+
+<ol start="8">
+  <li>eight, because the list says so</li>
+  <li>nine</li>
+</ol>
+
+<dl>
+  <dt>A term</dt>
+  <dd>and what it means.</dd>
+  <dt>Another</dt>
+  <dd>and its meaning, which is longer and wraps onto a second line to show
+      how the indent behaves.</dd>
+</dl>
+
+<h2 id="tables">Tables</h2>
+
+<table>
+  <tr><th>Control</th><th>What it is</th><th>Reads</th></tr>
+  <tr><td><a href="#one">TInkPage</a></td><td>a scrolling document viewer</td><td>HTML, Markdown</td></tr>
+  <tr><td><a href="#two">TInkLabel</a></td><td>a label</td><td>HTML, Markdown</td></tr>
+  <tr><td><a href="#three">TInkListBox</a></td><td>a list with an in-place editor</td><td>HTML, Markdown</td></tr>
+</table>
+
+<p>A table whose cells carry their own look, and one cell that holds another
+table:</p>
+
+<table>
+  <tr>
+    <td style="background:#f4f7ff">plain cell</td>
+    <td style="background:#fff7ed">
+      <table><tr><td>inner one</td><td>inner two</td></tr></table>
+    </td>
+    <td><a href="#deep">a link in the third column</a></td>
+  </tr>
+  <tr>
+    <td colspan="2">a cell that says colspan, which LazInk does not read yet</td>
+    <td>last</td>
+  </tr>
+</table>
+
+<h2>Cards</h2>
+
+<table class="cards">
+  <tr>
+    <td><b>One</b><br><small>a card in a table</small></td>
+    <td><b>Two</b><br><small>the second, with more words in it than the first</small></td>
+    <td class="empty"></td>
+  </tr>
+</table>
+
+<div class="grid">
+  <a class="card" href="#c1"><b>A grid card</b><br><small>first</small></a>
+  <a class="card" href="#c2"><b>Another</b><br><small>second</small></a>
+  <a class="card" href="#c3"><b>And a third</b><br><small>third</small></a>
+</div>
+
+<h2 id="code">Code</h2>
+
+<pre><code class="language-pascal">procedure TForm1.FormCreate(Sender: TObject);
+const Greeting = 'It''s ready';      { a doubled quote }
+begin
+  {$IFDEF WINDOWS}
+  InkPage1.Color := $00FF8800;       // a Delphi-style hex number
+  {$ENDIF}
+  if Sender &lt;&gt; nil then
+    InkPage1.LoadFromFile('help/index.html');  (* an old-style comment *)
+end;</code></pre>
+
+<pre><code class="language-python">@property
+def greeting(self) -&gt; str:
+    """What the greeter says."""
+    return f"{self.name} says ready, {42} times"</code></pre>
+
+<pre><code>a line of code with no language named, which should still be colored by the
+rules most languages share: if (n &gt; 42) return "too big";   // and a comment</code></pre>
+
+<h2>Quotes and notes</h2>
+
+<blockquote>
+  <p>A quote has a bar down its side, and it can hold more than one
+  paragraph.</p>
+  <blockquote><p>And a quote inside a quote has two.</p></blockquote>
+</blockquote>
+
+<div class="note"><b>A note box.</b> A div with a background, a left border
+and some padding, which is how most documentation sites draw a callout.</div>
+
+<h2>Pictures</h2>
+
+<p>A PNG, at its own size and then constrained by the column:</p>
+<p><img src="../../images/TInkPage.png" alt="the TInkPage icon"></p>
+<p><img src="../../images/palette.png" alt="the LazInk palette"></p>
+
+<p>A WebP, which LazInk decodes itself:</p>
+<p><img src="../fixtures/webp/drawing-lossless.webp" alt="a lossless WebP drawing"></p>
+
+<p>And one that is not there at all, so the alt text shows:</p>
+<p><img src="missing.png" alt="[this picture is missing]"></p>
+
+<h2 id="deep">Folding</h2>
+
+<details>
+  <summary>Click to see more</summary>
+  <p>This paragraph is folded away until the summary is clicked.</p>
+  <ul><li>and so is this list</li><li>with two items</li></ul>
+</details>
+
+<details open>
+  <summary>Already open</summary>
+  <p>This one was written with the open attribute.</p>
+</details>
+
+<h2>Other scripts</h2>
+
+<p>CJK, which wraps between characters rather than at spaces:
+中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試。</p>
+
+<p>And a line with a <span style="color:#c0392b">red span</span>, a
+<span style="background:#fff3a0">highlighted span</span> and a
+<span style="font-size:20px">bigger one</span> on it, to show how a line
+with mixed sizes sits on its baseline.</p>
+
+<hr>
+
+<p><small>The end. If the two sides diverge anywhere above, that is the bug
+- except for the things LazInk says it does not do: colspan, line-height,
+text-transform, floats and form controls.</small></p>
+
+</body>
+</html>
