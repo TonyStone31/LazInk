@@ -1205,6 +1205,9 @@ var
           else Run.Bounds := Rect(CX,CY,CX+RW,CY+Sz.cy);
           Run.Line := Length(FLayout.FLines);
           Run.Part := Cells[Index].Row*1000+Cells[Index].Col;
+          { its ascent, so it is painted on a baseline like any other run }
+          Metrics(Canvas,Run,Run.Ascent,Run.Descent);
+          Run.Baseline := Run.Bounds.Top+Run.Ascent;
           SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1);
           FLayout.FRuns[High(FLayout.FRuns)] := Run;
         end;
@@ -1906,16 +1909,55 @@ end;
 procedure TInkRenderer.PaintLayout(Canvas: TCanvas; const Bounds: TRect;
   const Options: TInkRenderOptions; ALayout: TInkRenderLayout;
   AOffsetX: Integer; AOffsetY: Integer);
-var I,J,DX,DY: Integer; L: TInkRenderLine; R: TInkRenderRun; Clip: TRect; C,BG: TColor; DrawRect: TRect;
+var I,J,DX,DY,Pass,TextY: Integer; L: TInkRenderLine; R: TInkRenderRun; Clip: TRect; C,BG: TColor; DrawRect,Fill: TRect;
   BoxAttrs: TStringList; Sides: string; BorderColor: TColor; BorderOn: Boolean; Radius: Integer;
   OldFont: TFont; OldBrushStyle: TBrushStyle; OldBrushColor: TColor;
+  { the ascent of the font a run is painted in, remembered for the style it
+    was last asked for: a paragraph's runs nearly all share one }
+  AscFace: string; AscSize, AscBits, AscScript, PaintAscent: Integer;
+  TM: TTextMetric;
+
+  { the colors a run is painted in: its own, a link's, hover's, selection's }
+  procedure RunColors(const ARun: TInkRenderRun; out AColor, ABack: TColor);
+  begin
+    AColor:=ARun.Style.Color; ABack:=ARun.Style.BackColor;
+    if ARun.Style.LinkIndex>0 then
+    begin
+      AColor:=Options.LinkColor;
+      if ARun.Style.LinkIndex=Options.HoverIndex then
+      begin AColor:=Options.HoverColor; ABack:=Options.HoverBackColor end;
+    end;
+    if odSelected in Options.OwnerState then begin AColor:=clHighlightText; ABack:=clHighlight end
+    else if odDisabled in Options.OwnerState then begin AColor:=clGrayText; ABack:=clNone end;
+  end;
+
+  { the ascent of the font now on the canvas, as TextOut will use it }
+  function CanvasAscent(const ARun: TInkRenderRun): Integer;
+  var Bits: Integer;
+  begin
+    Bits:=InkRenderStyleBits(Canvas.Font.Style);
+    if (ARun.Style.Face=AscFace) and (ARun.Style.Size=AscSize) and
+      (Bits=AscBits) and (Integer(ARun.Style.Script)=AscScript) then Exit(PaintAscent);
+    AscFace:=ARun.Style.Face; AscSize:=ARun.Style.Size; AscBits:=Bits;
+    AscScript:=Integer(ARun.Style.Script);
+    if GetTextMetrics(Canvas.Handle,TM) then PaintAscent:=TM.tmAscent
+    else PaintAscent:=-1;
+    Result:=PaintAscent;
+  end;
+
 begin
   Clip:=Bounds; IntersectRect(Clip,Clip,Canvas.ClipRect);
   { the offsets move the text inside Bounds; the clip does not move with it,
     which is what makes them a scroll rather than a second layout }
   DX:=Bounds.Left+AOffsetX; DY:=Bounds.Top+AOffsetY;
+  AscFace:=#0; AscSize:=0; AscBits:=-1; AscScript:=-1; PaintAscent:=-1;
   OldFont:=TFont.Create; OldFont.PixelsPerInch:=Canvas.Font.PixelsPerInch; OldFont.Assign(Canvas.Font); OldBrushStyle:=Canvas.Brush.Style; OldBrushColor:=Canvas.Brush.Color; BoxAttrs:=TStringList.Create;
   try
+    { Two passes: every background first, then every piece of text.  Done in
+      one, run by run, a background that reached past its own line landed on
+      top of letters already drawn - inline code shading slicing the
+      descenders off the line above it. }
+    for Pass:=1 to 2 do
     for I:=0 to High(ALayout.FLines) do begin L:=ALayout.FLines[I]; if (L.Bounds.Bottom+DY<Clip.Top) or (L.Bounds.Top+DY>Clip.Bottom) then Continue;
       for J:=L.FirstRun to L.FirstRun+L.RunCount-1 do begin
         R:=ALayout.FRuns[J];
@@ -1923,6 +1965,7 @@ begin
         DrawRect:=Rect(R.Bounds.Left+DX,R.Bounds.Top+DY,R.Bounds.Right+DX,R.Bounds.Bottom+DY);
         if R.Control=8 then
         begin
+          if Pass=2 then Continue;
           BoxAttrs.Text:=R.Meta; BG:=InkRenderColor(BoxAttrs.Values['bgcolor'],clNone);
           { a table with nothing said about its borders gets a grid;
             border="none" is how a page asks for none }
@@ -1961,6 +2004,25 @@ begin
           end;
           Continue;
         end;
+        RunColors(R,C,BG);
+        if Pass=1 then
+        begin
+          { a run's own background, and no taller than the line it is on:
+            an inline background never reaches into the lines either side
+            of it in a browser, whatever face the run is set in }
+          if BG<>clNone then
+          begin
+            Fill:=DrawRect;
+            Fill.Top:=Max(Fill.Top,L.Bounds.Top+DY);
+            Fill.Bottom:=Min(Fill.Bottom,L.Bounds.Bottom+DY);
+            if Fill.Bottom>Fill.Top then
+            begin
+              Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG;
+              Canvas.FillRect(Fill);
+            end;
+          end;
+          Continue;
+        end;
         if Assigned(Options.OnRun) and (R.Control=0) then
         begin
           R.Bounds:=DrawRect; R.Part:=Options.RunPart;
@@ -1972,25 +2034,31 @@ begin
           the line was settled from its baseline }
         if R.Style.Script<>nsNormal then
           InkRenderApplySize(Canvas,InkRenderSmaller(R.Style.Size,0.7));
-        C:=R.Style.Color; BG:=R.Style.BackColor;
-        if R.Style.LinkIndex>0 then begin C:=Options.LinkColor; if Options.LinkUnderline then Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline]; if R.Style.LinkIndex=Options.HoverIndex then begin C:=Options.HoverColor; BG:=Options.HoverBackColor; if Options.HoverUnderline then Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline] end end;
-        if odSelected in Options.OwnerState then begin C:=clHighlightText; BG:=clHighlight end
-        else if odDisabled in Options.OwnerState then begin C:=clGrayText; BG:=clNone end;
+        if (R.Style.LinkIndex>0) and (Options.LinkUnderline or
+          ((R.Style.LinkIndex=Options.HoverIndex) and Options.HoverUnderline)) then
+          Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline];
         Canvas.Font.Color:=C;
-        { a run with a background of its own fills it; one without draws
-          over what is there.  Saying so every time is what keeps a
-          highlight from running on into the words after it: TextOut paints
-          its own background whenever the brush is solid. }
-        if BG<>clNone then
-        begin
-          Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG;
-          Canvas.FillRect(DrawRect);
-        end
-        else Canvas.Brush.Style:=bsClear;
+        { the backgrounds are down already, and TextOut paints one of its own
+          - the font's whole cell - whenever the brush is solid }
+        Canvas.Brush.Style:=bsClear;
         if R.Control=7 then begin Canvas.Pen.Color:=C; Canvas.Line(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Top); Continue end;
         if R.IsImage and (Options.Images<>nil) and (R.ImageIndex>=0) and (R.ImageIndex<Options.Images.Count) then
           Options.Images.Draw(Canvas,DrawRect.Left,DrawRect.Top,R.ImageIndex)
-        else if not R.IsImage then Canvas.TextOut(DrawRect.Left,DrawRect.Top,R.Text);
+        else if not R.IsImage then
+        begin
+          { on its baseline, not by the top of its cell.  The ascent a run
+            was laid out with leaves out the font's internal leading; TextOut
+            counts it.  That is nought on most Linux fonts and several pixels
+            on Windows ones, which drew every run that much low there - and
+            a fixed face by a different amount from the text beside it. }
+          TextY:=DrawRect.Top;
+          if R.Ascent>0 then
+          begin
+            PaintAscent:=CanvasAscent(R);
+            if PaintAscent>0 then TextY:=DrawRect.Top+R.Ascent-PaintAscent;
+          end;
+          Canvas.TextOut(DrawRect.Left,TextY,R.Text);
+        end;
       end;
     end;
   finally

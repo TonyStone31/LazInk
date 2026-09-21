@@ -1756,6 +1756,71 @@ begin
 end;
 
 { --- nothing a block paints may leak into the next one --- }
+{ bugs/2026-09-21-inline-code-shading-covers-neighbor-lines: the shading
+  behind inline code must stay inside the line it is on.  The line-height
+  here is tighter than the fixed face's own cell, which is the shape the
+  fault takes on Windows, where Consolas stands taller than Segoe UI. }
+procedure InlineShadeChecks;
+const
+  CSS = 'body { background: #ffffff; color: #000000; font-size: 14px; ' +
+        'line-height: 1 } code { background: #ff0000 }';
+  Doc = 'A plain paragraph with `one piece of code` in the middle of a line ' +
+        'that is long enough to wrap at least twice, so that there is a line ' +
+        'of ordinary text above the shaded piece and another below it, with ' +
+        'letters that hang down - g j p q y - above it and tall ones - ' +
+        'b d f h k l - below it.';
+var
+  Shot: TBitmap; X, Y, Top, Band, Worst, Bands, RedRows: Integer; SL: TStringList;
+  Row: Boolean; Para: TInkPageBlock; I: Integer;
+begin
+  SL := TStringList.Create;
+  try
+    SL.Text := CSS;
+    Probe.StyleSheet := SL;
+  finally SL.Free end;
+  Probe.SetBounds(0, 0, 260, 400);
+  Probe.TextFormat := itfMarkdown;
+  Probe.LoadMarkdown(Doc);
+  Probe.ScrollTo(0);
+  Para := nil;
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Tag = 'p' then begin Para := Probe.Block(I); Break end;
+  Check(Para <> nil, 'the paragraph is there');
+  if Para = nil then Exit;
+  Check(Para.LineHeight = 14, Format('line-height: 1 is fourteen pixels (%d)', [Para.LineHeight]));
+
+  Shot := TBitmap.Create;
+  try
+    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+    Probe.RenderTo(Shot.Canvas);
+    { the shading, row by row: pure red comes only from the fill, never from
+      black text laid over it }
+    Worst := 0; Bands := 0; Band := 0; RedRows := 0; Top := -1;
+    for Y := 0 to Shot.Height - 1 do
+    begin
+      Row := False;
+      for X := 0 to Shot.Width - 1 do
+        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then
+        begin Row := True; Break end;
+      if Row then
+      begin
+        Inc(RedRows);
+        if Band = 0 then begin Inc(Bands); Top := Y end;
+        Inc(Band); Worst := Max(Worst, Band);
+      end
+      else Band := 0;
+    end;
+    Check(RedRows > 0, 'the code is shaded at all');
+    Check(Worst <= Para.LineHeight,
+      Format('the shading is no taller than its line (%d rows against a %d-pixel line, ' +
+        'first band at %d)', [Worst, Para.LineHeight, Top]));
+  finally Shot.Free end;
+  Probe.TextFormat := itfHTML;
+  SL := TStringList.Create;
+  try Probe.StyleSheet := SL finally SL.Free end;
+  Probe.SetBounds(0, 0, 400, 200);
+end;
+
 procedure BrushLeakChecks;
 const
   { the rule's color is red only so a stray fill can be told from the text }
@@ -3007,6 +3072,7 @@ begin
     AnimationTimerChecks;
     InheritedTextChecks;
     BrushLeakChecks;
+  InlineShadeChecks;
     ColspanChecks;
   AuthorChecks;
     TableLinkChecks;

@@ -1,0 +1,63 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>What the send summary wanted to be</title>
+<style>
+body { font-size: 14px; font-family: sans-serif; color: #0f172a; padding: 18px 22px }
+h3 { font-size: 12px; color: #64748b; text-transform: uppercase; margin: 18px 0 6px 0 }
+table { width: 100%; border-collapse: collapse }
+th, td { padding: 7px 10px; border: 1px solid #e2e8f0; text-align: left }
+th { background: #f1f5f9; font-size: 12px }
+
+/* 1. a size on a cell */
+td.file { font-size: 12px; font-family: monospace }
+td.big  { font-size: 22px; font-weight: bold; background: #15803d; color: #fff; border: 0 }
+
+/* 2. one line, whatever the table would like */
+td.one { white-space: nowrap }
+
+/* 3. a block inside a cell keeps being a block */
+td.banner { background: #15803d; color: #fff; border: 0; border-radius: 8px; padding: 14px 18px }
+td.banner div.title { font-size: 22px; font-weight: bold }
+td.banner div.sub   { font-size: 14px }
+
+/* 4. a table inside a grid or flex card, and inside a cell, dressed as itself */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px }
+.card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px }
+td.key { background: #f8fafc; color: #475569; width: 120px }
+
+/* 5. a pill */
+span.pill { background: #dcfce7; color: #15803d; border-radius: 10px; padding: 2px 10px; font-weight: bold }
+</style></head><body>
+
+<table><tr><td class="banner">
+  <div class="title">Sent - thank you</div>
+  <div class="sub">2 files, 394 KB, encrypted before leaving this computer.</div>
+</td></tr></table>
+
+<h3>Files</h3>
+<table>
+<tr><th>Part</th><th>File</th><th>Size</th><th>Status</th></tr>
+<tr><td class="one"><b>Report and drawing</b></td>
+    <td class="file">bug-20260920-194130-v2026.09.20.13-4D1661.txt</td>
+    <td class="one">85 KB</td>
+    <td><span class="pill">sent</span></td></tr>
+</table>
+
+<div class="grid">
+  <div class="card"><h3>This machine</h3>
+    <table><tr><td class="key">System</td><td>Linux Mint 22.3</td></tr>
+           <tr><td class="key">Processor</td><td>AMD Ryzen 9 9950X</td></tr></table></div>
+  <div class="card"><h3>The program</h3>
+    <table><tr><td class="key">Version</td><td>v2026.09.20.13</td></tr>
+           <tr><td class="key">Toolkit</td><td>gtk3, LCL 4.99</td></tr></table></div>
+</div>
+
+<h3>The same, as a table in a table</h3>
+<table><tr>
+  <td style="border: 0; padding: 0"><h3>This machine</h3>
+    <table><tr><td class="key">System</td><td>Linux Mint 22.3</td></tr></table></td>
+  <td style="border: 0; padding: 0"><h3>The program</h3>
+    <table><tr><td class="key">Version</td><td>v2026.09.20.13</td></tr></table></td>
+</tr></table>
+
+<p>One&nbsp;line&nbsp;of&nbsp;words&nbsp;joined&nbsp;with&nbsp;nbsp&nbsp;entities&nbsp;that&nbsp;should&nbsp;never&nbsp;break&nbsp;however&nbsp;narrow&nbsp;the&nbsp;column&nbsp;gets&nbsp;and&nbsp;this&nbsp;is&nbsp;long&nbsp;enough&nbsp;to&nbsp;show&nbsp;it.</p>
+</body></html>
