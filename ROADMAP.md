@@ -517,6 +517,20 @@ exists.
 
 ---
 
+### P8. A scroll bar you can turn off, and `&nbsp;` everywhere
+
+Asked 2 October 2026, from Heckers Sketch's command bar: a `TInkMemo` two
+lines high, holding the last message, wants no scroll bar at all.  Today
+the only switch is the stylesheet's `scrollbar-width: none`, and
+`StyleSheet` is protected on the memo, so a host has to subclass to reach
+it.  **Done means:** a published `ScrollBars` property (`issAuto`,
+`issNone`) on every page-based control, honored however the styles are
+applied later.
+
+Found the same day: `HTMLDrawOpt` draws `&nbsp;` as the six letters rather
+than a no-break space, where the page engine decodes it.  **Done means:**
+the same entities decoded by both engines.
+
 ## 4. A renderer of our own, and a license with no strings
 
 **Done, 18 September 2026** - the part that mattered.  `inkhtml.pas` and
