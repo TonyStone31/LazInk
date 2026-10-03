@@ -531,6 +531,12 @@ Found the same day: `HTMLDrawOpt` draws `&nbsp;` as the six letters rather
 than a no-break space, where the page engine decodes it.  **Done means:**
 the same entities decoded by both engines.
 
+And a third, the same afternoon: a `TInkMemo` 36 pixels high on GTK3, two
+lines of inline markup, drew a one-pixel black frame round each line,
+although its blocks carry no border color.  Not chased - Heckers Sketch drew
+the rows with `HTMLDrawOpt` instead.  Also seen: `HTMLDrawOpt` with
+`NoWrap` still breaks a line at its spaces.
+
 ## 4. A renderer of our own, and a license with no strings
 
 **Done, 18 September 2026** - the part that mattered.  `inkhtml.pas` and
