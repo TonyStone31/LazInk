@@ -1340,11 +1340,19 @@ var
     page had already colored it itself, and each piece as it arrives }
   CodeRaw, CodeLang, Piece, Marked: string;
   CodeMarked: Boolean;
-  { the table being read: its classes as a CSS context }
+  { the table being read: its classes as a CSS context, and the contexts of
+    the tables it is nested in, one per level }
   TableCtx: string;
+  TableCtxs: array[0..15] of string;
+  CellClose: string;
+  { a flex/grid item that is itself a table, so the table's close ends it }
+  ItemIsTable: Boolean;
   Margins: TRect;
   { a table whose cells are display: block - one to a row }
   CellsAsBlocks: Boolean;
+  { the block elements open inside the cell being read, innermost last,
+    each entry the markup that closes it }
+  CellBlocks: TStringList;
   TableSpacing: Integer;
   { an element hidden by display: none, and how deep inside it we are }
   HideDepth: Integer;
@@ -1509,14 +1517,37 @@ var
     end;
     K := FStyles.Pixels(El,AClasses,'border-radius',-1,Ctx);
     if K>=0 then Result := Result+' radius="'+IntToStr(K)+'"';
+    { text styling that reaches into the cell: a smaller face for one
+      column is the ordinary way to make long file names fit.  Sizes in
+      pixels, negative, the way TFont.Height spells one. }
+    K := FStyles.Pixels(El,AClasses,'font-size',-1,Ctx);
+    if K>0 then Result := Result+' size="'+IntToStr(-K)+'"';
+    V := LowerCase(FStyles.Value(El,AClasses,'font-weight','',Ctx));
+    if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
+      Result := Result+' bold="1"';
+    V := FStyles.Value(El,AClasses,'font-family','',Ctx);
+    if V<>'' then
+    begin
+      V := InkResolveFace(V);
+      if V<>'' then Result := Result+' face="'+V+'"';
+    end;
+    K := FStyles.Pixels(El,AClasses,'line-height',-1,Ctx);
+    if K>0 then Result := Result+' lineheight="'+IntToStr(K)+'"';
+    { white-space: nowrap on a cell keeps its column at least as wide as
+      the whole text, so "85 KB" never folds to give a neighbor room }
+    V := LowerCase(Trim(FStyles.Value(El,AClasses,'white-space','',Ctx)));
+    if (V='nowrap') or (V='pre') then Result := Result+' nowrap="1"';
   end;
-  function TableAttrs: string;
+  function TableAttrs(ANested: Boolean = False): string;
   var Pad: TRect; K: Integer; V: string;
   begin
     Result := '';
-    CellsAsBlocks := LowerCase(FStyles.Value('td','','display','',TableCtx))='block';
-    TableSpacing := 0;
-    if CellsAsBlocks then
+    if not ANested then
+    begin
+      CellsAsBlocks := LowerCase(FStyles.Value('td','','display','',TableCtx))='block';
+      TableSpacing := 0;
+    end;
+    if CellsAsBlocks and not ANested then
     begin
       { cells that are blocks: one to a row, the whole width, apart by
         their bottom margin }
@@ -1574,6 +1605,18 @@ var
     else if A='right' then Result := '<right>'
     else Result := '';
   end;
+  { blocks left open inside a cell close with the cell, and a cell does not
+    end on a blank line of its own }
+  procedure FlushCellBlocks;
+  begin
+    while CellBlocks.Count>0 do
+    begin
+      Buffer := Buffer+CellBlocks[CellBlocks.Count-1];
+      CellBlocks.Delete(CellBlocks.Count-1);
+    end;
+    if Copy(Buffer,Length(Buffer)-3,4)='<br>' then
+      Delete(Buffer,Length(Buffer)-3,4);
+  end;
   { What a style attribute asks for, as markup, and in AClose the markup
     that puts it back.  Colors, size, weight, slant and decoration: the
     things people write a style attribute for. }
@@ -1622,6 +1665,36 @@ var
     begin
       Result := Result+'<s>'; AClose := '</s>'+AClose;
     end;
+  end;
+  { A block element inside a table cell opens as a line of its own, in its
+    own size and weight - a <div> title over a line of detail, an <h3>
+    heading above a nested table.  Returns the opening markup; AClose is
+    what puts it back. }
+  function CellBlockOpen(out AClose: string): string;
+  var K, Base: Integer; V, CV, SM, SMClose: string; C: TColor;
+  begin
+    Result := ''; AClose := '';
+    Base := BaseFontPixels; K := Base;
+    if Element='h1' then K := Round(Base*2.0)
+    else if Element='h2' then K := Round(Base*1.5)
+    else if Element='h3' then K := Round(Base*1.17)
+    else if Element='h5' then K := Max(1,Round(Base*0.83))
+    else if Element='h6' then K := Max(1,Round(Base*0.67));
+    K := FStyles.Pixels(Element,Cls,'font-size',K,TableCtx);
+    CV := '';
+    C := FStyles.Color(Element,Cls,'color',clNone,TableCtx);
+    if C<>clNone then CV := ' color="'+ColorAttr(C)+'"';
+    if (K<>Base) or (CV<>'') then
+    begin
+      Result := '<font size="'+IntToStr(-K)+'"'+CV+'>'; AClose := '</font>';
+    end;
+    V := LowerCase(FStyles.Value(Element,Cls,'font-weight','',TableCtx));
+    if (Element[1]='h') or (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
+    begin
+      Result := Result+'<b>'; AClose := '</b>'+AClose;
+    end;
+    SM := StyleMarkup(Attribute(Raw,'style'),SMClose);
+    Result := Result+SM; AClose := SMClose+AClose;
   end;
   function InlineMarkup: string;
   var BG, FG: string; C: TColor; K: Integer;
@@ -1873,10 +1946,11 @@ begin
   PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
   CodeBack := HTMLShadeColor(PageBack,7);
   Targets := TStringList.Create; Titles := TStringList.Create;
-  StyleStack := TStringList.Create;
+  StyleStack := TStringList.Create; CellBlocks := TStringList.Create;
   try
   OpenHref := ''; OpenTarget := '';
   HideDepth := 0; FlexDepth := 0; ItemDepth := 0; ItemCtx := ''; ItemIsLink := False;
+  ItemIsTable := False;
   CellsAsBlocks := False; TableSpacing := 0;
   FlexItems := TStringList.Create;
   P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := ''; Nest := '';
@@ -1957,7 +2031,15 @@ begin
         Continue;
       end;
     end;
-    if FlexDepth>0 then
+    if (FlexDepth>0) and (TableDepth=0) and (Element='table') and not Closing then
+    begin
+      { a table in a card is the card's content, laid out by the engine as
+        a table nested in the item's cell.  A table that is itself the grid
+        child gets an item of its own round it, ended by the table's close. }
+      if ItemDepth=0 then begin Inc(ItemDepth); StartItem; ItemIsTable := True end;
+      { fall through to the table machinery below }
+    end
+    else if (FlexDepth>0) and (TableDepth=0) then
     begin
       { inside a flex container: each child is an item, its insides one
         cell's worth of words }
@@ -2004,7 +2086,8 @@ begin
       begin
         { a block's id belongs to the block, so what came before is
           finished first; an inline id marks the block it is in }
-        if IsBlockElement(Element) and (TableDepth=0) and (PreDepth=0) then Flush;
+        if IsBlockElement(Element) and (TableDepth=0) and (PreDepth=0) and
+          (FlexDepth=0) then Flush;
         PendingAnchor := Trim(PendingAnchor+' '+URL);
       end;
     end;
@@ -2013,11 +2096,26 @@ begin
       if Closing then
       begin
         Buffer := Buffer+'</table>'; Dec(TableDepth);
-        if TableDepth=0 then begin Flush; BlockTag := ContainerTag; BlockClass := '' end;
+        { back out to the table this one sat in }
+        if (TableDepth>=0) and (TableDepth<=High(TableCtxs)) then
+          TableCtx := TableCtxs[TableDepth];
+        if TableDepth=0 then
+        begin
+          if FlexDepth>0 then
+          begin
+            { the card's table is done; the card may be done with it }
+            if ItemIsTable then
+            begin
+              EndItem; Dec(ItemDepth); ItemIsTable := False;
+            end;
+          end
+          else begin Flush; BlockTag := ContainerTag; BlockClass := '' end;
+        end;
       end
       else
       begin
-        if TableDepth=0 then
+        if TableDepth<=High(TableCtxs) then TableCtxs[TableDepth] := TableCtx;
+        if (TableDepth=0) and (FlexDepth=0) then
         begin
           { a table of its own starts a block }
           Flush; BlockTag := 'table'; BlockClass := Cls;
@@ -2025,10 +2123,14 @@ begin
           Buffer := '<table'+TableAttrs+'>';
         end
         else
-          { a table inside a cell is part of the block it is in: flushing
-            here would cut the outer table in half and lose the rows read so
-            far, which is what used to happen }
-          Buffer := Buffer+'<table>';
+        begin
+          { a table inside a cell or a card is part of the block it is in -
+            flushing here would cut the outer table in half - but it keeps
+            its dress: its own context for its cells, and its CSS on itself }
+          if TableDepth=0 then CellsAsBlocks := False;
+          TableCtx := 'table'+DotClasses(Cls);
+          Buffer := Buffer+'<table'+TableAttrs(True)+'>';
+        end;
         Inc(TableDepth);
       end;
       Continue;
@@ -2065,8 +2167,17 @@ begin
         begin
           { every cell a row of its own }
           if Element='tr' then
-          else if Closing then Buffer := Buffer+'</'+Element+'></tr>'
-          else Buffer := Buffer+'<tr><'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
+          else if Closing then
+          begin
+            FlushCellBlocks;
+            Buffer := Buffer+'</'+Element+'></tr>';
+          end
+          else
+          begin
+            CellBlocks.Clear;
+            Buffer := Buffer+'<tr><'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
+            if TableDepth<=High(CellFrom) then CellFrom[TableDepth] := Length(Buffer);
+          end;
         end
         else if Closing then
         begin
@@ -2081,11 +2192,13 @@ begin
                 CellCase[TableDepth]);
             CellCase[TableDepth] := '';
           end;
+          if Element<>'tr' then FlushCellBlocks;
           Buffer := Buffer+'</'+Element+'>';
         end
         else if Element='tr' then Buffer := Buffer+'<tr>'
         else
         begin
+          CellBlocks.Clear;
           Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+
             Spans(Raw)+'>'+CellAlign;
           if TableDepth<=High(CellCase) then
@@ -2105,7 +2218,30 @@ begin
           else ItemCtx := TableCtx+' '+Element+DotClasses(Cls);
         end;
       end
-      else if (Element='p') and Closing then Buffer := Buffer+'<br>'
+      else if (Element='div') or (Element='p') or (Element='h1') or
+        (Element='h2') or (Element='h3') or (Element='h4') or
+        (Element='h5') or (Element='h6') then
+      begin
+        { a block child of a cell is a line of its own, in its own size and
+          weight - not words run into the line before it }
+        if Closing then
+        begin
+          if CellBlocks.Count>0 then
+          begin
+            Buffer := Buffer+CellBlocks[CellBlocks.Count-1];
+            CellBlocks.Delete(CellBlocks.Count-1);
+          end;
+          if Copy(Buffer,Length(Buffer)-3,4)<>'<br>' then Buffer := Buffer+'<br>';
+        end
+        else
+        begin
+          { words already on the line stay a line of their own }
+          if (TableDepth<=High(CellFrom)) and (Length(Buffer)>CellFrom[TableDepth]) and
+            (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then Buffer := Buffer+'<br>';
+          Buffer := Buffer+CellBlockOpen(CellClose);
+          CellBlocks.Add(CellClose);
+        end;
+      end
       else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
       else Buffer := Buffer+InlineTag;
       Continue;
@@ -2331,7 +2467,7 @@ begin
     EndFlex;
   end;
   Flush;
-  finally Targets.Free; Titles.Free; StyleStack.Free; FlexItems.Free end;
+  finally Targets.Free; Titles.Free; StyleStack.Free; FlexItems.Free; CellBlocks.Free end;
   if PendingAnchor<>'' then
   begin
     { ids at the very end still lead somewhere: the end }

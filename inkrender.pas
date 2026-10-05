@@ -1047,9 +1047,15 @@ procedure TInkRenderer.LayoutTable(const Canvas: TCanvas;
   ALeft: Integer = -1; AWidth: Integer = -1; ABox: TInkBox = nil);
 type
   TCell = record StartRun, EndRun, Row, Col, Span, Down: Integer;
-    MeasuredHeight: Integer; Pad: TRect; AttrText: string end;
+    MeasuredHeight: Integer; Pad: TRect; AttrText: string;
+    { text styling the cell's attributes carry into its words: a size and
+      face applied to runs that did not pick their own, bold over all of
+      them, a fixed line height, and "never wrap this cell" }
+    TextSize, LineAdvance: Integer; TextBold, NoWrapCell: Boolean;
+    TextFace: string end;
 var
   Cells: array of TCell;
+  CellBase: TInkRenderStyle;
   { how many more rows each column is still covered for by a cell above it }
   Busy: array of Integer;
   I, J, Row, Col, Rows, Cols, CellIndex, TableWidth, Spacing,
@@ -1057,10 +1063,22 @@ var
   RowHeights, ColWidths, ColMin, ColMax, RowOffsets, ColOffsets: array of Integer;
   DefaultPad: TRect;
   R: TInkRenderRun; L: TInkRenderLine; Box: TInkBox; St: TInkBoxStyle;
-  Drop, MI, CellW, Share, Over, ShareMin, OverMin: Integer; VA: string;
+  Drop, MI, CellW, Share, Over, ShareMin, OverMin: Integer; VA, AV: string;
   InCell, FixedLayout, FillWidth: Boolean;
   TableAttrs, CellAttrs, Merge: TStringList;
   WidthText: string; WidthPercent: Integer;
+
+  { the cell's text styling onto one of its runs: size and face only where
+    the run kept the base ones - inline markup inside the cell still wins -
+    and bold over everything, as td { font-weight: bold } bolds a cell }
+  procedure ApplyCellText(Index: Integer; var ARun: TInkRenderRun);
+  begin
+    if (Cells[Index].TextSize<>0) and (ARun.Style.Size=CellBase.Size) then
+      ARun.Style.Size := Cells[Index].TextSize;
+    if (Cells[Index].TextFace<>'') and SameText(ARun.Style.Face,CellBase.Face) then
+      ARun.Style.Face := Cells[Index].TextFace;
+    if Cells[Index].TextBold then Include(ARun.Style.Styles,fsBold);
+  end;
 
   procedure AddLine(First, Count, Top, Height, Part: Integer);
   begin
@@ -1108,10 +1126,43 @@ var
 
   function LayCell(Index, AX, AY, AWidth: Integer; Emit: Boolean): Integer;
   var RunIndex, CX, CY, LineH, RW, P, Start, Bytes,
-    Inner, Depth, InnerX, InnerLine, LineFirst, K, Shift: Integer; Pad: TRect;
+    Inner, Depth, InnerX, InnerLine, LineFirst, K, Shift, LAdv: Integer; Pad: TRect;
     Run: TInkRenderRun; Sz: TSize; Text, Atom: string; C: Cardinal;
     Attrs: TStringList; BG, FG: TColor;
+    { a cell with its own line-height advances by exactly that, as a browser
+      does; everything else advances by the tallest thing on the line }
+    function Advance: Integer;
+    begin
+      if LAdv>0 then Result := LAdv else Result := LineH;
+    end;
+    { two sizes of text on one cell line hang from one baseline, as they do
+      in body text: without this a big title and the small words beside it
+      were both hung from the top and the line took whichever height came
+      last, cutting into its neighbors }
+    procedure SettleLine(AFirst: Integer);
+    var K, MaxAsc, MaxDesc, D: Integer;
+    begin
+      if not Emit or (AFirst>High(FLayout.FRuns)) then Exit;
+      MaxAsc := 0; MaxDesc := 0;
+      for K := AFirst to High(FLayout.FRuns) do
+      begin
+        if FLayout.FRuns[K].Control<>0 then Continue;
+        MaxAsc := Max(MaxAsc,FLayout.FRuns[K].Ascent);
+        MaxDesc := Max(MaxDesc,FLayout.FRuns[K].Descent);
+      end;
+      for K := AFirst to High(FLayout.FRuns) do
+      begin
+        if FLayout.FRuns[K].Control<>0 then Continue;
+        D := MaxAsc-FLayout.FRuns[K].Ascent;
+        if D<=0 then Continue;
+        Inc(FLayout.FRuns[K].Bounds.Top,D);
+        Inc(FLayout.FRuns[K].Bounds.Bottom,D);
+        Inc(FLayout.FRuns[K].Baseline,D);
+      end;
+      LineH := Max(LineH,MaxAsc+MaxDesc);
+    end;
   begin
+    LAdv := Cells[Index].LineAdvance;
     Pad := Cells[Index].Pad;
     Attrs := TStringList.Create;
     try
@@ -1140,14 +1191,19 @@ var
         begin
           if CX>AX+Pad.Left then
           begin
+            { the line before the table ends like any other line - aligned,
+              settled on its baseline - or settling it later would reach
+              over the nested table's runs and drag them with it }
             if LineH=0 then LineH := Canvas.TextHeight('Tg');
-            Inc(CY,LineH); CX := AX+Pad.Left; LineH := 0;
+            AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
+            SettleLine(LineFirst);
+            Inc(CY,Advance); CX := AX+Pad.Left; LineH := 0;
           end;
           InnerX := AX+Pad.Left; InnerLine := Length(FLayout.FLines);
           if Emit then
             LayoutTable(Canvas,FOpt,RunIndex,Inner,InnerX,CY,InnerLine,AX+Pad.Left,AWidth)
           else Inc(CY,MeasureNested(Canvas,RunIndex,Inner,AWidth));
-          LineH := 0;
+          LineH := 0; LineFirst := Length(FLayout.FRuns);
         end;
         RunIndex := Inner+1; Continue;
       end;
@@ -1155,6 +1211,7 @@ var
       Run := FStyled[RunIndex];
       if BG<>clNone then Run.Style.BackColor := BG;
       if FG<>clNone then Run.Style.Color := FG;
+      ApplyCellText(Index,Run);
       Text := Run.Text;
       P := 1;
       while P<=Length(Text) do
@@ -1165,7 +1222,8 @@ var
           Inc(P);
           if LineH=0 then LineH := Canvas.TextHeight('Tg');
           AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
-          Inc(CY,LineH); CX := AX+Pad.Left; LineH := 0;
+          SettleLine(LineFirst);
+          Inc(CY,Advance); CX := AX+Pad.Left; LineH := 0;
           LineFirst := Length(FLayout.FRuns);
           Continue;
         end;
@@ -1178,11 +1236,13 @@ var
         Atom := Copy(Text,Start,P-Start);
         Run.Text := Atom; Sz := MeasureRun(Canvas,Run); RW := Sz.cx;
         if (CX>AX+Pad.Left) and (CX+RW>AX+Pad.Left+AWidth) and
+          not Cells[Index].NoWrapCell and
           (Atom[1]<>' ') and (Atom[1]<>#9) then
         begin
           if LineH=0 then LineH := Sz.cy;
           AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
-          Inc(CY,LineH); CX := AX+Pad.Left; LineH := 0;
+          SettleLine(LineFirst);
+          Inc(CY,Advance); CX := AX+Pad.Left; LineH := 0;
           LineFirst := Length(FLayout.FRuns);
         end;
         if Emit then
@@ -1205,8 +1265,9 @@ var
       Inc(RunIndex);
     end;
     AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
+    SettleLine(LineFirst);
     if LineH=0 then LineH := Canvas.TextHeight('Tg');
-    Result := (CY+LineH) - AY + Pad.Bottom;
+    Result := (CY+Advance) - AY + Pad.Bottom;
   end;
 
   { the width a cell would like, and the width it cannot go below (its
@@ -1302,7 +1363,7 @@ var
   end;
 
   procedure CellWidths(Index: Integer; out AWant, ALeast: Integer);
-  var RunIndex, LineW, W2, L2, Stop: Integer;
+  var RunIndex, LineW, W2, L2, Stop: Integer; Run: TInkRenderRun;
   begin
     AWant := 0; ALeast := 0; LineW := 0;
     RunIndex := Cells[Index].StartRun;
@@ -1320,7 +1381,12 @@ var
         RunIndex := Stop+1; Continue;
       end;
       if FStyled[RunIndex].Control=0 then
-        WidthOfRun(FStyled[RunIndex],LineW,AWant,ALeast);
+      begin
+        { measured in the style the cell will draw it in, or a 12px column
+          would be sized for 15px words }
+        Run := FStyled[RunIndex]; ApplyCellText(Index,Run);
+        WidthOfRun(Run,LineW,AWant,ALeast);
+      end;
       Inc(RunIndex);
     end;
   end;
@@ -1356,6 +1422,9 @@ begin
   Merge := TStringList.Create;
   try
     TableAttrs.Text := FStyled[AStart].Meta;
+    { what "the base size" and "the base face" are, for telling a run that
+      picked its own apart from one that inherited }
+    CellBase := BaseStyle(Options);
     FixedLayout := LowerCase(TableAttrs.Values['layout'])='fixed';
     FillWidth := False; WidthPercent := 0; WidthText := Trim(TableAttrs.Values['width']);
     if (WidthText<>'') and (WidthText[Length(WidthText)]='%') then
@@ -1410,6 +1479,23 @@ begin
              if CellAttrs.Values['cellpadding']<>'' then
                Cells[CellIndex].Pad := PadOf(CellAttrs.Values['cellpadding'],2,Options.Scale)
              else Cells[CellIndex].Pad := DefaultPad;
+             { the cell's own text styling, falling back to the table's -
+               which is where a stylesheet's td rule lands }
+             AV := CellAttrs.Values['size'];
+             if AV='' then AV := TableAttrs.Values['size'];
+             Cells[CellIndex].TextSize := StrToIntDef(AV,0);
+             AV := CellAttrs.Values['face'];
+             if AV='' then AV := TableAttrs.Values['face'];
+             Cells[CellIndex].TextFace := AV;
+             AV := CellAttrs.Values['bold'];
+             if AV='' then AV := TableAttrs.Values['bold'];
+             Cells[CellIndex].TextBold := AV='1';
+             AV := CellAttrs.Values['lineheight'];
+             if AV='' then AV := TableAttrs.Values['lineheight'];
+             Cells[CellIndex].LineAdvance := InkRenderScalePx(StrToIntDef(AV,0),Options.Scale);
+             AV := CellAttrs.Values['nowrap'];
+             if AV='' then AV := TableAttrs.Values['nowrap'];
+             Cells[CellIndex].NoWrapCell := AV='1';
              Cols := Max(Cols,Col+Cells[CellIndex].Span);
            end;
         4: if InCell then
@@ -1437,6 +1523,8 @@ begin
     for I := 0 to High(Cells) do
     begin
       CellWidths(I,W,H);
+      { a nowrap cell can go no narrower than all of its text }
+      if Cells[I].NoWrapCell then H := W;
       Inc(W,Cells[I].Pad.Left+Cells[I].Pad.Right);
       Inc(H,Cells[I].Pad.Left+Cells[I].Pad.Right);
       if Cells[I].Span<=1 then

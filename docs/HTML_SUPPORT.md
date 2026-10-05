@@ -109,6 +109,20 @@ through without disturbing the rows.
   `border-color`, `border-radius`, `padding`, `text-align`, `valign`, set on
   the cell, on `td`/`th`, or through a class. A borderless table of bordered
   cells is a grid of cards.
+* **And its own text**: `font-size`, `font-weight`, `font-family` and
+  `line-height` on `td`/`th` by tag or class reach the words in the cell -
+  a smaller face for one column is how a long file name fits.  Inline
+  markup inside the cell still wins.
+* **`white-space: nowrap` on a cell** keeps its column at least as wide as
+  the whole text, so `85 KB` never folds to give a long neighbor room.
+  `&nbsp;` is a real no-break space too, in every control.
+* **Block children of a cell** - `div`, `p`, `h1`-`h6` - are lines of
+  their own, each in its own size and weight: a title over a dimmer line
+  is a card.
+* **A table nests**: inside a cell, or inside a `display: grid` /
+  `display: flex` card, keeping its stylesheet's padding, backgrounds and
+  colors.  Two cards side by side, each holding a small key/value table,
+  is written exactly as a browser page would write it.
 
 ```html
 <table class="cards">
