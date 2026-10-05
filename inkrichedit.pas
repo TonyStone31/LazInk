@@ -1431,7 +1431,9 @@ begin
   InvalidateLayout;
   ScrollToCaret;
   RestartCaretBlink;
-  if Assigned(FOnChange) then FOnChange(Self);
+  { reading a stored document while the form loads is not a change }
+  if not (csLoading in ComponentState) then
+    if Assigned(FOnChange) then FOnChange(Self);
   SelectionChanged;
 end;
 

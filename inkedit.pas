@@ -620,6 +620,10 @@ begin
   EnsureCaretVisible;
   RestartCaretBlink;
   Invalidate;
+  { reading a stored Text while the form loads is not a change - the stock
+    edits are silent here too, and a handler that runs this early touches
+    controls that do not exist yet }
+  if (csLoading in ComponentState) then Exit;
   if Assigned(FOnChange) then FOnChange(Self);
 end;
 

@@ -330,6 +330,22 @@ begin
 end;
 
 type
+  { a form streamed in with OnChange written before Text, the way an old
+    .lfm may have it - the handler must not run while the form loads }
+  TLoadForm = class(TForm)
+    ed: TInkEdit;
+    procedure EdChange(Sender: TObject);
+  end;
+
+var
+  LoadFired: Integer = 0;
+
+procedure TLoadForm.EdChange(Sender: TObject);
+begin
+  Inc(LoadFired);
+end;
+
+type
   TCodeProbe = class(TInkCodeMemo)
   public
     procedure Press(const C: TUTF8Char);
@@ -3389,6 +3405,8 @@ end;
 { --- the edit's hint and undo, the plain editor, and itfPlain --- }
 procedure EditAndPlainChecks;
 var E: TEditProbe; CM: TCodeProbe; MM: TInkMemo; i: Integer; S: string;
+  LF: TLoadForm; TS: TStringStream; BS: TMemoryStream; Rd: TReader;
+  Shot: TBitmap;
 begin
   E := TEditProbe.Create(F); E.Parent := F; E.SetBounds(0, 0, 160, 28);
   CM := TCodeProbe.Create(F); CM.Parent := F; CM.SetBounds(0, 40, 300, 100);
@@ -3429,6 +3447,56 @@ begin
     CM.Press('A'); CM.Press('B');
     Check(CM.Text = '<b>x</b> & yA', 'MaxLength holds the door');
     CM.MaxLength := 0;
+
+    { reading a stored Text while a form loads is not a change }
+    RegisterClass(TInkEdit);
+    LF := TLoadForm.CreateNew(nil);
+    try
+      TS := TStringStream.Create(
+        'object TestLoadForm: TLoadForm'+LineEnding+
+        '  object ed: TInkEdit'+LineEnding+
+        '    OnChange = EdChange'+LineEnding+
+        '    Text = ''loaded'''+LineEnding+
+        '  end'+LineEnding+
+        'end');
+      BS := TMemoryStream.Create;
+      try
+        LRSObjectTextToBinary(TS, BS);
+        BS.Position := 0;
+        Rd := TReader.Create(BS, 4096);
+        try
+          Rd.ReadRootComponent(LF);
+        finally
+          Rd.Free;
+        end;
+      finally
+        BS.Free;
+        TS.Free;
+      end;
+      Check(LF.ed.Text = 'loaded', 'the stored Text was read');
+      Check(LoadFired = 0, 'without OnChange firing while the form loads');
+      LF.ed.Text := 'now';
+      Check(LoadFired = 1, 'and code setting Text later still fires it');
+    finally
+      LF.Free;
+    end;
+
+    { a memo's text is the size its font says, in pixels }
+    MM.Font.Height := -13;
+    MM.TextFormat := itfHTML;
+    MM.Lines.Clear;
+    MM.Lines.Add('Ag');
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
+      MM.RenderTo(Shot.Canvas);
+      Check(MM.Block(0).PointSize = -13,
+        Format('a memo block''s size is its font''s pixels, negative (%d)',
+          [MM.Block(0).PointSize]));
+    finally
+      Shot.Free;
+    end;
+    MM.Font.Height := 0;
 
     { itfPlain: the display controls show text exactly as written }
     Check(InkToHTML('a<b>&', itfPlain) = 'a&lt;b&gt;&amp;', 'itfPlain escapes the three');
