@@ -111,8 +111,9 @@ This is **not CSS conformance**. In particular:
   inside an item, headings are bold lines and blocks are line breaks.
   Justification, alignment, ordering, growing and shrinking are not read.
 - `@media` blocks with `min-width` / `max-width` apply against the page's own
-  width, and the page is read again when a resize crosses one; other media
-  (print, color schemes, orientation) never apply. `display: none` hides any
+  width, and the page is read again when a resize crosses one;
+  `prefers-color-scheme` is answered by the control's `ColorScheme`
+  property; other media (print, orientation) never apply. `display: none` hides any
   element, and `display: block` on table cells stacks them one to a row -
   Heckers Sketch's index does both below 600 pixels, as in a browser.
   Positioning is ignored.

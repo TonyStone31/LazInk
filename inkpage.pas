@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Everything about a clicked link. }
@@ -152,10 +152,19 @@ type
     FStyles: TInkStyleSheet;
     FScroll: TInkScrollBar;
     FScrollBars: TInkScrollBarStyle;
+    FColorScheme: TInkColorScheme;
+    { what the last read of the document resolved icsAuto to }
+    FSchemeApplied: TInkColorScheme;
     FTimer: TTimer;
     procedure Animate(Sender: TObject);
     procedure SetImageFit(AValue: TInkImageFit);
     procedure SetScrollBars(AValue: TInkScrollBarStyle);
+    procedure SetColorScheme(AValue: TInkColorScheme);
+    function GetActiveColorScheme: TInkColorScheme;
+    { read the document again with the styles judged afresh, keeping the
+      scroll where it was }
+    procedure Reread;
+    procedure CMColorChanged(var Message: TLMessage); message CM_COLORCHANGED;
   private
     FSource, FLocation, FTitle, FHoverLink: string;
     FHoverBlock, FHoverLinkIndex: Integer;
@@ -168,7 +177,7 @@ type
     FHistoryIndex: Integer;
     FTextFormat: TInkTextFormat;
     FStyleSheet: TStringList;
-    FMarkdownRawHTML: Boolean;
+    FMarkdownRawHTML, FMarkdownInlineHTML: Boolean;
     FLayoutDirty: Boolean;
     FContentHeight, FColumnLeft: Integer;
     FOnLinkClick: TInkPageLinkEvent;
@@ -258,6 +267,7 @@ type
     procedure SetStyleSheet(AValue: TStrings);
     procedure StyleSheetChanged(Sender: TObject);
     procedure SetMarkdownRawHTML(AValue: Boolean);
+    procedure SetMarkdownInlineHTML(AValue: Boolean);
     procedure StyleScrollBar;
     procedure ScrollChanged(Sender: TObject);
     procedure SetTextFormat(AValue: TInkTextFormat);
@@ -441,6 +451,11 @@ type
       them the track is the page background and the thumb sits halfway
       between that and the text color. }
     property ScrollBar: TInkScrollBar read FScroll;
+    { what icsAuto came to, for a host that wants to match it }
+    property ActiveColorScheme: TInkColorScheme read GetActiveColorScheme;
+    { re-judge the color scheme (after InkAppColorScheme or a theme change)
+      and read the document again if the answer moved }
+    procedure RecheckColorScheme;
   protected
     property Source: string read FSource write SetSource;
     { CSS applied to every page before the page's own styles - how a program
@@ -450,6 +465,11 @@ type
     { HTML written inside a Markdown source is drawn as HTML, not shown as
       text.  Only for documents you trust. }
     property MarkdownRawHTML: Boolean read FMarkdownRawHTML write SetMarkdownRawHTML default False;
+    { The middle ground: only well-formed inline tags named on
+      InkMarkdownInlineTags (<kbd>, <sub>, <br>...) are drawn, keeping only
+      class and title; a /tiles <folder> placeholder, a block tag or a
+      script stays visible text.  MarkdownRawHTML wins when both are set. }
+    property MarkdownInlineHTML: Boolean read FMarkdownInlineHTML write SetMarkdownInlineHTML default False;
     property OnLinkClick: TInkPageLinkEvent read FOnLinkClick write FOnLinkClick;
     { Before OnLinkClick, with everything about the link: its target, and the
       picture it wraps.  Set Handled to stop there. }
@@ -472,6 +492,12 @@ type
     { issNone hides the scrollbar whatever the stylesheet says; issAuto
       leaves it to the stylesheet's scrollbar-width (none, thin, auto) }
     property ScrollBars: TInkScrollBarStyle read FScrollBars write SetScrollBars default issAuto;
+    { What @media (prefers-color-scheme) queries answer to.  icsAuto follows
+      InkAppColorScheme when the program set it, else the control's own
+      background: light when its luminance is at least half.  No built-in
+      palette: the scheme only chooses between the rules the page and the
+      host wrote. }
+    property ColorScheme: TInkColorScheme read FColorScheme write SetColorScheme default icsAuto;
     { a quick drag with a finger leaves the page coasting, slowing down }
     property FlickScroll: Boolean read FFlickScroll write FFlickScroll default True;
     { What a left-button drag with the mouse does: select text (as in a
@@ -503,6 +529,7 @@ type
     property TextFormat;
     property StyleSheet;
     property MarkdownRawHTML;
+    property MarkdownInlineHTML;
     property OnLinkClick;
     property OnLinkActivate;
     property ImageFit;
@@ -513,6 +540,7 @@ type
     property FlickScroll;
     property MouseDrag;
     property ScrollBars;
+    property ColorScheme;
     property SelectionColor;
     property OnSelectionChange;
     property OnNavigate;
@@ -531,9 +559,31 @@ type
 { a hit link's href as written: entities read, and the renderer's stand-in
   for an ampersand turned back into one }
 function LinkHref(const AHit: THTMLHitInfo): string;
+{ Tell every LazInk page on every open form that the application's color
+  scheme changed (after setting InkAppColorScheme, or when the program's
+  own theme flips): each control whose ColorScheme is icsAuto re-checks,
+  and reads its document again only if its answer moved.  Nothing keeps a
+  list of instances. }
+procedure InkColorSchemeChanged;
 
 implementation
 uses Math, StrUtils, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
+
+{ every LazInk page on every form re-checks its color scheme - see the
+  interface declaration }
+procedure SchemeWalk(C: TControl);
+var I: Integer;
+begin
+  if C is TInkCustomPage then TInkCustomPage(C).RecheckColorScheme;
+  if C is TWinControl then
+    for I := 0 to TWinControl(C).ControlCount-1 do
+      SchemeWalk(TWinControl(C).Controls[I]);
+end;
+procedure InkColorSchemeChanged;
+var I: Integer;
+begin
+  for I := 0 to Screen.FormCount-1 do SchemeWalk(Screen.Forms[I]);
+end;
 
 type
   { a list, a quote or a definition the parser is inside }
@@ -1001,6 +1051,8 @@ end;
 procedure TInkCustomPage.BeginDocument;
 begin
   ClearBlocks; FStyles.Clear; FTitle := ''; FHoverLink := ''; FHoverBlock := -1;
+  FSchemeApplied := GetActiveColorScheme;
+  FStyles.ColorScheme := FSchemeApplied;
   FSelecting := False;
   if HasSelection then
   begin
@@ -1160,6 +1212,12 @@ begin
   FMarkdownRawHTML := AValue;
   if FTextFormat=itfMarkdown then Parse;
 end;
+procedure TInkCustomPage.SetMarkdownInlineHTML(AValue: Boolean);
+begin
+  if FMarkdownInlineHTML=AValue then Exit;
+  FMarkdownInlineHTML := AValue;
+  if FTextFormat=itfMarkdown then Parse;
+end;
 function TInkCustomPage.ResolveURL(const Reference: string): string;
 begin
   if not ResolveRelativeURI(FLocation,Reference,Result) then Result := Reference;
@@ -1187,7 +1245,7 @@ end;
 procedure TInkCustomPage.LoadHTML(const HTML: string; const BaseURL: string);
 begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse; AddTextHistory; Navigated end;
 function TInkCustomPage.SetInnerHTML(const AID, AHTML: string): Boolean;
-var P, Q, OpenEnd, CloseStart, Depth, Keep: Integer; Raw, ElName, Rest: string;
+var P, Q, OpenEnd, CloseStart, Depth: Integer; Raw, ElName, Rest: string;
 begin
   Result := False;
   if FTextFormat<>itfHTML then Exit;
@@ -1233,9 +1291,7 @@ begin
   end;
   if CloseStart=0 then Exit;
   FSource := Copy(FSource,1,OpenEnd)+AHTML+Copy(FSource,CloseStart,MaxInt);
-  Keep := ScrollY;
-  Parse; Layout;
-  FScroll.Position := Keep;
+  Reread;
   Result := True;
 end;
 procedure TInkCustomPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
@@ -2070,6 +2126,7 @@ begin
   if FTextFormat=itfMarkdown then
   begin
     if FMarkdownRawHTML then S := MarkdownToHTML(FSource,[imoRawHTML])
+    else if FMarkdownInlineHTML then S := MarkdownToHTML(FSource,[imoInlineHTML])
     else S := MarkdownToHTML(FSource);
   end
   else S := FSource;
@@ -2781,6 +2838,45 @@ begin
   FScrollBars := AValue;
   StyleScrollBar;
   InvalidateLayout(0);
+end;
+function TInkCustomPage.GetActiveColorScheme: TInkColorScheme;
+var C: TColor; L: Integer;
+begin
+  Result := FColorScheme;
+  if Result<>icsAuto then Exit;
+  { the application's say first, then the control's own background: light
+    when its luminance is at least half.  No widgetset is asked anything -
+    a dark desktop theme reaches here as a dark clWindow. }
+  if InkAppColorScheme<>icsAuto then Exit(InkAppColorScheme);
+  C := Color;
+  if C=clDefault then C := clWindow;
+  C := ColorToRGB(C);
+  L := (299*Red(C)+587*Green(C)+114*Blue(C)) div 1000;
+  if L>=128 then Result := icsLight else Result := icsDark;
+end;
+procedure TInkCustomPage.Reread;
+var Keep: Integer;
+begin
+  Keep := ScrollY;
+  Parse; Layout;
+  FScroll.Position := Keep;
+end;
+procedure TInkCustomPage.SetColorScheme(AValue: TInkColorScheme);
+begin
+  if FColorScheme=AValue then Exit;
+  FColorScheme := AValue;
+  if (FSource<>'') and (GetActiveColorScheme<>FSchemeApplied) then Reread;
+end;
+procedure TInkCustomPage.RecheckColorScheme;
+begin
+  if (FSource<>'') and (GetActiveColorScheme<>FSchemeApplied) then Reread;
+end;
+procedure TInkCustomPage.CMColorChanged(var Message: TLMessage);
+begin
+  inherited;
+  { on icsAuto the scheme follows the background, so a theme change that
+    flips the answer reads the page again }
+  if FColorScheme=icsAuto then RecheckColorScheme;
 end;
 procedure TInkCustomPage.LayoutColumn(out ALeft, AWidth: Integer);
 var MaxWidth: Integer;

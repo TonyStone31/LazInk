@@ -7,6 +7,8 @@ type
   { Where an element sits: its ancestors, outermost first, each written
     "tag.class.class" - "table.cards td".  With one, selectors like
     "table.cards small" or "nav > a" match; without, only simple ones. }
+  { how a control or a stylesheet answers @media (prefers-color-scheme) }
+  TInkColorScheme = (icsAuto, icsLight, icsDark);
   TInkCSSContext = string;
   { One rule's declarations, and the width it applies at: an @media
     (min-width) / (max-width) block, or always.  Media the reader cannot
@@ -28,6 +30,7 @@ type
       made and thrown away on every property of every block }
     FParts, FAncestors: TStringList;
     FMediaWidth: Integer;
+    FColorScheme: TInkColorScheme;
     { the @media block being read }
     FMin, FMax: Integer;
     FNever, FInMedia: Boolean;
@@ -62,6 +65,11 @@ type
     { The width, in pixels, @media width queries are judged against - the
       page's own width.  1024 until a page says otherwise. }
     property MediaWidth: Integer read FMediaWidth write SetMediaWidth;
+    { The scheme @media (prefers-color-scheme) queries are judged against
+      when a rule is read - light or dark, never auto: whoever fills the
+      sheet resolves auto first.  Set it before Add; a change of scheme
+      means reading the sheet again, as a width crossing a query does. }
+    property ColorScheme: TInkColorScheme read FColorScheme write FColorScheme;
     { which of the sheet's width queries hold at AWidth, as a string that
       changes when any of them does - '' when there are none }
     function MediaState(AWidth: Integer): string;
@@ -70,6 +78,13 @@ type
   'color') is 'red' - trimmed, with its case kept.  The last of a repeated
   property wins, as in a stylesheet.  '' when it is not there. }
 function StyleValue(const AStyle, AProp: string): string;
+
+var
+  { The application's say on light or dark, for every control whose
+    ColorScheme is icsAuto: a program with its own themes sets it once
+    (and calls InkColorSchemeChanged in InkPage when windows are open).
+    On icsAuto a control falls back to its own background's luminance. }
+  InkAppColorScheme: TInkColorScheme = icsAuto;
 { #rgb, #rrggbb, rgb()/rgba(), a color name, "none"/"transparent" (clNone),
   or Fallback }
 function CSSColor(const S: string; Fallback: TColor): TColor;
@@ -191,6 +206,8 @@ begin
   FMemoValues := TStringList.Create;
   FParts := TStringList.Create; FAncestors := TStringList.Create;
   FConditions := TStringList.Create; FConditions.Sorted := True; FConditions.Duplicates := dupIgnore;
+  { a sheet answers for light until whoever fills it says otherwise }
+  FColorScheme := icsLight;
   FMediaWidth := 1024;
 end;
 destructor TInkStyleSheet.Destroy;
@@ -231,6 +248,16 @@ begin
       Delete(C,1,Q);
       if Copy(Feature,1,10)='max-width:' then FMax := CSSPixels(Copy(Feature,11,MaxInt),0)
       else if Copy(Feature,1,10)='min-width:' then FMin := CSSPixels(Copy(Feature,11,MaxInt),0)
+      else if Feature='prefers-color-scheme:light' then
+      begin
+        { judged against the sheet's scheme as the rule is read; it combines
+          with the width features, which this loop already ANDs }
+        if FColorScheme<>icsLight then FNever := True;
+      end
+      else if Feature='prefers-color-scheme:dark' then
+      begin
+        if FColorScheme<>icsDark then FNever := True;
+      end
       else FNever := True;          // a feature this reader cannot judge
       P := Pos('(',C);
     end;
@@ -296,7 +323,13 @@ begin
         P := Pos(':',Pair); if P=0 then Continue;
         Name := LowerCase(Trim(Copy(Pair,1,P-1)));
         Props.Values[Name] := Trim(Copy(Pair,P+1,MaxInt));
-        if (Selector=':root') and (Copy(Name,1,2)='--') and not FInMedia then
+        { a custom property is stored once for the whole sheet, so it can
+          only come from a block that is settled as the sheet is read: the
+          top level, or an @media judged by scheme alone - which is how a
+          page writes its light and dark palettes.  Width-scoped variables
+          stay unread, as before. }
+        if (Selector=':root') and (Copy(Name,1,2)='--') and
+          (not FInMedia or (not FNever and (FMin<=0) and (FMax<=0))) then
           FVars.Values[Name] := Props.Values[Name]; Forget;
       end;
       Selectors := TStringList.Create;

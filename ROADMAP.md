@@ -68,17 +68,13 @@ block children of a cell, tables nested in cells and in grid/flex cards,
 inline pills on `<span>`, and `SetInnerHTML` by id.  A page like that send
 window can now be written the way a browser page would be.
 
-**Open again, 4 October 2026** - from moving that send window onto them:
-
-* **Light and dark**: `@media (prefers-color-scheme)` and a `ColorScheme`
-  property to answer it (`bugs/2026-10-04-light-dark-and-more`, item 1).
-  The most wanted; it would let a help site's own themes work unchanged.
-* **Text in a grid card** ignores the stylesheet, a blank band follows a
-  grid, and margins between blocks in a cell are not read
-  (`bugs/2026-10-04-grid-card-text-unstyled`).
-* **Inline HTML in Markdown** that leaves an unknown `<word>` as text, and
-  an **ellipsis** for `HTMLDrawOpt` with `NoWrap`
-  (`bugs/2026-10-04-light-dark-and-more`, items 2 and 3).
+**Opened and closed again the same day, 4 October 2026** - from moving
+that send window onto them, all done (the notes say how):
+`@media (prefers-color-scheme)` with the `ColorScheme` property
+(`bugs/2026-10-04-light-dark-and-more`); text in a grid card styled, the
+band gone and block margins read in cells
+(`bugs/2026-10-04-grid-card-text-unstyled`); `imoInlineHTML` for Markdown,
+and the `NoWrap` ellipsis with `TInkLabel.Ellipsis`.
 
 ### B. Selection, finished
 

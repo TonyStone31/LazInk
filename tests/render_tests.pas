@@ -3187,6 +3187,66 @@ begin
   finally BM.Free end;
 end;
 
+{ --- light and dark, inline HTML in Markdown, and the ellipsis --- }
+procedure SchemeAndMoreChecks;
+const SchemeDoc = '<html><head><style>'+
+  ':root { --bg: #23262c; --text: #e6e6e6 }'+
+  '@media (prefers-color-scheme: light) { :root { --bg: #f4f5f6; --text: #1d2027 } }'+
+  'body { background: var(--bg); color: var(--text) }'+
+  '@media (prefers-color-scheme: light) and (max-width: 300px) { body { color: #ff0000 } }'+
+  'p { margin-bottom: 600px }'+
+  '</style></head><body><p>one</p><p>two</p><p>three</p></body></html>';
+var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string; Y: Integer; Cut: Boolean;
+begin
+  { prefers-color-scheme, judged by the control's ColorScheme }
+  Probe.Color := clWhite; Probe.ColorScheme := icsAuto;
+  Probe.LoadHTML(SchemeDoc);
+  Check(Probe.ActiveColorScheme=icsLight,'icsAuto on a white control answers light');
+  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($1D,$20,$27),
+    'and the light palette''s variables hold');
+  Probe.ScrollTo(200); Y := Probe.ScrollY;
+  Probe.ColorScheme := icsDark;
+  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($E6,$E6,$E6),
+    'icsDark picks the dark palette');
+  Check(Probe.ScrollY=Y,'and the page does not jump');
+  Probe.ColorScheme := icsLight;
+  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($1D,$20,$27),
+    'a width query combines: wide stays the palette text');
+  InkAppColorScheme := icsDark;
+  Probe.ColorScheme := icsAuto; InkColorSchemeChanged;
+  Check(Probe.ActiveColorScheme=icsDark,'the application''s say beats the background');
+  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($E6,$E6,$E6),
+    'and the page follows it');
+  InkAppColorScheme := icsAuto; Probe.RecheckColorScheme;
+  Probe.ScrollTo(0);
+
+  { inline HTML in Markdown: known inline tags pass, everything else is text }
+  S := MarkdownToHTML('press <kbd>G</kbd> then /tiles <folder> and <div>x</div> '+
+    '<span onclick="evil()" class="k" title="t">ok</span> `<kbd>` stays',[imoInlineHTML]);
+  Check(Pos('<kbd>G</kbd>',S)>0,'a kbd passes through');
+  Check(Pos('&lt;folder&gt;',S)>0,'a placeholder stays visible text');
+  Check(Pos('&lt;div&gt;',S)>0,'a block tag stays visible text');
+  Check((Pos('onclick',S)=0) and (Pos('class="k"',S)>0) and (Pos('title="t"',S)>0),
+    'a handler is dropped, class and title kept');
+  Check(Pos('<code>&lt;kbd&gt;</code>',S)>0,'nothing inside backticks changes');
+  Check(Pos('<kbd>',MarkdownToHTML('a <kbd>G</kbd>'))=0,'off by default');
+
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(600,100); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
+    O := DefaultHTMLOptions; O.NoWrap := True; O.Ellipsis := True;
+    S := 'a long status line with <b>bold words</b> that cannot fit';
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,500,0),[],S,O);
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,120,0),[],S,O);
+    Check(N.cx<=120,'the cut line fits the rectangle');
+    Check(N.cy=A.cy,'and stays one line');
+    HTMLDrawOpt(BM.Canvas,Rect(0,0,120,30),[],S,O,Cut);
+    Check(Cut,'the draw says it cut');
+    HTMLDrawOpt(BM.Canvas,Rect(0,0,500,30),[],S,O,Cut);
+    Check(not Cut,'and that it did not');
+  finally BM.Free end;
+end;
+
 begin
   Application.Initialize;
   TestExceptions := TTestExceptions.Create;
@@ -3334,6 +3394,7 @@ begin
     CellStyleChecks;
     PillChecks;
     CardTextChecks;
+    SchemeAndMoreChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

@@ -33,6 +33,7 @@ type
     FSuperSubScriptRatio: Double;
     FTransparent: Boolean;
     FWordWrap: Boolean;
+    FEllipsis: Boolean;
     FMaxWidth: Integer;
     FLineSpacing: Integer;
     FVertAlign: TInkVertAlign;
@@ -52,6 +53,7 @@ type
     procedure SetHTMLScale(AValue: Integer);
     procedure SetTransparent(AValue: Boolean);
     procedure SetWordWrap(AValue: Boolean);
+    procedure SetEllipsis(AValue: Boolean);
     procedure SetMaxWidth(AValue: Integer);
     procedure SetLineSpacing(AValue: Integer);
     procedure SetVertAlign(AValue: TInkVertAlign);
@@ -104,6 +106,10 @@ type
     { Re-flow the caption to the control width. With AutoSize the width is left
       alone and only the height follows the text, the way TLabel behaves. }
     property WordWrap: Boolean read FWordWrap write SetWordWrap default False;
+    { with WordWrap off and AutoSize off: one line that ends in an ellipsis
+      when the label is too narrow for it, instead of a word stopping
+      halfway through a letter }
+    property Ellipsis: Boolean read FEllipsis write SetEllipsis default False;
     { With AutoSize and no WordWrap the label grows sideways forever. MaxWidth
       caps that: past it the text wraps instead. 0 means no cap. }
     property MaxWidth: Integer read FMaxWidth write SetMaxWidth default 0;
@@ -200,6 +206,11 @@ begin
     FBorders, FImages, FLinkStyle, FLinkHoverStyle, FHoverIndex);
   Result.VertAlign := FVertAlign;
   Result.HorzAlign := FHorzAlign;
+  if FEllipsis and not FWordWrap then
+  begin
+    Result.NoWrap := True;
+    Result.Ellipsis := True;
+  end;
 end;
 
 procedure TInkLabel.SubPropChanged(Sender: TObject);
@@ -221,6 +232,13 @@ begin
   if FTransparent = AValue then Exit;
   FTransparent := AValue;
   Invalidate;
+end;
+
+procedure TInkLabel.SetEllipsis(AValue: Boolean);
+begin
+  if FEllipsis = AValue then Exit;
+  FEllipsis := AValue;
+  SubPropChanged(nil);
 end;
 
 procedure TInkLabel.SetWordWrap(AValue: Boolean);

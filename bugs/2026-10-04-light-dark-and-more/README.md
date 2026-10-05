@@ -225,3 +225,32 @@ trimming the last one a letter at a time.  The key caps could already be
 `bugs/2026-10-04-grid-card-text-unstyled`: text in a grid card ignores the
 stylesheet, a blank band follows a grid, and margins between blocks in a
 cell are not read.
+
+---
+
+## Done - 4 October 2026, all three
+
+1. **Light and dark**, as specified above: `prefers-color-scheme` in
+   `ReadMedia`, judged against the sheet's `ColorScheme` as a rule is read
+   and combined with the width features; `:root` custom properties inside a
+   scheme-only block are stored too, which is how a page writes its two
+   palettes.  The controls carry the published `ColorScheme`
+   (`icsAuto`/`icsLight`/`icsDark`), `ActiveColorScheme`, the resolution
+   order `InkAppColorScheme` then the background's luminance, a re-read on
+   `CM_COLORCHANGED` when auto's answer flips, and `InkColorSchemeChanged`
+   walking the open forms.  A scheme change keeps the scroll position.  No
+   widgetset code, no built-in palette, `print` still never applies.  Root
+   attributes (`:root[data-theme]`) stay optional, later.
+2. **`imoInlineHTML`** and `TInkPage.MarkdownInlineHTML`: well-formed
+   inline tags named on `InkMarkdownInlineTags` pass through keeping only
+   `class` and `title`; placeholders, block tags, scripts and anything
+   malformed stay visible text; code spans untouched; `imoRawHTML` wins.
+3. **The ellipsis**: `Ellipsis`/`EllipsisText` on `THTMLOptions`, only with
+   `NoWrap`.  The crossing run is cut back whole code points until it and
+   the ellipsis fit, in that run's font and color; a pill or an image that
+   does not fit whole goes, and nothing is drawn when not even the ellipsis
+   fits.  `HTMLTextExtentOpt` agrees with the paint, an `HTMLDrawOpt`
+   overload answers whether it cut, and `TInkLabel.Ellipsis` is the
+   single-line label property.
+
+Tests: `SchemeAndMoreChecks` in `tests/render_tests.pas`.

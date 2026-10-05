@@ -236,15 +236,33 @@ Selectors: a tag (`h2`), a class (`.note`), both (`td.empty`), a list of them
 (`h2, h3`), and a descendant **inside a table or a flex/grid container**
 (`table.cards td`). No pseudo-classes, no `#id` selectors, no positioning.
 
-`var(--name)` is resolved. `@media` understands `min-width` and `max-width`,
-which is enough for a page that narrows to one column:
+`var(--name)` is resolved. `@media` understands `min-width`, `max-width`
+and `prefers-color-scheme`, which is enough for a page that narrows to one
+column and carries a light and a dark palette:
 
 ```css
+:root { --bg: #23262c; --text: #e6e6e6 }            /* dark by default */
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f4f5f6; --text: #1d2027 }
+}
+body { background: var(--bg); color: var(--text) }
 @media (max-width: 420px) {
   .grid { grid-template-columns: 1fr }
   body { font-size: 13px }
 }
 ```
+
+Which scheme answers is the control's `ColorScheme` (`icsAuto`, `icsLight`,
+`icsDark`).  On `icsAuto` it follows `InkAppColorScheme` when the program
+set one, else the control's own background: light when its luminance is at
+least half, so a dark desktop theme reaches the page with no platform code
+at all.  `ActiveColorScheme` reads what auto came to, and
+`InkColorSchemeChanged` tells every open page when the program's theme
+flips.  The host's `StyleSheet` reads the same queries, so one sheet can
+dress a release-notes window for both themes.  The features combine the way
+CSS combines them - `(prefers-color-scheme: dark) and (max-width: 600px)`
+holds only when both do - and LazInk applies no palette of its own: a page
+with no scheme rules looks exactly as it always did.
 
 A `style` attribute is read on a word or on a whole block, for color,
 background, font size, weight, slant, decoration, alignment, margins and
