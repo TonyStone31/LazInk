@@ -20,7 +20,7 @@ widgetset-specific backends, no browser engine.
 | ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment. |
 | ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
 | ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
-| | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG and animated GIF images, relative links, anchors, Back and Forward, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
+| | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG, animated GIF and WebP images, relative links, anchors, Back and Forward, text selection, find in page, touch scrolling, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
 | ![](images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. |
 
 **Editing list items in place:** `TInkListBox.EditMode` says when the
@@ -77,6 +77,7 @@ events — `OnLinkClick`, `OnLinkEnter`, `OnLinkLeave`, `OnLinkRightClick`.
 ```
 <b> <i> <u> <s>                        bold / italic / underline / strikeout
 <font color= bgcolor= size= face=>     #RRGGBB, clRed-style and named colors
+<font pad="2 8" radius="9" pillborder=>  a pill: a rounded box behind the words
 <sup> <sub>                            superscript / subscript
 <br> <hr>                              line break / horizontal rule
 <p>...</p>                             paragraph: a break plus a blank line
@@ -134,20 +135,25 @@ carries, so a toolbar can show the right buttons pressed.
 ## Complete help pages
 
 `TInkPage` is the native scrolling page viewer for complete HTML help files.
-It renders the original Heckers Sketch manual with headings, lists, tables,
-code/key labels, screenshots, animated GIFs, relative links, and Back/Forward.
-Its small stylesheet reader picks up the site's palette and basic typography;
-CSS grid cards become a vertical list. No browser engine is added.
+It renders the Heckers Sketch manual with headings, lists, tables, code/key
+labels, screenshots, animated GIFs and WebP, relative links, and
+Back/Forward.  Its small stylesheet reader picks up the site's palette and
+typography; CSS grid and flex containers lay out as rows of cards, as many
+to a row as fit, and stack them when the page says to below a width.  No
+browser engine is added.
 
 ```pascal
 InkPage1.LoadFromFile('/path/to/help/index.html');
 ```
 
 **Writing pages for it:** [docs/HTML_SUPPORT.md](docs/HTML_SUPPORT.md) lists
-every tag and CSS property it reads, with examples - tables with `colspan` and
-`rowspan`, cards, pictures sized in pixels or percentages, WebP, folding
-sections, `line-height`, `text-transform`.  Sizes are pixels, the way a
-browser reads them.
+every tag and CSS property it reads, with examples - tables with `colspan`
+and `rowspan`, cells with their own fonts and `white-space: nowrap`, tables
+nested in cells and in cards, status pills on a `<span>`, pictures sized in
+pixels or percentages, WebP, folding sections, `line-height`,
+`text-transform`.  Sizes are pixels, the way a browser reads them.  And
+`SetInnerHTML('status', '<b>sent</b>')` changes one element by its `id`
+without rebuilding the page, for a live status page.
 
 It reads Markdown just as well - a `.md` file is recognized by its name, and
 `LoadMarkdown` takes a string. Relative images and links are resolved against
@@ -270,7 +276,7 @@ begin
 end;
 ```
 
-Try the demo's **HTML help pages** tab, or pass an HTML filename on its command
+Try the demo's **Documents** tab, or pass an HTML filename on its command
 line. Keep the help folder's relative image and stylesheet paths intact.
 Remote content can be supplied through `OnResource`; HTTP transport is not
 built in. See [the compatibility report](docs/HELP_COMPATIBILITY.md) for the
@@ -284,11 +290,14 @@ Changing it reinterprets the existing source; it does not translate the source.
 `TInkEdit` remains plain text and `TInkRichEdit` remains an HTML-backed inline
 WYSIWYG editor. Rich-editor table editing is not implemented.
 
-The shared renderer supports simple `<table>`, `<tr>`, `<th>` and `<td>`
-blocks, including multiple tables mixed with text. Columns are sized from their
-content and narrowed to the available width, cell text wraps, headers are bold,
-and borders use the current font color. Links inside cells retain click and
-hover support. List boxes now measure variable-height rows, with `ItemHeight`
+The shared renderer supports `<table>`, `<tr>`, `<th>` and `<td>` blocks,
+including multiple tables mixed with text, `colspan` and `rowspan`, and a
+table nested inside a cell. Columns are sized from their content and narrowed
+to the available width, cell text wraps (or doesn't: `white-space: nowrap`
+keeps a column as wide as its words), headers are bold, and cells can carry
+their own padding, backgrounds, borders, rounded corners, fonts and sizes -
+on a page, all of it written from CSS. Links inside cells retain click and
+hover support. List boxes measure variable-height rows, with `ItemHeight`
 as their minimum height.
 
 Markdown is read the way GitHub reads it, for the parts real documents use:
@@ -328,11 +337,12 @@ assign the complete source to `Caption`. `MarkdownToInk(Source)` is also usable
 on its own. `SaveAsHTML` on the viewers converts Markdown entries to HTML;
 plain-text export removes formatting and separates table cells and rows.
 
-Limits: no CSS, nested tables, merged cells (`rowspan` / `colspan`), specified
-column widths, or table editing tools. Very long unbroken words can overflow a
-cell, and very narrow controls may not fit the minimum cell padding. Table blocks
-currently use top-left placement. Use `TInkPage` for a full document with
-headings, lists and code blocks.
+Limits: the inline controls have no stylesheet of their own - a table in a
+memo or list box takes its look from attributes in the markup, which is what
+`TInkPage` writes from a page's CSS.  No `<col>`/`<colgroup>` widths and no
+table editing tools.  Very long unbroken words can overflow a cell, and very
+narrow controls may not fit the minimum cell padding.  Use `TInkPage` for a
+full document with headings, lists and code blocks.
 
 The demo's **Markdown editor** tab shows a live preview of what you type.
 Renderer tests run on Linux x86-64 with a display available:
@@ -486,11 +496,12 @@ browser over thirty-six thousand.
 
 ## Where it is going
 
-[ROADMAP.md](ROADMAP.md) is the plan - only what is still open: the table
-styling a real summary page asked for, selection in the last two controls,
-a demo worth looking at, runs on the other widgetsets, and the WYSIWYG
-Markdown editor that nothing else for Lazarus has.  How everything already
-finished was built, and why, is [docs/HISTORY.md](docs/HISTORY.md).
+[ROADMAP.md](ROADMAP.md) is the plan - only what is still open: character
+selection in the last two controls, coloring the demo's Markdown source,
+runs on the other widgetsets and on real touch hardware, an Online Package
+Manager listing, and - the big one, next up - the WYSIWYG Markdown editor
+that nothing else for Lazarus has.  How everything already finished was
+built, and why, is [docs/HISTORY.md](docs/HISTORY.md).
 
 ## Credits and origins
 
