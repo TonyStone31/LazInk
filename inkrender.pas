@@ -320,7 +320,9 @@ function InkRenderNamed(const Name: string): string;
 begin
   Result := '';
   case Name of
-    'nbsp': Result := ' ';
+    { a real U+00A0: the line breaker splits atoms at ASCII spaces only, so
+      text joined by it stays one word, which is the point of writing it }
+    'nbsp': Result := #$C2#$A0;
     'ensp', 'emsp', 'thinsp': Result := ' ';
     'shy', 'zwj', 'zwnj': Result := '';
     'copy': Result := #$C2#$A9;
@@ -537,24 +539,11 @@ begin
 end;
 
 function InkRenderDecodeText(const S: string): string;
-var I: Integer; T: string;
 begin
-  { The document layer owns full entity handling. These three escapes are
-    sufficient for the renderer's deliberately small markup contract. }
-  Result := '';
-  I := 1;
-  while I <= Length(S) do
-  begin
-    if S[I] = '&' then
-    begin
-      T := LowerCase(Copy(S, I, 4));
-      if T = '&lt;' then begin Result := Result + '<'; Inc(I, 4); Continue end;
-      if T = '&gt;' then begin Result := Result + '>'; Inc(I, 4); Continue end;
-      T := LowerCase(Copy(S, I, 5));
-      if T = '&amp;' then begin Result := Result + '&'; Inc(I, 5); Continue end;
-    end;
-    Result := Result + S[I]; Inc(I);
-  end;
+  { The same entities both engines read.  The document layer decodes a page's
+    text itself and re-escapes &, < and > on the way to the engine, and the
+    decoder reads each &name; exactly once, so nothing is decoded twice. }
+  Result := InkRenderUnescape(S);
 end;
 
 function InkRenderText(const S: string): string;

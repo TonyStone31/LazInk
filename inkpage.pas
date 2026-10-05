@@ -33,6 +33,10 @@ type
   end;
   { what dragging with the left mouse button does; a finger always scrolls }
   TInkMouseDrag = (imdSelect, imdScroll);
+  { whether the control shows its scrollbar: issAuto lets the stylesheet
+    decide (scrollbar-width), issNone never shows one.  The content still
+    scrolls by wheel, keys, finger and code either way. }
+  TInkScrollBarStyle = (issAuto, issNone);
   { ifoMatchCase: capitals must match; ifoBackwards: the one before }
   TInkFindOption = (ifoMatchCase, ifoBackwards);
   TInkFindOptions = set of TInkFindOption;
@@ -147,9 +151,11 @@ type
     FRenderCache: THTMLLayoutCache;
     FStyles: TInkStyleSheet;
     FScroll: TInkScrollBar;
+    FScrollBars: TInkScrollBarStyle;
     FTimer: TTimer;
     procedure Animate(Sender: TObject);
     procedure SetImageFit(AValue: TInkImageFit);
+    procedure SetScrollBars(AValue: TInkScrollBarStyle);
   private
     FSource, FLocation, FTitle, FHoverLink: string;
     FHoverBlock, FHoverLinkIndex: Integer;
@@ -457,6 +463,9 @@ type
     { drag the page with the left button - or a finger - to scroll it; a
       press that moves less than a few pixels is still a click }
     property DragScroll: Boolean read FDragScroll write FDragScroll default True;
+    { issNone hides the scrollbar whatever the stylesheet says; issAuto
+      leaves it to the stylesheet's scrollbar-width (none, thin, auto) }
+    property ScrollBars: TInkScrollBarStyle read FScrollBars write SetScrollBars default issAuto;
     { a quick drag with a finger leaves the page coasting, slowing down }
     property FlickScroll: Boolean read FFlickScroll write FFlickScroll default True;
     { What a left-button drag with the mouse does: select text (as in a
@@ -497,6 +506,7 @@ type
     property DragScroll;
     property FlickScroll;
     property MouseDrag;
+    property ScrollBars;
     property SelectionColor;
     property OnSelectionChange;
     property OnNavigate;
@@ -941,9 +951,14 @@ begin
   Result := Format('#%.2x%.2x%.2x',[Red(C),Green(C),Blue(C)]);
 end;
 constructor TInkPageBlock.Create;
+var K: Integer;
 begin
   inherited; Picture := TPicture.Create; LinkColor := clNone;
   FoldGroup := -1; FoldHead := -1;
+  { a fresh block carries no color anywhere: zeroed fields would read as
+    clBlack, and a descendant's StyleBlock may not touch every one of them }
+  BorderColor := clNone; BackColor := clNone;
+  for K := 0 to 3 do EdgeColor[K] := clNone;
 end;
 destructor TInkPageBlock.Destroy;
 begin WebP.Free; Animation.Free; Picture.Free; inherited end;
@@ -1188,7 +1203,7 @@ begin
   begin
     Ext := LowerCase(ExtractFileExt(PageURL));
     if (Ext='.png') or (Ext='.gif') or (Ext='.jpg') or (Ext='.jpeg') or
-      (Ext='.bmp') or (Ext='.ico') then
+      (Ext='.bmp') or (Ext='.ico') or (Ext='.webp') then
       { a picture on its own is a page with just the picture, as in a
         browser }
       NewSource := '<html><head><title>'+HTMLEscape(Copy(PageURL,LastDelimiter('/',PageURL)+1,MaxInt))+
@@ -2439,8 +2454,16 @@ begin
   NewWidth := Scale96ToFont(18);
   if SizeValue='thin' then NewWidth := Scale96ToFont(10)
   else if SizeValue='none' then NewWidth := 0;
+  if FScrollBars=issNone then NewWidth := 0;
   FScroll.Visible := NewWidth>0;
   FScroll.Width := NewWidth;
+end;
+procedure TInkCustomPage.SetScrollBars(AValue: TInkScrollBarStyle);
+begin
+  if FScrollBars=AValue then Exit;
+  FScrollBars := AValue;
+  StyleScrollBar;
+  InvalidateLayout(0);
 end;
 procedure TInkCustomPage.LayoutColumn(out ALeft, AWidth: Integer);
 var MaxWidth: Integer;
@@ -2856,24 +2879,26 @@ begin
     if B.BackColor<>clNone then begin ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid; ACanvas.FillRect(R) end;
     ACanvas.Brush.Style := bsClear;
     if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
-    { a stripe down one edge, drawn over the background and inside the block }
+    { a stripe down one edge, drawn over the background and inside the block.
+      A zero-width edge is no edge: GTK3 paints an empty FillRect as a
+      one-pixel line, which framed every line of a TInkMemo }
     ACanvas.Brush.Style := bsSolid;
-    if B.EdgeColor[0]<>clNone then
+    if (B.EdgeColor[0]<>clNone) and (B.EdgeWidth[0]>0) then
     begin
       ACanvas.Brush.Color := B.EdgeColor[0];
       ACanvas.FillRect(Rect(R.Left,R.Top,R.Left+B.EdgeWidth[0],R.Bottom));
     end;
-    if B.EdgeColor[1]<>clNone then
+    if (B.EdgeColor[1]<>clNone) and (B.EdgeWidth[1]>0) then
     begin
       ACanvas.Brush.Color := B.EdgeColor[1];
       ACanvas.FillRect(Rect(R.Left,R.Top,R.Right,R.Top+B.EdgeWidth[1]));
     end;
-    if B.EdgeColor[2]<>clNone then
+    if (B.EdgeColor[2]<>clNone) and (B.EdgeWidth[2]>0) then
     begin
       ACanvas.Brush.Color := B.EdgeColor[2];
       ACanvas.FillRect(Rect(R.Right-B.EdgeWidth[2],R.Top,R.Right,R.Bottom));
     end;
-    if B.EdgeColor[3]<>clNone then
+    if (B.EdgeColor[3]<>clNone) and (B.EdgeWidth[3]>0) then
     begin
       ACanvas.Brush.Color := B.EdgeColor[3];
       ACanvas.FillRect(Rect(R.Left,R.Bottom-B.EdgeWidth[3],R.Right,R.Bottom));
