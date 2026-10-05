@@ -16,7 +16,7 @@ widgetset-specific backends, no browser engine.
 
 | | Control | What it is |
 |---|---|---|
-| ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. |
+| ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `Ellipsis` for one line that ends in "..." when it does not fit, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. |
 | ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment. |
 | ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
 | ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
@@ -311,7 +311,11 @@ and `~~` emphasis, code spans, inline, reference and `<angle>` links, bare
 `https://` and `www.` links, images, entities and backslash escapes. HTML
 comments are dropped. Other raw HTML is shown as text unless you ask for it
 (`MarkdownToHTML(S, [imoRawHTML])`, or `TInkPage.MarkdownRawHTML`) - only do
-that for documents you trust.
+that for documents you trust.  The middle ground is `imoInlineHTML`
+(`TInkPage.MarkdownInlineHTML`): well-formed inline tags named on
+`InkMarkdownInlineTags` - `<kbd>`, `<sub>`, `<br>` and the rest LazInk
+draws - pass through keeping only `class` and `title`, while a
+`/tiles <folder>` placeholder, a block tag or a script stays visible text.
 
 `MarkdownToHTML` gives real HTML - headings, paragraphs, lists, `<pre>` - and
 is what `TInkPage` draws. `MarkdownToInk` flattens the same HTML into the
@@ -410,8 +414,10 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 * CSS is a small reader, not CSS conformance - no positioning, no
   pseudo-classes and no `#id` selectors; descendant selectors only inside
   tables and flex/grid containers; flex and grid lay out as rows of cards,
-  not the full specification; `@media` understands only `min-width` and
-  `max-width`.  A `style` attribute is read for color, background, size,
+  not the full specification; `@media` understands only `min-width`,
+  `max-width` and `prefers-color-scheme` (answered by the control's
+  `ColorScheme` property - auto follows the program's say or the control's
+  own background).  A `style` attribute is read for color, background, size,
   weight, slant, decoration and alignment, on a word or on a whole block.
   No floats, and no text flowing around a picture.
 * Tables take widths, columns, spacing, padding, cell colors, borders and

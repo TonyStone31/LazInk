@@ -30,7 +30,13 @@ type
   TInkMarkdownOption = (
     { pass HTML written in the Markdown through, instead of showing it as
       text - only for documents you trust }
-    imoRawHTML);
+    imoRawHTML,
+    { pass through only well-formed inline tags whose names are on
+      InkMarkdownInlineTags (kbd, b, sub, br...), keeping only their class
+      and title; everything else - <folder> placeholders, block tags,
+      scripts, anything malformed - stays visible text.  Safe for text that
+      is not fully trusted.  imoRawHTML wins when both are given. }
+    imoInlineHTML);
   TInkMarkdownOptions = set of TInkMarkdownOption;
 
 { Markdown to HTML with block elements. }
@@ -41,6 +47,11 @@ function MarkdownToInk(const S: string; Options: TInkMarkdownOptions = []): stri
 function HTMLToInk(const S: string): string;
 { What a control draws for Source in the given format. }
 function InkToHTML(const S: string; AFormat: TInkTextFormat): string;
+var
+  { the tags imoInlineHTML passes through - a program can add one it
+    trusts without patching LazInk }
+  InkMarkdownInlineTags: TStringList;
+
 { A heading's text as GitHub makes an anchor of it:
   "Complete help pages" -> "complete-help-pages". }
 function MarkdownSlug(const Text: string): string;
@@ -453,6 +464,7 @@ type
     function Blocks(Lines: TStrings; Tight: Boolean): string;
     function Inline(const S: string; Links: Boolean = True): string;
     function TryAngle(const S: string; P: Integer; var Output: string): Integer;
+    function TryInlineTag(const S: string; P: Integer; var Output: string): Integer;
     function TryLink(const S: string; P: Integer; Image: Boolean; var Output: string): Integer;
     function TryEmphasis(const S: string; P: Integer; Links: Boolean; var Output: string): Integer;
     function TryBareURL(const S: string; P: Integer; var Output: string): Integer;
@@ -1061,7 +1073,72 @@ begin
       Output := Copy(S, P, Q - P + 1);
       Result := Q - P + 1;
     end;
+  end
+  else if imoInlineHTML in FOptions then
+    Result := TryInlineTag(S, P, Output);
+end;
+
+{ A tag the inline-HTML option passes through: well formed, named on
+  InkMarkdownInlineTags, keeping only its class and title.  Anything else
+  answers 0 and is shown as the text it is - a /tiles <folder> placeholder,
+  a block tag, a script. }
+function TMarkdown.TryInlineTag(const S: string; P: Integer; var Output: string): Integer;
+var Q, A, E: Integer; Raw, Name, Attrs, Key, Val: string; Closing: Boolean;
+  QuoteC: Char;
+begin
+  Result := 0;
+  Q := P + 1;
+  while (Q <= Length(S)) and not (S[Q] in ['>', '<', LF]) do Inc(Q);
+  if CharAt(S, Q) <> '>' then Exit;
+  Raw := Copy(S, P + 1, Q - P - 1);
+  Closing := (Raw <> '') and (Raw[1] = '/');
+  if Closing then Delete(Raw, 1, 1);
+  if (Raw <> '') and (Raw[Length(Raw)] = '/') then Delete(Raw, Length(Raw), 1);
+  Raw := Trim(Raw);
+  A := 1;
+  while (A <= Length(Raw)) and not (Raw[A] in [' ', #9]) do Inc(A);
+  Name := LowerCase(Copy(Raw, 1, A - 1));
+  if (Name = '') or not (Name[1] in ['a'..'z']) then Exit;
+  if InkMarkdownInlineTags.IndexOf(Name) < 0 then Exit;
+  if Closing then
+  begin
+    if Trim(Copy(Raw, A, MaxInt)) <> '' then Exit;
+    Output := '</' + Name + '>';
+    Exit(Q - P + 1);
   end;
+  { only harmless attributes ride along; style and handlers are dropped }
+  Attrs := '';
+  while A <= Length(Raw) do
+  begin
+    while (A <= Length(Raw)) and (Raw[A] in [' ', #9]) do Inc(A);
+    E := A;
+    while (E <= Length(Raw)) and not (Raw[E] in ['=', ' ', #9]) do Inc(E);
+    Key := LowerCase(Copy(Raw, A, E - A));
+    if Key = '' then Break;
+    A := E; Val := '';
+    while (A <= Length(Raw)) and (Raw[A] in [' ', #9]) do Inc(A);
+    if (A <= Length(Raw)) and (Raw[A] = '=') then
+    begin
+      Inc(A);
+      while (A <= Length(Raw)) and (Raw[A] in [' ', #9]) do Inc(A);
+      if (A <= Length(Raw)) and (Raw[A] in ['"', '''']) then
+      begin
+        QuoteC := Raw[A]; Inc(A); E := A;
+        while (E <= Length(Raw)) and (Raw[E] <> QuoteC) do Inc(E);
+        Val := Copy(Raw, A, E - A); A := E + 1;
+      end
+      else
+      begin
+        E := A;
+        while (E <= Length(Raw)) and not (Raw[E] in [' ', #9]) do Inc(E);
+        Val := Copy(Raw, A, E - A); A := E;
+      end;
+    end;
+    if (Key = 'class') or (Key = 'title') then
+      Attrs := Attrs + ' ' + Key + '="' + EscapeText(Val) + '"';
+  end;
+  Output := '<' + Name + Attrs + '>';
+  Result := Q - P + 1;
 end;
 
 { [text](destination "title"), [text][label], [label][] and [label]; with
@@ -1767,4 +1844,11 @@ begin
   if AFormat = itfMarkdown then Result := MarkdownToInk(S) else Result := S;
 end;
 
+initialization
+  InkMarkdownInlineTags := TStringList.Create;
+  InkMarkdownInlineTags.CommaText :=
+    'b,i,em,strong,u,s,del,ins,code,kbd,samp,sub,sup,br,span,small,mark,abbr';
+  InkMarkdownInlineTags.CaseSensitive := False;
+finalization
+  InkMarkdownInlineTags.Free;
 end.

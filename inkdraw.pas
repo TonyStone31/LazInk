@@ -64,6 +64,10 @@ type
     HoverUnderline: Boolean;
     { code: laid out as written and cut off at the edge, never wrapped }
     NoWrap: Boolean;
+    { with NoWrap: a line that does not fit ends in EllipsisText instead of
+      stopping halfway through a letter.  '...' (U+2026) unless set. }
+    Ellipsis: Boolean;
+    EllipsisText: string;
     OnRun: THTMLRunEvent;
     RunPart: Integer;
   end;
@@ -141,6 +145,11 @@ function InkOptions(ARatio: Double; AScale, ALineSpacing: Integer;
 
 procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
   const Text: string; const Options: THTMLOptions;
+  Cache: THTMLLayoutCache = nil);
+{ the same, saying whether the ellipsis cut a line - for a tooltip with the
+  whole text }
+procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
+  const Text: string; const Options: THTMLOptions; out ACut: Boolean;
   Cache: THTMLLayoutCache = nil);
 function HTMLTextExtentOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
   const Text: string; const Options: THTMLOptions;
@@ -245,6 +254,8 @@ begin
   Result.HoverBackColor := Options.HoverBackColor;
   Result.HoverUnderline := Options.HoverUnderline;
   Result.NoWrap := Options.NoWrap;
+  Result.Ellipsis := Options.Ellipsis;
+  Result.EllipsisText := Options.EllipsisText;
   Result.OwnerState := State;
   Result.RunPart := Options.RunPart;
 end;
@@ -470,6 +481,8 @@ begin
   Result.HoverBackColor := clNone;
   Result.HoverUnderline := False;
   Result.NoWrap := False;
+  Result.Ellipsis := False;
+  Result.EllipsisText := '';
   Result.OnRun := nil;
   Result.RunPart := 0;
 end;
@@ -501,8 +514,17 @@ end;
 procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
   const Text: string; const Options: THTMLOptions;
   Cache: THTMLLayoutCache = nil);
+var Cut: Boolean;
+begin
+  HTMLDrawOpt(Canvas,Rect,State,Text,Options,Cut,Cache);
+end;
+
+procedure HTMLDrawOpt(Canvas: TCanvas; Rect: TRect; const State: TOwnerDrawState;
+  const Text: string; const Options: THTMLOptions; out ACut: Boolean;
+  Cache: THTMLLayoutCache = nil);
 var O: TInkRenderOptions; L: TInkRenderLayout; Relay: TRunRelay;
 begin
+  ACut := False;
   O := EngineOptions(Canvas, Options, Rect.Right-Rect.Left, Rect.Bottom-Rect.Top, State);
   Relay := nil;
   if Assigned(Options.OnRun) then
@@ -512,7 +534,9 @@ begin
   end;
   try
     L := PreparedLayout(Canvas,Aligned(Text,Options.HorzAlign),O,Cache);
-    try Engine.PaintLayout(Canvas,Rect,O,L)
+    try
+      ACut := L.WasCut;
+      Engine.PaintLayout(Canvas,Rect,O,L);
     finally if Cache<>nil then L.Release end;
   finally Relay.Free end;
 end;

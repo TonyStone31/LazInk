@@ -123,6 +123,11 @@ type
     { code: the text is laid out as it was written and cut off at the edge
       rather than wrapped }
     NoWrap: Boolean;
+    { with NoWrap: a line that does not fit ends in EllipsisText (U+2026
+      unless set) instead of stopping halfway through a letter.  A short
+      string, as the record is hashed and compared bytewise. }
+    Ellipsis: Boolean;
+    EllipsisText: string[15];
     OnRun: TInkRenderRunEvent;
     RunPart: Integer;
   end;
@@ -135,6 +140,7 @@ type
     FSize: TSize;
     FSourceHash: Cardinal;
     FWidth, FScale: Integer;
+    FWasCut: Boolean;
   public
     procedure Clear;
     { Conservative payload size, including managed strings (which may be shared). }
@@ -148,6 +154,9 @@ type
     function LineAt(Index: Integer): TInkRenderLine;
     property Size: TSize read FSize;
     property SourceHash: Cardinal read FSourceHash;
+    { with Ellipsis: whether any line was cut short - for a host that wants
+      a tooltip carrying the whole text }
+    property WasCut: Boolean read FWasCut;
     property Width: Integer read FWidth;
   end;
 
@@ -563,6 +572,7 @@ end;
 
 procedure TInkRenderLayout.Clear;
 begin
+  FWasCut := False;
   SetLength(FRuns, 0); SetLength(FLines, 0); FSize := Types.Size(0, 0);
   FSourceHash := 0; FWidth := -1; FScale := 100;
 end;
@@ -752,6 +762,7 @@ begin
     '|' + IntToStr(Options.Scale) + '|' + IntToStr(Options.LineSpacing) +
     '|' + IntToStr(Options.LineHeight) +
     '|' + IntToStr(Ord(Options.NoWrap)) +
+    '|' + IntToStr(Ord(Options.Ellipsis)) + Options.EllipsisText +
     '|' + IntToStr(Options.Height) + '|' + IntToStr(Integer(Options.VertAlign)) +
     '|' + IntToStr(Options.Borders.Left) + '|' + IntToStr(Options.Borders.Top) +
     '|' + IntToStr(Options.Borders.Right) + '|' + IntToStr(Options.Borders.Bottom);
@@ -1807,7 +1818,8 @@ function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
 var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
   R: TInkRenderRun; Sz, ImgSz: TSize; Text,Atom: string; Start,Bytes: Integer;
-  CanBreak, Pill: Boolean;
+  CanBreak, Pill, CutLine: Boolean;
+  EllRun: TInkRenderRun; EllSz: TSize; EllText: string; Limit, EK: Integer;
   C: Cardinal; L: TInkRenderLine;
   { every run on the line is placed so its baseline is at the same height:
     the largest ascent on the line.  The line is that plus the largest
@@ -1861,7 +1873,7 @@ begin
   { the inline pass, over the runs this box covers and no further }
   Avail:=AWidth; if Avail<1 then Avail:=1;
   X:=FOpt.Borders.Left; Y:=AY; First:=Length(FLayout.FRuns); Count:=0;
-  CanBreak:=True;
+  CanBreak:=True; CutLine:=False;
   { a line is as tall as the words on it, and no taller: starting from the
     canvas font's TextHeight put a floor under every line that the platform
     had already rounded up, which is a pixel a line a browser does not spend }
@@ -1888,7 +1900,9 @@ begin
     P:=1;
     while P<=Length(Text) do
     begin
-      if Text[P]=#10 then begin Inc(P); FinishLine(True); Continue end;
+      if Text[P]=#10 then begin Inc(P); FinishLine(True); CutLine:=False; Continue end;
+      { everything after a cut is consumed, not placed, until the next line }
+      if CutLine then begin Inc(P); Continue end;
       Start:=P;
       if Pill then
         { a pill is one thing: its words stay in one box and do not wrap }
@@ -1908,6 +1922,37 @@ begin
       if R.IsImage then Sz:=ImgSz else Sz:=MeasureRun(Canvas,R);
       W:=Sz.cx;
       if Pill then Inc(W,2*R.Style.PillPadH);
+      { NoWrap with an ellipsis: the atom that crosses the right edge is cut
+        back a whole code point at a time until it and the ellipsis fit, and
+        the ellipsis is drawn in that run's own font and color.  A picture
+        or a pill is one thing: if it does not fit whole, it goes, and the
+        ellipsis follows what came before it. }
+      if FOpt.NoWrap and FOpt.Ellipsis and
+        (X+W>FOpt.Width-FOpt.Borders.Right) then
+      begin
+        Limit:=FOpt.Width-FOpt.Borders.Right;
+        EllText:=FOpt.EllipsisText;
+        if EllText='' then EllText:=#$E2#$80#$A6;
+        EllRun:=R; EllRun.Text:=EllText; EllRun.IsImage:=False;
+        EllSz:=MeasureRun(Canvas,EllRun);
+        FLayout.FWasCut:=True; CutLine:=True;
+        if R.IsImage or Pill then begin Atom:=''; R.IsImage:=False; R.Style.PillRadius:=0; R.Style.PillPadH:=0; R.Style.PillPadV:=0; R.Style.PillBorder:=clNone end;
+        if Atom<>'' then
+        begin
+          R.Text:=Atom; Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
+          while (Atom<>'') and (X+W+EllSz.cx>Limit) do
+          begin
+            EK:=Length(Atom);
+            while (EK>1) and ((Ord(Atom[EK]) and $C0)=$80) do Dec(EK);
+            SetLength(Atom,EK-1);
+            if Atom='' then W:=0
+            else begin R.Text:=Atom; Sz:=MeasureRun(Canvas,R); W:=Sz.cx end;
+          end;
+        end;
+        if X+W+EllSz.cx>Limit then Continue; { not even the ellipsis fits }
+        Atom:=Atom+EllText;
+        R.Text:=Atom; Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
+      end;
       { a line breaks where the text allows it - after a space, or between
         two CJK characters - and nowhere else.  The end of a run is not a
         break: "<code>x</code>." is one word with a full stop on it, and
