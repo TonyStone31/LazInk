@@ -2127,6 +2127,11 @@ begin
     else if FMarkdownInlineHTML then S := MarkdownToHTML(FSource,[imoInlineHTML])
     else S := MarkdownToHTML(FSource);
   end
+  else if FTextFormat=itfPlain then
+    { the text as written, one line per line; runs of spaces still collapse
+      the way a page's text does }
+    S := '<html><body>'+StringReplace(StringReplace(HTMLEscape(FSource),
+      #13,'',[rfReplaceAll]),#10,'<br>',[rfReplaceAll])+'</body></html>'
   else S := FSource;
   { @media width queries are judged against the page's own width }
   if ClientWidth>0 then FStyles.MediaWidth := ClientWidth else FStyles.MediaWidth := 1024;

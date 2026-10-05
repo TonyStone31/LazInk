@@ -28,7 +28,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Controls, Graphics, StdCtrls, Forms, LCLType,
-  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types;
+  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types, Menus;
 
 type
   TInkScript = (isNormal, isSuperscript, isSubscript);
@@ -109,6 +109,9 @@ type
     FOnChange: TNotifyEvent;
     FOnSelectionChange: TNotifyEvent;
     FOnLinkClick: TInkRichLinkEvent;
+    FEditMenu: Boolean;
+    FMenu: TPopupMenu;
+    procedure MenuClick(Sender: TObject);
     function CharCount: Integer;
     function GetSelStart: Integer;
     function GetSelLength: Integer;
@@ -156,8 +159,17 @@ type
     function TakeSnapshot: TObject;
     procedure CaretTimerTick(Sender: TObject);
     procedure RestartCaretBlink;
-    procedure CMWantSpecialKey(var Message: TCMWantSpecialKey); message CM_WANTSPECIALKEY;
   protected
+    procedure CMWantSpecialKey(var Message: TCMWantSpecialKey); message CM_WANTSPECIALKEY;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    { What a character is drawn and measured as: FAttrs[AIndex], passed
+      through AdjustAttr, which a descendant overrides to color characters
+      on the fly - the plain editor's OnGetCharAttrs rides on this. }
+    function EffAttr(AIndex: Integer): TInkAttr;
+    function CharAt(AIndex: Integer): string;
+    procedure AdjustAttr(AIndex: Integer; var A: TInkAttr); virtual;
+    { inserts plain text (line breaks kept) in the attributes at the caret }
+    procedure InsertPlainText(const AText: string);
     procedure CreateWnd; override;
     procedure Paint; override;
     procedure Resize; override;
@@ -181,7 +193,7 @@ type
     procedure SelectAll;
     procedure CopyToClipboard;
     procedure CutToClipboard;
-    procedure PasteFromClipboard;
+    procedure PasteFromClipboard; virtual;
     procedure Undo;
     procedure Redo;
     function CanUndo: Boolean;
@@ -240,6 +252,9 @@ type
     property ReadOnly: Boolean read FReadOnly write SetReadOnly default False;
     property WordWrap: Boolean read FWordWrap write SetWordWrap default True;
     property SuperSubScriptRatio: Double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    { the editor's own right-click menu - Undo, Redo, Cut, Copy, Paste,
+      Delete, Select All; a PopupMenu of the host's own still wins }
+    property EditMenu: Boolean read FEditMenu write FEditMenu default True;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
     property OnLinkClick: TInkRichLinkEvent read FOnLinkClick write FOnLinkClick;
@@ -280,7 +295,7 @@ function SameInkAttr(const A, B: TInkAttr): Boolean;
 implementation
 
 uses
-  StrUtils, InkDraw, InkTouch, InkMarkdown;
+  StrUtils, InkDraw, InkTouch, InkMarkdown, InkEdit;
 
 const
   cMargin = 3;
@@ -351,6 +366,7 @@ end;
 
 constructor TInkRichEdit.Create(AOwner: TComponent);
 begin
+  FEditMenu := True;
   inherited Create(AOwner);
   ControlStyle := ControlStyle + [csCaptureMouse, csOpaque, csRequiresKeyboardInput]
     - [csSetCaption];
@@ -393,6 +409,7 @@ end;
 
 destructor TInkRichEdit.Destroy;
 begin
+  FreeAndNil(FMenu);
   ClearUndoList(FUndo);
   ClearUndoList(FRedo);
   FreeAndNil(FUndo);
@@ -631,7 +648,7 @@ var
     for j := AFirst to AFirst + ACount - 1 do
     begin
       if FChars[j] = #10 then Continue;
-      ApplyAttrToCanvas(FAttrs[j]);
+      ApplyAttrToCanvas(EffAttr(j));
       if Canvas.GetTextMetrics(tm) then
       begin
         H := tm.Height;
@@ -738,7 +755,7 @@ var
         if FChars[j] = '|' then Inc(c) else c := 0;
         Continue;
       end;
-      ApplyAttrToCanvas(FAttrs[j]);
+      ApplyAttrToCanvas(EffAttr(j));
       FCharW[j] := MeasureChar(j);
       Inc(CellW, FCharW[j]);
     end;
@@ -842,10 +859,10 @@ begin
       Continue;
     end;
 
-    if (not HasLast) or (not SameInkAttr(LastAttr, FAttrs[i])) then
+    if (not HasLast) or (not SameInkAttr(LastAttr, EffAttr(i))) then
     begin
-      ApplyAttrToCanvas(FAttrs[i]);
-      LastAttr := FAttrs[i];
+      LastAttr := EffAttr(i);
+      ApplyAttrToCanvas(LastAttr);
       HasLast := True;
     end;
     W := MeasureChar(i);
@@ -1180,7 +1197,7 @@ begin
       RunEnd := i;
       while (RunEnd + 1 < LineEndIdx) and (FChars[RunEnd + 1] <> #10) and
         not (IsTbl and (FChars[RunEnd + 1] = '|')) and
-        SameInkAttr(FAttrs[RunEnd + 1], FAttrs[i]) and
+        SameInkAttr(EffAttr(RunEnd + 1), EffAttr(i)) and
         (IsSel(RunEnd + 1) = RunSel) do
         Inc(RunEnd);
 
@@ -1188,7 +1205,7 @@ begin
       for RunTop := i to RunEnd do
         S := S + FChars[RunTop];
 
-      ApplyAttrToCanvas(FAttrs[i]);
+      ApplyAttrToCanvas(EffAttr(i));
       if Canvas.GetTextMetrics(tm) then
       begin
         RunAsc := tm.Ascender;
@@ -1218,9 +1235,9 @@ begin
         Canvas.Font.Color := clHighlightText;
         Canvas.Brush.Style := bsClear;
       end
-      else if FAttrs[i].BackColor <> clNone then
+      else if EffAttr(i).BackColor <> clNone then
       begin
-        Canvas.Brush.Color := FAttrs[i].BackColor;
+        Canvas.Brush.Color := EffAttr(i).BackColor;
         Canvas.Brush.Style := bsSolid;
         Canvas.FillRect(X, RunTop, L.Left + FCharX[RunEnd] + FCharW[RunEnd],
           RunTop + RunH);
@@ -1295,6 +1312,39 @@ begin
 end;
 
 { ------------------------------------------------------------------ document }
+
+function TInkRichEdit.EffAttr(AIndex: Integer): TInkAttr;
+begin
+  Result := FAttrs[AIndex];
+  AdjustAttr(AIndex, Result);
+end;
+
+procedure TInkRichEdit.AdjustAttr(AIndex: Integer; var A: TInkAttr);
+begin
+  { the base editor draws what the document says }
+end;
+
+function TInkRichEdit.CharAt(AIndex: Integer): string;
+begin
+  if (AIndex >= 0) and (AIndex < CharCount) then
+    Result := FChars[AIndex]
+  else
+    Result := '';
+end;
+
+procedure TInkRichEdit.InsertPlainText(const AText: string);
+var
+  A: TInkAttr;
+  Clean: string;
+begin
+  if FReadOnly then Exit;
+  PushUndo(False);
+  if GetSelLength > 0 then DeleteSelection;
+  A := AttrAtCaret;
+  Clean := StringReplace(AText, #13#10, #10, [rfReplaceAll]);
+  Clean := StringReplace(Clean, #13, #10, [rfReplaceAll]);
+  DoInsert(Clean, A);
+end;
 
 function TInkRichEdit.AttrAtCaret: TInkAttr;
 begin
@@ -2204,6 +2254,67 @@ begin
   if FReadOnly or (GetSelLength = 0) then Exit;
   PushUndo(False);
   DeleteSelection;
+end;
+
+procedure TInkRichEdit.MenuClick(Sender: TObject);
+begin
+  case (Sender as TMenuItem).Tag of
+    1: Undo;
+    2: Redo;
+    3: CutToClipboard;
+    4: CopyToClipboard;
+    5: PasteFromClipboard;
+    6: if (not FReadOnly) and (GetSelLength > 0) then
+       begin
+         PushUndo(False);
+         DeleteSelection;
+         FMarkupDirty := True;
+         InvalidateLayout;
+         if Assigned(FOnChange) then FOnChange(Self);
+       end;
+    7: SelectAll;
+  end;
+end;
+
+procedure TInkRichEdit.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+var
+  P: TPoint;
+
+  procedure AddItem(const ACaption: string; ATag: Integer; AEnabled: Boolean);
+  var
+    It: TMenuItem;
+  begin
+    It := TMenuItem.Create(FMenu);
+    It.Caption := ACaption;
+    It.Tag := ATag;
+    It.Enabled := AEnabled;
+    It.OnClick := @MenuClick;
+    FMenu.Items.Add(It);
+  end;
+
+begin
+  inherited DoContextPopup(MousePos, Handled);
+  if Handled or (PopupMenu <> nil) or not FEditMenu then Exit;
+  Handled := True;
+  FreeAndNil(FMenu);
+  FMenu := TPopupMenu.Create(Self);
+  if not FReadOnly then
+  begin
+    AddItem(SInkEditUndo, 1, CanUndo);
+    AddItem(SInkEditRedo, 2, CanRedo);
+    AddItem('-', 0, True);
+    AddItem(SInkEditCut, 3, GetSelLength > 0);
+  end;
+  AddItem(SInkEditCopy, 4, GetSelLength > 0);
+  if not FReadOnly then
+  begin
+    AddItem(SInkEditPaste, 5, Clipboard.HasFormat(CF_TEXT));
+    AddItem(SInkEditDelete, 6, GetSelLength > 0);
+  end;
+  AddItem('-', 0, True);
+  AddItem(SInkEditSelectAll, 7, CharCount > 0);
+  P := ClientToScreen(MousePos);
+  FMenu.PopUp(P.X, P.Y);
 end;
 
 procedure TInkRichEdit.PasteFromClipboard;

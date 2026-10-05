@@ -23,8 +23,17 @@ unit InkEdit;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, LCLType, LCLIntf, Clipbrd,
-  LazUTF8, ExtCtrls, Types;
+  Classes, SysUtils, Math, Controls, Graphics, LCLType, LCLIntf, Clipbrd,
+  LazUTF8, ExtCtrls, Types, Menus;
+
+resourcestring
+  SInkEditUndo = 'Undo';
+  SInkEditRedo = 'Redo';
+  SInkEditCut = 'Cut';
+  SInkEditCopy = 'Copy';
+  SInkEditPaste = 'Paste';
+  SInkEditDelete = 'Delete';
+  SInkEditSelectAll = 'Select all';
 
 type
   TInkGetCharAttrsEvent = procedure(Sender: TObject; AIndex: Integer;
@@ -45,6 +54,19 @@ type
     FCaretOn: Boolean;
     FOnChange: TNotifyEvent;
     FOnGetCharAttrs: TInkGetCharAttrsEvent;
+    FTextHint: string;
+    FTextHintColor: TColor;
+    FEditMenu: Boolean;
+    FMenu: TPopupMenu;
+    FUndo, FRedo: TFPList;
+    FUndoKind: Integer;        // 1 typing, 2 deleting, 0 anything else
+    FUndoTick: QWord;
+    FLastTyped: string;
+    procedure SetTextHint(const AValue: string);
+    procedure SetTextHintColor(AValue: TColor);
+    procedure PushUndo(AKind: Integer);
+    procedure ClearUndoList(AList: TFPList);
+    procedure MenuClick(Sender: TObject);
     function GetTextValue: string;
     procedure SetTextValue(const AValue: string);
     function GetSelStart: Integer;
@@ -78,6 +100,7 @@ type
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure DblClick; override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
     procedure DoEnter; override;
     procedure DoExit; override;
     class function GetControlClassDefaultSize: TSize; override;
@@ -89,6 +112,11 @@ type
     procedure CopyToClipboard;
     procedure CutToClipboard;
     procedure PasteFromClipboard;
+    procedure Undo;
+    procedure Redo;
+    function CanUndo: Boolean;
+    function CanRedo: Boolean;
+    procedure ClearUndo;
     property SelText: string read GetSelText;
   published
     property Text: string read GetTextValue write SetTextValue;
@@ -97,6 +125,16 @@ type
     property MaxLength: Integer read FMaxLength write FMaxLength default 0;
     property ReadOnly: Boolean read FReadOnly write SetReadOnly default False;
     property Alignment: TAlignment read FAlignment write SetAlignment default taLeftJustify;
+    { the gray words an empty box shows - what goes in the field, said
+      without a second label.  Never part of Text, never copied; drawn in
+      TextHintColor, or with clDefault the font color blended halfway into
+      the background, so it suits a light and a dark box unset. }
+    property TextHint: string read FTextHint write SetTextHint;
+    property TextHintColor: TColor read FTextHintColor write SetTextHintColor default clDefault;
+    { the box's own right-click menu - Undo, Redo, Cut, Copy, Paste, Delete,
+      Select All, each enabled only when it can do something.  A PopupMenu
+      of the host's own still wins. }
+    property EditMenu: Boolean read FEditMenu write FEditMenu default True;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnGetCharAttrs: TInkGetCharAttrsEvent read FOnGetCharAttrs write FOnGetCharAttrs;
 
@@ -137,6 +175,16 @@ uses
 
 const
   cTextMargin = 4;
+  cUndoDepth = 100;
+  cUndoCoalesceMs = 1000;
+
+type
+  { a whole-text snapshot: a one-line edit is small, and a snapshot that
+    cannot be subtly wrong beats a delta log that can }
+  TInkEditSnap = class
+    Chars: array of string;
+    Caret, Anchor: Integer;
+  end;
 
 { TInkEdit }
 
@@ -158,6 +206,10 @@ begin
   Color := clWindow;
   Font.Color := clWindowText;
   FAlignment := taLeftJustify;
+  FTextHintColor := clDefault;
+  FEditMenu := True;
+  FUndo := TFPList.Create;
+  FRedo := TFPList.Create;
   FCaretTimer := TTimer.Create(nil);
   FCaretTimer.Interval := 530;
   FCaretTimer.Enabled := False;
@@ -168,8 +220,137 @@ end;
 
 destructor TInkEdit.Destroy;
 begin
+  ClearUndoList(FUndo);
+  ClearUndoList(FRedo);
+  FreeAndNil(FUndo);
+  FreeAndNil(FRedo);
+  FreeAndNil(FMenu);
   FreeAndNil(FCaretTimer);
   inherited Destroy;
+end;
+
+{ ------------------------------------------------------------- undo & redo }
+
+procedure TInkEdit.ClearUndoList(AList: TFPList);
+var
+  i: Integer;
+begin
+  if AList = nil then Exit;
+  for i := 0 to AList.Count - 1 do
+    TObject(AList[i]).Free;
+  AList.Clear;
+end;
+
+{ One step is one typed run: a run ends at a pause, a caret move, a change
+  from typing to deleting, a paste or a cut, and at a word boundary - so
+  undoing "two words" gives back a word, not a letter and not the day. }
+procedure TInkEdit.PushUndo(AKind: Integer);
+var
+  Snap: TInkEditSnap;
+  i: Integer;
+begin
+  ClearUndoList(FRedo);
+  if (AKind > 0) and (AKind = FUndoKind) and
+    (GetTickCount64 - FUndoTick < cUndoCoalesceMs) and (FUndo.Count > 0) then
+  begin
+    FUndoTick := GetTickCount64;
+    Exit;                        // still the same run: one snapshot covers it
+  end;
+  Snap := TInkEditSnap.Create;
+  SetLength(Snap.Chars, Length(FChars));
+  for i := 0 to High(FChars) do
+    Snap.Chars[i] := FChars[i];
+  Snap.Caret := FCaret;
+  Snap.Anchor := FAnchor;
+  FUndo.Add(Snap);
+  while FUndo.Count > cUndoDepth do
+  begin
+    TObject(FUndo[0]).Free;
+    FUndo.Delete(0);
+  end;
+  FUndoKind := AKind;
+  FUndoTick := GetTickCount64;
+end;
+
+procedure TInkEdit.Undo;
+var
+  Snap, Back: TInkEditSnap;
+  i: Integer;
+begin
+  if FUndo.Count = 0 then Exit;
+  Back := TInkEditSnap.Create;
+  SetLength(Back.Chars, Length(FChars));
+  for i := 0 to High(FChars) do
+    Back.Chars[i] := FChars[i];
+  Back.Caret := FCaret;
+  Back.Anchor := FAnchor;
+  FRedo.Add(Back);
+  Snap := TInkEditSnap(FUndo[FUndo.Count - 1]);
+  FUndo.Delete(FUndo.Count - 1);
+  SetLength(FChars, Length(Snap.Chars));
+  for i := 0 to High(Snap.Chars) do
+    FChars[i] := Snap.Chars[i];
+  FCaret := Snap.Caret;
+  FAnchor := Snap.Anchor;
+  Snap.Free;
+  FUndoKind := 0;
+  Changed;
+end;
+
+procedure TInkEdit.Redo;
+var
+  Snap, Back: TInkEditSnap;
+  i: Integer;
+begin
+  if FRedo.Count = 0 then Exit;
+  Back := TInkEditSnap.Create;
+  SetLength(Back.Chars, Length(FChars));
+  for i := 0 to High(FChars) do
+    Back.Chars[i] := FChars[i];
+  Back.Caret := FCaret;
+  Back.Anchor := FAnchor;
+  FUndo.Add(Back);
+  Snap := TInkEditSnap(FRedo[FRedo.Count - 1]);
+  FRedo.Delete(FRedo.Count - 1);
+  SetLength(FChars, Length(Snap.Chars));
+  for i := 0 to High(Snap.Chars) do
+    FChars[i] := Snap.Chars[i];
+  FCaret := Snap.Caret;
+  FAnchor := Snap.Anchor;
+  Snap.Free;
+  FUndoKind := 0;
+  Changed;
+end;
+
+function TInkEdit.CanUndo: Boolean;
+begin
+  Result := (FUndo <> nil) and (FUndo.Count > 0);
+end;
+
+function TInkEdit.CanRedo: Boolean;
+begin
+  Result := (FRedo <> nil) and (FRedo.Count > 0);
+end;
+
+procedure TInkEdit.ClearUndo;
+begin
+  ClearUndoList(FUndo);
+  ClearUndoList(FRedo);
+  FUndoKind := 0;
+end;
+
+procedure TInkEdit.SetTextHint(const AValue: string);
+begin
+  if FTextHint = AValue then Exit;
+  FTextHint := AValue;
+  Invalidate;
+end;
+
+procedure TInkEdit.SetTextHintColor(AValue: TColor);
+begin
+  if FTextHintColor = AValue then Exit;
+  FTextHintColor := AValue;
+  Invalidate;
 end;
 
 class function TInkEdit.GetControlClassDefaultSize: TSize;
@@ -219,6 +400,8 @@ begin
   if (FMaxLength > 0) and (UTF8Length(Clean) > FMaxLength) then
     Clean := UTF8Copy(Clean, 1, FMaxLength);
   if Clean = GetTextValue then Exit;
+  { a form filling its fields is not something to undo }
+  ClearUndo;
   SplitText(Clean);
   FCaret := CharCount;
   FAnchor := FCaret;
@@ -446,6 +629,7 @@ var
   Positions: TIntegerDynArray;
   AColor: TColor;
   AStyle: TFontStyles;
+  AHint: string;
 begin
   Canvas.Brush.Color := Color;
   Canvas.Brush.Style := bsSolid;
@@ -458,6 +642,36 @@ begin
 
   SelA := GetSelStart;
   SelB := SelA + GetSelLength;
+
+  // the hint in the empty box: what goes here, said in dimmed words that
+  // are never part of Text.  It stays under the caret until typing starts.
+  if (CharCount = 0) and (FTextHint <> '') then
+  begin
+    if FTextHintColor = clDefault then
+      Canvas.Font.Color := RGBToColor(
+        (Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2,
+        (Green(ColorToRGB(Font.Color)) + Green(ColorToRGB(Color))) div 2,
+        (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)
+    else
+      Canvas.Font.Color := FTextHintColor;
+    Canvas.Brush.Style := bsClear;
+    W := ClientWidth - 2 * cTextMargin;
+    AHint := FTextHint;
+    if Canvas.TextWidth(AHint) > W then
+    begin
+      while (AHint <> '') and (Canvas.TextWidth(AHint + #$E2#$80#$A6) > W) do
+        AHint := UTF8Copy(AHint, 1, UTF8Length(AHint) - 1);
+      AHint := AHint + #$E2#$80#$A6;
+    end;
+    case FAlignment of
+      taCenter: X := cTextMargin + Max(0, (W - Canvas.TextWidth(AHint)) div 2);
+      taRightJustify: X := cTextMargin + Max(0, W - Canvas.TextWidth(AHint));
+    else
+      X := cTextMargin;
+    end;
+    Canvas.TextOut(X, TextY, AHint);
+    Canvas.Font.Color := Font.Color;
+  end;
 
   // selection band behind the glyphs
   if (SelB > SelA) and Focused then
@@ -499,6 +713,7 @@ procedure TInkEdit.KeyDown(var Key: Word; Shift: TShiftState);
   begin
     if NewPos < 0 then NewPos := 0;
     if NewPos > CharCount then NewPos := CharCount;
+    FUndoKind := 0;            // a caret move ends a typing run
     FCaret := NewPos;
     if not (ssShift in Shift) then FAnchor := FCaret;
     EnsureCaretVisible;
@@ -532,6 +747,7 @@ begin
       begin
         if not FReadOnly then
         begin
+          PushUndo(2);
           if GetSelLength > 0 then
             DeleteSelection
           else if FCaret > 0 then
@@ -543,6 +759,7 @@ begin
       begin
         if not FReadOnly then
         begin
+          PushUndo(2);
           if GetSelLength > 0 then
             DeleteSelection
           else if FCaret < CharCount then
@@ -554,6 +771,13 @@ begin
     VK_C: if ssCtrl in Shift then begin CopyToClipboard; Key := 0; end;
     VK_X: if ssCtrl in Shift then begin CutToClipboard; Key := 0; end;
     VK_V: if ssCtrl in Shift then begin PasteFromClipboard; Key := 0; end;
+    VK_Z:
+      if ssCtrl in Shift then
+      begin
+        if ssShift in Shift then Redo else Undo;
+        Key := 0;
+      end;
+    VK_Y: if ssCtrl in Shift then begin Redo; Key := 0; end;
   end;
 end;
 
@@ -562,6 +786,14 @@ begin
   inherited UTF8KeyPress(UTF8Key);
   if UTF8Key = '' then Exit;
   if (Length(UTF8Key) = 1) and (UTF8Key[1] < #32) then Exit;
+  if not FReadOnly then
+  begin
+    { a space after a word starts a new undo run, so undo gives back words }
+    if (UTF8Key = ' ') and (FLastTyped <> '') and (FLastTyped <> ' ') then
+      FUndoKind := 0;
+    PushUndo(1);
+    FLastTyped := UTF8Key;
+  end;
   InsertText(UTF8Key);
   UTF8Key := '';
 end;
@@ -572,6 +804,7 @@ begin
   if Button = mbLeft then
   begin
     if CanSetFocus then SetFocus;
+    FUndoKind := 0;
     FCaret := XToCaret(X);
     if not (ssShift in Shift) then FAnchor := FCaret;
     RestartCaretBlink;
@@ -641,6 +874,7 @@ begin
   end;
   if GetSelLength > 0 then
   begin
+    PushUndo(0);
     Clipboard.AsText := GetSelText;
     DeleteSelection;
   end;
@@ -649,7 +883,71 @@ end;
 procedure TInkEdit.PasteFromClipboard;
 begin
   if not FReadOnly and Clipboard.HasFormat(CF_TEXT) then
+  begin
+    PushUndo(0);
     InsertText(Clipboard.AsText);
+  end;
+end;
+
+{ ------------------------------------------------------------ context menu }
+
+procedure TInkEdit.MenuClick(Sender: TObject);
+begin
+  case (Sender as TMenuItem).Tag of
+    1: Undo;
+    2: Redo;
+    3: CutToClipboard;
+    4: CopyToClipboard;
+    5: PasteFromClipboard;
+    6: if (not FReadOnly) and (GetSelLength > 0) then
+       begin
+         PushUndo(0);
+         DeleteSelection;
+       end;
+    7: SelectAll;
+  end;
+end;
+
+procedure TInkEdit.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+var
+  P: TPoint;
+
+  procedure AddItem(const ACaption: string; ATag: Integer; AEnabled: Boolean);
+  var
+    It: TMenuItem;
+  begin
+    It := TMenuItem.Create(FMenu);
+    It.Caption := ACaption;
+    It.Tag := ATag;
+    It.Enabled := AEnabled;
+    It.OnClick := @MenuClick;
+    FMenu.Items.Add(It);
+  end;
+
+begin
+  inherited DoContextPopup(MousePos, Handled);
+  { a PopupMenu of the host's own was shown by the LCL before this runs }
+  if Handled or (PopupMenu <> nil) or not FEditMenu then Exit;
+  Handled := True;
+  FreeAndNil(FMenu);
+  FMenu := TPopupMenu.Create(Self);
+  if not FReadOnly then
+  begin
+    AddItem(SInkEditUndo, 1, CanUndo);
+    AddItem(SInkEditRedo, 2, CanRedo);
+    AddItem('-', 0, True);
+    AddItem(SInkEditCut, 3, GetSelLength > 0);
+  end;
+  AddItem(SInkEditCopy, 4, GetSelLength > 0);
+  if not FReadOnly then
+  begin
+    AddItem(SInkEditPaste, 5, Clipboard.HasFormat(CF_TEXT));
+    AddItem(SInkEditDelete, 6, GetSelLength > 0);
+  end;
+  AddItem('-', 0, True);
+  AddItem(SInkEditSelectAll, 7, CharCount > 0);
+  P := ClientToScreen(MousePos);
+  FMenu.PopUp(P.X, P.Y);
 end;
 
 end.

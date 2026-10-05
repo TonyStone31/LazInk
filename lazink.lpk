@@ -57,6 +57,10 @@
         <UnitName Value="InkRichEdit"/>
       </Item>
       <Item>
+        <Filename Value="inkcodememo.pas"/>
+        <UnitName Value="InkCodeMemo"/>
+      </Item>
+      <Item>
         <Filename Value="lazinkreg.pas"/>
         <HasRegisterProc Value="True"/>
         <UnitName Value="LazInkReg"/>

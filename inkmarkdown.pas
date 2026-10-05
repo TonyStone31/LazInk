@@ -26,7 +26,10 @@ unit InkMarkdown;
 interface
 uses Classes, SysUtils;
 type
-  TInkTextFormat = (itfHTML, itfMarkdown);
+  { itfPlain: the text exactly as written - no tags, entities or Markdown
+    read - so a ticket, a log or a cut list like "width < 24\" & square"
+    needs no escaping at any of the places that set it }
+  TInkTextFormat = (itfHTML, itfMarkdown, itfPlain);
   TInkMarkdownOption = (
     { pass HTML written in the Markdown through, instead of showing it as
       text - only for documents you trust }
@@ -1841,7 +1844,16 @@ end;
 
 function InkToHTML(const S: string; AFormat: TInkTextFormat): string;
 begin
-  if AFormat = itfMarkdown then Result := MarkdownToInk(S) else Result := S;
+  if AFormat = itfMarkdown then
+    Result := MarkdownToInk(S)
+  else if AFormat = itfPlain then
+    { shown as written: the three characters that are markup, escaped }
+    Result := StringReplace(StringReplace(StringReplace(S,
+      '&', '&amp;', [rfReplaceAll]),
+      '<', '&lt;', [rfReplaceAll]),
+      '>', '&gt;', [rfReplaceAll])
+  else
+    Result := S;
 end;
 
 initialization

@@ -10,7 +10,7 @@ interface
 uses
   InkScrollBar, InkTouch, InkCopyMenu, InkGIF, InkCSS, InkCode, InkWebP, InkWebPLossless, InkWebPVP8, 
   InkBox, InkRender, InkDraw, InkPage, InkMarkdown, InkLabel, InkEdit, 
-  InkMemo, InkListBox, InkRichEdit, LazInkReg, LazarusPackageIntf;
+  InkMemo, InkListBox, InkRichEdit, InkCodeMemo, LazInkReg, LazarusPackageIntf;
 
 implementation
 

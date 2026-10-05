@@ -6,7 +6,7 @@ unit LazInkReg;
 interface
 
 uses
-  Classes, LResources;
+  Classes, LResources, InkCodeMemo;
 
 procedure Register;
 
@@ -17,7 +17,7 @@ uses
 
 procedure Register;
 begin
-  RegisterComponents('LazInk', [TInkLabel, TInkEdit, TInkRichEdit, TInkMemo, TInkListBox, TInkPage]);
+  RegisterComponents('LazInk', [TInkLabel, TInkEdit, TInkRichEdit, TInkCodeMemo, TInkMemo, TInkListBox, TInkPage]);
 end;
 
 initialization
