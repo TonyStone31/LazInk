@@ -136,8 +136,28 @@ object frmMain: TfrmMain
           Text = 'The page''s own look'
           OnChange = DocThemeChange
         end
+        object cbDocScheme: TComboBox
+          Left = 558
+          Height = 30
+          Hint = 'What @media (prefers-color-scheme) answers to'
+          Top = 7
+          Width = 92
+          ItemHeight = 0
+          ItemIndex = 0
+          Items.Strings = (
+            'Auto'
+            'Light'
+            'Dark'
+          )
+          ShowHint = True
+          ParentShowHint = False
+          Style = csDropDownList
+          TabOrder = 5
+          Text = 'Auto'
+          OnChange = DocSchemeChange
+        end
         object lblDocHint: TInkLabel
-          Left = 566
+          Left = 660
           Height = 18
           Top = 12
           Width = 634
@@ -237,7 +257,7 @@ object frmMain: TfrmMain
           ParentColor = False
         end
       end
-      object memMarkdown: TMemo
+      object memMarkdown: TInkCodeMemo
         Left = 0
         Height = 656
         Top = 42
@@ -245,11 +265,11 @@ object frmMain: TfrmMain
         Align = alLeft
         Font.Height = -13
         ParentFont = False
-        ScrollBars = ssAutoBoth
         TabOrder = 1
         WantTabs = True
-        WordWrap = False
+        TextHint = 'Type Markdown here - # headings, **bold**, - lists, | tables |'
         OnChange = MdSourceChange
+        OnGetCharAttrs = MdCharAttrs
       end
       object splMarkdown: TSplitter
         Left = 540
@@ -533,6 +553,101 @@ object frmMain: TfrmMain
           ParentShowHint = False
           OnClick = btnRedoClick
         end
+        object btnKindH1: TSpeedButton
+          Tag = 1
+          Left = 858
+          Height = 28
+          Hint = 'Heading 1'
+          Top = 7
+          Width = 32
+          AllowAllUp = True
+          Caption = 'H1'
+          GroupIndex = 7
+          ShowHint = True
+          ParentShowHint = False
+          OnClick = btnKindClick
+        end
+        object btnKindH2: TSpeedButton
+          Tag = 2
+          Left = 892
+          Height = 28
+          Hint = 'Heading 2'
+          Top = 7
+          Width = 32
+          AllowAllUp = True
+          Caption = 'H2'
+          GroupIndex = 7
+          ShowHint = True
+          ParentShowHint = False
+          OnClick = btnKindClick
+        end
+        object btnKindBullet: TSpeedButton
+          Tag = 7
+          Left = 926
+          Height = 28
+          Hint = 'Bullet list'
+          Top = 7
+          Width = 28
+          AllowAllUp = True
+          Caption = #8226
+          GroupIndex = 7
+          ShowHint = True
+          ParentShowHint = False
+          OnClick = btnKindClick
+        end
+        object btnKindNumber: TSpeedButton
+          Tag = 8
+          Left = 956
+          Height = 28
+          Hint = 'Numbered list'
+          Top = 7
+          Width = 30
+          AllowAllUp = True
+          Caption = '1.'
+          GroupIndex = 7
+          ShowHint = True
+          ParentShowHint = False
+          OnClick = btnKindClick
+        end
+        object btnKindQuote: TSpeedButton
+          Tag = 9
+          Left = 988
+          Height = 28
+          Hint = 'Quote'
+          Top = 7
+          Width = 28
+          AllowAllUp = True
+          Caption = #8221
+          GroupIndex = 7
+          ShowHint = True
+          ParentShowHint = False
+          OnClick = btnKindClick
+        end
+        object btnKindCode: TSpeedButton
+          Tag = 10
+          Left = 1018
+          Height = 28
+          Hint = 'Code line'
+          Top = 7
+          Width = 30
+          AllowAllUp = True
+          Caption = '{}'
+          GroupIndex = 7
+          ShowHint = True
+          ParentShowHint = False
+          OnClick = btnKindClick
+        end
+        object btnTable: TSpeedButton
+          Left = 1054
+          Height = 28
+          Hint = 'Insert a 3×2 table - Tab hops cells, Enter adds a row'
+          Top = 7
+          Width = 52
+          Caption = 'Table'
+          ShowHint = True
+          ParentShowHint = False
+          OnClick = btnTableClick
+        end
       end
       object pnlEditStatus: TPanel
         Left = 0
@@ -651,6 +766,16 @@ object frmMain: TfrmMain
               Caption = 'Apply to editor'
               TabOrder = 0
               OnClick = btnApplySourceClick
+            end
+            object chkSrcMarkdown: TCheckBox
+              Left = 282
+              Height = 22
+              Top = 5
+              Width = 98
+              Anchors = [akTop, akRight]
+              Caption = 'Markdown'
+              TabOrder = 1
+              OnChange = chkSrcMarkdownChange
             end
           end
           object memSource: TMemo

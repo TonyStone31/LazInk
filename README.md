@@ -382,17 +382,26 @@ designer and push it around; nothing is conjured up at run time.
 **Documents** opens on `demo/tour.md`, a Markdown page about LazInk shown by a
 `TInkPage`: select text, right-click to copy, Ctrl+F to find, follow the link
 to this README and come back with the mouse's back button. The list above the
-page switches its look through `StyleSheet`.
+page switches its look through `StyleSheet`, and the scheme box beside it
+answers the page's `@media (prefers-color-scheme)` queries through
+`ColorScheme`.
 
 ![The Documents tab](images/demo-documents.png)
 
 **Markdown editor** is the source and its live preview side by side, and opens
 this README when the demo starts. It opens and saves files; the other tabs
-only show what the controls can do.
+only show what the controls can do.  The source pane is a `TInkCodeMemo`
+colored by the demo itself through `OnGetCharAttrs` - headings, markers,
+code spans, quotes and table pipes each in their own color, LazInk's own
+machinery and no SynEdit anywhere.
 
 ![The Markdown editor tab](images/demo-markdown.png)
 
-**WYSIWYG editor** is `TInkRichEdit` with the markup it would be saved as:
+**WYSIWYG editor** opens on a document **loaded from Markdown** and edited
+as the thing itself - a heading, a table (Tab hops cells, Enter adds rows),
+lists, a quote and code, with toolbar buttons for what a paragraph is.  The
+right pane shows the document as markup, or - tick *Markdown* - as the
+Markdown it would be saved as, and **Apply** reads either back:
 
 ![The WYSIWYG editor tab](images/demo-editor.png)
 
