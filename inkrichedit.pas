@@ -38,7 +38,12 @@ type
     stays flat; every character of a paragraph (its #10 included) carries
     the same kind. }
   TInkParaKind = (ipkText, ipkH1, ipkH2, ipkH3, ipkH4, ipkH5, ipkH6,
-    ipkBullet, ipkNumber, ipkQuote, ipkCode);
+    ipkBullet, ipkNumber, ipkQuote, ipkCode,
+    { a table row: its cells are the text between literal '|' characters,
+      which draw as the grid, not as glyphs.  Consecutive table rows are
+      one table and share their column widths; the head row is bold on a
+      band.  Tab hops to the next cell, Enter adds a row. }
+    ipkTableHead, ipkTableRow);
 
   { Everything one character can carry. The sentinels — clDefault, clNone, 0,
     '' — mean "follow the control's Font", so a document that never mentions a
@@ -196,6 +201,9 @@ type
     { the whole paragraphs the selection touches become AKind - a heading,
       a bullet or numbered item, a quote, a line of code, or plain text }
     procedure ApplyParaKind(AKind: TInkParaKind);
+    { a fresh table at the caret: a head row and ARows body rows of ACols
+      empty cells, the caret in the head's first cell }
+    procedure InsertTable(ACols, ARows: Integer);
     procedure ClearFormatting;
     procedure InsertParagraph;
 
@@ -276,6 +284,8 @@ uses
 
 const
   cMargin = 3;
+  cCellPad = 8;           // a table cell's inset each side of its text
+  cRowPad = 4;            // and above and below it
   cScrollBarWidth = 16;
   cUndoDepth = 200;
   cUndoCoalesceMs = 700;
@@ -507,7 +517,7 @@ begin
     Sz := Round(Sz * FSuperSubScriptRatio);
   if Sz < 1 then Sz := 1;
   Canvas.Font.Size := Sz;
-  if A.Kind in [ipkH1..ipkH6] then
+  if A.Kind in [ipkH1..ipkH6, ipkTableHead] then
     Canvas.Font.Style := A.Style + [fsBold]
   else
     Canvas.Font.Style := A.Style;
@@ -594,6 +604,8 @@ var
   HasLast: Boolean;
   CurKind: TInkParaKind;
   CurInd: Integer;
+  { the full width a table row's line reports, while one is being laid }
+  TableRowW: Integer;
 
   { Height and baseline of the characters [AFirst, AFirst+ACount). An empty
     paragraph still needs a line box, so fall back to the control font. }
@@ -645,6 +657,11 @@ var
     L.Top := Y;
     L.Height := MaxH + 1;
     L.Ascent := MaxAsc;
+    if TableRowW > 0 then
+    begin
+      Inc(L.Height, 2 * cRowPad);
+      Inc(L.Ascent, cRowPad);
+    end;
     if ACount > 0 then
       L.Width := FCharX[AFirst + ACount - 1] + FCharW[AFirst + ACount - 1]
     else
@@ -655,6 +672,7 @@ var
       Al := FAttrs[AFirst].Align
     else
       Al := FAttrs[N - 1].Align;
+    if TableRowW > 0 then L.Width := TableRowW;
     { the paragraph's indent first - a list marker's gutter, a quote's bar,
       a code line's inset - then the alignment inside what is left }
     case Al of
@@ -663,6 +681,7 @@ var
     else
       L.Left := cMargin + CurInd;
     end;
+    if TableRowW > 0 then L.Left := cMargin;
 
     if LineCount >= Length(FLines) then
       SetLength(FLines, Max(8, Length(FLines) * 2));
@@ -670,6 +689,113 @@ var
     Inc(LineCount);
     Inc(Y, L.Height);
     HasLast := False;   // canvas font was reset above
+  end;
+
+  { A run of table rows laid out as one table: the columns are shared by
+    every row of the group, a '|' takes the width of the border gap it
+    draws in, and each row is one line that never wraps.  Everything else
+    - the caret, clicks, selection - keeps working through FCharX/FCharW. }
+  procedure LayTableGroup;
+  var
+    GEnd, j, c, NCols, RowStart, CellW, ColCount: Integer;
+    ColW, ColX: array of Integer;
+
+    procedure CloseCell;
+    begin
+      if c >= Length(ColW) then
+      begin
+        SetLength(ColW, c + 1);
+        ColW[c] := 0;
+      end;
+      if CellW > ColW[c] then ColW[c] := CellW;
+      CellW := 0;
+    end;
+
+  begin
+    { the group: this paragraph and every table row after it }
+    GEnd := i;
+    while GEnd < N do
+    begin
+      if FChars[GEnd] = #10 then
+        if (GEnd + 1 >= N) or
+          not (FAttrs[GEnd + 1].Kind in [ipkTableHead, ipkTableRow]) then
+        begin
+          Inc(GEnd);
+          Break;
+        end;
+      Inc(GEnd);
+    end;
+
+    { pass 1: every character in its own attrs; the widest cell per column }
+    c := 0;
+    CellW := 0;
+    for j := i to GEnd - 1 do
+    begin
+      if (FChars[j] = #10) or (FChars[j] = '|') then
+      begin
+        FCharW[j] := 0;
+        CloseCell;
+        if FChars[j] = '|' then Inc(c) else c := 0;
+        Continue;
+      end;
+      ApplyAttrToCanvas(FAttrs[j]);
+      FCharW[j] := MeasureChar(j);
+      Inc(CellW, FCharW[j]);
+    end;
+    if (GEnd = N) or (GEnd > i) then CloseCell;
+    NCols := Length(ColW);
+    if NCols = 0 then
+    begin
+      SetLength(ColW, 1);
+      ColW[0] := 0;
+      NCols := 1;
+    end;
+    SetLength(ColX, NCols + 1);
+    ColX[0] := 0;
+    for c := 0 to NCols - 1 do
+      ColX[c + 1] := ColX[c] + Max(ColW[c], 16) + 2 * cCellPad;
+    TableRowW := ColX[NCols];
+
+    { pass 2: place each row and emit its line }
+    RowStart := i;
+    c := 0;
+    X := ColX[0] + cCellPad;
+    for j := i to GEnd - 1 do
+    begin
+      if FChars[j] = #10 then
+      begin
+        FCharX[j] := X;
+        FCharW[j] := 0;
+        EmitLine(RowStart, j - RowStart + 1);
+        RowStart := j + 1;
+        c := 0;
+        X := ColX[0] + cCellPad;
+        Continue;
+      end;
+      if FChars[j] = '|' then
+      begin
+        FCharX[j] := X;
+        ColCount := Min(c + 1, NCols);
+        FCharW[j] := Max(0, ColX[ColCount] + cCellPad - X);
+        X := ColX[ColCount] + cCellPad;
+        c := ColCount;
+        Continue;
+      end;
+      FCharX[j] := X;
+      Inc(X, FCharW[j]);
+    end;
+    if RowStart < GEnd then EmitLine(RowStart, GEnd - RowStart);
+    TableRowW := 0;
+
+    { the main loop picks up after the group }
+    i := GEnd;
+    LineStart := GEnd;
+    X := 0;
+    LastSpace := -1;
+    HasLast := False;
+    CurKind := ParaKindAt(GEnd);
+    CurInd := ParaIndent(CurKind);
+    AvailP := Max(16, Avail - CurInd);
   end;
 
 begin
@@ -686,6 +812,7 @@ begin
   LastSpace := -1;
   HasLast := False;
   LastAttr := DefaultInkAttr;
+  TableRowW := 0;
   CurKind := ParaKindAt(0);
   CurInd := ParaIndent(CurKind);
   AvailP := Max(16, Avail - CurInd);
@@ -693,6 +820,12 @@ begin
   i := 0;
   while i < N do
   begin
+    { a table group is laid out as one block of shared columns }
+    if (i = LineStart) and (CurKind in [ipkTableHead, ipkTableRow]) then
+    begin
+      LayTableGroup;
+      Continue;
+    end;
     if FChars[i] = #10 then
     begin
       FCharX[i] := X;
@@ -916,6 +1049,18 @@ var
   L: TInkVisLine;
   tm: TLCLTextMetric;
   RunAsc, RunH, Rise, X: Integer;
+  GridC: TColor;
+  BX, LT, LB: Integer;
+  IsTbl: Boolean;
+
+  { the grid's color: the background mixed a sixth toward the text }
+  function BlendToText(ANum, ADen: Integer): TColor;
+  begin
+    Result := RGBToColor(
+      Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) * ANum div ADen,
+      Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) * ANum div ADen,
+      Blue(ColorToRGB(Color)) + (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) * ANum div ADen);
+  end;
 
   function IsSel(AIdx: Integer): Boolean;
   begin
@@ -939,6 +1084,7 @@ begin
 
     BaseY := L.Top - FScrollY + L.Ascent;
     LineEndIdx := L.First + L.Count;
+    IsTbl := ParaKindAt(L.First) in [ipkTableHead, ipkTableRow];
 
     { what the paragraph is wearing: a code line's shaded band, a quote's
       bar, and a marker on a list item's first line }
@@ -965,6 +1111,33 @@ begin
           Canvas.FillRect(cMargin, L.Top - FScrollY,
             cMargin + 3, L.Top - FScrollY + L.Height);
         end;
+      ipkTableHead, ipkTableRow:
+        begin
+          LT := L.Top - FScrollY;
+          LB := LT + L.Height;
+          GridC := BlendToText(1, 6);
+          if ParaKindAt(L.First) = ipkTableHead then
+          begin
+            Canvas.Brush.Color := BlendToText(1, 14);
+            Canvas.Brush.Style := bsSolid;
+            Canvas.FillRect(L.Left, LT, L.Left + L.Width, LB);
+          end;
+          Canvas.Pen.Color := GridC;
+          Canvas.Pen.Style := psSolid;
+          { the frame: a top edge on the table's first row, a bottom edge
+            and the two sides on every row }
+          if (L.First = 0) or ((L.First > 0) and
+            not (FAttrs[L.First - 1].Kind in [ipkTableHead, ipkTableRow])) then
+            Canvas.Line(L.Left, LT, L.Left + L.Width, LT);
+          Canvas.Line(L.Left, LB - 1, L.Left + L.Width, LB - 1);
+          Canvas.Line(L.Left, LT, L.Left, LB);
+          Canvas.Line(L.Left + L.Width - 1, LT, L.Left + L.Width - 1, LB);
+          { and a line where each '|' hands one cell to the next }
+          for BX := L.First to L.First + L.Count - 1 do
+            if (BX < CharCount) and (FChars[BX] = '|') then
+              Canvas.Line(L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LT,
+                L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LB);
+        end;
       ipkBullet, ipkNumber:
         if (L.First = 0) or ((L.First > 0) and (L.First <= CharCount) and
           (FChars[L.First - 1] = #10)) then
@@ -987,16 +1160,17 @@ begin
     i := L.First;
     while i < LineEndIdx do
     begin
-      if FChars[i] = #10 then
+      if (FChars[i] = #10) or (IsTbl and (FChars[i] = '|')) then
       begin
         // a selected paragraph break shows as a thin bar, so selecting across
-        // paragraphs looks like it selected something
+        // paragraphs looks like it selected something; a table's '|' draws
+        // as the grid, so selected it shows as its border gap highlighted
         if IsSel(i) then
         begin
           Canvas.Brush.Color := clHighlight;
           Canvas.Brush.Style := bsSolid;
           Canvas.FillRect(L.Left + FCharX[i], L.Top - FScrollY,
-            L.Left + FCharX[i] + 4, L.Top - FScrollY + L.Height);
+            L.Left + FCharX[i] + Max(4, FCharW[i]), L.Top - FScrollY + L.Height);
         end;
         Inc(i);
         Continue;
@@ -1005,6 +1179,7 @@ begin
       RunSel := IsSel(i);
       RunEnd := i;
       while (RunEnd + 1 < LineEndIdx) and (FChars[RunEnd + 1] <> #10) and
+        not (IsTbl and (FChars[RunEnd + 1] = '|')) and
         SameInkAttr(FAttrs[RunEnd + 1], FAttrs[i]) and
         (IsSel(RunEnd + 1) = RunSel) do
         Inc(RunEnd);
@@ -1229,12 +1404,47 @@ end;
 procedure TInkRichEdit.InsertParagraph;
 var
   A: TInkAttr;
-  PS, PE: Integer;
+  PS, PE, i, K: Integer;
 begin
   if FReadOnly then Exit;
   PushUndo(False);
   if GetSelLength > 0 then DeleteSelection;
   A := AttrAtCaret;
+  { Enter in a table makes another row of the same columns; on a row that
+    is still empty it ends the table, the way an empty item ends a list }
+  if A.Kind in [ipkTableHead, ipkTableRow] then
+  begin
+    PS := FCaret;
+    while (PS > 0) and (FChars[PS - 1] <> #10) do Dec(PS);
+    PE := FCaret;
+    while (PE < CharCount) and (FChars[PE] <> #10) do Inc(PE);
+    i := 0;                               { the row's cells, and its words }
+    for K := PS to PE - 1 do
+      if FChars[K] = '|' then Inc(i)
+      else if FChars[K] <> ' ' then i := i or $10000;
+    if i and $10000 = 0 then
+    begin
+      { an empty row: the table ends here }
+      DoDelete(PS, PE);
+      if (PS < CharCount) and (FChars[PS] = #10) then FAttrs[PS].Kind := ipkText;
+      FTypingAttr := A;
+      FTypingAttr.Kind := ipkText;
+      FHasTypingAttr := True;
+      FModified := True;
+      FMarkupDirty := True;
+      InvalidateLayout;
+      if Assigned(FOnChange) then FOnChange(Self);
+      SelectionChanged;
+      Exit;
+    end;
+    { a new body row with the same columns, the caret in its first cell }
+    A.Kind := ipkTableRow;
+    A.Link := '';
+    MoveCaret(PE, False);
+    DoInsert(#10 + StringOfChar('|', i and $FFFF), A);
+    MoveCaret(PE + 1, False);
+    Exit;
+  end;
   { Enter on an empty list item or quote line steps back to plain text
     instead of making another empty one, the way every editor ends a list }
   if A.Kind in [ipkBullet, ipkNumber, ipkQuote] then
@@ -1267,6 +1477,38 @@ begin
     FTypingAttr.Style := FTypingAttr.Style - [fsBold];
     FHasTypingAttr := True;
   end;
+end;
+
+procedure TInkRichEdit.InsertTable(ACols, ARows: Integer);
+var
+  A, TA: TInkAttr;
+  r, Home: Integer;
+  RowTxt: string;
+begin
+  if FReadOnly then Exit;
+  PushUndo(False);
+  if GetSelLength > 0 then DeleteSelection;
+  ACols := Max(1, ACols);
+  ARows := Max(1, ARows);
+  RowTxt := StringOfChar('|', ACols - 1);
+  A := AttrAtCaret;
+  A.Link := '';
+  { the table starts on a line of its own }
+  if (FCaret > 0) and (FChars[FCaret - 1] <> #10) then DoInsert(#10, A);
+  Home := FCaret;
+  TA := A;
+  TA.Kind := ipkTableHead;
+  DoInsert(RowTxt, TA);
+  TA.Kind := ipkTableRow;
+  for r := 1 to ARows do
+    DoInsert(#10 + RowTxt, TA);
+  { and plain text follows it - the break belongs to the last row }
+  if (FCaret >= CharCount) or (FChars[FCaret] <> #10) then
+    DoInsert(#10, TA);
+  FTypingAttr := A;
+  FTypingAttr.Kind := ipkText;
+  FHasTypingAttr := False;
+  MoveCaret(Home, False);
 end;
 
 { -------------------------------------------------------------- formatting  }
@@ -1625,6 +1867,12 @@ begin
     VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_HOME, VK_END, VK_PRIOR, VK_NEXT,
     VK_RETURN:
       Message.Result := 1;      // an editor eats its own navigation keys
+    VK_TAB:
+      // in a table, Tab hops to the next cell instead of leaving the control
+      if SelParaKind in [ipkTableHead, ipkTableRow] then
+        Message.Result := 1
+      else
+        inherited;
   else
     inherited;
   end;
@@ -1648,6 +1896,62 @@ var
     if (FLines[ALine].Count > 0) and (FChars[Result - 1] = #10) then Dec(Result);
   end;
 
+  { Tab in a table: the caret to the start of the next cell, into the next
+    row's first cell past the last one, and a new row past the table's end.
+    Shift takes it back the same way. }
+  procedure TableHop(ABack: Boolean);
+  var
+    RS, RE, C: Integer;
+  begin
+    RS := FCaret;
+    while (RS > 0) and (FChars[RS - 1] <> #10) do Dec(RS);
+    RE := FCaret;
+    while (RE < CharCount) and (FChars[RE] <> #10) do Inc(RE);
+    if not ABack then
+    begin
+      C := FCaret;
+      while (C < RE) and (FChars[C] <> '|') do Inc(C);
+      if C < RE then
+        MoveCaret(C + 1, False)
+      else if (RE + 1 < CharCount) and
+        (FAttrs[RE + 1].Kind in [ipkTableHead, ipkTableRow]) and
+        (FChars[RE] = #10) then
+        MoveCaret(RE + 1, False)
+      else
+      begin
+        { past the last cell of the last row: another row }
+        MoveCaret(RE, False);
+        InsertParagraph;
+      end;
+    end
+    else
+    begin
+      { the start of this cell, or of the one before it, or of the row above }
+      C := FCaret - 1;
+      while (C >= RS) and (FChars[C] <> '|') do Dec(C);
+      if C >= RS then
+      begin
+        { at a cell's own start already?  then the cell before it }
+        if C + 1 = FCaret then
+        begin
+          Dec(C);
+          while (C >= RS) and (FChars[C] <> '|') do Dec(C);
+        end;
+        if C >= RS then MoveCaret(C + 1, False) else MoveCaret(RS, False);
+      end
+      else if FCaret > RS then
+        MoveCaret(RS, False)
+      else if (RS >= 2) and (FAttrs[RS - 2].Kind in [ipkTableHead, ipkTableRow]) then
+      begin
+        { the last cell of the row above }
+        C := RS - 2;
+        while (C >= 0) and (FChars[C] <> #10) and (FChars[C] <> '|') do Dec(C);
+        MoveCaret(C + 1, False);
+      end;
+    end;
+    FGoalX := -1;
+  end;
+
 begin
   inherited KeyDown(Key, Shift);
   if Key = 0 then Exit;
@@ -1655,6 +1959,12 @@ begin
   Ext := ssShift in Shift;
 
   case Key of
+    VK_TAB:
+      if SelParaKind in [ipkTableHead, ipkTableRow] then
+      begin
+        TableHop(ssShift in Shift);
+        Key := 0;
+      end;
     VK_LEFT:
       begin
         if (GetSelLength > 0) and not Ext then
@@ -2233,6 +2543,8 @@ begin
       else if Nm = 'OLI' then begin Push; Cur.Kind := ipkNumber; end
       else if Nm = 'BLOCKQUOTE' then begin Push; Cur.Kind := ipkQuote; end
       else if Nm = 'PRE' then begin Push; Cur.Kind := ipkCode; end
+      else if Nm = 'TH' then begin Push; Cur.Kind := ipkTableHead; end
+      else if Nm = 'TR' then begin Push; Cur.Kind := ipkTableRow; end
       else if Nm = 'A' then
       begin
         Push;
@@ -2377,7 +2689,8 @@ var
   procedure EndParagraph;
   const
     cKindTag: array[TInkParaKind] of string =
-      ('', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'oli', 'blockquote', 'pre');
+      ('', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'oli', 'blockquote', 'pre',
+       'th', 'tr');
   begin
     CloseDownTo(0);
     case ParaAlign of
@@ -2486,18 +2799,19 @@ var
   Closing: Boolean;
   InOrdered: Boolean;
 
-  function ReadTag(var AP: Integer; out AName: string; out AClosing: Boolean): string;
+  function ReadTagIn(const Src: string; var AP: Integer; out AName: string;
+    out AClosing: Boolean): string;
   var
     E, K: Integer;
   begin
     Result := '';
     AName := '';
     AClosing := False;
-    if (AP > Length(H)) or (H[AP] <> '<') then Exit;
+    if (AP > Length(Src)) or (Src[AP] <> '<') then Exit;
     E := AP + 1;
-    while (E <= Length(H)) and (H[E] <> '>') do Inc(E);
-    if E > Length(H) then begin AP := E; Exit end;
-    Result := Copy(H, AP, E - AP + 1);
+    while (E <= Length(Src)) and (Src[E] <> '>') do Inc(E);
+    if E > Length(Src) then begin AP := E; Exit end;
+    Result := Copy(Src, AP, E - AP + 1);
     AP := E + 1;
     K := 2;
     if (K <= Length(Result)) and (Result[K] = '/') then
@@ -2510,6 +2824,11 @@ var
       AName := AName + LowerCase(Result[K]);
       Inc(K);
     end;
+  end;
+
+  function ReadTag(var AP: Integer; out AName: string; out AClosing: Boolean): string;
+  begin
+    Result := ReadTagIn(H, AP, AName, AClosing);
   end;
 
   { everything up to the close of AName, nesting counted, cursor left after }
@@ -2579,49 +2898,62 @@ var
     end;
   end;
 
+  { a table becomes the editor's table rows: the head from its <th> cells,
+    a body row per <tr>, the cells joined by the '|' that draws the grid }
   procedure AddTable(const AInner: string);
   var
-    TP, CI: Integer;
+    TP, CE: Integer;
     N, Row, Cell: string;
-    C: Boolean;
+    C, IsHead: Boolean;
     Cells: TStringList;
+
+    procedure FlushRow;
+    var
+      K: Integer;
+    begin
+      if Cells.Count = 0 then Exit;
+      Row := '';
+      for K := 0 to Cells.Count - 1 do
+      begin
+        if K > 0 then Row := Row + '|';
+        Row := Row + Trim(HTMLToInk(Cells[K]));
+      end;
+      if IsHead then
+        AOut.Add('<th>' + Row + '</th>')
+      else
+        AOut.Add('<tr>' + Row + '</tr>');
+      Cells.Clear;
+      IsHead := False;
+    end;
+
   begin
     TP := 1;
+    IsHead := False;
     Cells := TStringList.Create;
     try
-      Row := '';
       while TP <= Length(AInner) do
       begin
-        if AInner[TP] = '<' then
+        if AInner[TP] <> '<' then
         begin
-          ReadTag(TP, N, C);
-          if (N = 'tr') and C then
-          begin
-            if Cells.Count > 0 then
-            begin
-              Row := '';
-              for CI := 0 to Cells.Count - 1 do
-              begin
-                if CI > 0 then Row := Row + ' | ';
-                Row := Row + Cells[CI];
-              end;
-              AOut.Add(Row);
-              Cells.Clear;
-            end;
-          end
-          else if ((N = 'td') or (N = 'th')) and not C then
-            Cells.Add('');
+          Inc(TP);
           Continue;
         end;
-        Cell := '';
-        while (TP <= Length(AInner)) and (AInner[TP] <> '<') do
+        ReadTagIn(AInner, TP, N, C);
+        if (N = 'tr') and C then
+          FlushRow
+        else if ((N = 'td') or (N = 'th')) and not C then
         begin
-          Cell := Cell + AInner[TP];
-          Inc(TP);
+          if N = 'th' then IsHead := True;
+          CE := Pos('</' + N + '>', LowerCase(Copy(AInner, TP, MaxInt)));
+          if CE = 0 then
+            Cell := Copy(AInner, TP, MaxInt)
+          else
+            Cell := Copy(AInner, TP, CE - 1);
+          Cells.Add(Cell);
+          Inc(TP, Length(Cell));
         end;
-        if (Cells.Count > 0) and (Trim(Cell) <> '') then
-          Cells[Cells.Count - 1] := Cells[Cells.Count - 1] + Cell;
       end;
+      FlushRow;
     finally
       Cells.Free;
     end;
@@ -2702,11 +3034,12 @@ end;
 
 function TInkRichEdit.AsMarkdown: string;
 var
-  i, PS: Integer;
+  i, PS, CS, CE, NCells: Integer;
   Kind, PrevKind: TInkParaKind;
   Lines: TStringList;
   NumberAt: Integer;
   InFence: Boolean;
+  Back: string;
 
   function EscapeMD(const T: string): string;
   var
@@ -2715,7 +3048,7 @@ var
     Result := '';
     for K := 1 to Length(T) do
     begin
-      if T[K] in ['\', '`', '*', '_', '['] then Result := Result + '\';
+      if T[K] in ['\', '`', '*', '_', '[', '|'] then Result := Result + '\';
       Result := Result + T[K];
     end;
   end;
@@ -2785,9 +3118,12 @@ begin
         Lines.Add('```');
         InFence := False;
       end;
-      { a blank line between blocks, except inside a list, a quote or a fence }
+      { a blank line between blocks, except inside a list, a quote, a fence
+        or a table - a head row and its body rows are one block }
       if (Lines.Count > 0) and not InFence then
-        if not ((Kind = PrevKind) and (Kind in [ipkBullet, ipkNumber, ipkQuote, ipkCode])) then
+        if not (((Kind = PrevKind) and (Kind in [ipkBullet, ipkNumber, ipkQuote, ipkCode])) or
+          ((Kind in [ipkTableHead, ipkTableRow]) and
+           (PrevKind in [ipkTableHead, ipkTableRow]))) then
           Lines.Add('');
       case Kind of
         ipkH1..ipkH6:
@@ -2810,6 +3146,27 @@ begin
               InFence := True;
             end;
             Lines.Add(RawText(PS, i - 1));
+          end;
+        ipkTableHead, ipkTableRow:
+          begin
+            { cells between the pipes, each written as inline Markdown }
+            Back := '|';
+            NCells := 0;
+            CS := PS;
+            for CE := PS to i do
+              if (CE = i) or (FChars[CE] = '|') then
+              begin
+                Back := Back + ' ' + InlineMD(CS, CE - 1) + ' |';
+                Inc(NCells);
+                CS := CE + 1;
+              end;
+            Lines.Add(Back);
+            if Kind = ipkTableHead then
+            begin
+              Back := '|';
+              for CE := 1 to NCells do Back := Back + ' --- |';
+              Lines.Add(Back);
+            end;
           end;
       else
         Lines.Add(InlineMD(PS, i - 1));
