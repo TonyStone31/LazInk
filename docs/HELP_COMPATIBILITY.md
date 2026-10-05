@@ -1,6 +1,6 @@
 # Heckers Sketch help compatibility
 
-Target: https://tonystone31.github.io/noella-etch-a-sketch/
+Target: https://tonystone31.github.io/heckers-sketch/
 
 Audited from the published site on 16 September 2026. `tools/audit_help.py`
 downloaded every linked local page, image, and stylesheet. The inventory in
@@ -177,7 +177,7 @@ existing `DefaultWndHandler` warning during the control tests.
 Reproduce the audit and content checks:
 
 ```sh
-tools/audit_help.pas https://tonystone31.github.io/noella-etch-a-sketch/ \
+tools/audit_help.pas https://tonystone31.github.io/heckers-sketch/ \
   --download /tmp/lazink-help --output /tmp/help-audit.json
 find /tmp/lazink-help -name '*.html' | sort > /tmp/help-pages.txt
 mkdir -p /tmp/help-results

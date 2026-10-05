@@ -15,7 +15,7 @@ rich editor - that read **HTML or Markdown**.  It should be the package a
 Lazarus developer reaches for when they want decorated text, release notes,
 a help viewer or a Markdown document, without a browser engine.
 
-Heckers Sketch (https://github.com/TonyStone31/noella-etch-a-sketch) is its
+Heckers Sketch (https://github.com/TonyStone31/heckers-sketch) is its
 first real user.  Its needs come first, but every one of them is solved in
 a way any other program can use.  Nothing in LazInk may know about Heckers
 Sketch.
@@ -67,6 +67,18 @@ says how each landed): cell text styling (`font-size`, `font-weight`,
 block children of a cell, tables nested in cells and in grid/flex cards,
 inline pills on `<span>`, and `SetInnerHTML` by id.  A page like that send
 window can now be written the way a browser page would be.
+
+**Open again, 4 October 2026** - from moving that send window onto them:
+
+* **Light and dark**: `@media (prefers-color-scheme)` and a `ColorScheme`
+  property to answer it (`bugs/2026-10-04-light-dark-and-more`, item 1).
+  The most wanted; it would let a help site's own themes work unchanged.
+* **Text in a grid card** ignores the stylesheet, a blank band follows a
+  grid, and margins between blocks in a cell are not read
+  (`bugs/2026-10-04-grid-card-text-unstyled`).
+* **Inline HTML in Markdown** that leaves an unknown `<word>` as text, and
+  an **ellipsis** for `HTMLDrawOpt` with `NoWrap`
+  (`bugs/2026-10-04-light-dark-and-more`, items 2 and 3).
 
 ### B. Selection, finished
 

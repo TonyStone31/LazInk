@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Text in a grid card</title>
+<style>
+body { font-size: 14px; color: #0f172a; padding: 18px 22px }
+h3 { font-size: 12px; color: #64748b; text-transform: uppercase; margin: 18px 0 6px 0 }
+table { width: 100%; border-collapse: collapse }
+td { padding: 7px 10px; border: 1px solid #e2e8f0 }
+td.key { background: #f8fafc; color: #475569 }
+
+/* 1. an h3, and a div by class, in a grid card */
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px }
+div.cap { font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase }
+
+/* 2. margin and line-height on a div in a cell */
+td.banner { background: #15803d; color: #fff; border: 0; border-radius: 8px; padding: 14px 18px }
+div.title { font-size: 22px; font-weight: bold }
+div.sub { font-size: 14px; margin-top: 8px }
+</style></head><body>
+
+<table><tr><td class="banner">
+  <div class="title">Sent - thank you</div>
+  <div class="sub">2 files, 600 KB - this line should sit 8px below the title</div>
+</td></tr></table>
+
+<h3>Outside the grid - how a heading should look</h3>
+
+<div class="cards">
+  <div><h3>This machine</h3>
+    <table><tr><td class="key">System</td><td>Linux Mint 22.2</td></tr>
+           <tr><td class="key">Memory</td><td>31.1 GB</td></tr></table></div>
+  <div><div class="cap">The program</div>
+    <table><tr><td class="key">Version</td><td>v2026.10.04</td></tr>
+           <tr><td class="key">Toolkit</td><td>GTK 3.24.41</td></tr></table></div>
+</div>
+
+<h3>After the grid - should follow it at the h3 margin, not a blank band</h3>
+<table><tr><td class="key">Sheet</td><td>Shop floor</td></tr></table>
+</body></html>
