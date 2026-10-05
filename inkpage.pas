@@ -339,6 +339,12 @@ type
     { Markdown, read the way GitHub reads it; relative links and images are
       resolved against BaseURL }
     procedure LoadMarkdown(const Markdown: string; const BaseURL: string = '');
+    { Replaces what is inside the element whose id attribute is AID with
+      AHTML and reads the page again, keeping the scroll where it was - so
+      a status page can change one line cheaply, without rebuilding its
+      whole source.  True when the element was found.  HTML sources only;
+      history is left alone. }
+    function SetInnerHTML(const AID, AHTML: string): Boolean;
     procedure RenderTo(ACanvas: TCanvas);
     function PlainText: string;
     function ImageCount: Integer;
@@ -527,7 +533,7 @@ type
 function LinkHref(const AHit: THTMLHitInfo): string;
 
 implementation
-uses Math, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
+uses Math, StrUtils, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
 
 type
   { a list, a quote or a definition the parser is inside }
@@ -1180,6 +1186,58 @@ begin
 end;
 procedure TInkCustomPage.LoadHTML(const HTML: string; const BaseURL: string);
 begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse; AddTextHistory; Navigated end;
+function TInkCustomPage.SetInnerHTML(const AID, AHTML: string): Boolean;
+var P, Q, OpenEnd, CloseStart, Depth, Keep: Integer; Raw, ElName, Rest: string;
+begin
+  Result := False;
+  if FTextFormat<>itfHTML then Exit;
+  { the opening tag that carries id="AID" }
+  P := 1; OpenEnd := 0; ElName := '';
+  while P<=Length(FSource) do
+  begin
+    P := PosEx('<',FSource,P);
+    if P=0 then Exit;
+    Q := PosEx('>',FSource,P);
+    if Q=0 then Exit;
+    Raw := Copy(FSource,P,Q-P+1);
+    if SameText(Attribute(Raw,'id'),AID) then
+    begin
+      ElName := TagName(Raw);
+      if (ElName='') or IsVoidElement(ElName) or (Copy(Raw,1,2)='</') then Exit;
+      OpenEnd := Q;
+      Break;
+    end;
+    P := Q+1;
+  end;
+  if OpenEnd=0 then Exit;
+  { its matching close, counting same-name elements opened inside it }
+  Depth := 1; P := OpenEnd+1; CloseStart := 0;
+  while (P<=Length(FSource)) and (Depth>0) do
+  begin
+    P := PosEx('<',FSource,P);
+    if P=0 then Exit;
+    Q := PosEx('>',FSource,P);
+    if Q=0 then Exit;
+    Raw := Copy(FSource,P,Q-P+1);
+    Rest := TagName(Raw);
+    if Rest=ElName then
+    begin
+      if Copy(Raw,1,2)='</' then
+      begin
+        Dec(Depth);
+        if Depth=0 then begin CloseStart := P; Break end;
+      end
+      else if Copy(Raw,Length(Raw)-1,2)<>'/>' then Inc(Depth);
+    end;
+    P := Q+1;
+  end;
+  if CloseStart=0 then Exit;
+  FSource := Copy(FSource,1,OpenEnd)+AHTML+Copy(FSource,CloseStart,MaxInt);
+  Keep := ScrollY;
+  Parse; Layout;
+  FScroll.Position := Keep;
+  Result := True;
+end;
 procedure TInkCustomPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
 begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse; AddTextHistory; Navigated end;
 procedure TInkCustomPage.Navigated;
@@ -1621,11 +1679,12 @@ var
     that puts it back.  Colors, size, weight, slant and decoration: the
     things people write a style attribute for. }
   function StyleMarkup(const AStyle: string; out AClose: string): string;
-  var V, FG, BG, Sz: string; C: TColor; K: Integer;
+  var V, FG, BG, Sz, Pill: string; C: TColor; K, PV, PH, BW: Integer;
+    Parts: TStringList;
   begin
     Result := ''; AClose := '';
     if Pos(':',AStyle)=0 then Exit;
-    FG := ''; BG := ''; Sz := '';
+    FG := ''; BG := ''; Sz := ''; Pill := '';
     V := StyleValue(AStyle,'color');
     if V<>'' then
     begin
@@ -1642,9 +1701,32 @@ var
     { a size in pixels, negative, the way TFont.Height spells one }
     K := CSSPixels(StyleValue(AStyle,'font-size'),-1);
     if K>0 then Sz := ' size="'+IntToStr(-K)+'"';
-    if (FG<>'') or (BG<>'') or (Sz<>'') then
+    { a pill: padding, round corners and a border make an inline box - a
+      status badge.  Padding the CSS way: one value for every side, two for
+      vertical and horizontal; a pill only cares about those two. }
+    PV := 0; PH := 0;
+    V := Trim(FStyles.Resolve(StyleValue(AStyle,'padding')));
+    if V<>'' then
     begin
-      Result := '<font'+Sz+FG+BG+'>'; AClose := '</font>';
+      Parts := TStringList.Create;
+      try
+        Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
+        Parts.DelimitedText := V;
+        if Parts.Count>=1 then PV := Max(0,CSSPixels(Parts[0],0));
+        if Parts.Count>=2 then PH := Max(0,CSSPixels(Parts[1],0)) else PH := PV;
+      finally Parts.Free end;
+    end;
+    K := CSSPixels(FStyles.Resolve(StyleValue(AStyle,'border-radius')),0);
+    EdgeOf(FStyles.Resolve(StyleValue(AStyle,'border')),C,BW);
+    if (PV>0) or (PH>0) or (K>0) or (C<>clNone) then
+    begin
+      Pill := Format(' pad="%d %d"',[PV,PH]);
+      if K>0 then Pill := Pill+' radius="'+IntToStr(K)+'"';
+      if C<>clNone then Pill := Pill+' pillborder="'+ColorAttr(C)+'"';
+    end;
+    if (FG<>'') or (BG<>'') or (Sz<>'') or (Pill<>'') then
+    begin
+      Result := '<font'+Sz+FG+BG+Pill+'>'; AClose := '</font>';
     end;
     V := LowerCase(StyleValue(AStyle,'font-weight'));
     if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
@@ -1758,8 +1840,27 @@ var
   end;
   { an inline element, with whatever its own style attribute asks for
     wrapped round it }
+  { what the stylesheet says about a span, as the style text it would have
+    written on itself: span.ok { background; padding; border-radius } is how
+    a page writes a status pill }
+  function SpanCSS: string;
+  var Gathered: string;
+    procedure Take(const AProp: string);
+    var V: string;
+    begin
+      V := FStyles.Value(Element,Cls,AProp,'',Context);
+      if V<>'' then Gathered := Gathered+AProp+':'+V+';';
+    end;
+  begin
+    Gathered := '';
+    Take('color'); Take('background'); Take('background-color');
+    Take('font-size'); Take('font-weight'); Take('font-style');
+    Take('text-decoration'); Take('padding'); Take('border-radius');
+    Take('border');
+    Result := Gathered;
+  end;
   function InlineTag: string;
-  var Open, Close: string; K: Integer;
+  var Open, Close, CSSText: string; K: Integer;
   begin
     Result := InlineMarkup;
     if IsVoidElement(Element) or (Element='') then Exit;
@@ -1775,7 +1876,11 @@ var
         end;
       Exit;
     end;
-    Open := StyleMarkup(Attribute(Raw,'style'),Close);
+    CSSText := '';
+    { the stylesheet's rules for a span, under its own style attribute,
+      which wins because the last declaration written wins }
+    if Element='span' then CSSText := SpanCSS;
+    Open := StyleMarkup(CSSText+Attribute(Raw,'style'),Close);
     StyleStack.Add(Element+'='+Close);
     Result := Result+Open;
   end;

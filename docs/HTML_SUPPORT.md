@@ -123,6 +123,15 @@ through without disturbing the rows.
   `display: flex` card, keeping its stylesheet's padding, backgrounds and
   colors.  Two cards side by side, each holding a small key/value table,
   is written exactly as a browser page would write it.
+* **Pills**: `padding`, `border-radius` and `border` on a `<span>` - by
+  class or style attribute - make an inline box behind the words, so a
+  status can be a rounded badge in a sentence or a cell.  A pill's words
+  stay on one line.  `span.x { color; background; font-size; font-weight }`
+  also style a span's words with no pill involved.
+* **One element at a time**: `SetInnerHTML('status', '<b>sent</b>')`
+  replaces what is inside the element with that `id` and reads the page
+  again, keeping the scroll where it was - a live status page changes one
+  line without rebuilding its source.
 
 ```html
 <table class="cards">
