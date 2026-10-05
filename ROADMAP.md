@@ -76,9 +76,16 @@ band gone and block margins read in cells
 (`bugs/2026-10-04-grid-card-text-unstyled`); `imoInlineHTML` for Markdown,
 and the `NoWrap` ellipsis with `TInkLabel.Ellipsis`.
 
-**Open, 4 October 2026:** a grid of cards has about 17 px too much space
-above it and 36 px too much below, where ordinary blocks match a browser
-to the pixel (`bugs/2026-10-04-space-round-a-grid`).
+**Open, 4 October 2026:** the space above a grid of cards is fixed; in a
+real window about 18 px too much is still left below one whose cards are
+a heading over a multi-row table (`bugs/2026-10-04-space-round-a-grid`,
+the last section).
+
+**Wanted, 5 October 2026** - from Heckers Sketch moving every dialog off
+the stock LCL controls: `TextHint`, undo/redo and a context menu on
+`TInkEdit`, the plain multi-line editor (`TInkCodeMemo`, section C) for
+notes fields, and an `itfPlain` text format so a display control can show
+text that is not markup (`bugs/2026-10-05-edit-hint-undo-and-a-plain-memo`).
 
 ### B. Selection, finished
 

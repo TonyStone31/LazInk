@@ -1346,8 +1346,17 @@ var
     end;
     AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
     SettleLine(LineFirst);
-    if LineH=0 then LineH := Canvas.TextHeight('Tg');
-    Result := (CY+Advance) - AY + Pad.Bottom;
+    { a trailing empty line collapses, as it does in a browser: a cell that
+      ends with a nested table, a margin gap or a <br> is as tall as its
+      content, not a text line taller.  A cell with nothing at all in it
+      still keeps one line box. }
+    if (CX<=AX+Pad.Left) and (CY>AY+Pad.Top) then
+      Result := CY - AY + Pad.Bottom
+    else
+    begin
+      if LineH=0 then LineH := Canvas.TextHeight('Tg');
+      Result := (CY+Advance) - AY + Pad.Bottom;
+    end;
   end;
 
   { the width a cell would like, and the width it cannot go below (its

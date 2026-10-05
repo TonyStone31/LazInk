@@ -68,3 +68,47 @@ the files table, the cards and "The report" all sit 26 px apart, the
 browser's own rhythm.  `CardTextChecks` holds a one-row gaponly grid to
 exactly the height of the same row without it, and the page to no band
 above or below.
+
+## Still about 18 px below the grid, in a real window - 4 October 2026, later
+
+Checked again in Heckers Sketch's send window after the fix
+(`send-window-in-program.png`; the page it drew is
+`send-window-in-program.html`, byte for byte the same as `send-window.html`).
+The space above the grid is right now.  The space below it is not.
+
+Measured on the pictures by machine, not by eye: from the last full-width
+table border row to the first row of the next heading's gray text.  The
+browser figures are from `send-window-browser.png` (Brave, 846 px); the
+LazInk ones from the `TInkPage` in the window, about 848 px wide.
+
+| | browser | LazInk |
+|---|---|---|
+| files table to the cards' headings | 23 px | 24 px |
+| the cards' tables to "The report" | 23 px | 42 px |
+
+So about 18 px too much is left below a grid, close to the grid's 16 px
+`gap` plus a pixel or two - as if one trailing gap, or the last card row's
+spacing, is still counted into the block's height there.
+
+**Not a stale layout:** after the window had shown it, the page was given
+an empty `Source` and then the same source again, and the fresh layout
+measures the same 42 px.  The send window does set `Source` several times
+while files go out and resizes the page once at the end, so that was worth
+ruling out.
+
+**Why the tests may not see it:** `CardTextChecks` holds a one-row grid to
+the height of the same row without the gap.  Here each card is a heading
+over a seven-row table, and the two cards are the same height.  A check on
+the block after a grid of taller cards - a heading and a multi-row table
+in each - is where the extra would show.
+
+## And fixed - 5 October 2026
+
+The guess was close: not the grid's own spacing but a phantom line inside
+each card.  A cell that ended with a nested table still finished with an
+empty line box a text line tall, so every card - and with it the grid row -
+was about 20 px taller than its content.  A trailing empty line in a cell
+now collapses, as it does in a browser (a wholly empty cell keeps its one
+line box).  The send window's gap below the cards measures 24 px against
+the browser's 23, the same pixel the other gaps sit at, and the tests hold
+a cell ending with a nested table to exactly its content's height.

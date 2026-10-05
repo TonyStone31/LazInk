@@ -3197,6 +3197,14 @@ begin
     A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br>b</td></tr></table>',O);
     N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br><vgap=50>b</td></tr></table>',O);
     Check(N.cy=A.cy+50,'a vgap in a cell is exactly its height');
+    { a cell that ends with a nested table is as tall as its content: the
+      trailing empty line box collapses, as in a browser.  Words after the
+      nested table add exactly their line back. }
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,360,0),[],
+      '<table><tr><td>a<table><tr><td>x</td></tr></table></td></tr></table>',O);
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,360,0),[],
+      '<table><tr><td>a<table><tr><td>x</td></tr></table>b</td></tr></table>',O);
+    Check(N.cy>A.cy+10,'a cell ending with a nested table has no phantom line');
     { a grid's gap goes between its items, never around its edges: the gap
       before a heading is the same whether a grid or a table came before it }
     A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,560,0),[],
