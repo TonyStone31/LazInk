@@ -2939,6 +2939,83 @@ begin
   Check(APage.ScrollY > 0, 'README''s own contents links lead somewhere');
 end;
 
+{ --- P8: ScrollBars as a property, the same entities in both engines, and
+  the one-pixel frames GTK3 drew round a memo's lines --- }
+procedure ScrollBarAndEntityChecks;
+var MP: TInkMemo; Shot, BM: TBitmap; X, Y, Dark, Frames: Integer;
+  O: THTMLOptions; A, C, N: TSize; S: string;
+begin
+  { ScrollBars: issNone wins over a stylesheet that asks for a bar }
+  Probe.LoadHTML('<html><head><style>html { scrollbar-width: thin }</style>' +
+    '</head><body><p>words</p></body></html>');
+  Check(Probe.ScrollBar.Visible, 'a thin scrollbar is still a scrollbar');
+  Probe.ScrollBars := issNone;
+  Check(not Probe.ScrollBar.Visible, 'ScrollBars=issNone hides it');
+  { LCL keeps an aligned control at least one pixel wide; hidden, it draws
+    nothing and the page keeps all but that pixel }
+  Check(Probe.ScrollBar.Width <= 1, 'and gives the page its width back');
+  Probe.ScrollBars := issAuto;
+  Check(Probe.ScrollBar.Visible, 'issAuto hands the choice back to the stylesheet');
+
+  MP := TInkMemo.Create(F); MP.Parent := F;
+  MP.SetBounds(0, 0, 400, 36);
+  MP.Color := clWhite; MP.Font.Color := clBlack;
+  MP.Lines.Add('press <b>Ctrl</b> to spin the <font color="#cc0000">block</font>');
+  MP.Lines.Add('a second line of <i>markup</i> under it');
+  Check(MP.ScrollBar.Visible, 'a memo starts with its scrollbar');
+  MP.ScrollBars := issNone;
+  Check(not MP.ScrollBar.Visible, 'and ScrollBars=issNone takes it away');
+  { the GTK3 frames: no block carries a border, so no row may be black from
+    edge to edge }
+  Shot := TBitmap.Create;
+  try
+    Shot.SetSize(MP.ClientWidth, MP.ClientHeight);
+    MP.RenderTo(Shot.Canvas);
+    Frames := 0;
+    for Y := 0 to Shot.Height - 1 do
+    begin
+      Dark := 0;
+      for X := 0 to Shot.Width - 1 do
+        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = clBlack then Inc(Dark);
+      if Dark > Shot.Width div 2 then Inc(Frames);
+    end;
+    Check(Frames = 0, Format('a memo''s lines wear no frame (%d black rows)', [Frames]));
+  finally Shot.Free end;
+  MP.Free;
+
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(600, 200); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
+    O := DefaultHTMLOptions;
+    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], 'a&nbsp;b', O);
+    C := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], 'a b', O);
+    Check(Abs(A.cx - C.cx) <= 1, 'HTMLDrawOpt reads &nbsp; as one space, not six letters');
+    { and it is non-breaking: the joined pair wraps as one word }
+    S := 'onelongword&nbsp;andanother';
+    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], S, O);
+    N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, A.cx - 10, 0), [], S, O);
+    Check(N.cy = A.cy, 'words joined by &nbsp; stay on one line');
+    N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, A.cx - 10, 0), [], 'onelongword andanother', O);
+    Check(N.cy > A.cy, 'where a plain space wraps');
+    { the rest of the shared entity table reaches the inline engine too }
+    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], '&ldquo;x&rdquo;', O);
+    C := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], #$E2#$80#$9C'x'#$E2#$80#$9D, O);
+    Check(Abs(A.cx - C.cx) <= 1, 'the inline engine reads the named entities');
+    { NoWrap means what it says: one line however narrow the rectangle }
+    O.NoWrap := True;
+    S := 'several words that are far too wide for the rectangle';
+    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 900, 0), [], S, O);
+    N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 120, 0), [], S, O);
+    Check(N.cy = A.cy, 'NoWrap does not break at spaces');
+  finally BM.Free end;
+
+  { navigating straight to a .webp is a page of that one picture, as it is
+    for a .png - not the file read as text }
+  Probe.LoadFromFile('tests/fixtures/webp/alpha-filter-0.webp');
+  Check(Probe.ImageCount = 1, 'navigating to a .webp shows the picture');
+  Check(Probe.DocumentTitle = 'alpha-filter-0.webp', 'with its name as the title: ' + Probe.DocumentTitle);
+end;
+
 begin
   Application.Initialize;
   TestExceptions := TTestExceptions.Create;
@@ -3082,6 +3159,7 @@ begin
     WebPChecks;
     RunWebPChecks;
     FindChecks;
+    ScrollBarAndEntityChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

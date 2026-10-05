@@ -181,7 +181,10 @@ name, `rgb()`/`rgba()`, `currentcolor`, or a `var()` holding any of those.
 still scrolls).  Both are read from `html` or `:root`, then `body`.  Without
 them, the track is the page background and the thumb sits halfway between
 that and the text color, so a dark page gets a dark bar with no CSS at all.
-`InkPage1.ScrollBar` reaches it from code.
+`InkPage1.ScrollBar` reaches it from code, and the published `ScrollBars`
+property (`issAuto`, `issNone`) turns the bar off from the Object Inspector,
+whatever the stylesheet asks for - for a `TInkMemo` a couple of lines high
+that wants no bar at all.
 
 **Touch screens:** drag the page with a finger (or the left mouse button) to
 scroll it; a quick flick leaves it coasting (`FlickScroll`).  A tap that

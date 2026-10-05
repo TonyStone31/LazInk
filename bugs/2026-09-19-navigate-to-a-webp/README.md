@@ -31,3 +31,12 @@ Heckers Sketch no longer depends on it - its picture window builds the
 one-picture page itself now, which is the honest way round: the window knows
 it was asked for a picture, so it says so rather than leaving the renderer to
 guess from the name.  Worth fixing here anyway for the next caller.
+
+## Fixed - 4 October 2026
+
+`.webp` is in the list.  `.avif` and `.tiff` are not: nothing in LazInk
+decodes them, and a one-picture page around a picture nobody can draw is a
+blank window where the file-as-text at least says something is wrong.  The
+better shape - asking the decoders what they read - waits until there is a
+second decoder to ask.  `tests/render_tests.pas` navigates to a `.webp`
+fixture and checks a picture page comes back.

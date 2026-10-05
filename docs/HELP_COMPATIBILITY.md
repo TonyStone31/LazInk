@@ -95,7 +95,9 @@ to `body`.  `var()` takes a fallback - `var(--x, #fff)` - and nests; a value
 whose variable cannot be resolved is dropped rather than overriding an
 earlier valid one, and a variable that refers to itself resolves to nothing.
 The bar keeps its width whether or not the page overflows, like
-`scrollbar-gutter: stable`.
+`scrollbar-gutter: stable`.  The published `ScrollBars` property (`issAuto`,
+`issNone`) turns the bar off from code or the Object Inspector, whatever the
+stylesheet says.
 
 This is **not CSS conformance**. In particular:
 

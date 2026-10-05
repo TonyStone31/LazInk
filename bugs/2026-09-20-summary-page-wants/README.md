@@ -42,6 +42,10 @@ the same text with real U+00A0 characters does not.
 and `white-space: nowrap` on a cell to set that column's minimum width to
 the whole text.
 
+*The first half is done (4 October 2026): `&nbsp;` decodes to a real
+U+00A0 in both engines, and the line breaker does not break at it.  The
+`nowrap` cell is still open.*
+
 ## 3. A `<div>` inside a cell is flattened into the line
 
 Two `<div>`s in a `<td>` - a title and a line under it - came out as one

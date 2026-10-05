@@ -148,6 +148,7 @@ type
     property DragScroll;
     property FlickScroll;
     property MouseDrag;
+    property ScrollBars;
     property SelectionColor;
     property OnSelectionChange;
     property CopyMenu;

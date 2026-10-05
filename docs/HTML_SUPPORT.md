@@ -50,7 +50,8 @@ A page's own rules beat the program's stylesheet.
 plus numeric ones written either way - `&#233;` and `&#xE9;`.
 
 **Wrapping:** lines break on spaces, after slashes in long paths, and between
-CJK characters, keeping closing punctuation off the start of a line.
+CJK characters, keeping closing punctuation off the start of a line.  Words
+joined by `&nbsp;` (or a raw U+00A0) do not break.
 
 ---
 

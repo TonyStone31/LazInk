@@ -537,6 +537,31 @@ although its blocks carry no border color.  Not chased - Heckers Sketch drew
 the rows with `HTMLDrawOpt` instead.  Also seen: `HTMLDrawOpt` with
 `NoWrap` still breaks a line at its spaces.
 
+**Done (4 October 2026), all four:**
+* `ScrollBars` (`issAuto`, `issNone`) is published on `TInkPage` and
+  `TInkMemo`.  `issNone` beats the stylesheet; `issAuto` leaves the choice
+  to `scrollbar-width` as before.  The hidden bar keeps the one pixel LCL
+  insists an aligned control have; it draws nothing there.
+* Both engines now decode entities through the same table
+  (`InkRenderUnescape`), so `HTMLDrawOpt` reads `&nbsp;`, `&ldquo;` and the
+  rest.  And `&nbsp;` now decodes to a real U+00A0, which the line breaker
+  already refuses to break at - so it is non-breaking everywhere, which was
+  also item 2 of `bugs/2026-09-20-summary-page-wants`.
+* The memo's frames: `TInkMemo.StyleBlock` never touched the per-edge
+  border fields, so they sat at zeroed memory - `clBlack` - and GTK3 paints
+  an empty `FillRect` as a one-pixel line.  A fresh `TInkPageBlock` now
+  starts with every color `clNone`, and an edge is only painted when its
+  width is above zero.
+* `NoWrap` breaking at spaces could not be reproduced - `HTMLTextExtentOpt`
+  and `HTMLDrawOpt` hold a too-long line to one line, with and without
+  inline tags, and Heckers Sketch no longer has the code that saw it.  A
+  regression test now pins the behavior; if it comes back, it comes back
+  with a repro.
+
+Also fixed the same day: `LoadFromURL` on a `.webp` now makes the
+one-picture page (`bugs/2026-09-19-navigate-to-a-webp`), and tests cover
+all of the above.
+
 ## 4. A renderer of our own, and a license with no strings
 
 **Done, 18 September 2026** - the part that mattered.  `inkhtml.pas` and
