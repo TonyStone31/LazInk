@@ -486,11 +486,11 @@ browser over thirty-six thousand.
 
 ## Where it is going
 
-[ROADMAP.md](ROADMAP.md) is the plan: touch scrolling on Linux, copying and
-selecting text, fuller Markdown, a Markdown editor in the demo; then a
-renderer of LazInk's own, replacing the JVCL-derived one so the whole
-package can move to a no-conditions license; and a WYSIWYG Markdown editor
-after that - with what "done" means for each.
+[ROADMAP.md](ROADMAP.md) is the plan - only what is still open: the table
+styling a real summary page asked for, selection in the last two controls,
+a demo worth looking at, runs on the other widgetsets, and the WYSIWYG
+Markdown editor that nothing else for Lazarus has.  How everything already
+finished was built, and why, is [docs/HISTORY.md](docs/HISTORY.md).
 
 ## Credits and origins
 
