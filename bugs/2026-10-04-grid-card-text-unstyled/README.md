@@ -33,3 +33,22 @@ are not read, so the two lines touch.
 
 Keeps its old five-column table (key, value, gap, key, value) for the two
 fact sections, with the captions as `td.cap` cells.  Item 3 it lives with.
+
+## Fixed - 4 October 2026, all three
+
+1. A heading or a div in a grid/flex card now takes its stylesheet rule -
+   size, weight, color and text-transform - through the same path a block
+   child of a table cell does, in the card's own CSS context.
+2. The band was the page manufacturing blank lines out of the source's own
+   indentation: whitespace between block tags inside a cell or a card is
+   now dropped at every block edge, the way a browser drops it.  What
+   remains above a card's heading is the heading's own margin-top, which a
+   browser shows too.
+3. A block's `margin-top` and `margin-bottom` inside a cell or a card -
+   shorthand, longhand or style attribute - become a `<vgap=N>` in the
+   markup, and the renderer opens exactly that gap.  `line-height` on a
+   block inside a cell is still not read.
+
+Tests: `CardTextChecks` in `tests/render_tests.pas` holds this page's
+banner and cards to the markup they should make, and the engine to the
+exact gap.

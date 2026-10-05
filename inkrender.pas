@@ -78,7 +78,7 @@ type
     Part: Integer;
     IsImage: Boolean;
     ImageIndex: Integer;
-    Control: Byte; { 0=text, 1=table, 2=row, 3=cell, 4/5/6=closes, 7=rule, 8=cell box }
+    Control: Byte; { 0=text, 1=table, 2=row, 3=cell, 4/5/6=closes, 7=rule, 8=cell box, 9=vertical gap }
     Meta: string; { serialized attributes on structural runs }
   end;
 
@@ -654,7 +654,8 @@ begin
     (N = 'sup') or (N = 'sub') or (N = 'font') or (N = 'a') or
     (N = 'br') or (N = 'hr') or (N = 'p') or (N = 'center') or
     (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'img') or
-    (N = 'table') or (N = 'tr') or (N = 'td') or (N = 'th');
+    (N = 'table') or (N = 'tr') or (N = 'td') or (N = 'th') or
+    (N = 'vgap');
 end;
 
 function TInkRenderer.IsStyleTag(const N: string): Boolean;
@@ -870,6 +871,11 @@ begin
           else if T.Name='right' then S.Align := naRight
           else if T.Name='left' then S.Align := naLeft
           else if T.Name='ind' then S.Indent := StrToIntDef(InkRenderAttr(T.Attributes,'n'),0)
+          else if T.Name='vgap' then
+            { a vertical gap between a cell's blocks: a block's margin,
+              written as markup by the page }
+            AddControl(9,'n='+StringReplace(StringReplace(
+              InkRenderAttr(T.Attributes,'n'),'"','',[rfReplaceAll]),'''','',[rfReplaceAll]))
           else if T.Name='font' then
           begin
             S.Face := InkRenderAttr(T.Attributes,'face');
@@ -1233,6 +1239,25 @@ var
           LineH := 0; LineFirst := Length(FLayout.FRuns);
         end;
         RunIndex := Inner+1; Continue;
+      end;
+      if FStyled[RunIndex].Control=9 then
+      begin
+        { a vertical gap: the line so far ends, and the next starts lower }
+        Attrs := TStringList.Create;
+        try
+          Attrs.Text := FStyled[RunIndex].Meta;
+          K := InkRenderScalePx(StrToIntDef(Attrs.Values['n'],0),FOpt.Scale);
+        finally Attrs.Free end;
+        if CX>AX+Pad.Left then
+        begin
+          if LineH=0 then LineH := Canvas.TextHeight('Tg');
+          AlignCellLine(LineFirst,AX+Pad.Left,AWidth,CX,Emit);
+          SettleLine(LineFirst);
+          Inc(CY,Advance); CX := AX+Pad.Left; LineH := 0;
+          LineFirst := Length(FLayout.FRuns);
+        end;
+        Inc(CY,Max(0,K));
+        Inc(RunIndex); Continue;
       end;
       if FStyled[RunIndex].Control<>0 then begin Inc(RunIndex); Continue end;
       Run := FStyled[RunIndex];

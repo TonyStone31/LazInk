@@ -3144,6 +3144,49 @@ begin
   Check(not Probe.SetInnerHTML('nothere','x'),'a missing id is said, not guessed');
 end;
 
+{ --- text in a grid card takes the stylesheet, no band follows a grid, and
+  a block's margins inside a cell are read --- }
+procedure CardTextChecks;
+var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string;
+begin
+  Probe.LoadHTML('<html><head><style>'+
+    'h3{font-size:12px;color:#64748b;text-transform:uppercase;margin:18px 0 6px 0}'+
+    '.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}'+
+    'div.cap{font-size:12px;font-weight:bold;color:#64748b;text-transform:uppercase}'+
+    'td.banner{background:#15803d;color:#fff}'+
+    'div.title{font-size:22px;font-weight:bold}'+
+    'div.sub{font-size:14px;margin-top:8px}'+
+    '</style></head><body>'+
+    '<table><tr><td class="banner"> <div class="title">Sent</div> '+
+    '<div class="sub">2 files</div> </td></tr></table>'+
+    '<div class="cards">'+
+    '<div><h3>This machine</h3> <table><tr><td>a</td></tr></table></div>'+
+    '<div><div class="cap">The program</div> <table><tr><td>b</td></tr></table></div>'+
+    '</div></body></html>');
+  { the banner: a styled title, the sub 8px under it, and no manufactured
+    blank lines from the source''s own indentation }
+  S := Probe.Block(0).Source;
+  Check(Pos('<font size="-22"><b>Sent</b></font><br><vgap=8><font size="-14">2 files',S)>0,
+    'a div''s margin-top is a gap under the title: '+Copy(S,1,200));
+  Check(Pos('> <br>',S)=0,'the source''s whitespace makes no blank lines');
+  Check(Pos('<br></td>',S)=0,'and a cell does not end on a break');
+  { the cards: an h3 and a div.cap styled from the stylesheet, in their case }
+  S := Probe.Block(1).Source;
+  Check(Pos('<vgap=18><font size="-12" color="#64748B"><b>THIS MACHINE</b>',S)>0,
+    'an h3 in a card is the h3 rule''s size, color, case and margin');
+  Check(Pos('<b>THE PROGRAM</b>',S)>0,'and a div by class the same');
+  Check(Pos('<td><br>',S)=0,'a card''s first line is not a blank one');
+
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(400,300); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
+    O := DefaultHTMLOptions;
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br>b</td></tr></table>',O);
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br><vgap=50>b</td></tr></table>',O);
+    Check(N.cy=A.cy+50,'a vgap in a cell is exactly its height');
+  finally BM.Free end;
+end;
+
 begin
   Application.Initialize;
   TestExceptions := TTestExceptions.Create;
@@ -3290,6 +3333,7 @@ begin
     ScrollBarAndEntityChecks;
     CellStyleChecks;
     PillChecks;
+    CardTextChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;
