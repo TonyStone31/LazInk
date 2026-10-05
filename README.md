@@ -18,7 +18,7 @@ widgetset-specific backends, no browser engine.
 |---|---|---|
 | ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `Ellipsis` for one line that ends in "..." when it does not fit, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. |
 | ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment. |
-| ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
+| ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; paragraph kinds - headings, bullet and numbered lists, quotes, code lines (`ApplyParaKind`); **Markdown in and out** (`LoadMarkdown`, `AsMarkdown`); word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
 | ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
 | | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG, animated GIF and WebP images, relative links, anchors, Back and Forward, text selection, find in page, touch scrolling, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
 | ![](images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. |
@@ -287,8 +287,14 @@ exact CSS subset, tested site coverage, and remaining limitations.
 `TInkLabel`, `TInkMemo`, `TInkListBox`, and `TInkPage` expose `TextFormat`:
 `itfHTML` (the default) or `itfMarkdown`, declared in `InkMarkdown`.
 Changing it reinterprets the existing source; it does not translate the source.
-`TInkEdit` remains plain text and `TInkRichEdit` remains an HTML-backed inline
-WYSIWYG editor. Rich-editor table editing is not implemented.
+`TInkEdit` remains plain text.  `TInkRichEdit` edits paragraphs with kinds -
+headings, bullet and numbered lists, quotes and code lines - and reads and
+writes Markdown itself: `LoadMarkdown` brings a document in (nested lists
+flatten to one level, a table becomes plain rows), `AsMarkdown` writes the
+document back with `**bold**`, `*italic*`, `~~strike~~`, code spans, links
+and fenced code.  Pressing Enter at a heading's end starts a plain
+paragraph, and Enter on an empty list item ends the list, the way every
+editor does.  Rich-editor table editing is not implemented.
 
 The shared renderer supports `<table>`, `<tr>`, `<th>` and `<td>` blocks,
 including multiple tables mixed with text, `colspan` and `rowspan`, and a
@@ -505,9 +511,10 @@ browser over thirty-six thousand.
 [ROADMAP.md](ROADMAP.md) is the plan - only what is still open: character
 selection in the last two controls, coloring the demo's Markdown source,
 runs on the other widgetsets and on real touch hardware, an Online Package
-Manager listing, and - the big one, next up - the WYSIWYG Markdown editor
-that nothing else for Lazarus has.  How everything already finished was
-built, and why, is [docs/HISTORY.md](docs/HISTORY.md).
+Manager listing, and tables in the WYSIWYG Markdown editor - the editor
+itself reads and writes Markdown now, which nothing else for Lazarus does.
+How everything already finished was built, and why, is
+[docs/HISTORY.md](docs/HISTORY.md).
 
 ## Credits and origins
 
