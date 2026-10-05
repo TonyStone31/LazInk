@@ -371,7 +371,9 @@ var
 begin
   SetLength(B.Bars, 0);
   B.Indent := 0;
-  B.PointSize := Max(1, Round(FLayoutBase * FHTMLScale / 100));
+  { negative: pixels, the way every other block spells its size - positive
+    read as points and drew the memo's text a third too big }
+  B.PointSize := -Max(1, Round(FLayoutBase * FHTMLScale / 100));
   B.Bold := False;
   B.FaceName := '';
   B.Pre := False;

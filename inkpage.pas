@@ -4351,7 +4351,9 @@ begin
   B := TInkPageBlock(FBlocks[Clamp(APosition).Block]);
   Margin := Scale96ToFont(40);
   PlaceTop := P.Y;
-  PlaceBottom := P.Y+Max(B.PointSize*2,16);
+  { a block's size is negative when it is pixels; either way its magnitude
+    is the line's scale }
+  PlaceBottom := P.Y+Max(Abs(B.PointSize)*2,16);
   if FindBarVisible then Inc(Margin,FindBarRect.Bottom);
   if PlaceTop<Margin then
     FScroll.Position := EnsureRange(FScroll.Position+PlaceTop-Margin,0,Max(0,FContentHeight-ClientHeight))
