@@ -1,6 +1,7 @@
 program RenderTests;
 {$mode objfpc}{$H+}
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
+  InkRichEdit,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
   InkWebP, WebP_Checks, Layout_Cache_Checks,
@@ -3187,6 +3188,69 @@ begin
   finally BM.Free end;
 end;
 
+{ --- the rich editor speaks Markdown: paragraph kinds, in and out --- }
+procedure RichEditMarkdownChecks;
+var E: TInkRichEdit; MD, Back: string;
+begin
+  E := TInkRichEdit.Create(F); E.Parent := F;
+  E.SetBounds(0, 0, 400, 300);
+  try
+    MD := '# The title'+LineEnding+LineEnding+
+      'Words with **bold**, *italic*, ~~gone~~ and a [link](https://x.y).'+LineEnding+LineEnding+
+      '## Steps'+LineEnding+LineEnding+
+      '1. first'+LineEnding+'2. second'+LineEnding+LineEnding+
+      '- a bullet'+LineEnding+'- another'+LineEnding+LineEnding+
+      '> quoted'+LineEnding+LineEnding+
+      '```'+LineEnding+'begin'+LineEnding+'  x := 1;'+LineEnding+'end.'+LineEnding+'```';
+    E.LoadMarkdown(MD);
+    { the kinds landed, and the markup carries them }
+    Check(E.Markup[0] = '<h1>The title</h1>', 'a # heading is an h1 paragraph');
+    Check(Pos('<oli>first</oli>', E.Markup.Text) > 0, 'a numbered item');
+    Check(Pos('<li>a bullet</li>', E.Markup.Text) > 0, 'a bullet item');
+    Check(Pos('<blockquote>quoted</blockquote>', E.Markup.Text) > 0, 'a quote line');
+    Check(Pos('<pre>  x := 1;</pre>', E.Markup.Text) > 0, 'a code line, spacing kept');
+    Check(Pos('<b>bold</b>', E.Markup.Text) > 0, 'inline bold survives the trip in');
+    { and back out again, the same document }
+    Back := E.AsMarkdown;
+    Check(Pos('# The title', Back) = 1, 'the heading comes back as #');
+    Check(Pos('**bold**', Back) > 0, 'bold comes back as **');
+    Check(Pos('[link](https://x.y)', Back) > 0, 'a link comes back whole');
+    Check(Pos('1. first', Back) > 0, 'numbering comes back');
+    Check(Pos('- a bullet', Back) > 0, 'bullets come back');
+    Check(Pos('> quoted', Back) > 0, 'quotes come back');
+    Check(Pos('```'+LineEnding+'begin', Back) > 0, 'the fence opens');
+    Check(Pos('end.'+LineEnding+'```', Back) > 0, 'and closes');
+    { a second trip is the same words - the shape is stable }
+    E.LoadMarkdown(Back);
+    Check(E.AsMarkdown = Back, 'the round trip is a fixed point');
+
+    { paragraph kinds from code }
+    E.Markup.Text := 'plain words';
+    Check(E.SelParaKind = ipkText, 'plain is plain');
+    E.SelectAll;
+    E.ApplyParaKind(ipkH2);
+    Check(E.SelParaKind = ipkH2, 'ApplyParaKind makes a heading');
+    Check(E.Markup[0] = '<h2>plain words</h2>', 'and the markup says so');
+    E.ApplyParaKind(ipkBullet);
+    Check(E.Markup[0] = '<li>plain words</li>', 'and a bullet');
+    { Enter at a heading's end starts a plain paragraph }
+    E.ApplyParaKind(ipkH2);
+    E.SelStart := 11; E.SelLength := 0;
+    E.InsertParagraph;
+    E.SelStart := 11;
+    Check(E.SelParaKind = ipkH2, 'the heading is still a heading');
+    { Enter on the empty bullet under it ends the list }
+    E.Markup.Text := '<li>one</li>';
+    E.SelStart := 3; E.SelLength := 0;
+    E.InsertParagraph;        { a new, empty item }
+    E.InsertParagraph;        { enter again: the empty item turns plain }
+    Check(Pos('<li>one</li>', E.Markup.Text) > 0, 'the first item stays a bullet');
+    Check(E.SelParaKind = ipkText, 'and the empty one stepped back to text');
+  finally
+    E.Free;
+  end;
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -3395,6 +3459,7 @@ begin
     PillChecks;
     CardTextChecks;
     SchemeAndMoreChecks;
+    RichEditMarkdownChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

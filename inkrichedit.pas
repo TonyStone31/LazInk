@@ -33,6 +33,13 @@ uses
 type
   TInkScript = (isNormal, isSuperscript, isSubscript);
 
+  { What a paragraph is - plain text, a heading, a list item, a quote or a
+    line of code.  Held per character like Align, so the flat document
+    stays flat; every character of a paragraph (its #10 included) carries
+    the same kind. }
+  TInkParaKind = (ipkText, ipkH1, ipkH2, ipkH3, ipkH4, ipkH5, ipkH6,
+    ipkBullet, ipkNumber, ipkQuote, ipkCode);
+
   { Everything one character can carry. The sentinels — clDefault, clNone, 0,
     '' — mean "follow the control's Font", so a document that never mentions a
     color still tracks the control when the control's Font changes. }
@@ -45,6 +52,7 @@ type
     Script: TInkScript;
     Link: string;         // ''        -> not a link
     Align: TAlignment;    // paragraph property, held per character
+    Kind: TInkParaKind;   // paragraph property, held per character
   end;
 
   { One visual line: a run of characters that share a baseline. A paragraph is
@@ -113,6 +121,9 @@ type
     procedure Relayout;
     procedure NeedLayout;
     procedure ApplyAttrToCanvas(const A: TInkAttr);
+    function ParaKindAt(AIndex: Integer): TInkParaKind;
+    function ParaIndent(AKind: TInkParaKind): Integer;
+    function ParaNumber(AFirst: Integer): Integer;
     function MeasureChar(AIndex: Integer): Integer;
     function LineOfChar(AIndex: Integer): Integer;
     function CaretLine(ACaret: Integer): Integer;
@@ -182,6 +193,9 @@ type
     procedure ApplyScript(AScript: TInkScript);
     procedure ApplyLink(const AHref: string);
     procedure ApplyAlignment(AAlign: TAlignment);
+    { the whole paragraphs the selection touches become AKind - a heading,
+      a bullet or numbered item, a quote, a line of code, or plain text }
+    procedure ApplyParaKind(AKind: TInkParaKind);
     procedure ClearFormatting;
     procedure InsertParagraph;
 
@@ -194,11 +208,18 @@ type
     function SelFace: string;
     function SelScript: TInkScript;
     function SelAlignment: TAlignment;
+    function SelParaKind: TInkParaKind;
 
     { The document as markup, paragraphs joined with ASep. Feed it straight to
       a TInkLabel caption or a TInkMemo line. }
     function AsHTML(const ASep: string = '<br>'): string;
     function PlainText: string;
+    { The document as Markdown, and a Markdown document read in: headings,
+      bullet and numbered lists, quotes, fenced code, bold, italic, strike,
+      code spans and links.  What Markdown has no word for rides as inline
+      HTML (<u>, <sup>, <sub>); colors and faces do not survive the trip. }
+    function AsMarkdown: string;
+    procedure LoadMarkdown(const S: string);
     property SelText: string read GetSelText;
     property Modified: Boolean read FModified write FModified;
     { runtime only - a stored caret position would be meaningless in a .lfm }
@@ -251,7 +272,7 @@ function SameInkAttr(const A, B: TInkAttr): Boolean;
 implementation
 
 uses
-  InkDraw, InkTouch;
+  StrUtils, InkDraw, InkTouch, InkMarkdown;
 
 const
   cMargin = 3;
@@ -287,13 +308,15 @@ begin
   Result.Script := isNormal;
   Result.Link := '';
   Result.Align := taLeftJustify;
+  Result.Kind := ipkText;
 end;
 
 function SameInkAttr(const A, B: TInkAttr): Boolean;
 begin
   Result := (A.Color = B.Color) and (A.BackColor = B.BackColor) and
     (A.Size = B.Size) and (A.Face = B.Face) and (A.Style = B.Style) and
-    (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align);
+    (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align) and
+    (A.Kind = B.Kind);
 end;
 
 { '#RRGGBB' for a real color, '' for the sentinels }
@@ -462,20 +485,32 @@ begin
 end;
 
 procedure TInkRichEdit.ApplyAttrToCanvas(const A: TInkAttr);
+const
+  { a browser's own heading factors }
+  cHeadFactor: array[ipkH1..ipkH6] of Double = (2.0, 1.5, 1.17, 1.0, 0.83, 0.67);
 var
   Sz: Integer;
 begin
   if A.Face <> '' then
     Canvas.Font.Name := A.Face
+  else if A.Kind = ipkCode then
+    Canvas.Font.Name := InkMonoFace
   else
     Canvas.Font.Name := Font.Name;
   if A.Size > 0 then Sz := A.Size else Sz := Font.Size;
   if Sz = 0 then Sz := Screen.SystemFont.Size;
+  { a heading's size and weight come from its kind, unless the character
+    picked its own size }
+  if (A.Kind in [ipkH1..ipkH6]) and (A.Size = 0) then
+    Sz := Max(1, Round(Sz * cHeadFactor[A.Kind]));
   if A.Script <> isNormal then
     Sz := Round(Sz * FSuperSubScriptRatio);
   if Sz < 1 then Sz := 1;
   Canvas.Font.Size := Sz;
-  Canvas.Font.Style := A.Style;
+  if A.Kind in [ipkH1..ipkH6] then
+    Canvas.Font.Style := A.Style + [fsBold]
+  else
+    Canvas.Font.Style := A.Style;
   if A.Link <> '' then
   begin
     if A.Color = clDefault then
@@ -495,6 +530,47 @@ begin
     Canvas.Font.Color := Font.Color;
 end;
 
+{ the paragraph kind at a character; the gap past the end is plain text }
+function TInkRichEdit.ParaKindAt(AIndex: Integer): TInkParaKind;
+begin
+  if (AIndex >= 0) and (AIndex < CharCount) then
+    Result := FAttrs[AIndex].Kind
+  else
+    Result := ipkText;
+end;
+
+{ a list marker's gutter, a quote's bar and inset, a code line's inset -
+  measured in the control's font, which it leaves on the canvas }
+function TInkRichEdit.ParaIndent(AKind: TInkParaKind): Integer;
+begin
+  Canvas.Font := Font;
+  case AKind of
+    ipkBullet, ipkNumber: Result := Canvas.TextWidth('99. ');
+    ipkQuote: Result := Canvas.TextWidth('AB');
+    ipkCode: Result := Canvas.TextWidth('A') div 2 + 4;
+  else
+    Result := 0;
+  end;
+end;
+
+{ which number a numbered item carries: one more than the unbroken run of
+  numbered paragraphs above it.  The #10 that ends a paragraph carries the
+  paragraph's own kind, which is what makes this walk cheap. }
+function TInkRichEdit.ParaNumber(AFirst: Integer): Integer;
+var
+  i, j: Integer;
+begin
+  Result := 1;
+  i := AFirst - 1;
+  while (i >= 0) and (FChars[i] = #10) and (FAttrs[i].Kind = ipkNumber) do
+  begin
+    j := i - 1;
+    while (j >= 0) and (FChars[j] <> #10) do Dec(j);
+    Inc(Result);
+    i := j;
+  end;
+end;
+
 function TInkRichEdit.MeasureChar(AIndex: Integer): Integer;
 begin
   if FChars[AIndex] = #10 then
@@ -512,10 +588,12 @@ end;
 
 procedure TInkRichEdit.Relayout;
 var
-  N, i, k, X, W, Avail, Y, LineStart, LastSpace, BreakAt: Integer;
+  N, i, k, X, W, Avail, AvailP, Y, LineStart, LastSpace, BreakAt: Integer;
   LineCount: Integer;
   LastAttr: TInkAttr;
   HasLast: Boolean;
+  CurKind: TInkParaKind;
+  CurInd: Integer;
 
   { Height and baseline of the characters [AFirst, AFirst+ACount). An empty
     paragraph still needs a line box, so fall back to the control font. }
@@ -577,11 +655,13 @@ var
       Al := FAttrs[AFirst].Align
     else
       Al := FAttrs[N - 1].Align;
+    { the paragraph's indent first - a list marker's gutter, a quote's bar,
+      a code line's inset - then the alignment inside what is left }
     case Al of
-      taCenter: L.Left := cMargin + Max(0, (Avail - L.Width) div 2);
-      taRightJustify: L.Left := cMargin + Max(0, Avail - L.Width);
+      taCenter: L.Left := cMargin + CurInd + Max(0, (Avail - CurInd - L.Width) div 2);
+      taRightJustify: L.Left := cMargin + CurInd + Max(0, Avail - CurInd - L.Width);
     else
-      L.Left := cMargin;
+      L.Left := cMargin + CurInd;
     end;
 
     if LineCount >= Length(FLines) then
@@ -606,6 +686,9 @@ begin
   LastSpace := -1;
   HasLast := False;
   LastAttr := DefaultInkAttr;
+  CurKind := ParaKindAt(0);
+  CurInd := ParaIndent(CurKind);
+  AvailP := Max(16, Avail - CurInd);
 
   i := 0;
   while i < N do
@@ -618,6 +701,10 @@ begin
       LineStart := i + 1;
       X := 0;
       LastSpace := -1;
+      CurKind := ParaKindAt(i + 1);
+      CurInd := ParaIndent(CurKind);
+      AvailP := Max(16, Avail - CurInd);
+      HasLast := False;    { ParaIndent used the canvas font }
       Inc(i);
       Continue;
     end;
@@ -630,7 +717,7 @@ begin
     end;
     W := MeasureChar(i);
 
-    if FWordWrap and (i > LineStart) and (X + W > Avail) then
+    if FWordWrap and (i > LineStart) and (X + W > AvailP) then
     begin
       // break after the last blank if there was one, otherwise mid-word
       if LastSpace >= LineStart then
@@ -852,6 +939,50 @@ begin
 
     BaseY := L.Top - FScrollY + L.Ascent;
     LineEndIdx := L.First + L.Count;
+
+    { what the paragraph is wearing: a code line's shaded band, a quote's
+      bar, and a marker on a list item's first line }
+    case ParaKindAt(L.First) of
+      ipkCode:
+        begin
+          { the background mixed a twelfth toward the text color, so the
+            band shows on a light editor and a dark one alike }
+          Canvas.Brush.Color := RGBToColor(
+            Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) div 12,
+            Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) div 12,
+            Blue(ColorToRGB(Color)) + (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) div 12);
+          Canvas.Brush.Style := bsSolid;
+          Canvas.FillRect(cMargin, L.Top - FScrollY,
+            cMargin + LineTextWidth, L.Top - FScrollY + L.Height);
+        end;
+      ipkQuote:
+        begin
+          Canvas.Brush.Color := RGBToColor(
+            (Red(ColorToRGB(Color)) + Red(ColorToRGB(Font.Color))) div 2,
+            (Green(ColorToRGB(Color)) + Green(ColorToRGB(Font.Color))) div 2,
+            (Blue(ColorToRGB(Color)) + Blue(ColorToRGB(Font.Color))) div 2);
+          Canvas.Brush.Style := bsSolid;
+          Canvas.FillRect(cMargin, L.Top - FScrollY,
+            cMargin + 3, L.Top - FScrollY + L.Height);
+        end;
+      ipkBullet, ipkNumber:
+        if (L.First = 0) or ((L.First > 0) and (L.First <= CharCount) and
+          (FChars[L.First - 1] = #10)) then
+        begin
+          Canvas.Font := Font;
+          Canvas.Font.Color := Font.Color;
+          Canvas.Brush.Style := bsClear;
+          if Canvas.GetTextMetrics(tm) then
+            RunAsc := tm.Ascender
+          else
+            RunAsc := Canvas.TextHeight('Ag') * 4 div 5;
+          if ParaKindAt(L.First) = ipkBullet then
+            S := #$E2#$80#$A2' '
+          else
+            S := IntToStr(ParaNumber(L.First)) + '. ';
+          Canvas.TextOut(cMargin, BaseY - RunAsc, S);
+        end;
+    end;
 
     i := L.First;
     while i < LineEndIdx do
@@ -1096,11 +1227,46 @@ begin
 end;
 
 procedure TInkRichEdit.InsertParagraph;
+var
+  A: TInkAttr;
+  PS, PE: Integer;
 begin
   if FReadOnly then Exit;
   PushUndo(False);
   if GetSelLength > 0 then DeleteSelection;
-  DoInsert(#10, AttrAtCaret);
+  A := AttrAtCaret;
+  { Enter on an empty list item or quote line steps back to plain text
+    instead of making another empty one, the way every editor ends a list }
+  if A.Kind in [ipkBullet, ipkNumber, ipkQuote] then
+  begin
+    PS := FCaret;
+    while (PS > 0) and (FChars[PS - 1] <> #10) do Dec(PS);
+    PE := FCaret;
+    while (PE < CharCount) and (FChars[PE] <> #10) do Inc(PE);
+    if PS = PE then
+    begin
+      if (PE < CharCount) and (FChars[PE] = #10) then
+        FAttrs[PE].Kind := ipkText;
+      FTypingAttr := A;
+      FTypingAttr.Kind := ipkText;
+      FHasTypingAttr := True;
+      FModified := True;
+      FMarkupDirty := True;
+      InvalidateLayout;
+      if Assigned(FOnChange) then FOnChange(Self);
+      SelectionChanged;
+      Exit;
+    end;
+  end;
+  DoInsert(#10, A);
+  { a heading or a code line ends at its break; a list and a quote go on }
+  if A.Kind in [ipkH1..ipkH6] then
+  begin
+    FTypingAttr := AttrAtCaret;
+    FTypingAttr.Kind := ipkText;
+    FTypingAttr.Style := FTypingAttr.Style - [fsBold];
+    FHasTypingAttr := True;
+  end;
 end;
 
 { -------------------------------------------------------------- formatting  }
@@ -1291,10 +1457,42 @@ begin
   SelectionChanged;
 end;
 
+procedure TInkRichEdit.ApplyParaKind(AKind: TInkParaKind);
+var
+  i, A, B: Integer;
+begin
+  if FReadOnly then Exit;
+  if CharCount = 0 then
+  begin
+    { an empty document: the kind is what the first typed character wears }
+    FTypingAttr := AttrAtCaret;
+    FTypingAttr.Kind := AKind;
+    FHasTypingAttr := True;
+    SelectionChanged;
+    Exit;
+  end;
+  PushUndo(False);
+  A := GetSelStart;
+  B := GetSelStart + GetSelLength;
+  while (A > 0) and (FChars[A - 1] <> #10) do Dec(A);
+  while (B < CharCount) and (FChars[B] <> #10) do Inc(B);
+  { the paragraph's #10 carries the kind too, so an empty paragraph keeps it }
+  if (B < CharCount) and (FChars[B] = #10) then Inc(B);
+  for i := A to B - 1 do
+    FAttrs[i].Kind := AKind;
+  if FHasTypingAttr then FTypingAttr.Kind := AKind;
+  FModified := True;
+  FMarkupDirty := True;
+  InvalidateLayout;
+  if Assigned(FOnChange) then FOnChange(Self);
+  SelectionChanged;
+end;
+
 procedure TInkRichEdit.ClearFormatting;
 var
   i: Integer;
   Keep: TAlignment;
+  KeepKind: TInkParaKind;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
@@ -1308,8 +1506,10 @@ begin
   for i := GetSelStart to GetSelStart + GetSelLength - 1 do
   begin
     Keep := FAttrs[i].Align;          // alignment is not character formatting
+    KeepKind := FAttrs[i].Kind;       // and neither is what the paragraph is
     FAttrs[i] := DefaultInkAttr;
     FAttrs[i].Align := Keep;
+    FAttrs[i].Kind := KeepKind;
   end;
   FModified := True;
   FMarkupDirty := True;
@@ -1405,6 +1605,16 @@ begin
     Result := FAttrs[FCaret].Align
   else
     Result := FAttrs[CharCount - 1].Align;
+end;
+
+function TInkRichEdit.SelParaKind: TInkParaKind;
+begin
+  if FHasTypingAttr then Exit(FTypingAttr.Kind);
+  if CharCount = 0 then Exit(ipkText);
+  if FCaret < CharCount then
+    Result := FAttrs[FCaret].Kind
+  else
+    Result := FAttrs[CharCount - 1].Kind;
 end;
 
 { ----------------------------------------------------------------- keyboard }
@@ -1862,6 +2072,11 @@ begin
     SetLength(FAttrs, 0);
     for i := 0 to FMarkup.Count - 1 do
       ParseInto(FMarkup[i], i > 0);
+    { the #10 between paragraphs was emitted before its paragraph's wrapper
+      was read: give each one the kind of the paragraph it ends }
+    for i := High(FChars) downto 1 do
+      if (FChars[i] = #10) and (FChars[i - 1] <> #10) then
+        FAttrs[i].Kind := FAttrs[i - 1].Kind;
     FCaret := 0;
     FAnchor := 0;
     FScrollY := 0;
@@ -2012,6 +2227,12 @@ begin
       else if Nm = 'SUB' then begin Push; Cur.Script := isSubscript; end
       else if Nm = 'CENTER' then begin Push; Cur.Align := taCenter; end
       else if Nm = 'RIGHT' then begin Push; Cur.Align := taRightJustify; end
+      else if (Length(Nm) = 2) and (Nm[1] = 'H') and (Nm[2] in ['1'..'6']) then
+        begin Push; Cur.Kind := TInkParaKind(Ord(ipkH1) + Ord(Nm[2]) - Ord('1')); end
+      else if Nm = 'LI' then begin Push; Cur.Kind := ipkBullet; end
+      else if Nm = 'OLI' then begin Push; Cur.Kind := ipkNumber; end
+      else if Nm = 'BLOCKQUOTE' then begin Push; Cur.Kind := ipkQuote; end
+      else if Nm = 'PRE' then begin Push; Cur.Kind := ipkCode; end
       else if Nm = 'A' then
       begin
         Push;
@@ -2066,6 +2287,7 @@ var
   OpenName, OpenTag: array[0..cMaxTags - 1] of string;
   WantName, WantTag: array[0..cMaxTags - 1] of string;
   ParaAlign: TAlignment;
+  ParaKind: TInkParaKind;
 
   procedure CloseDownTo(ALevel: Integer);
   var
@@ -2153,6 +2375,9 @@ var
   end;
 
   procedure EndParagraph;
+  const
+    cKindTag: array[TInkParaKind] of string =
+      ('', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'oli', 'blockquote', 'pre');
   begin
     CloseDownTo(0);
     case ParaAlign of
@@ -2160,6 +2385,9 @@ var
       taRightJustify: Line := '<right>' + Line + '</right>';
       taLeftJustify: ;   // the default needs no wrapper
     end;
+    { the paragraph's kind is the outermost wrapper }
+    if ParaKind <> ipkText then
+      Line := '<' + cKindTag[ParaKind] + '>' + Line + '</' + cKindTag[ParaKind] + '>';
     FMarkup.Add(Line);
     Line := '';
   end;
@@ -2178,6 +2406,7 @@ begin
       WantTag[k] := '';
     end;
     if CharCount > 0 then ParaAlign := FAttrs[0].Align else ParaAlign := taLeftJustify;
+    if CharCount > 0 then ParaKind := FAttrs[0].Kind else ParaKind := ipkText;
 
     i := 0;
     while i <= CharCount do
@@ -2187,9 +2416,15 @@ begin
         EndParagraph;
         Inc(i);
         if i < CharCount then
-          ParaAlign := FAttrs[i].Align
+        begin
+          ParaAlign := FAttrs[i].Align;
+          ParaKind := FAttrs[i].Kind;
+        end
         else
+        begin
           ParaAlign := taLeftJustify;
+          ParaKind := ipkText;
+        end;
         Continue;
       end;
 
@@ -2236,6 +2471,356 @@ begin
   begin
     if i > 0 then Result := Result + ASep;
     Result := Result + M[i];
+  end;
+end;
+
+{ The blocks of MarkdownToHTML's output, re-spoken as the editor's own
+  markup lines: one line per paragraph, wrapped in the editor's paragraph
+  tags, inline content flattened through HTMLToInk.  Nested lists flatten
+  to one level, and a table becomes plain rows - the editor has no tables
+  yet. }
+procedure MarkdownHTMLToParagraphs(const H: string; AOut: TStrings);
+var
+  P, Q, Depth: Integer;
+  Raw, Name, Inner, Wrap: string;
+  Closing: Boolean;
+  InOrdered: Boolean;
+
+  function ReadTag(var AP: Integer; out AName: string; out AClosing: Boolean): string;
+  var
+    E, K: Integer;
+  begin
+    Result := '';
+    AName := '';
+    AClosing := False;
+    if (AP > Length(H)) or (H[AP] <> '<') then Exit;
+    E := AP + 1;
+    while (E <= Length(H)) and (H[E] <> '>') do Inc(E);
+    if E > Length(H) then begin AP := E; Exit end;
+    Result := Copy(H, AP, E - AP + 1);
+    AP := E + 1;
+    K := 2;
+    if (K <= Length(Result)) and (Result[K] = '/') then
+    begin
+      AClosing := True;
+      Inc(K);
+    end;
+    while (K <= Length(Result)) and (Result[K] in ['a'..'z', 'A'..'Z', '0'..'9']) do
+    begin
+      AName := AName + LowerCase(Result[K]);
+      Inc(K);
+    end;
+  end;
+
+  { everything up to the close of AName, nesting counted, cursor left after }
+  function InnerOf(const AName: string): string;
+  var
+    S0, D, TP: Integer;
+    N: string;
+    C: Boolean;
+  begin
+    S0 := P;
+    D := 1;
+    while P <= Length(H) do
+    begin
+      if H[P] = '<' then
+      begin
+        TP := P;
+        ReadTag(P, N, C);
+        if N = AName then
+        begin
+          if C then
+          begin
+            Dec(D);
+            if D = 0 then Exit(Copy(H, S0, TP - S0));
+          end
+          else
+            Inc(D);
+        end;
+        Continue;
+      end;
+      Inc(P);
+    end;
+    Result := Copy(H, S0, MaxInt);
+  end;
+
+  procedure AddWrapped(const AWrap, AInner: string);
+  var
+    Ink: string;
+  begin
+    Ink := Trim(HTMLToInk(AInner));
+    if AWrap = '' then
+      AOut.Add(Ink)
+    else
+      AOut.Add('<' + AWrap + '>' + Ink + '</' + AWrap + '>');
+  end;
+
+  procedure AddCode(const AInner: string);
+  var
+    T: string;
+    Lines: TStringList;
+    K: Integer;
+  begin
+    T := AInner;
+    { the code tag inside pre, and its closing partner }
+    K := Pos('>', T);
+    if (Pos('<code', LowerCase(T)) = 1) and (K > 0) then Delete(T, 1, K);
+    K := Pos('</code>', LowerCase(T));
+    if K > 0 then SetLength(T, K - 1);
+    if (T <> '') and (T[Length(T)] = #10) then SetLength(T, Length(T) - 1);
+    Lines := TStringList.Create;
+    try
+      Lines.Text := HTMLUnescape(T);
+      if Lines.Count = 0 then Lines.Add('');
+      for K := 0 to Lines.Count - 1 do
+        AOut.Add('<pre>' + HTMLEscape(Lines[K]) + '</pre>');
+    finally
+      Lines.Free;
+    end;
+  end;
+
+  procedure AddTable(const AInner: string);
+  var
+    TP, CI: Integer;
+    N, Row, Cell: string;
+    C: Boolean;
+    Cells: TStringList;
+  begin
+    TP := 1;
+    Cells := TStringList.Create;
+    try
+      Row := '';
+      while TP <= Length(AInner) do
+      begin
+        if AInner[TP] = '<' then
+        begin
+          ReadTag(TP, N, C);
+          if (N = 'tr') and C then
+          begin
+            if Cells.Count > 0 then
+            begin
+              Row := '';
+              for CI := 0 to Cells.Count - 1 do
+              begin
+                if CI > 0 then Row := Row + ' | ';
+                Row := Row + Cells[CI];
+              end;
+              AOut.Add(Row);
+              Cells.Clear;
+            end;
+          end
+          else if ((N = 'td') or (N = 'th')) and not C then
+            Cells.Add('');
+          Continue;
+        end;
+        Cell := '';
+        while (TP <= Length(AInner)) and (AInner[TP] <> '<') do
+        begin
+          Cell := Cell + AInner[TP];
+          Inc(TP);
+        end;
+        if (Cells.Count > 0) and (Trim(Cell) <> '') then
+          Cells[Cells.Count - 1] := Cells[Cells.Count - 1] + Cell;
+      end;
+    finally
+      Cells.Free;
+    end;
+  end;
+
+begin
+  P := 1;
+  InOrdered := False;
+  while P <= Length(H) do
+  begin
+    if H[P] <> '<' then
+    begin
+      Inc(P);
+      Continue;
+    end;
+    Raw := ReadTag(P, Name, Closing);
+    if Closing then
+    begin
+      if (Name = 'ul') or (Name = 'ol') then InOrdered := False;
+      Continue;
+    end;
+    if (Length(Name) = 2) and (Name[1] = 'h') and (Name[2] in ['1'..'6']) then
+      AddWrapped(Name, InnerOf(Name))
+    else if Name = 'p' then
+      AddWrapped('', InnerOf(Name))
+    else if Name = 'ol' then
+      InOrdered := True
+    else if Name = 'ul' then
+      InOrdered := False
+    else if Name = 'li' then
+    begin
+      Inner := InnerOf('li');
+      { a nested list inside the item flattens: its items follow as their own }
+      Wrap := 'li';
+      if InOrdered then Wrap := 'oli';
+      Q := Pos('<ul', LowerCase(Inner));
+      if Q = 0 then Q := Pos('<ol', LowerCase(Inner));
+      if Q > 0 then
+      begin
+        AddWrapped(Wrap, Copy(Inner, 1, Q - 1));
+        MarkdownHTMLToParagraphs(Copy(Inner, Q, MaxInt), AOut);
+      end
+      else
+        AddWrapped(Wrap, Inner);
+    end
+    else if Name = 'blockquote' then
+    begin
+      { each paragraph inside the quote is a quote line of its own }
+      Inner := InnerOf('blockquote');
+      Inner := StringReplace(Inner, '</p>', #1, [rfReplaceAll, rfIgnoreCase]);
+      Inner := StringReplace(Inner, '<p>', '', [rfReplaceAll, rfIgnoreCase]);
+      for Q := 1 to WordCount(Inner, [#1]) do
+        if Trim(ExtractWord(Q, Inner, [#1])) <> '' then
+          AOut.Add('<blockquote>' + Trim(HTMLToInk(ExtractWord(Q, Inner, [#1]))) + '</blockquote>');
+    end
+    else if Name = 'pre' then
+      AddCode(InnerOf('pre'))
+    else if Name = 'table' then
+      AddTable(InnerOf('table'))
+    else if Name = 'hr' then
+      AOut.Add(#$E2#$80#$95#$E2#$80#$95#$E2#$80#$95);
+  end;
+end;
+
+procedure TInkRichEdit.LoadMarkdown(const S: string);
+var
+  Lines: TStringList;
+begin
+  Lines := TStringList.Create;
+  try
+    MarkdownHTMLToParagraphs(MarkdownToHTML(S), Lines);
+    if Lines.Count = 0 then Lines.Add('');
+    Markup := Lines;
+  finally
+    Lines.Free;
+  end;
+end;
+
+function TInkRichEdit.AsMarkdown: string;
+var
+  i, PS: Integer;
+  Kind, PrevKind: TInkParaKind;
+  Lines: TStringList;
+  NumberAt: Integer;
+  InFence: Boolean;
+
+  function EscapeMD(const T: string): string;
+  var
+    K: Integer;
+  begin
+    Result := '';
+    for K := 1 to Length(T) do
+    begin
+      if T[K] in ['\', '`', '*', '_', '['] then Result := Result + '\';
+      Result := Result + T[K];
+    end;
+  end;
+
+  { the paragraph's characters as Markdown inline text }
+  function InlineMD(AFrom, ATo: Integer): string;
+  var
+    K, J, RunEnd: Integer;
+    A: TInkAttr;
+    Txt, Piece: string;
+  begin
+    Result := '';
+    K := AFrom;
+    while K <= ATo do
+    begin
+      A := FAttrs[K];
+      RunEnd := K;
+      while (RunEnd + 1 <= ATo) and SameInkAttr(FAttrs[RunEnd + 1], A) do
+        Inc(RunEnd);
+      Txt := '';
+      for J := K to RunEnd do
+        Txt := Txt + FChars[J];
+      if (A.Face <> '') and (A.Kind <> ipkCode) then
+        { a monospaced run is a code span; nothing nests inside backticks }
+        Piece := '`' + Txt + '`'
+      else
+      begin
+        Piece := EscapeMD(Txt);
+        if fsBold in A.Style then Piece := '**' + Piece + '**';
+        if fsItalic in A.Style then Piece := '*' + Piece + '*';
+        if fsStrikeOut in A.Style then Piece := '~~' + Piece + '~~';
+        if fsUnderline in A.Style then Piece := '<u>' + Piece + '</u>';
+        if A.Script = isSuperscript then Piece := '<sup>' + Piece + '</sup>';
+        if A.Script = isSubscript then Piece := '<sub>' + Piece + '</sub>';
+      end;
+      if A.Link <> '' then Piece := '[' + Piece + '](' + A.Link + ')';
+      Result := Result + Piece;
+      K := RunEnd + 1;
+    end;
+  end;
+
+  function RawText(AFrom, ATo: Integer): string;
+  var
+    K: Integer;
+  begin
+    Result := '';
+    for K := AFrom to ATo do
+      Result := Result + FChars[K];
+  end;
+
+begin
+  Lines := TStringList.Create;
+  try
+    PrevKind := ipkText;
+    NumberAt := 0;
+    InFence := False;
+    i := 0;
+    while i <= CharCount do
+    begin
+      PS := i;
+      while (i < CharCount) and (FChars[i] <> #10) do Inc(i);
+      if (PS = CharCount) and (PS > 0) then Break;  { nothing past the last break }
+      Kind := ParaKindAt(PS);
+      { fences open and close around an unbroken run of code lines }
+      if InFence and (Kind <> ipkCode) then
+      begin
+        Lines.Add('```');
+        InFence := False;
+      end;
+      { a blank line between blocks, except inside a list, a quote or a fence }
+      if (Lines.Count > 0) and not InFence then
+        if not ((Kind = PrevKind) and (Kind in [ipkBullet, ipkNumber, ipkQuote, ipkCode])) then
+          Lines.Add('');
+      case Kind of
+        ipkH1..ipkH6:
+          Lines.Add(StringOfChar('#', Ord(Kind) - Ord(ipkH1) + 1) + ' ' + InlineMD(PS, i - 1));
+        ipkBullet:
+          Lines.Add('- ' + InlineMD(PS, i - 1));
+        ipkNumber:
+          begin
+            if PrevKind <> ipkNumber then NumberAt := 0;
+            Inc(NumberAt);
+            Lines.Add(IntToStr(NumberAt) + '. ' + InlineMD(PS, i - 1));
+          end;
+        ipkQuote:
+          Lines.Add('> ' + InlineMD(PS, i - 1));
+        ipkCode:
+          begin
+            if not InFence then
+            begin
+              Lines.Add('```');
+              InFence := True;
+            end;
+            Lines.Add(RawText(PS, i - 1));
+          end;
+      else
+        Lines.Add(InlineMD(PS, i - 1));
+      end;
+      PrevKind := Kind;
+      Inc(i);
+    end;
+    if InFence then Lines.Add('```');
+    Result := Lines.Text;
+  finally
+    Lines.Free;
   end;
 end;
 

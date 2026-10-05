@@ -76,6 +76,10 @@ band gone and block margins read in cells
 (`bugs/2026-10-04-grid-card-text-unstyled`); `imoInlineHTML` for Markdown,
 and the `NoWrap` ellipsis with `TInkLabel.Ellipsis`.
 
+**Open, 4 October 2026:** a grid of cards has about 17 px too much space
+above it and 36 px too much below, where ordinary blocks match a browser
+to the pixel (`bugs/2026-10-04-space-round-a-grid`).
+
 ### B. Selection, finished
 
 * **Character selection in `TInkLabel` and `TInkListBox`** (they have the
@@ -108,6 +112,22 @@ and the `NoWrap` ellipsis with `TInkLabel.Ellipsis`.
 then tables.  Nothing in the Online Package Manager renders Markdown
 natively or edits it WYSIWYG (checked 16 September 2026), so this is where
 LazInk could be unique.
+
+**The first piece is in (4 October 2026).**  The editor has paragraph
+kinds - `ipkH1`-`ipkH6`, `ipkBullet`, `ipkNumber`, `ipkQuote`, `ipkCode` -
+held per character the way `Align` is, so the flat document stays flat.
+They render (heading sizes and weight, list markers with hanging indents,
+a quote's bar, a shaded monospace code band), they edit (`ApplyParaKind`,
+`SelParaKind`; Enter at a heading's end starts plain text, Enter on an
+empty item ends its list), they survive the `Markup` round trip as
+`<h1>`-`<h6>`, `<li>`, `<oli>`, `<blockquote>` and `<pre>` wrappers, and
+`LoadMarkdown`/`AsMarkdown` carry a document in and out - the round trip is
+a fixed point, which the tests hold it to.
+
+Still open here: **tables in the editor** (a Markdown table flattens to
+plain rows today); nested lists (they flatten to one level); the language
+tag on fenced code; images; and a demo tab that edits Markdown through
+this instead of a TMemo - which is also C's coloring item made moot.
 
 ### F. An Online Package Manager listing
 
