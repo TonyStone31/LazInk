@@ -62,17 +62,11 @@ Linux** has been run.
 
 `bugs/2026-09-20-summary-page-wants/README.md` is the live list, written
 from building Heckers Sketch's send window, in the order the gaps cost the
-most.  Still open there:
+most.  Items 1-4 - cell text styling (`font-size`, `font-weight`,
+`font-family`, `line-height` on `td`/`th`), `white-space: nowrap` columns,
+block children of a cell, and tables nested in cells and grid/flex cards -
+were **done 4 October 2026**; the note says how.  Still open:
 
-1. **`font-size`, `font-weight`, `font-family`, `line-height` on `td`/`th`**,
-   by tag or class, reaching the text in the cell.
-2. **`white-space: nowrap` on a cell** setting that column's minimum width
-   to the whole text.  (The `&nbsp;` half is done: it is a real no-break
-   space in both engines since 4 October.)
-3. **Block children of a cell** (`div`, `p`, `h3`) laid out as blocks, each
-   with its own size and line height.
-4. **A table inside a grid/flex card** laid out in the item's width, and
-   full cell styling for a table nested in a cell - what makes real cards.
 5. **Inline pills**: `padding`, `border-radius` and `border` on a `<span>`.
    Low on the list.
 6. **A way to change one element without reloading the page** -
@@ -87,9 +81,8 @@ most.  Still open there:
 
 ### C. The demo
 
-* **A proper redesign.**  From the owner, 16 September: the demo "looks
-  like shit and could be improved."  Plan it as its own piece of work, not
-  as a side effect of something else.
+* ~~A proper redesign~~ - done; the owner calls it "way better these days"
+  (4 October 2026).
 * **Color the Markdown source** in the editor tab with LazInk's own
   machinery (the `TInkCodeMemo` idea - a multi-line plain-text editor with
   per-character coloring).  If it turns out to be worth having, it belongs

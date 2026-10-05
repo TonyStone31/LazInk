@@ -24,7 +24,7 @@ var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
   List: TInkListBox; Page: TInkPage; CSS: TInkStyleSheet;
   TextOutput: TStringList;
   Files: TStringList; I, Images, Pass: Integer; GIF: TInkGIF; GIFStream: TFileStream;
-  Source: TStringList; Tags: string; K, Wanted: Integer;
+  Source: TStringList; Tags: string; K, Wanted: Integer; SR: TSearchRec;
 { how many images a GIF holds, by walking its blocks - independent of the
   decoder being tested }
 function GIFFrames(AStream: TStream): Integer;
@@ -3016,6 +3016,78 @@ begin
   Check(Probe.DocumentTitle = 'alpha-filter-0.webp', 'with its name as the title: ' + Probe.DocumentTitle);
 end;
 
+{ --- the summary-page wants: cell text styling, nowrap columns, block
+  children of a cell, and tables nested in cells and cards --- }
+procedure CellStyleChecks;
+var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string;
+begin
+  { the stylesheet's td rules reach the markup the renderer reads }
+  Probe.LoadHTML('<html><head><style>'+
+    'td.small{font-size:11px;font-weight:bold;line-height:14px;white-space:nowrap}'+
+    '</style></head><body><table><tr>'+
+    '<td class="small">little</td><td>plain</td></tr></table></body></html>');
+  S := Probe.Block(0).Source;
+  Check(Pos('size="-11"',S)>0,'td font-size reaches the cell');
+  Check(Pos('bold="1"',S)>0,'and td font-weight');
+  Check(Pos('lineheight="14"',S)>0,'and td line-height');
+  Check(Pos('nowrap="1"',S)>0,'and white-space: nowrap');
+
+  { block children of a cell are lines of their own, in their own size }
+  Probe.LoadHTML('<html><head><style>'+
+    'div.title{font-size:20px;font-weight:bold}'+
+    '</style></head><body><table><tr><td>'+
+    '<div class="title">The machine</div><div>a line under it</div>'+
+    '</td><td><h3>Head</h3>after</td></tr></table></body></html>');
+  S := Probe.Block(0).Source;
+  Check(Pos('<font size="-20"><b>The machine</b></font><br>a line under it',S)>0,
+    'a div in a cell is a styled line of its own: '+Copy(S,1,120));
+  Check(Pos('<b>Head</b></font><br>after',S)>0,'an h3 in a cell is a heading line');
+  Check(Pos('under it<br></td>',S)=0,'and a cell does not end on a blank line');
+
+  { a table nested in a cell keeps its dress }
+  Probe.LoadHTML('<html><head><style>'+
+    'table.kv td{padding:3px 6px}'+
+    'table.kv td.key{background:#dde2ea}'+
+    '</style></head><body><table><tr><td>outer'+
+    '<table class="kv"><tr><td class="key">K</td><td>V</td></tr></table>'+
+    '</td></tr></table></body></html>');
+  S := Probe.Block(0).Source;
+  Check(Pos('<table cellpadding="3 6 3 6">',S)>0,'a nested table keeps its padding');
+  Check(Pos('bgcolor="#DDE2EA"',S)>0,'and its cells their backgrounds');
+
+  { a table inside a grid card is the card's table, not running text }
+  Probe.LoadHTML('<html><head><style>'+
+    '.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}'+
+    '.card{background:#eef0f4;padding:8px}'+
+    '</style></head><body><div class="cards">'+
+    '<div class="card"><h3>Machine</h3><table><tr><td>OS</td><td>Linux</td></tr></table></div>'+
+    '<div class="card">plain words</div>'+
+    '</div></body></html>');
+  S := Probe.Block(0).Source;
+  Check(Pos('<table',Copy(S,2,MaxInt))>0,'a card holds a real table');
+  Check(Pos('OSLinux',Probe.PlainText)=0,'whose cells are not run together');
+  Check((Pos('OS',Probe.PlainText)>0) and (Pos('Linux',Probe.PlainText)>0),
+    'and whose text is all there');
+
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(700,300); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
+    O := DefaultHTMLOptions;
+    { a nowrap cell holds one line however narrow the table }
+    S := '<table><tr><td nowrap="1">eighty-five KB and more that stays together whatever the width</td></tr></table>';
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,650,0),[],S,O);
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,200,0),[],S,O);
+    Check(N.cy=A.cy,'a nowrap cell holds one line however narrow the table');
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,200,0),[],
+      StringReplace(S,' nowrap="1"','',[]),O);
+    Check(N.cy>A.cy,'where a plain cell folds');
+    { a cell's size attribute changes what is measured }
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,650,0),[],'<table><tr><td size="-30">Big</td></tr></table>',O);
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,650,0),[],'<table><tr><td size="-10">Big</td></tr></table>',O);
+    Check(A.cy>N.cy+10,'a cell size attribute reaches its words');
+  finally BM.Free end;
+end;
+
 begin
   Application.Initialize;
   TestExceptions := TTestExceptions.Create;
@@ -3160,6 +3232,7 @@ begin
     RunWebPChecks;
     FindChecks;
     ScrollBarAndEntityChecks;
+    CellStyleChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;
@@ -3276,7 +3349,12 @@ begin
           Page.LoadFromFile(Files[I]); Page.Repaint;
           Check(Page.DocumentTitle<>'','Missing title: '+Files[I]);
           Check(Page.ContentHeight>100,'Missing layout: '+Files[I]);
-          Check(Pos('Heckers Sketch',Page.PlainText)>0,'Missing page text: '+Files[I]);
+          { the page's own heading made it into the rendered text - checked
+            by the title's first words, which is what the h1 carries, so a
+            page that never says the program's name still has a check }
+          S := Page.DocumentTitle;
+          if Pos(' - ',S)>0 then S := Copy(S,1,Pos(' - ',S)-1);
+          Check(Pos(Trim(S),Page.PlainText)>0,'Missing page text: '+Files[I]);
           if ParamCount>1 then
           begin
             TextOutput := TStringList.Create;
@@ -3308,9 +3386,14 @@ begin
             Check(Page.ContentHeight>100,'Layout survives resizing');
           end;
           Page.Width := 700;
-          if ExtractFileName(Files[I])='index.html' then
+          { a real page's animated GIF, when the folder still has one - the
+            Heckers Sketch manual has moved its animations to WebP }
+          if (ExtractFileName(Files[I])='index.html') and
+            (FindFirst(ExtractFilePath(Files[I])+'shots/*.gif',faAnyFile,SR)=0) then
           begin
-            GIFStream := TFileStream.Create(ExtractFilePath(Files[I])+'shots/tool-push.gif',fmOpenRead);
+            S := ExtractFilePath(Files[I])+'shots/'+SR.Name;
+            FindClose(SR);
+            GIFStream := TFileStream.Create(S,fmOpenRead);
             try
               GIF := TInkGIF.Create(GIFStream);
               try

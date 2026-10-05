@@ -177,11 +177,13 @@ begin
       Page := TVisibleText.Create;
       try
         ReadPage(Name, Page);
-        Rendered := Compact(ReadUTF8(IncludeTrailingPathDelimiter(ParamStr(2)) +
-          ExtractFileName(Name) + '.txt'));
+        { case-insensitive: a page may say text-transform: uppercase, and a
+          heading rendered as WHAT HAPPENS is not lost }
+        Rendered := UpperCase(Compact(ReadUTF8(IncludeTrailingPathDelimiter(ParamStr(2)) +
+          ExtractFileName(Name) + '.txt')));
         for K := 0 to Page.Fragments.Count - 1 do
         begin
-          if Pos(Compact(UTF8Decode(Page.Fragments[K])), Rendered) = 0 then
+          if Pos(UpperCase(Compact(UTF8Decode(Page.Fragments[K]))), Rendered) = 0 then
           begin
             WriteLn(ExtractFileName(Name), ': lost text "', Page.Fragments[K], '"');
             Inc(Lost);

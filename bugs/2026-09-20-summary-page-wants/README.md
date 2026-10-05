@@ -27,6 +27,10 @@ to make a long file name fit, and it was the first thing asked for.
 **Wanted:** `font-size`, `font-weight`, `font-family` and `line-height` on
 `td`/`th`, by tag or class, reaching the text in the cell.
 
+*Done, 4 October 2026: all four, by tag or class, and the column widths are
+measured in the cell's own face and size.  Inline markup inside the cell
+still wins.*
+
 ## 2. No way to keep a cell on one line
 
 `white-space: nowrap` is listed as read, but on a `td` it does not stop the
@@ -42,9 +46,9 @@ the same text with real U+00A0 characters does not.
 and `white-space: nowrap` on a cell to set that column's minimum width to
 the whole text.
 
-*The first half is done (4 October 2026): `&nbsp;` decodes to a real
-U+00A0 in both engines, and the line breaker does not break at it.  The
-`nowrap` cell is still open.*
+*Done, 4 October 2026, both halves: `&nbsp;` decodes to a real U+00A0 in
+both engines, and `white-space: nowrap` on a cell keeps its column at least
+as wide as the whole text.*
 
 ## 3. A `<div>` inside a cell is flattened into the line
 
@@ -58,6 +62,10 @@ both, which costs the rounded corners.
 
 **Wanted:** block children of a cell (`div`, `p`, `h3`) laid out as blocks,
 each with its own size and line height.
+
+*Done, 4 October 2026: `div`, `p` and `h1`-`h6` in a cell are lines of
+their own, sized and weighted from the stylesheet or their style attribute,
+and two sizes on one line hang from one baseline.*
 
 ## 4. A table inside a card, or inside a cell, loses its dress
 
@@ -81,6 +89,11 @@ with no border, key, value - and a row for each *pair* of facts, so the two
 **Wanted:** a table as a child of a grid/flex item, laid out in the item's
 width; and the full cell styling for a table nested in a cell.  With those,
 `border-radius` and a border on the card would make real cards.
+
+*Done, 4 October 2026: a table inside a grid or flex card is laid out as a
+table in the card's width, and a table nested in a cell keeps its
+stylesheet's padding, backgrounds and colors.  Two cards side by side, each
+holding a small key/value table, now render as written.*
 
 ## 5. Inline boxes: a pill
 
