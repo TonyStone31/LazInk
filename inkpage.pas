@@ -847,11 +847,12 @@ var I, N: Integer;
 begin
   N := Length(B.FlexCells);
   Cols := Max(1,Cols);
+  { gaponly: a grid's gap goes between its items, never around its edges }
   if B.FlexWrap or (B.FlexMaxCols>0) then
-    Result := '<table width="100%" layout="fixed" cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>'
+    Result := '<table width="100%" layout="fixed" gaponly="1" cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>'
   else
     { a row that does not wrap: items as wide as their content }
-    Result := '<table cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>';
+    Result := '<table gaponly="1" cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>';
   for I := 0 to N-1 do
   begin
     if I mod Cols=0 then Result := Result+'<tr>';
@@ -1571,11 +1572,7 @@ var
     begin
       Margins := FStyles.Box('table',BlockClass,'margin',Rect(0,0,0,0));
       B.MarginLeft := Margins.Left; B.MarginRight := Margins.Right;
-      { cards stacked one to a row reach the edges, as blocks do }
-      if CellsAsBlocks then
-      begin
-        Dec(B.MarginLeft,TableSpacing); Dec(B.MarginRight,TableSpacing);
-      end;
+
     end;
     { an item's marker goes on its first words, not on an anchor before them }
     if Text<>'' then begin B.Marker := PendingMarker; PendingMarker := '' end;
@@ -1668,7 +1665,7 @@ var
     begin
       { cells that are blocks: one to a row, the whole width, apart by
         their bottom margin }
-      Result := Result+' width="100%" layout="fixed"';
+      Result := Result+' width="100%" layout="fixed" gaponly="1"';
       TableSpacing := Max(0,FStyles.Box('td','','margin',Rect(0,0,0,0),TableCtx).Bottom);
       if TableSpacing>0 then Result := Result+' cellspacing="'+IntToStr(TableSpacing)+'"';
     end
@@ -2113,9 +2110,10 @@ var
         FlexCtx+' '+FirstItemTag+DotClasses(FirstItemCls)))='none';
       B.LinkColor := FStyles.Color('a','','color',clNone,FlexCtx+' '+FirstItemTag+DotClasses(FirstItemCls));
     end;
-    { the outer gap the table adds is not the container's: reach out by it }
     Margins := FStyles.Box(FlexEl,FlexCls,'margin',Rect(0,0,0,0));
-    B.MarginLeft := Margins.Left-FlexGap; B.MarginRight := Margins.Right-FlexGap;
+    { the gap stays between the items now, so the container's own margins
+      are the whole story }
+    B.MarginLeft := Margins.Left; B.MarginRight := Margins.Right;
     FBlocks.Add(B);
     BlockTag := ContainerTag; BlockClass := '';
     FirstItemTag := ''; FirstItemCls := '';

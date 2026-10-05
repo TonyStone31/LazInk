@@ -3185,7 +3185,31 @@ begin
     A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br>b</td></tr></table>',O);
     N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br><vgap=50>b</td></tr></table>',O);
     Check(N.cy=A.cy+50,'a vgap in a cell is exactly its height');
+    { a grid's gap goes between its items, never around its edges: the gap
+      before a heading is the same whether a grid or a table came before it }
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,560,0),[],
+      '<table gaponly="1" cellspacing="16" cellpadding="0 0 0 0" border="none">'+
+      '<tr><td>one</td><td>two</td></tr></table>',O);
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,560,0),[],
+      '<table cellpadding="0 0 0 0" border="none"><tr><td>one</td><td>two</td></tr></table>',O);
+    Check(A.cy=N.cy,'gaponly adds nothing above or below a one-row grid');
   finally BM.Free end;
+
+  { and on a page: three identical heading gaps round a two-card grid }
+  Probe.LoadHTML('<html><head><style>'+
+    'body{font-size:14px;margin:0}'+
+    'h3{font-size:12px;margin:18px 0 6px 0}'+
+    '.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}'+
+    '</style></head><body>'+
+    '<h3>one</h3><table><tr><td>a</td></tr></table>'+
+    '<div class="cards"><div><table><tr><td>b</td></tr></table></div>'+
+    '<div><table><tr><td>c</td></tr></table></div></div>'+
+    '<h3>two</h3><table><tr><td>d</td></tr></table></body></html>');
+  Check(Probe.Block(1).Bounds.Bottom=Probe.Block(2).Bounds.Top,
+    'the grid follows the table with no band above');
+  Check(Probe.Block(3).Bounds.Top-Probe.Block(2).Bounds.Bottom=
+    Probe.Block(1).Bounds.Top-Probe.Block(0).Bounds.Bottom+12,
+    'and the heading after the grid sits at its own margin, no band below');
 end;
 
 { --- the rich editor speaks Markdown: paragraph kinds, in and out --- }

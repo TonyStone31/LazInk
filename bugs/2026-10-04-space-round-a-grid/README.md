@@ -48,3 +48,23 @@ there at all.
 
 Uses the cards anyway; the send window reads a little airier than it
 should.  Nothing is worked round.
+
+## Fixed - 4 October 2026
+
+The first guess was right, and it was the whole of the gap above: the page
+wrote the grid's `gap` as the generated table's `cellspacing`, and
+cellspacing frames a real table on every side, where a grid's gap goes only
+between its items.  The table markup a grid builds now says `gaponly="1"`,
+and the renderer leaves the edges alone for such a table - rows and columns
+keep the gap between them only.  Below the grid the same 16 px was joined
+by the edge spacing counted into the block's height a second way through
+the trailing row spacing, which is also gone.  The left and right edges
+stopped needing the negative-margin trick that lined cards up with the
+text, so that is gone too.
+
+Measured on `page.html` after the fix: the three gaps before the headings
+are equal, as the browser draws them; on `send-window.html` the banner,
+the files table, the cards and "The report" all sit 26 px apart, the
+browser's own rhythm.  `CardTextChecks` holds a one-row gaponly grid to
+exactly the height of the same row without it, and the page to no band
+above or below.
