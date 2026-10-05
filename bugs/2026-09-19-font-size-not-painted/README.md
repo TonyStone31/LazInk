@@ -70,3 +70,11 @@ The same pages in a browser are fine, so this is the in-program reader only.
 The release going out today ships with it; the pages are written the way a
 browser reads them and will simply get better when this is fixed - nothing
 in the manual needs changing for it.
+
+## Fixed - by 4 October 2026
+
+The painting caught back up with the layout in the renderer work that
+followed (sizes in pixels, heading margins, the browser comparisons).
+Verified today with a pixel probe: a `font-size: 40px` paragraph paints 39
+pixels of ink where the 15-pixel body paints 14, and
+`tests/render_tests.pas` checks `PointSize` reaches the blocks.

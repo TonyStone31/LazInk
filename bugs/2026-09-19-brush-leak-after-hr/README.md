@@ -145,3 +145,10 @@ underneath it are bullets - so every bullet in that window was unreadable.
 The stylesheet there is built from the program's theme, so it looked like a
 light-mode bug at first; it is not, it happens in every palette, and the
 block is simply more obvious against a pale page.
+
+## Fixed - 19 September 2026
+
+Commit 59d6b81, the same day: the `hr` branch now puts the brush color back
+before the style (the restore-order trap this note predicted), and
+`tests/render_tests.pas` has `BrushLeakChecks` - it renders `repro.md` with
+`repro.css` and reads the pixel this note said holds the whole fault.

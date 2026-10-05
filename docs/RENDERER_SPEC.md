@@ -530,7 +530,7 @@ What is still open, with what each would cost:
    | `TouchChecks`, `IconChecks` | nothing to do with the engine; they must keep passing anyway |
    | the help-page run (`tests/run.sh pages.txt results/`) | 38 real pages: every visible text fragment must survive, at three widths |
 4. Then delete `inkhtml.pas` and `inktables.inc`, check the provenance of
-   every remaining file (ROADMAP section 4, step 3), and change the license.
+   every remaining file (docs/HISTORY.md section 4, step 3), and change the license.
 5. Keep `docs/RENDERER_CHANGES.md` as the record of the old engine, and keep
    crediting JVCL, wp and the forum thread as where LazInk started.
 
@@ -687,12 +687,12 @@ allow for now and expensive to retrofit.
   deterministic mutations of it.  Nothing in the engine had to change for
   it, which was the point:  Today an image run is an
   image-list index of a fixed size.  A page's pictures are files - PNG, GIF
-  and, if ROADMAP item 17 happens, **animated WebP** - with a real size, a
+  and, if HISTORY.md section 4 item 17 happens, **animated WebP** - with a real size, a
   current frame, and a clock.  Give an image run a size the caller sets and
   a frame the caller can change between paints, and animation stays entirely
   outside the engine, where `TInkGIF` already is.  The format question (a
   Pascal decoder against binding libwebp, and the rule that GIF stays
-  whichever way it goes) is settled in ROADMAP section 4, item 17 - the
+  whichever way it goes) is settled in docs/HISTORY.md section 4, item 17 - the
   engine only has to not care which decoder filled the bitmap.
 * **A picture that is not inline.**  Blocks place their own pictures today
   (`TInkCustomPage` does the layout), but `float: left` with text wrapping
@@ -700,7 +700,7 @@ allow for now and expensive to retrofit.
   box list makes it possible - a line needs to know its available width
   varies down the page - so do not assume one width per layout.
 * **`colspan` and `rowspan`**, column widths from `width`, `<thead>` and
-  zebra striping (ROADMAP section 4, item 8).  The old engine cannot do
+  zebra striping (docs/HISTORY.md section 4, item 8).  The old engine cannot do
   them; a table design that starts from a grid of cells rather than a list
   of rows can.
 * **Code blocks that scroll sideways** rather than clipping, and real tab
@@ -721,7 +721,7 @@ allow for now and expensive to retrofit.
 
 ## 12. If someone wanted to take it further
 
-LazInk is not going to be a browser (section 7, and ROADMAP section 6).  But
+LazInk is not going to be a browser (section 7, and ROADMAP "What not to do").  But
 the question worth answering once, now, is: **what would stop someone?**
 Most of what a browser does can be layered on later.  Five things cannot, or
 not cheaply.
