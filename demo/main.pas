@@ -27,7 +27,8 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, StdCtrls,
   ComCtrls, Buttons, ImgList, LCLIntf, LCLType,
-  InkLabel, InkEdit, InkMemo, InkListBox, InkRichEdit, InkDraw, InkMarkdown, InkPage;
+  InkLabel, InkEdit, InkMemo, InkListBox, InkRichEdit, InkCodeMemo, InkDraw,
+  InkMarkdown, InkCSS, InkPage;
 
 type
 
@@ -140,9 +141,13 @@ type
     tabMarkdown: TTabSheet;
     pnlMdTools: TPanel;
     btnMdOpen, btnMdSave, btnMdSaveAs: TButton;
+    btnKindH1, btnKindH2, btnKindBullet, btnKindNumber, btnKindQuote,
+      btnKindCode, btnTable: TSpeedButton;
+    chkSrcMarkdown: TCheckBox;
+    cbDocScheme: TComboBox;
     chkMdRawHTML: TCheckBox;
     lblMdFile: TInkLabel;
-    memMarkdown: TMemo;
+    memMarkdown: TInkCodeMemo;
     splMarkdown: TSplitter;
     pageMdPreview: TInkPage;
     tmrMarkdown: TTimer;
@@ -168,6 +173,12 @@ type
     procedure DocLinkClick(Sender: TObject; const URL: string);
     { Markdown editor }
     procedure MdOpen(Sender: TObject);
+    procedure MdCharAttrs(Sender: TObject; AIndex: Integer;
+      const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+    procedure btnKindClick(Sender: TObject);
+    procedure btnTableClick(Sender: TObject);
+    procedure chkSrcMarkdownChange(Sender: TObject);
+    procedure DocSchemeChange(Sender: TObject);
     procedure MdSave(Sender: TObject);
     procedure MdSaveAs(Sender: TObject);
     procedure MdRawHTMLChange(Sender: TObject);
@@ -230,6 +241,12 @@ type
       OnGetCharAttrs is handed a character with no idea what surrounds it. }
     FTagMask, FLiveMask, FAppendMask: TBytes;
     FMdFile: string;
+    { the Markdown source's colors, one per character, rebuilt on change -
+      the per-character event has no line context of its own, so the demo
+      classifies whole lines once and the event just reads the map }
+    FMdColor: array of TColor;
+    FMdStyle: array of TFontStyles;
+    procedure MdRecolor;
     procedure UpdateSource;
     function TagMask(const S: string): TBytes;
     function DemoFile(const AName: string): string;
@@ -341,6 +358,24 @@ begin
       'Type **Markdown** on the left and watch it on the right.' + LineEnding;
     ShowMdFile;
   end;
+  MdRecolor;
+  { the WYSIWYG editor opens on Markdown, edited as the thing itself }
+  reMain.LoadMarkdown(
+    '# A Markdown editor' + LineEnding + LineEnding +
+    'This document was **loaded from Markdown** and is edited as what it ' +
+    'is - not as source. The toolbar''s *H1 H2* ' + #$E2#$80#$A2 + ' *1.* ' + #$E2#$80#$9D +
+    ' *{}* buttons change what a paragraph is, and **Table** inserts one:' + LineEnding + LineEnding +
+    '| Control | Does |' + LineEnding +
+    '| --- | --- |' + LineEnding +
+    '| **Tab** | the next cell, a new row past the last |' + LineEnding +
+    '| **Enter** | another row; on an empty one, out |' + LineEnding + LineEnding +
+    '- a bullet item - Enter continues the list' + LineEnding +
+    '- an empty item ends it' + LineEnding + LineEnding +
+    '> The pane on the right shows the document as markup, or - tick ' +
+    '*Markdown* - as the Markdown it would be saved as.' + LineEnding + LineEnding +
+    '```' + LineEnding +
+    'code lines keep their spacing' + LineEnding +
+    '```');
   LiveChange(nil);
   edtAppendChange(nil);
   chkStripesChange(chkStripes);
@@ -502,11 +537,134 @@ begin
   pageMdPreview.MarkdownRawHTML := chkMdRawHTML.Checked;
 end;
 
+{ The source colored as Markdown, by the demo, not by the control: whole
+  lines are classified here once per change, and OnGetCharAttrs only reads
+  the map.  Headings blue, markers and fences orange, code teal, quotes
+  gray, bold and italic shown as themselves - wrong here and there, like
+  any small highlighter, and still a world better than plain. }
+procedure TfrmMain.MdRecolor;
+const
+  cHead = $00DE862E;    // blue   (TColor is BGR)
+  cMark = $001980E6;    // orange
+  cCode = $00847016;    // teal
+  cDim  = $008D8C7F;    // gray
+var
+  i, j, CP, N, LineStart: Integer;
+  L: string;
+  InFence, Table: Boolean;
+
+  procedure Put(AAt: Integer; AColor: TColor; AStyle: TFontStyles);
+  begin
+    if (AAt >= 0) and (AAt < N) then
+    begin
+      FMdColor[AAt] := AColor;
+      FMdStyle[AAt] := AStyle;
+    end;
+  end;
+
+  procedure PutRun(AFrom, ATo: Integer; AColor: TColor; AStyle: TFontStyles);
+  var
+    K: Integer;
+  begin
+    for K := AFrom to ATo do
+      Put(K, AColor, AStyle);
+  end;
+
+begin
+  N := 0;
+  for i := 0 to memMarkdown.Lines.Count - 1 do
+    Inc(N, UTF8Length(memMarkdown.Lines[i]) + 1);
+  SetLength(FMdColor, N);
+  SetLength(FMdStyle, N);
+  for i := 0 to N - 1 do
+  begin
+    FMdColor[i] := clDefault;
+    FMdStyle[i] := [];
+  end;
+  InFence := False;
+  LineStart := 0;
+  for i := 0 to memMarkdown.Lines.Count - 1 do
+  begin
+    L := memMarkdown.Lines[i];
+    if Copy(TrimLeft(L), 1, 3) = '```' then
+    begin
+      InFence := not InFence;
+      PutRun(LineStart, LineStart + UTF8Length(L) - 1, cMark, []);
+    end
+    else if InFence then
+      PutRun(LineStart, LineStart + UTF8Length(L) - 1, cCode, [])
+    else if (L <> '') and (L[1] = '#') then
+      PutRun(LineStart, LineStart + UTF8Length(L) - 1, cHead, [fsBold])
+    else if Copy(TrimLeft(L), 1, 1) = '>' then
+      PutRun(LineStart, LineStart + UTF8Length(L) - 1, cDim, [fsItalic])
+    else
+    begin
+      j := 1;
+      while (j <= Length(L)) and (L[j] = ' ') do Inc(j);
+      { a list marker: -, *, + or 1. at the line's start }
+      if (j <= Length(L)) and (L[j] in ['-', '*', '+']) and
+        (j < Length(L)) and (L[j + 1] = ' ') then
+        PutRun(LineStart + j - 1, LineStart + j - 1, cMark, [fsBold])
+      else if (j <= Length(L)) and (L[j] in ['0'..'9']) then
+      begin
+        while (j <= Length(L)) and (L[j] in ['0'..'9']) do Inc(j);
+        if (j <= Length(L)) and (L[j] = '.') then
+          PutRun(LineStart, LineStart + j - 1, cMark, [fsBold]);
+      end;
+      { inline: markers dimmed, code spans teal, pipes orange.  The map is
+        per codepoint, so the walk is too - an em-dash before a marker must
+        not shift its color onto a neighbor }
+      Table := (Pos('|', L) > 0);
+      j := 1;
+      CP := 0;
+      while j <= Length(L) do
+      begin
+        case L[j] of
+          '`':
+            begin
+              Put(LineStart + CP, cMark, []);
+              Inc(j); Inc(CP);
+              while (j <= Length(L)) and (L[j] <> '`') do
+              begin
+                Put(LineStart + CP, cCode, []);
+                Inc(j, UTF8CodepointSize(@L[j])); Inc(CP);
+              end;
+              if j <= Length(L) then Put(LineStart + CP, cMark, []);
+            end;
+          '*', '_', '~':
+            Put(LineStart + CP, cMark, []);
+          '[', ']', '(', ')':
+            if Pos('](', L) > 0 then Put(LineStart + CP, cMark, []);
+          '|':
+            if Table then Put(LineStart + CP, cMark, [fsBold]);
+        end;
+        if j <= Length(L) then
+        begin
+          Inc(j, UTF8CodepointSize(@L[j]));
+          Inc(CP);
+        end;
+      end;
+    end;
+    Inc(LineStart, UTF8Length(L) + 1);
+  end;
+end;
+
+procedure TfrmMain.MdCharAttrs(Sender: TObject; AIndex: Integer;
+  const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+begin
+  if (AIndex >= 1) and (AIndex <= Length(FMdColor)) then
+  begin
+    if FMdColor[AIndex - 1] <> clDefault then AColor := FMdColor[AIndex - 1];
+    AStyle := AStyle + FMdStyle[AIndex - 1];
+  end;
+end;
+
 { the preview follows the typing, a moment after it stops }
 procedure TfrmMain.MdSourceChange(Sender: TObject);
 begin
   tmrMarkdown.Enabled := False;
   tmrMarkdown.Enabled := True;
+  MdRecolor;
   ShowMdFile;
 end;
 
@@ -534,7 +692,10 @@ begin
   if FSyncing or memSource.Focused then Exit;
   FSyncing := True;
   try
-    memSource.Lines.Assign(reMain.Markup);
+    if chkSrcMarkdown.Checked then
+      memSource.Text := reMain.AsMarkdown
+    else
+      memSource.Lines.Assign(reMain.Markup);
   finally
     FSyncing := False;
   end;
@@ -587,6 +748,51 @@ begin
 
   btnUndo.Enabled := reMain.CanUndo;
   btnRedo.Enabled := reMain.CanRedo;
+
+  btnKindH1.Down := reMain.SelParaKind = ipkH1;
+  btnKindH2.Down := reMain.SelParaKind = ipkH2;
+  btnKindBullet.Down := reMain.SelParaKind = ipkBullet;
+  btnKindNumber.Down := reMain.SelParaKind = ipkNumber;
+  btnKindQuote.Down := reMain.SelParaKind = ipkQuote;
+  btnKindCode.Down := reMain.SelParaKind = ipkCode;
+end;
+
+{ a kind button pressed makes the paragraph that; raised again, plain text }
+procedure TfrmMain.btnKindClick(Sender: TObject);
+begin
+  if (Sender as TSpeedButton).Down then
+    reMain.ApplyParaKind(TInkParaKind((Sender as TSpeedButton).Tag))
+  else
+    reMain.ApplyParaKind(ipkText);
+  reMain.SetFocus;
+  UpdateToolbar;
+end;
+
+procedure TfrmMain.btnTableClick(Sender: TObject);
+begin
+  reMain.InsertTable(3, 2);
+  reMain.SetFocus;
+  SetStatus('A table: <b>Tab</b> hops cells, <b>Enter</b> adds a row, ' +
+    'Enter on an empty row ends it.');
+end;
+
+procedure TfrmMain.chkSrcMarkdownChange(Sender: TObject);
+begin
+  if chkSrcMarkdown.Checked then
+    lblSourceHdr.Caption := '<b>Markdown</b> <font color="#7F8C8D">— AsMarkdown, and Apply reads it back</font>'
+  else
+    lblSourceHdr.Caption := '<b>Markup</b> <font color="#7F8C8D">— one paragraph per line</font>';
+  UpdateSource;
+end;
+
+procedure TfrmMain.DocSchemeChange(Sender: TObject);
+begin
+  case cbDocScheme.ItemIndex of
+    1: pageDoc.ColorScheme := icsLight;
+    2: pageDoc.ColorScheme := icsDark;
+  else
+    pageDoc.ColorScheme := icsAuto;
+  end;
 end;
 
 procedure TfrmMain.reMainSelectionChange(Sender: TObject);
@@ -716,13 +922,19 @@ procedure TfrmMain.btnApplySourceClick(Sender: TObject);
 begin
   FSyncing := True;
   try
-    reMain.Markup := memSource.Lines;
+    if chkSrcMarkdown.Checked then
+      reMain.LoadMarkdown(memSource.Text)
+    else
+      reMain.Markup := memSource.Lines;
   finally
     FSyncing := False;
   end;
   reMain.SetFocus;
   UpdateToolbar;
-  SetStatus('Markup applied to the editor.');
+  if chkSrcMarkdown.Checked then
+    SetStatus('Markdown read back into the editor.')
+  else
+    SetStatus('Markup applied to the editor.');
 end;
 
 procedure TfrmMain.SetStatus(const AMarkup: string);

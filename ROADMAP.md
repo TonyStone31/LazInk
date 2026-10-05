@@ -78,12 +78,14 @@ here: whatever Heckers Sketch's next window finds.
 
 ### C. The demo
 
-* **Rebuild the Markdown editor tab on the editors**: the WYSIWYG
-  `TInkRichEdit` as the main showcase, and/or the source in a
-  `TInkCodeMemo` colored through `OnGetCharAttrs` (the control exists now;
-  Markdown is the only language the demo colors).
-* **Show the new powers somewhere**: `TInkCodeMemo`, `TextHint`,
-  `itfPlain`, pills, `ColorScheme`.
+* ~~The showcase~~ - done, 5 October 2026.  The Markdown tab's source pane
+  is a `TInkCodeMemo` colored by the demo through `OnGetCharAttrs`
+  (Markdown is the only language it colors, and no SynEdit anywhere); the
+  WYSIWYG tab opens on a document loaded from Markdown with paragraph-kind
+  and Table buttons, and its source pane speaks markup or Markdown both
+  ways; the Documents tab grew a `ColorScheme` box.  The README's pictures
+  are regenerated.
+* **Show somewhere still**: pills and `itfPlain` have no demo spot yet.
 * **Source and preview scrolled together** - nice, not essential.
 * **A build on the current stable Lazarus** - only trunk has been run.
 
@@ -105,7 +107,6 @@ out as a fixed point.  Nothing else for Lazarus does this.  Open polish:
 * **The language tag on fenced code** - dropped today.
 * **Images** in the editor.
 * **A pipe inside a table cell** - the separator wins today.
-* The demo tab in C, which is this editor's shop window.
 
 ### F. An Online Package Manager listing
 
