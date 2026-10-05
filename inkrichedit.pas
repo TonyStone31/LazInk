@@ -58,6 +58,8 @@ type
     Link: string;         // ''        -> not a link
     Align: TAlignment;    // paragraph property, held per character
     Kind: TInkParaKind;   // paragraph property, held per character
+    Level: Byte;          // a list item's nesting depth, 0 for the first
+    Lang: string;         // a code line's fence language, '' unsaid
   end;
 
   { One visual line: a run of characters that share a baseline. A paragraph is
@@ -130,7 +132,8 @@ type
     procedure NeedLayout;
     procedure ApplyAttrToCanvas(const A: TInkAttr);
     function ParaKindAt(AIndex: Integer): TInkParaKind;
-    function ParaIndent(AKind: TInkParaKind): Integer;
+    function ParaLevelAt(AIndex: Integer): Integer;
+    function ParaIndent(AKind: TInkParaKind; ALevel: Integer): Integer;
     function ParaNumber(AFirst: Integer): Integer;
     function MeasureChar(AIndex: Integer): Integer;
     function LineOfChar(AIndex: Integer): Integer;
@@ -213,6 +216,9 @@ type
     { the whole paragraphs the selection touches become AKind - a heading,
       a bullet or numbered item, a quote, a line of code, or plain text }
     procedure ApplyParaKind(AKind: TInkParaKind);
+    { the list items the selection touches step ADelta levels deeper or
+      back out - what Tab and Shift+Tab do on a list item }
+    procedure ApplyParaLevel(ADelta: Integer);
     { a fresh table at the caret: a head row and ARows body rows of ACols
       empty cells, the caret in the head's first cell }
     procedure InsertTable(ACols, ARows: Integer);
@@ -334,6 +340,8 @@ begin
   Result.Link := '';
   Result.Align := taLeftJustify;
   Result.Kind := ipkText;
+  Result.Level := 0;
+  Result.Lang := '';
 end;
 
 function SameInkAttr(const A, B: TInkAttr): Boolean;
@@ -341,7 +349,7 @@ begin
   Result := (A.Color = B.Color) and (A.BackColor = B.BackColor) and
     (A.Size = B.Size) and (A.Face = B.Face) and (A.Style = B.Style) and
     (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align) and
-    (A.Kind = B.Kind);
+    (A.Kind = B.Kind) and (A.Level = B.Level) and (A.Lang = B.Lang);
 end;
 
 { '#RRGGBB' for a real color, '' for the sentinels }
@@ -566,13 +574,22 @@ begin
     Result := ipkText;
 end;
 
-{ a list marker's gutter, a quote's bar and inset, a code line's inset -
-  measured in the control's font, which it leaves on the canvas }
-function TInkRichEdit.ParaIndent(AKind: TInkParaKind): Integer;
+function TInkRichEdit.ParaLevelAt(AIndex: Integer): Integer;
+begin
+  if (AIndex >= 0) and (AIndex < CharCount) then
+    Result := FAttrs[AIndex].Level
+  else
+    Result := 0;
+end;
+
+{ a list marker's gutter - one more gutter per nesting level - a quote's
+  bar and inset, a code line's inset.  Measured in the control's font,
+  which it leaves on the canvas. }
+function TInkRichEdit.ParaIndent(AKind: TInkParaKind; ALevel: Integer): Integer;
 begin
   Canvas.Font := Font;
   case AKind of
-    ipkBullet, ipkNumber: Result := Canvas.TextWidth('99. ');
+    ipkBullet, ipkNumber: Result := Canvas.TextWidth('99. ') * (ALevel + 1);
     ipkQuote: Result := Canvas.TextWidth('AB');
     ipkCode: Result := Canvas.TextWidth('A') div 2 + 4;
   else
@@ -580,20 +597,27 @@ begin
   end;
 end;
 
-{ which number a numbered item carries: one more than the unbroken run of
-  numbered paragraphs above it.  The #10 that ends a paragraph carries the
-  paragraph's own kind, which is what makes this walk cheap. }
+{ Which number a numbered item carries: one more than the unbroken run of
+  numbered paragraphs above it at its own level.  A deeper sublist between
+  two items does not break their numbering; a shallower item or anything
+  else does.  The #10 that ends a paragraph carries the paragraph's own
+  kind and level, which is what makes this walk cheap. }
 function TInkRichEdit.ParaNumber(AFirst: Integer): Integer;
 var
-  i, j: Integer;
+  i, j, MyLevel: Integer;
 begin
   Result := 1;
+  MyLevel := ParaLevelAt(AFirst);
   i := AFirst - 1;
-  while (i >= 0) and (FChars[i] = #10) and (FAttrs[i].Kind = ipkNumber) do
+  while (i >= 0) and (FChars[i] = #10) do
   begin
+    if (FAttrs[i].Kind = ipkNumber) and (FAttrs[i].Level = MyLevel) then
+      Inc(Result)
+    else if not ((FAttrs[i].Kind in [ipkBullet, ipkNumber]) and
+      (FAttrs[i].Level > MyLevel)) then
+      Break;
     j := i - 1;
     while (j >= 0) and (FChars[j] <> #10) do Dec(j);
-    Inc(Result);
     i := j;
   end;
 end;
@@ -811,7 +835,7 @@ var
     LastSpace := -1;
     HasLast := False;
     CurKind := ParaKindAt(GEnd);
-    CurInd := ParaIndent(CurKind);
+    CurInd := ParaIndent(CurKind, ParaLevelAt(GEnd));
     AvailP := Max(16, Avail - CurInd);
   end;
 
@@ -831,7 +855,7 @@ begin
   LastAttr := DefaultInkAttr;
   TableRowW := 0;
   CurKind := ParaKindAt(0);
-  CurInd := ParaIndent(CurKind);
+  CurInd := ParaIndent(CurKind, ParaLevelAt(0));
   AvailP := Max(16, Avail - CurInd);
 
   i := 0;
@@ -852,7 +876,7 @@ begin
       X := 0;
       LastSpace := -1;
       CurKind := ParaKindAt(i + 1);
-      CurInd := ParaIndent(CurKind);
+      CurInd := ParaIndent(CurKind, ParaLevelAt(i + 1));
       AvailP := Max(16, Avail - CurInd);
       HasLast := False;    { ParaIndent used the canvas font }
       Inc(i);
@@ -1170,7 +1194,8 @@ begin
             S := #$E2#$80#$A2' '
           else
             S := IntToStr(ParaNumber(L.First)) + '. ';
-          Canvas.TextOut(cMargin, BaseY - RunAsc, S);
+          Canvas.TextOut(cMargin + Canvas.TextWidth('99. ') * ParaLevelAt(L.First),
+            BaseY - RunAsc, S);
         end;
     end;
 
@@ -1352,8 +1377,11 @@ begin
     Exit(FTypingAttr);
   if GetSelLength > 0 then
     Result := FAttrs[GetSelStart]
-  else if (FCaret > 0) and (FCaret <= CharCount) and (FChars[FCaret - 1] <> #10) then
-    Result := FAttrs[FCaret - 1]      // inherit from the character to the left
+  else if (FCaret > 0) and (FCaret <= CharCount) then
+    { inherit from the character to the left; right after a break that is
+      the #10 itself, which carries its paragraph's kind, level and
+      language - so Enter at a list's end continues the list }
+    Result := FAttrs[FCaret - 1]
   else if FCaret < CharCount then
     Result := FAttrs[FCaret]
   else
@@ -1507,6 +1535,25 @@ begin
     while (PE < CharCount) and (FChars[PE] <> #10) do Inc(PE);
     if PS = PE then
     begin
+      { an empty nested item steps out a level first; at the top it steps
+        back to plain text, as before.  At the document's end the empty
+        item has no characters of its own, so its level lives on the
+        typing attributes. }
+      if (A.Kind in [ipkBullet, ipkNumber]) and (A.Level > 0) then
+      begin
+        if PE < CharCount then
+          ApplyParaLevel(-1)
+        else
+        begin
+          FTypingAttr := A;
+          FTypingAttr.Level := A.Level - 1;
+          FHasTypingAttr := True;
+          FModified := True;
+          InvalidateLayout;
+          SelectionChanged;
+        end;
+        Exit;
+      end;
       if (PE < CharCount) and (FChars[PE] = #10) then
         FAttrs[PE].Kind := ipkText;
       FTypingAttr := A;
@@ -1782,6 +1829,34 @@ begin
   SelectionChanged;
 end;
 
+{ the list items the selection touches step ADelta levels deeper (or back
+  out); five levels is as deep as anyone can read }
+procedure TInkRichEdit.ApplyParaLevel(ADelta: Integer);
+var
+  i, A, B, L: Integer;
+begin
+  if FReadOnly or (CharCount = 0) then Exit;
+  PushUndo(False);
+  A := GetSelStart;
+  B := GetSelStart + GetSelLength;
+  while (A > 0) and (FChars[A - 1] <> #10) do Dec(A);
+  while (B < CharCount) and (FChars[B] <> #10) do Inc(B);
+  if (B < CharCount) and (FChars[B] = #10) then Inc(B);
+  for i := A to B - 1 do
+    if FAttrs[i].Kind in [ipkBullet, ipkNumber] then
+    begin
+      L := EnsureRange(Integer(FAttrs[i].Level) + ADelta, 0, 5);
+      FAttrs[i].Level := L;
+    end;
+  if FHasTypingAttr then
+    FTypingAttr.Level := EnsureRange(Integer(FTypingAttr.Level) + ADelta, 0, 5);
+  FModified := True;
+  FMarkupDirty := True;
+  InvalidateLayout;
+  if Assigned(FOnChange) then FOnChange(Self);
+  SelectionChanged;
+end;
+
 procedure TInkRichEdit.ClearFormatting;
 var
   i: Integer;
@@ -1920,8 +1995,9 @@ begin
     VK_RETURN:
       Message.Result := 1;      // an editor eats its own navigation keys
     VK_TAB:
-      // in a table, Tab hops to the next cell instead of leaving the control
-      if SelParaKind in [ipkTableHead, ipkTableRow] then
+      // in a table Tab hops cells, in a list it changes the nesting,
+      // instead of leaving the control
+      if SelParaKind in [ipkTableHead, ipkTableRow, ipkBullet, ipkNumber] then
         Message.Result := 1
       else
         inherited;
@@ -2015,6 +2091,15 @@ begin
       if SelParaKind in [ipkTableHead, ipkTableRow] then
       begin
         TableHop(ssShift in Shift);
+        Key := 0;
+      end
+      else if SelParaKind in [ipkBullet, ipkNumber] then
+      begin
+        { a list item steps deeper on Tab and back out on Shift+Tab }
+        if ssShift in Shift then
+          ApplyParaLevel(-1)
+        else
+          ApplyParaLevel(1);
         Key := 0;
       end;
     VK_LEFT:
@@ -2496,10 +2581,15 @@ begin
     for i := 0 to FMarkup.Count - 1 do
       ParseInto(FMarkup[i], i > 0);
     { the #10 between paragraphs was emitted before its paragraph's wrapper
-      was read: give each one the kind of the paragraph it ends }
+      was read: give each one the kind, level and language of the paragraph
+      it ends }
     for i := High(FChars) downto 1 do
       if (FChars[i] = #10) and (FChars[i - 1] <> #10) then
+      begin
         FAttrs[i].Kind := FAttrs[i - 1].Kind;
+        FAttrs[i].Level := FAttrs[i - 1].Level;
+        FAttrs[i].Lang := FAttrs[i - 1].Lang;
+      end;
     FCaret := 0;
     FAnchor := 0;
     FScrollY := 0;
@@ -2652,10 +2742,25 @@ begin
       else if Nm = 'RIGHT' then begin Push; Cur.Align := taRightJustify; end
       else if (Length(Nm) = 2) and (Nm[1] = 'H') and (Nm[2] in ['1'..'6']) then
         begin Push; Cur.Kind := TInkParaKind(Ord(ipkH1) + Ord(Nm[2]) - Ord('1')); end
-      else if Nm = 'LI' then begin Push; Cur.Kind := ipkBullet; end
-      else if Nm = 'OLI' then begin Push; Cur.Kind := ipkNumber; end
+      else if Nm = 'LI' then
+      begin
+        Push;
+        Cur.Kind := ipkBullet;
+        Cur.Level := EnsureRange(StrToIntDef(PropOf(TagStr, 'LEVEL'), 0), 0, 5);
+      end
+      else if Nm = 'OLI' then
+      begin
+        Push;
+        Cur.Kind := ipkNumber;
+        Cur.Level := EnsureRange(StrToIntDef(PropOf(TagStr, 'LEVEL'), 0), 0, 5);
+      end
       else if Nm = 'BLOCKQUOTE' then begin Push; Cur.Kind := ipkQuote; end
-      else if Nm = 'PRE' then begin Push; Cur.Kind := ipkCode; end
+      else if Nm = 'PRE' then
+      begin
+        Push;
+        Cur.Kind := ipkCode;
+        Cur.Lang := PropOf(TagStr, 'LANG');
+      end
       else if Nm = 'TH' then begin Push; Cur.Kind := ipkTableHead; end
       else if Nm = 'TR' then begin Push; Cur.Kind := ipkTableRow; end
       else if Nm = 'A' then
@@ -2713,6 +2818,8 @@ var
   WantName, WantTag: array[0..cMaxTags - 1] of string;
   ParaAlign: TAlignment;
   ParaKind: TInkParaKind;
+  ParaLevel: Integer;
+  ParaLang: string;
 
   procedure CloseDownTo(ALevel: Integer);
   var
@@ -2811,9 +2918,17 @@ var
       taRightJustify: Line := '<right>' + Line + '</right>';
       taLeftJustify: ;   // the default needs no wrapper
     end;
-    { the paragraph's kind is the outermost wrapper }
+    { the paragraph's kind is the outermost wrapper, carrying a list
+      item's nesting and a code line's fence language }
     if ParaKind <> ipkText then
-      Line := '<' + cKindTag[ParaKind] + '>' + Line + '</' + cKindTag[ParaKind] + '>';
+    begin
+      Body := '<' + cKindTag[ParaKind];
+      if (ParaKind in [ipkBullet, ipkNumber]) and (ParaLevel > 0) then
+        Body := Body + ' level="' + IntToStr(ParaLevel) + '"';
+      if (ParaKind = ipkCode) and (ParaLang <> '') then
+        Body := Body + ' lang="' + ParaLang + '"';
+      Line := Body + '>' + Line + '</' + cKindTag[ParaKind] + '>';
+    end;
     FMarkup.Add(Line);
     Line := '';
   end;
@@ -2833,6 +2948,8 @@ begin
     end;
     if CharCount > 0 then ParaAlign := FAttrs[0].Align else ParaAlign := taLeftJustify;
     if CharCount > 0 then ParaKind := FAttrs[0].Kind else ParaKind := ipkText;
+    if CharCount > 0 then ParaLevel := FAttrs[0].Level else ParaLevel := 0;
+    if CharCount > 0 then ParaLang := FAttrs[0].Lang else ParaLang := '';
 
     i := 0;
     while i <= CharCount do
@@ -2845,11 +2962,15 @@ begin
         begin
           ParaAlign := FAttrs[i].Align;
           ParaKind := FAttrs[i].Kind;
+          ParaLevel := FAttrs[i].Level;
+          ParaLang := FAttrs[i].Lang;
         end
         else
         begin
           ParaAlign := taLeftJustify;
           ParaKind := ipkText;
+          ParaLevel := 0;
+          ParaLang := '';
         end;
         Continue;
       end;
@@ -2905,7 +3026,8 @@ end;
   tags, inline content flattened through HTMLToInk.  Nested lists flatten
   to one level, and a table becomes plain rows - the editor has no tables
   yet. }
-procedure MarkdownHTMLToParagraphs(const H: string; AOut: TStrings);
+procedure MarkdownHTMLToParagraphs(const H: string; AOut: TStrings;
+  AListLevel: Integer = 0);
 var
   P, Q, Depth: Integer;
   Raw, Name, Inner, Wrap: string;
@@ -2978,34 +3100,59 @@ var
 
   procedure AddWrapped(const AWrap, AInner: string);
   var
-    Ink: string;
+    Ink, CloseName: string;
+    SP: Integer;
   begin
     Ink := Trim(HTMLToInk(AInner));
     if AWrap = '' then
       AOut.Add(Ink)
     else
-      AOut.Add('<' + AWrap + '>' + Ink + '</' + AWrap + '>');
+    begin
+      CloseName := AWrap;
+      SP := Pos(' ', CloseName);
+      if SP > 0 then CloseName := Copy(CloseName, 1, SP - 1);
+      AOut.Add('<' + AWrap + '>' + Ink + '</' + CloseName + '>');
+    end;
   end;
 
   procedure AddCode(const AInner: string);
   var
-    T: string;
+    T, Lang, Open: string;
     Lines: TStringList;
     K: Integer;
   begin
     T := AInner;
-    { the code tag inside pre, and its closing partner }
+    { the code tag inside pre carries the fence's language as
+      class="language-x"; keep it, then strip the tag and its partner }
+    Lang := '';
     K := Pos('>', T);
-    if (Pos('<code', LowerCase(T)) = 1) and (K > 0) then Delete(T, 1, K);
+    if (Pos('<code', LowerCase(T)) = 1) and (K > 0) then
+    begin
+      Lang := Copy(T, 1, K);
+      Q := Pos('language-', LowerCase(Lang));
+      if Q > 0 then
+      begin
+        Lang := Copy(Lang, Q + 9, MaxInt);
+        Q := 1;
+        while (Q <= Length(Lang)) and not (Lang[Q] in ['"', '''', ' ', '>']) do
+          Inc(Q);
+        SetLength(Lang, Q - 1);
+      end
+      else
+        Lang := '';
+      Delete(T, 1, K);
+    end;
     K := Pos('</code>', LowerCase(T));
     if K > 0 then SetLength(T, K - 1);
     if (T <> '') and (T[Length(T)] = #10) then SetLength(T, Length(T) - 1);
+    Open := '<pre>';
+    if Lang <> '' then Open := '<pre lang="' + Lang + '">';
     Lines := TStringList.Create;
     try
       Lines.Text := HTMLUnescape(T);
       if Lines.Count = 0 then Lines.Add('');
       for K := 0 to Lines.Count - 1 do
-        AOut.Add('<pre>' + HTMLEscape(Lines[K]) + '</pre>');
+        AOut.Add(Open + HTMLEscape(Lines[K]) + '</pre>');
     finally
       Lines.Free;
     end;
@@ -3099,15 +3246,17 @@ begin
     else if Name = 'li' then
     begin
       Inner := InnerOf('li');
-      { a nested list inside the item flattens: its items follow as their own }
+      { a nested list inside the item is the next level down }
       Wrap := 'li';
       if InOrdered then Wrap := 'oli';
+      if AListLevel > 0 then
+        Wrap := Wrap + ' level="' + IntToStr(Min(AListLevel, 5)) + '"';
       Q := Pos('<ul', LowerCase(Inner));
       if Q = 0 then Q := Pos('<ol', LowerCase(Inner));
       if Q > 0 then
       begin
         AddWrapped(Wrap, Copy(Inner, 1, Q - 1));
-        MarkdownHTMLToParagraphs(Copy(Inner, Q, MaxInt), AOut);
+        MarkdownHTMLToParagraphs(Copy(Inner, Q, MaxInt), AOut, AListLevel + 1);
       end
       else
         AddWrapped(Wrap, Inner);
@@ -3150,9 +3299,9 @@ var
   i, PS, CS, CE, NCells: Integer;
   Kind, PrevKind: TInkParaKind;
   Lines: TStringList;
-  NumberAt: Integer;
   InFence: Boolean;
-  Back: string;
+  PrevLevel: Integer;
+  Back, FenceLang: string;
 
   function EscapeMD(const T: string): string;
   var
@@ -3216,7 +3365,8 @@ begin
   Lines := TStringList.Create;
   try
     PrevKind := ipkText;
-    NumberAt := 0;
+    PrevLevel := 0;
+    FenceLang := '';
     InFence := False;
     i := 0;
     while i <= CharCount do
@@ -3232,9 +3382,13 @@ begin
         InFence := False;
       end;
       { a blank line between blocks, except inside a list, a quote, a fence
-        or a table - a head row and its body rows are one block }
+        or a table.  A nested item continues its list whatever its kind;
+        two different kinds at the top level are two lists, kept apart. }
       if (Lines.Count > 0) and not InFence then
-        if not (((Kind = PrevKind) and (Kind in [ipkBullet, ipkNumber, ipkQuote, ipkCode])) or
+        if not (((Kind in [ipkBullet, ipkNumber]) and
+             (PrevKind in [ipkBullet, ipkNumber]) and
+             ((Kind = PrevKind) or (ParaLevelAt(PS) > 0) or (PrevLevel > 0))) or
+          ((Kind = PrevKind) and (Kind in [ipkQuote, ipkCode])) or
           ((Kind in [ipkTableHead, ipkTableRow]) and
            (PrevKind in [ipkTableHead, ipkTableRow]))) then
           Lines.Add('');
@@ -3242,20 +3396,27 @@ begin
         ipkH1..ipkH6:
           Lines.Add(StringOfChar('#', Ord(Kind) - Ord(ipkH1) + 1) + ' ' + InlineMD(PS, i - 1));
         ipkBullet:
-          Lines.Add('- ' + InlineMD(PS, i - 1));
+          { three spaces per level: deep enough to nest under "1. " as well
+            as under "- ", and never deep enough to read as indented code }
+          Lines.Add(StringOfChar(' ', 3 * ParaLevelAt(PS)) + '- ' + InlineMD(PS, i - 1));
         ipkNumber:
-          begin
-            if PrevKind <> ipkNumber then NumberAt := 0;
-            Inc(NumberAt);
-            Lines.Add(IntToStr(NumberAt) + '. ' + InlineMD(PS, i - 1));
-          end;
+          Lines.Add(StringOfChar(' ', 3 * ParaLevelAt(PS)) +
+            IntToStr(ParaNumber(PS)) + '. ' + InlineMD(PS, i - 1));
         ipkQuote:
           Lines.Add('> ' + InlineMD(PS, i - 1));
         ipkCode:
           begin
+            if InFence and (FAttrs[PS].Lang <> FenceLang) then
+            begin
+              { the language changed: this is another fence }
+              Lines.Add('```');
+              InFence := False;
+            end;
             if not InFence then
             begin
-              Lines.Add('```');
+              FenceLang := '';
+              if PS < CharCount then FenceLang := FAttrs[PS].Lang;
+              Lines.Add('```' + FenceLang);
               InFence := True;
             end;
             Lines.Add(RawText(PS, i - 1));
@@ -3285,6 +3446,7 @@ begin
         Lines.Add(InlineMD(PS, i - 1));
       end;
       PrevKind := Kind;
+      PrevLevel := ParaLevelAt(PS);
       Inc(i);
     end;
     if InFence then Lines.Add('```');

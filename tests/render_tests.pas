@@ -3284,9 +3284,9 @@ end;
 
 { --- the rich editor speaks Markdown: paragraph kinds, in and out --- }
 procedure RichEditMarkdownChecks;
-var E: TInkRichEdit; MD, Back: string;
+var E: TRichProbe; MD, Back: string;
 begin
-  E := TInkRichEdit.Create(F); E.Parent := F;
+  E := TRichProbe.Create(F); E.Parent := F;
   E.SetBounds(0, 0, 400, 300);
   try
     MD := '# The title'+LineEnding+LineEnding+
@@ -3317,6 +3317,42 @@ begin
     { a second trip is the same words - the shape is stable }
     E.LoadMarkdown(Back);
     Check(E.AsMarkdown = Back, 'the round trip is a fixed point');
+
+    { nested lists and fence languages }
+    MD := '1. first'+LineEnding+
+      '   - sub one'+LineEnding+
+      '   - sub two'+LineEnding+
+      '2. second'+LineEnding+LineEnding+
+      '```pascal'+LineEnding+'begin end.'+LineEnding+'```';
+    E.LoadMarkdown(MD);
+    Check(Pos('<li level="1">sub one</li>', E.Markup.Text) > 0,
+      'a nested item knows its level');
+    Check(Pos('<pre lang="pascal">', E.Markup.Text) > 0,
+      'a fence keeps its language');
+    Back := E.AsMarkdown;
+    Check(Pos('   - sub one', Back) > 0, 'nesting comes back indented');
+    Check(Pos('2. second', Back) > 0,
+      'a sublist does not break its parent''s numbering');
+    Check(Pos('```pascal', Back) > 0, 'and the fence its language');
+    E.LoadMarkdown(Back);
+    Check(E.AsMarkdown = Back, 'the nested round trip is a fixed point too');
+
+    { Tab nests a list item, Shift+Tab brings it back, and Enter on an
+      empty nested item steps out a level before it leaves the list }
+    E.Markup.Text := '<li>one</li>';
+    E.SelStart := 1;
+    E.Key(VK_TAB, []);
+    Check(E.Markup[0] = '<li level="1">one</li>', 'Tab nests the item');
+    E.Key(VK_TAB, [ssShift]);
+    Check(E.Markup[0] = '<li>one</li>', 'Shift+Tab brings it back');
+    E.SelStart := 3;
+    E.Key(VK_TAB, []);
+    E.InsertParagraph;          { an empty nested item under it }
+    Check(E.SelParaKind = ipkBullet, 'the new item is still a bullet');
+    E.InsertParagraph;          { empty: steps out a level }
+    Check(E.SelParaKind = ipkBullet, 'Enter on it stays in the list');
+    E.InsertParagraph;          { empty at the top: leaves the list }
+    Check(E.SelParaKind = ipkText, 'and out only from the top level');
 
     { paragraph kinds from code }
     E.Markup.Text := 'plain words';

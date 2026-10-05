@@ -50,7 +50,7 @@ Sketch.
 | `TInkListBox` | markup items, in-place editor, copy menu | character selection |
 | `TInkPage` | whole HTML/Markdown documents: headings, lists, tables, code, PNG/GIF/WebP, links, history, CSS reader, flex/grid cards, media queries, selection, find, touch and flick, `ScrollBars` | hardware check of touch |
 | `TInkEdit` | single-line edit, per-character colors, `TextHint`, undo/redo, context menu | - |
-| `TInkRichEdit` | WYSIWYG editor: inline styles, headings, lists, quotes, code, tables, Markdown in and out, undo, context menu | nested lists; images; fence language tags |
+| `TInkRichEdit` | WYSIWYG editor: inline styles, headings, nested lists, quotes, code with fence languages, tables, Markdown in and out, undo, context menu | images |
 | `TInkCodeMemo` | plain multi-line editor: `Text`/`Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, per-character colors, undo, context menu | a `TInkScrollBar` of its own |
 | `TInkScrollBar` | canvas scrollbar, colored from CSS | - |
 
@@ -101,10 +101,20 @@ here: whatever Heckers Sketch's next window finds.
 
 The editor itself is **done as asked** (4 October 2026; the story is in
 `docs/HISTORY.md`): headings, lists, quotes, code, tables, Markdown in and
-out as a fixed point.  Nothing else for Lazarus does this.  Open polish:
+out as a fixed point.  Nothing else for Lazarus does this.
 
-* **Nested lists** - they flatten to one level each way.
-* **The language tag on fenced code** - dropped today.
+**Nested lists and fence languages landed 5 October 2026**: a list item
+carries its depth (Tab nests it, Shift+Tab brings it back, Enter on an
+empty nested item steps out a level before it leaves the list; a sublist
+does not break its parent's numbering), and a code line carries its
+fence's language - both per character like the kind, both through the
+`Markup` and Markdown round trips, which stay fixed points.  Found on the
+way and fixed: right after a paragraph break at the document's end, the
+caret inherited default attributes instead of its paragraph's, so Enter at
+a list's end lost the list for the next typed character.
+
+Open polish:
+
 * **Images** in the editor.
 * **A pipe inside a table cell** - the separator wins today.
 
