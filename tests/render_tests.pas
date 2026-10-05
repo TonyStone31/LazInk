@@ -3088,6 +3088,62 @@ begin
   finally BM.Free end;
 end;
 
+{ --- inline pills, span classes, and changing one element by its id --- }
+procedure PillChecks;
+var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string; Y: Integer;
+begin
+  { a span styled from the stylesheet, pill and plain }
+  Probe.LoadHTML('<html><head><style>'+
+    'span.ok{background:#1a7f37;color:#ffffff;padding:2px 8px;border-radius:9px}'+
+    'span.red{color:#cc0000}'+
+    '</style></head><body><p>the report <span class="ok">sent</span> and '+
+    '<span class="red">red words</span></p></body></html>');
+  S := Probe.Block(0).Source;
+  Check(Pos('pad="2 8"',S)>0,'a span class pill carries its padding');
+  Check(Pos('radius="9"',S)>0,'and its corners');
+  Check(Pos('bgcolor="#1A7F37"',S)>0,'and its background');
+  Check(Pos('<font color="#CC0000">red words</font>',S)>0,
+    'a span class colors its words from the stylesheet');
+
+  { the pill through a style attribute, in a cell too }
+  Probe.LoadHTML('<html><body><table><tr><td bgcolor="#f0f0f0">'+
+    '<span style="background:#cff4fc;padding:2px 8px;border-radius:9px;border:1px solid #055160">85 KB</span>'+
+    '</td></tr></table></body></html>');
+  S := Probe.Block(0).Source;
+  Check((Pos('pad="2 8"',S)>0) and (Pos('pillborder="#055160"',S)>0),
+    'a style attribute makes a bordered pill');
+
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(600,200); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
+    O := DefaultHTMLOptions;
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,500,0),[],
+      '<font bgcolor="#1a7f37" pad="2 8" radius="9">sent</font>',O);
+    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,500,0),[],'sent',O);
+    Check(A.cx>=N.cx+16,'a pill is wider than its words by its padding');
+    Check(A.cy>=N.cy+4,'and taller');
+    { a pill does not wrap: its words are one thing }
+    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,70,0),[],
+      '<font bgcolor="#664d03" pad="2 8" radius="9">did not go</font>',O);
+    Check(A.cy<N.cy+30,'a pill holds one line in a narrow space');
+  finally BM.Free end;
+
+  { SetInnerHTML: one element changes, the rest of the page stays put }
+  Probe.LoadHTML('<html><body><p>before</p>'+
+    '<p id="status">waiting</p>'+
+    '<table><tr><td id="cell">old</td><td>stay</td></tr></table>'+
+    '<p style="margin-bottom:2000px">tall</p><p>after</p></body></html>');
+  Probe.ScrollTo(150); Y := Probe.ScrollY;
+  Check(Probe.SetInnerHTML('status','<b>sent</b> at 9:14'),'SetInnerHTML finds its element');
+  Check(Pos('sent at 9:14',Probe.PlainText)>0,'and the new words are in the page');
+  Check(Pos('waiting',Probe.PlainText)=0,'in place of the old');
+  Check(Pos('before',Probe.PlainText)>0,'the rest of the page stays');
+  Check(Probe.ScrollY=Y,'and the page does not jump');
+  Check(Probe.SetInnerHTML('cell','85 KB'),'a table cell changes by its id');
+  Check(Pos('85 KB',Probe.PlainText)>0,'to its new words');
+  Check(not Probe.SetInnerHTML('nothere','x'),'a missing id is said, not guessed');
+end;
+
 begin
   Application.Initialize;
   TestExceptions := TTestExceptions.Create;
@@ -3233,6 +3289,7 @@ begin
     FindChecks;
     ScrollBarAndEntityChecks;
     CellStyleChecks;
+    PillChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

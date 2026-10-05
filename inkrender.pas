@@ -59,6 +59,12 @@ type
     LinkName: string;
     Align: TInkRenderAlign;
     Indent: Integer;
+    { a pill: an inline box with its own padding, round corners and border,
+      drawn behind its words - a status badge in a table cell.  The pads
+      and radius arrive already scaled.  A run with any of these set does
+      not wrap: a badge is one thing. }
+    PillPadH, PillPadV, PillRadius: Integer;
+    PillBorder: TColor;
   end;
 
   TInkRenderRun = record
@@ -765,6 +771,8 @@ begin
   Result.Styles := Options.BaseFont.Style; Result.Script := nsNormal;
   Result.LinkIndex := 0; Result.LinkName := '';
   Result.Align := naLeft; Result.Indent := 0;
+  Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
+  Result.PillBorder := clNone;
 end;
 
 function TInkRenderer.StyleFor(const Stack: array of TInkRenderStyle): TInkRenderStyle;
@@ -779,6 +787,8 @@ begin
   Result.Color := clWindowText; Result.BackColor := clNone; Result.Align := naLeft;
   Result.Styles := []; Result.Script := nsNormal; Result.LinkIndex := 0;
   Result.LinkName := ''; Result.Indent := 0;
+  Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
+  Result.PillBorder := clNone;
   for I := 0 to High(Stack) do
   begin
     if Stack[I].Face <> '' then Result.Face := Stack[I].Face;
@@ -790,6 +800,13 @@ begin
     if Stack[I].LinkIndex > 0 then begin Result.LinkIndex := Stack[I].LinkIndex; Result.LinkName := Stack[I].LinkName end;
     if Stack[I].Align <> naLeft then Result.Align := Stack[I].Align;
     if Stack[I].Indent <> 0 then Result.Indent := Stack[I].Indent;
+    { a pill is one unit: the innermost pill replaces any outer one }
+    if (Stack[I].PillPadH<>0) or (Stack[I].PillPadV<>0) or
+      (Stack[I].PillRadius<>0) or (Stack[I].PillBorder<>clNone) then
+    begin
+      Result.PillPadH := Stack[I].PillPadH; Result.PillPadV := Stack[I].PillPadV;
+      Result.PillRadius := Stack[I].PillRadius; Result.PillBorder := Stack[I].PillBorder;
+    end;
   end;
 end;
 
@@ -806,6 +823,7 @@ end;
 procedure TInkRenderer.BuildStyles(const Options: TInkRenderOptions);
 var Stack: array of TInkRenderStyle; StackNames: array of string;
   Base, S: TInkRenderStyle; I,N,Part,K: Integer; T: TInkRenderToken;
+  PillPad: TRect;
   procedure Push(const V: TInkRenderStyle; const TagName: string);
   begin
     K := Length(Stack); SetLength(Stack,K+1); SetLength(StackNames,K+1);
@@ -860,6 +878,15 @@ begin
             N := StrToIntDef(InkRenderAttr(T.Attributes,'size'),0); if N<>0 then S.Size := N;
             S.Color := InkRenderColor(InkRenderAttr(T.Attributes,'color'),S.Color);
             S.BackColor := InkRenderColor(InkRenderAttr(T.Attributes,'bgcolor'),S.BackColor);
+            { a pill: pad="V H" (CSS order), radius, and a border color }
+            if InkRenderAttr(T.Attributes,'pad')<>'' then
+            begin
+              PillPad := PadOf(InkRenderAttr(T.Attributes,'pad'),0,Options.Scale);
+              S.PillPadV := PillPad.Top; S.PillPadH := PillPad.Left;
+            end;
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'radius'),0);
+            if N>0 then S.PillRadius := InkRenderScalePx(N,Options.Scale);
+            S.PillBorder := InkRenderColor(InkRenderAttr(T.Attributes,'pillborder'),S.PillBorder);
           end
           else if T.Name='a' then begin Inc(FNextLink); S.LinkIndex := FNextLink; S.LinkName := InkRenderAttr(T.Attributes,'href') end
           else if T.Name='img' then begin AddStyledText(#1,S,Part); N := Length(FStyled)-1; FStyled[N].IsImage := True; FStyled[N].ImageIndex := StrToIntDef(InkRenderAttr(T.Attributes,'src'),-1) end
@@ -1128,7 +1155,7 @@ var
   var RunIndex, CX, CY, LineH, RW, P, Start, Bytes,
     Inner, Depth, InnerX, InnerLine, LineFirst, K, Shift, LAdv: Integer; Pad: TRect;
     Run: TInkRenderRun; Sz: TSize; Text, Atom: string; C: Cardinal;
-    Attrs: TStringList; BG, FG: TColor;
+    Attrs: TStringList; BG, FG: TColor; Pill: Boolean;
     { a cell with its own line-height advances by exactly that, as a browser
       does; everything else advances by the tallest thing on the line }
     function Advance: Integer;
@@ -1209,9 +1236,13 @@ var
       end;
       if FStyled[RunIndex].Control<>0 then begin Inc(RunIndex); Continue end;
       Run := FStyled[RunIndex];
-      if BG<>clNone then Run.Style.BackColor := BG;
+      { the cell's background behind runs that brought none of their own: a
+        pill or a shaded code span inside a cell keeps its color }
+      if (BG<>clNone) and (Run.Style.BackColor=clNone) then Run.Style.BackColor := BG;
       if FG<>clNone then Run.Style.Color := FG;
       ApplyCellText(Index,Run);
+      Pill := (Run.Style.PillPadH>0) or (Run.Style.PillPadV>0) or
+        (Run.Style.PillRadius>0) or (Run.Style.PillBorder<>clNone);
       Text := Run.Text;
       P := 1;
       while P<=Length(Text) do
@@ -1228,13 +1259,17 @@ var
           Continue;
         end;
         Start := P;
-        if Text[P] in [' ',#9] then
+        if Pill then
+          { a pill is one thing: its words stay in one box and do not wrap }
+          while (P<=Length(Text)) and (Text[P]<>#10) do Inc(P)
+        else if Text[P] in [' ',#9] then
           while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
         else
           while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
           begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
         Atom := Copy(Text,Start,P-Start);
         Run.Text := Atom; Sz := MeasureRun(Canvas,Run); RW := Sz.cx;
+        if Pill then Inc(RW,2*Run.Style.PillPadH);
         if (CX>AX+Pad.Left) and (CX+RW>AX+Pad.Left+AWidth) and
           not Cells[Index].NoWrapCell and
           (Atom[1]<>' ') and (Atom[1]<>#9) then
@@ -1251,16 +1286,25 @@ var
             Run.Bounds := Rect(CX,CY-Sz.cy div 4,CX+RW,CY-Sz.cy div 4+Sz.cy)
           else if Run.Style.Script=nsSub then
             Run.Bounds := Rect(CX,CY+Sz.cy div 4,CX+RW,CY+Sz.cy div 4+Sz.cy)
+          else if Pill then
+            Run.Bounds := Rect(CX,CY,CX+RW,CY+Sz.cy+2*Run.Style.PillPadV)
           else Run.Bounds := Rect(CX,CY,CX+RW,CY+Sz.cy);
           Run.Line := Length(FLayout.FLines);
           Run.Part := Cells[Index].Row*1000+Cells[Index].Col;
           { its ascent, so it is painted on a baseline like any other run }
           Metrics(Canvas,Run,Run.Ascent,Run.Descent);
+          if Pill then
+          begin
+            Inc(Run.Ascent,Run.Style.PillPadV); Inc(Run.Descent,Run.Style.PillPadV);
+          end;
           Run.Baseline := Run.Bounds.Top+Run.Ascent;
           SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1);
           FLayout.FRuns[High(FLayout.FRuns)] := Run;
         end;
-        Inc(CX,RW); LineH := Max(LineH,MetricHeight(Canvas,Run));
+        Inc(CX,RW);
+        if Pill then
+          LineH := Max(LineH,MetricHeight(Canvas,Run)+2*Run.Style.PillPadV)
+        else LineH := Max(LineH,MetricHeight(Canvas,Run));
       end;
       Inc(RunIndex);
     end;
@@ -1274,23 +1318,28 @@ var
     longest single word), both without the padding }
   { the text of one run, added to a line being measured }
   procedure WidthOfRun(const ARun: TInkRenderRun; var ALineW, AWant, ALeast: Integer);
-  var P, Start, Bytes: Integer; Run: TInkRenderRun; Text, Atom: string;
-    C: Cardinal; Sz: TSize;
+  var P, Start, Bytes, PadW: Integer; Run: TInkRenderRun; Text, Atom: string;
+    C: Cardinal; Sz: TSize; Pill: Boolean;
   begin
     Run := ARun; Text := Run.Text; P := 1;
+    Pill := (Run.Style.PillPadH>0) or (Run.Style.PillPadV>0) or
+      (Run.Style.PillRadius>0) or (Run.Style.PillBorder<>clNone);
+    PadW := 0; if Pill then PadW := 2*Run.Style.PillPadH;
     while P<=Length(Text) do
     begin
       if Text[P]=#10 then begin Inc(P); ALineW := 0; Continue end;
       Start := P;
-      if Text[P] in [' ',#9] then
+      if Pill then
+        while (P<=Length(Text)) and (Text[P]<>#10) do Inc(P)
+      else if Text[P] in [' ',#9] then
         while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
       else
         while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
         begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
       Atom := Copy(Text,Start,P-Start);
       Run.Text := Atom; Sz := MeasureRun(Canvas,Run);
-      Inc(ALineW,Sz.cx); AWant := Max(AWant,ALineW);
-      if not (Atom[1] in [' ',#9]) then ALeast := Max(ALeast,Sz.cx);
+      Inc(ALineW,Sz.cx+PadW); AWant := Max(AWant,ALineW);
+      if not (Atom[1] in [' ',#9]) then ALeast := Max(ALeast,Sz.cx+PadW);
     end;
   end;
 
@@ -1733,7 +1782,7 @@ function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
 var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
   R: TInkRenderRun; Sz, ImgSz: TSize; Text,Atom: string; Start,Bytes: Integer;
-  CanBreak: Boolean;
+  CanBreak, Pill: Boolean;
   C: Cardinal; L: TInkRenderLine;
   { every run on the line is placed so its baseline is at the same height:
     the largest ascent on the line.  The line is that plus the largest
@@ -1809,12 +1858,17 @@ begin
           InkRenderScalePx(FOpt.Images.Height,FOpt.Scale));
       Text:=#1
     end else Text:=R.Text;
+    Pill:=(R.Style.PillPadH>0) or (R.Style.PillPadV>0) or
+      (R.Style.PillRadius>0) or (R.Style.PillBorder<>clNone);
     P:=1;
     while P<=Length(Text) do
     begin
       if Text[P]=#10 then begin Inc(P); FinishLine(True); Continue end;
       Start:=P;
-      if Text[P] in [' ',#9] then
+      if Pill then
+        { a pill is one thing: its words stay in one box and do not wrap }
+        while (P<=Length(Text)) and (Text[P]<>#10) do Inc(P)
+      else if Text[P] in [' ',#9] then
         while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
       else
         while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
@@ -1828,6 +1882,7 @@ begin
       end;
       if R.IsImage then Sz:=ImgSz else Sz:=MeasureRun(Canvas,R);
       W:=Sz.cx;
+      if Pill then Inc(W,2*R.Style.PillPadH);
       { a line breaks where the text allows it - after a space, or between
         two CJK characters - and nowhere else.  The end of a run is not a
         break: "<code>x</code>." is one word with a full stop on it, and
@@ -1842,9 +1897,11 @@ begin
         RunAsc:=Max(1,Sz.cy); RunDesc:=0;
       end
       else Metrics(Canvas,R,RunAsc,RunDesc);
+      if Pill then begin Inc(RunAsc,R.Style.PillPadV); Inc(RunDesc,R.Style.PillPadV) end;
       R.Ascent:=RunAsc; R.Descent:=RunDesc;
       { a provisional place; AlignBaselines settles it when the line ends }
-      R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
+      if Pill then R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy+2*R.Style.PillPadV)
+      else R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W); MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
       { where the next break may fall: after whitespace, or after a CJK
         character, which needs no space to break beside }
@@ -2084,6 +2141,24 @@ begin
         RunColors(R,C,BG);
         if Pass=1 then
         begin
+          { a pill: its padded box with round corners and a border, drawn
+            whole - the line was made tall enough for it in layout }
+          if (R.Style.PillPadH>0) or (R.Style.PillPadV>0) or
+            (R.Style.PillRadius>0) or (R.Style.PillBorder<>clNone) then
+          begin
+            if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG end
+            else Canvas.Brush.Style:=bsClear;
+            if R.Style.PillBorder<>clNone then Canvas.Pen.Color:=R.Style.PillBorder
+            else if BG<>clNone then Canvas.Pen.Color:=BG
+            else Canvas.Pen.Style:=psClear;
+            Canvas.Pen.Width:=1;
+            if R.Style.PillRadius>0 then
+              Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,
+                R.Style.PillRadius*2,R.Style.PillRadius*2)
+            else Canvas.Rectangle(DrawRect);
+            Canvas.Pen.Style:=psSolid;
+            Continue;
+          end;
           { a run's own background, and no taller than the line it is on:
             an inline background never reaches into the lines either side
             of it in a browser, whatever face the run is set in }
@@ -2134,7 +2209,8 @@ begin
             PaintAscent:=CanvasAscent(R);
             if PaintAscent>0 then TextY:=DrawRect.Top+R.Ascent-PaintAscent;
           end;
-          Canvas.TextOut(DrawRect.Left,TextY,R.Text);
+          { a pill's words sit inside its padding }
+          Canvas.TextOut(DrawRect.Left+R.Style.PillPadH,TextY,R.Text);
         end;
       end;
     end;

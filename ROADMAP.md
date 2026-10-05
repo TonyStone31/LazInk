@@ -60,17 +60,13 @@ Linux** has been run.
 
 ### A. The renderer wishlist from real use
 
-`bugs/2026-09-20-summary-page-wants/README.md` is the live list, written
-from building Heckers Sketch's send window, in the order the gaps cost the
-most.  Items 1-4 - cell text styling (`font-size`, `font-weight`,
+**All done, 4 October 2026.**  The six items from building Heckers
+Sketch's send window (`bugs/2026-09-20-summary-page-wants/README.md`, which
+says how each landed): cell text styling (`font-size`, `font-weight`,
 `font-family`, `line-height` on `td`/`th`), `white-space: nowrap` columns,
-block children of a cell, and tables nested in cells and grid/flex cards -
-were **done 4 October 2026**; the note says how.  Still open:
-
-5. **Inline pills**: `padding`, `border-radius` and `border` on a `<span>`.
-   Low on the list.
-6. **A way to change one element without reloading the page** -
-   `SetInnerHTML` by `id` - so a live status page is cheap.
+block children of a cell, tables nested in cells and in grid/flex cards,
+inline pills on `<span>`, and `SetInnerHTML` by id.  A page like that send
+window can now be written the way a browser page would be.
 
 ### B. Selection, finished
 

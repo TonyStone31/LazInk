@@ -106,12 +106,22 @@ rounded pill sitting in a cell.
 **Wanted:** `padding`, `border-radius` and `border` on a `<span>`.  Low on
 the list; the colored cell reads well enough.
 
+*Done, 4 October 2026: a span with padding, border-radius or border - by
+class or style attribute - is a pill: one rounded box behind its words, in
+text and in cells, never wrapped.  Spans also take color, background,
+font-size and font-weight from the stylesheet by class now.*
+
 ## 6. Smaller things
 
 * `font-weight: bold` on a `td` by class is not applied (`<b>` inside is).
+  *Done, 4 October 2026, with item 1.*
 * A way to change one element without reloading the page - `SetInnerHTML`
   by `id`, say - would make a live status page cheap.  Reloading a page
   this small a handful of times is fine; it would not be for a log.
+
+  *Done, 4 October 2026: `SetInnerHTML(ID, HTML)` replaces what is inside
+  the element with that id and reads the page again, keeping the scroll
+  where it was.  (For a log, `TInkMemo.Append` is still the right tool.)*
 
 ## What worked, for the record
 
