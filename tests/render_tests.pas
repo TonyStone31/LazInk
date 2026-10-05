@@ -298,6 +298,18 @@ begin
 end;
 
 type
+  { reaches the editor's protected keyboard, for the table's Tab and Enter }
+  TRichProbe = class(TInkRichEdit)
+  public
+    procedure Key(AKey: Word; AShift: TShiftState);
+  end;
+
+procedure TRichProbe.Key(AKey: Word; AShift: TShiftState);
+begin
+  KeyDown(AKey, AShift);
+end;
+
+type
   TListAccess = class(TInkListBox);
   TLabelAccess = class(TInkLabel);
   TInkEditAccess = class(TInkEdit);
@@ -3275,6 +3287,63 @@ begin
   end;
 end;
 
+{ --- tables in the rich editor: layout, keys, and the Markdown trip --- }
+procedure RichEditTableChecks;
+var E: TRichProbe; MD, Back: string; K: Integer;
+begin
+  E := TRichProbe.Create(F); E.Parent := F;
+  E.SetBounds(0, 0, 420, 300);
+  try
+    MD := '| Name | State |'+LineEnding+
+      '| --- | --- |'+LineEnding+
+      '| **Server** | Ready |'+LineEnding+
+      '| Drawing | pending |';
+    E.LoadMarkdown(MD);
+    Check(E.Markup[0] = '<th>Name|State</th>', 'the head row, cells joined by the grid');
+    Check(E.Markup[1] = '<tr><b>Server</b>|Ready</tr>', 'a body row keeps its styling');
+    Back := E.AsMarkdown;
+    Check(Pos('| Name | State |', Back) = 1, 'the head comes back first');
+    Check(Pos('| --- | --- |', Back) > 0, 'with its delimiter row');
+    Check(Pos('| **Server** | Ready |', Back) > 0, 'and the body rows');
+    E.LoadMarkdown(Back);
+    Check(E.AsMarkdown = Back, 'the table round trip is a fixed point');
+
+    { Tab hops cells, rows, and makes a new row past the end }
+    E.SelStart := 0;
+    Check(E.SelParaKind = ipkTableHead, 'the caret starts in the head');
+    E.Key(VK_TAB, []);
+    Check(E.SelStart = 5, 'Tab: the second cell');
+    E.Key(VK_TAB, []);
+    Check(E.SelParaKind = ipkTableRow, 'Tab at the row''s end: the next row');
+    E.Key(VK_TAB, [ssShift]);
+    Check(E.SelStart = 5, 'Shift+Tab goes back');
+    K := E.Markup.Count;
+    while E.SelParaKind in [ipkTableHead, ipkTableRow] do
+    begin
+      E.Key(VK_TAB, []);
+      if E.Markup.Count > K then Break;
+    end;
+    Check(E.Markup.Count = K + 1, 'Tab past the last cell adds a row');
+    Check(E.Markup[K] = '<tr>|</tr>', 'with the same columns, empty');
+
+    { Enter on the fresh empty row ends the table, leaving a plain line }
+    E.Key(VK_RETURN, []);
+    Check(E.Markup.Count = K + 1, 'Enter on an empty row keeps one line');
+    Check(E.Markup[K] = '', 'with nothing in it');
+    Check(E.SelParaKind = ipkText, 'and steps back to plain text');
+
+    { a table from nothing }
+    E.Markup.Text := '';
+    E.InsertTable(3, 2);
+    Check(E.Markup[0] = '<th>||</th>', 'InsertTable makes the head');
+    Check((E.Markup[1] = '<tr>||</tr>') and (E.Markup[2] = '<tr>||</tr>'),
+      'and the body rows');
+    Check(E.SelStart = 0, 'with the caret in the first cell');
+  finally
+    E.Free;
+  end;
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -3484,6 +3553,7 @@ begin
     CardTextChecks;
     SchemeAndMoreChecks;
     RichEditMarkdownChecks;
+    RichEditTableChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

@@ -124,10 +124,20 @@ empty item ends its list), they survive the `Markup` round trip as
 `LoadMarkdown`/`AsMarkdown` carry a document in and out - the round trip is
 a fixed point, which the tests hold it to.
 
-Still open here: **tables in the editor** (a Markdown table flattens to
-plain rows today); nested lists (they flatten to one level); the language
-tag on fenced code; images; and a demo tab that edits Markdown through
-this instead of a TMemo - which is also C's coloring item made moot.
+**Tables are in too (4 October 2026), which completes E as it was asked.**
+A table row is a paragraph kind whose cells are the text between literal
+'|' characters - the pipes draw as the grid, not as glyphs, so the flat
+document and its one-dimensional caret survive untouched.  Consecutive
+rows share their column widths, the head row is bold on a band, Tab hops
+cells (a new row past the last), Enter adds a row and ends the table on an
+empty one, InsertTable starts one from nothing, and pipe tables round-trip
+through LoadMarkdown/AsMarkdown with their delimiter row - still a fixed
+point, still held there by the tests.
+
+Polish still open here: nested lists (they flatten to one level); the
+language tag on fenced code; images; cells cannot hold a pipe; and a demo
+tab that edits Markdown through this instead of a TMemo - which is also
+C's coloring item made moot.
 
 ### F. An Online Package Manager listing
 
