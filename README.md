@@ -17,8 +17,9 @@ widgetset-specific backends, no browser engine.
 | | Control | What it is |
 |---|---|---|
 | ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `Ellipsis` for one line that ends in "..." when it does not fit, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. |
-| ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment. |
+| ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment, `TextHint` for the empty box, undo/redo (Ctrl+Z, one step per typed word), and its own right-click menu. |
 | ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; paragraph kinds - headings, bullet and numbered lists, quotes, code lines, **tables** (`ApplyParaKind`, `InsertTable`; Tab hops cells, Enter adds a row); **Markdown in and out** (`LoadMarkdown`, `AsMarkdown`); word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
+| | `TInkCodeMemo` | A **plain multi-line editor** — the notes field on a form. `Text` and `Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, word wrap, undo, the right-click menu, and pasting that brings in plain text only. Its one decoration is yours: `OnGetCharAttrs` colors every character as it is drawn — how the demo will color Markdown source, without the control knowing any language. |
 | ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
 | | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG, animated GIF and WebP images, relative links, anchors, Back and Forward, text selection, find in page, touch scrolling, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
 | ![](images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. |
@@ -42,6 +43,7 @@ Two questions decide it: **who writes the text**, and **what shape it is**.
 |---|---|---|
 | a caption, a status, one formatted sentence | the program | `TInkLabel` |
 | one line the user types, colored as they type | the user | `TInkEdit` |
+| a plain multi-line note the user writes - no formatting wanted | the user | `TInkCodeMemo` |
 | a growing stream of separate lines - a log, a chat, a history of events | the program, a line at a time | `TInkMemo` |
 | a whole document - a help page, release notes, a README - with headings, lists, code, pictures and links to other pages | an author, ahead of time | `TInkPage` |
 | a list of things to pick from, and maybe rename in place | the program, and the user edits single items | `TInkListBox` |
@@ -285,8 +287,11 @@ exact CSS subset, tested site coverage, and remaining limitations.
 ## Tables and Markdown
 
 `TInkLabel`, `TInkMemo`, `TInkListBox`, and `TInkPage` expose `TextFormat`:
-`itfHTML` (the default) or `itfMarkdown`, declared in `InkMarkdown`.
-Changing it reinterprets the existing source; it does not translate the source.
+`itfHTML` (the default), `itfMarkdown`, or `itfPlain` - text shown exactly
+as written, no tags, entities or Markdown read, so a ticket or a log like
+`width < 24" & square` needs no escaping anywhere.  All declared in
+`InkMarkdown`.  Changing it reinterprets the existing source; it does not
+translate the source.
 `TInkEdit` remains plain text.  `TInkRichEdit` edits paragraphs with kinds -
 headings, bullet and numbered lists, quotes, code lines and **table rows** -
 and reads and writes Markdown itself: `LoadMarkdown` brings a document in

@@ -134,3 +134,36 @@ this exists.
 report's and the postcard's) as stock `TMemo` until this exists, and holds
 its 42 text boxes as `TEdit` until items 1 and 2 land - two of them have
 hints, and all of them would lose Ctrl+Z.
+
+---
+
+## Done - 5 October 2026, all five
+
+1. `TInkEdit.TextHint` and `TextHintColor`, drawn dimmed (the font color
+   blended halfway into the background on `clDefault`), cut with an
+   ellipsis, aligned by `Alignment`, under the caret while the box is
+   empty and focused, never part of `Text`.
+2. Undo and redo in `TInkEdit`: Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y; `Undo`,
+   `Redo`, `CanUndo`, `CanRedo`, `ClearUndo`.  One step is one typed run -
+   a run ends at a pause, a caret move, a change from typing to deleting,
+   a paste or cut, and at a word boundary - and setting `Text` from code
+   clears the history.  A hundred steps kept.
+3. The context menu, on `TInkEdit` **and** on `TInkRichEdit` (so the plain
+   editor below has it too): Undo, Redo, Cut, Copy, Paste, Delete, Select
+   All, each enabled only when it can do something, the changing ones gone
+   under `ReadOnly`, `EditMenu := False` to turn it off, and a host's own
+   `PopupMenu` winning as before.
+4. **`TInkCodeMemo`**, the plain multi-line editor, built on
+   `TInkRichEdit`'s caret, selection, wrapping and undo with the text held
+   to plain: `Text` and `Lines`, `TextHint`, `MaxLength`, `WantReturns`
+   (off: Enter goes to the form), `WantTabs` (on: Tab indents two spaces),
+   plain-text-only pasting, and `OnGetCharAttrs` - the same per-character
+   color event `TInkEdit` has, asked at draw and measure time, which is
+   what will color the demo's Markdown source.  Its scrollbar is still the
+   stock one it inherits, not yet a `TInkScrollBar`.
+5. **`itfPlain`** on `TInkTextFormat`: `TInkMemo`, `TInkLabel` and
+   `TInkListBox` show the text exactly as written through the same
+   `InkToHTML` they already draw with, and `TInkPage` renders it as
+   escaped lines (runs of spaces still collapse there, as page text does).
+
+Tests: `EditAndPlainChecks` in `tests/render_tests.pas`.

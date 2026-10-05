@@ -1,7 +1,7 @@
 program RenderTests;
 {$mode objfpc}{$H+}
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
-  InkRichEdit,
+  InkRichEdit, InkCodeMemo,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
   InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
   InkWebP, WebP_Checks, Layout_Cache_Checks,
@@ -307,6 +307,40 @@ type
 procedure TRichProbe.Key(AKey: Word; AShift: TShiftState);
 begin
   KeyDown(AKey, AShift);
+end;
+
+type
+  TEditProbe = class(TInkEdit)
+  public
+    procedure Key(AKey: Word; AShift: TShiftState);
+    procedure Press(const C: TUTF8Char);
+  end;
+
+procedure TEditProbe.Key(AKey: Word; AShift: TShiftState);
+begin
+  KeyDown(AKey, AShift);
+end;
+
+procedure TEditProbe.Press(const C: TUTF8Char);
+var
+  U: TUTF8Char;
+begin
+  U := C;
+  UTF8KeyPress(U);
+end;
+
+type
+  TCodeProbe = class(TInkCodeMemo)
+  public
+    procedure Press(const C: TUTF8Char);
+  end;
+
+procedure TCodeProbe.Press(const C: TUTF8Char);
+var
+  U: TUTF8Char;
+begin
+  U := C;
+  UTF8KeyPress(U);
 end;
 
 type
@@ -3352,6 +3386,65 @@ begin
   end;
 end;
 
+{ --- the edit's hint and undo, the plain editor, and itfPlain --- }
+procedure EditAndPlainChecks;
+var E: TEditProbe; CM: TCodeProbe; MM: TInkMemo; i: Integer; S: string;
+begin
+  E := TEditProbe.Create(F); E.Parent := F; E.SetBounds(0, 0, 160, 28);
+  CM := TCodeProbe.Create(F); CM.Parent := F; CM.SetBounds(0, 40, 300, 100);
+  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 150, 300, 80);
+  try
+    { undo in the one-line edit: one step per typed run }
+    E.Text := 'base';
+    Check(not E.CanUndo, 'setting Text from code is not something to undo');
+    E.SelStart := 99;
+    for i := 1 to 3 do E.Press(Chr(Ord('0') + i));
+    E.Press(' '); E.Press('x'); E.Press('y');
+    Check(E.Text = 'base123 xy', 'typed through the keyboard');
+    E.Key(VK_Z, [ssCtrl]);
+    Check(E.Text = 'base123', 'Ctrl+Z takes back the word, not a letter');
+    E.Key(VK_Z, [ssCtrl]);
+    Check(E.Text = 'base', 'and the run before it');
+    E.Key(VK_Y, [ssCtrl]);
+    Check(E.Text = 'base123', 'Ctrl+Y brings it back');
+    Check(E.CanUndo and E.CanRedo, 'both directions open');
+    Check(E.TextHint = '', 'no hint by default');
+    E.TextHint := 'what goes here';
+    Check(E.Text = 'base123', 'the hint is never part of Text');
+
+    { the plain editor: Text and Lines agree, typing is plain, caps hold }
+    CM.Text := 'one'+LineEnding+'two';
+    Check((CM.Lines.Count = 2) and (CM.Lines[1] = 'two'), 'Lines mirrors Text');
+    CM.Lines.Add('three');
+    Check(Pos('three', CM.Text) > 0, 'and Text mirrors Lines');
+    CM.Text := '<b>x</b> & y';
+    Check(CM.PlainText = '<b>x</b> & y', 'what is set is what is shown, no markup read');
+    CM.SelStart := 999;
+    CM.Press('!');
+    Check(CM.Text = '<b>x</b> & y!', 'typing lands as plain text');
+    CM.Undo;
+    Check(CM.Text = '<b>x</b> & y', 'with undo behind it');
+    CM.MaxLength := 13;
+    CM.SelStart := 999;
+    CM.Press('A'); CM.Press('B');
+    Check(CM.Text = '<b>x</b> & yA', 'MaxLength holds the door');
+    CM.MaxLength := 0;
+
+    { itfPlain: the display controls show text exactly as written }
+    Check(InkToHTML('a<b>&', itfPlain) = 'a&lt;b&gt;&amp;', 'itfPlain escapes the three');
+    MM.TextFormat := itfPlain;
+    MM.Lines.Add('width < 24" & square');
+    MM.Lines.Add('<b>not bold</b>');
+    S := MM.PlainText;
+    Check(Pos('width < 24" & square', S) > 0, 'a memo line comes back as written');
+    Check(Pos('<b>not bold</b>', S) > 0, 'tags stay visible text');
+  finally
+    MM.Free;
+    CM.Free;
+    E.Free;
+  end;
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -3562,6 +3655,7 @@ begin
     SchemeAndMoreChecks;
     RichEditMarkdownChecks;
     RichEditTableChecks;
+    EditAndPlainChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

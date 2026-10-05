@@ -958,3 +958,38 @@ editor tab (P5), because Markdown is LazInk's own business.
     `Editing` / `CancelEdit`, a highlight that follows a held mouse, and an
     editor that works on the first item and no longer loops over its
     height.  Spelling moved to US English.
+
+---
+
+## From the roadmap, October 2026: the send-window round and the editor
+
+Moved here 5 October 2026, when the notes went cold.  Each bug folder named
+below carries the full story and the "how it was fixed".
+
+**Section A - the renderer wishlist from real use.**  All six items from
+building Heckers Sketch's send window
+(`bugs/2026-09-20-summary-page-wants/README.md`): cell text styling
+(`font-size`, `font-weight`, `font-family`, `line-height` on `td`/`th`),
+`white-space: nowrap` columns, block children of a cell, tables nested in
+cells and in grid/flex cards, inline pills on `<span>`, and `SetInnerHTML`
+by id.  Done 4 October 2026.
+
+Opened and closed around it the same days: `@media (prefers-color-scheme)`
+with the `ColorScheme` property (`bugs/2026-10-04-light-dark-and-more`);
+text in a grid card styled, the band above and below a grid gone - the
+second half was a phantom line in cells that end with a nested table - and
+block margins read in cells (`bugs/2026-10-04-grid-card-text-unstyled`,
+`bugs/2026-10-04-space-round-a-grid`); `imoInlineHTML` for Markdown; the
+`NoWrap` ellipsis with `TInkLabel.Ellipsis`.  And on 5 October, the whole
+of `bugs/2026-10-05-edit-hint-undo-and-a-plain-memo`: `TextHint`, undo and
+the context menu on `TInkEdit`, the context menu on `TInkRichEdit`, the
+plain multi-line `TInkCodeMemo`, and `itfPlain` on the display controls.
+
+**Section E - the WYSIWYG Markdown editor** - complete as asked, 4 October
+2026.  Paragraph kinds (`ipkH1`-`ipkH6`, bullet, number, quote, code,
+table rows) held per character the way `Align` is, so the flat document
+and its one-dimensional caret stay; they render, edit (`ApplyParaKind`,
+Tab hops table cells, Enter grows and ends lists and tables), and
+round-trip through `Markup` and through `LoadMarkdown`/`AsMarkdown` as a
+fixed point the tests hold.  A table row's cells are the text between
+literal '|' characters, which draw as the grid, not as glyphs.

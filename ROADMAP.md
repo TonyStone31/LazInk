@@ -49,8 +49,9 @@ Sketch.
 | `TInkMemo` | page-engine lines, selection, copy menu, find, touch, `ScrollBars` | wrap measures a line without its images |
 | `TInkListBox` | markup items, in-place editor, copy menu | character selection |
 | `TInkPage` | whole HTML/Markdown documents: headings, lists, tables, code, PNG/GIF/WebP, links, history, CSS reader, flex/grid cards, media queries, selection, find, touch and flick, `ScrollBars` | hardware check of touch |
-| `TInkEdit` | single-line edit, per-character colors | - |
-| `TInkRichEdit` | WYSIWYG inline editor, selection, clipboard, undo, `ReadOnly` | headings, lists, tables; Markdown in and out |
+| `TInkEdit` | single-line edit, per-character colors, `TextHint`, undo/redo, context menu | - |
+| `TInkRichEdit` | WYSIWYG editor: inline styles, headings, lists, quotes, code, tables, Markdown in and out, undo, context menu | nested lists; images; fence language tags |
+| `TInkCodeMemo` | plain multi-line editor: `Text`/`Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, per-character colors, undo, context menu | a `TInkScrollBar` of its own |
 | `TInkScrollBar` | canvas scrollbar, colored from CSS | - |
 
 Checked against the Heckers Sketch manual (38 pages).  Only **GTK3 on
@@ -58,34 +59,15 @@ Linux** has been run.
 
 ## 3. Open - in rough order of value
 
-### A. The renderer wishlist from real use
+### A. What real programs asked for
 
-**All done, 4 October 2026.**  The six items from building Heckers
-Sketch's send window (`bugs/2026-09-20-summary-page-wants/README.md`, which
-says how each landed): cell text styling (`font-size`, `font-weight`,
-`font-family`, `line-height` on `td`/`th`), `white-space: nowrap` columns,
-block children of a cell, tables nested in cells and in grid/flex cards,
-inline pills on `<span>`, and `SetInnerHTML` by id.  A page like that send
-window can now be written the way a browser page would be.
-
-**Opened and closed again the same day, 4 October 2026** - from moving
-that send window onto them, all done (the notes say how):
-`@media (prefers-color-scheme)` with the `ColorScheme` property
-(`bugs/2026-10-04-light-dark-and-more`); text in a grid card styled, the
-band gone and block margins read in cells
-(`bugs/2026-10-04-grid-card-text-unstyled`); `imoInlineHTML` for Markdown,
-and the `NoWrap` ellipsis with `TInkLabel.Ellipsis`.
-
-**Open, 4 October 2026:** the space above a grid of cards is fixed; in a
-real window about 18 px too much is still left below one whose cards are
-a heading over a multi-row table (`bugs/2026-10-04-space-round-a-grid`,
-the last section).
-
-**Wanted, 5 October 2026** - from Heckers Sketch moving every dialog off
-the stock LCL controls: `TextHint`, undo/redo and a context menu on
-`TInkEdit`, the plain multi-line editor (`TInkCodeMemo`, section C) for
-notes fields, and an `itfPlain` text format so a display control can show
-text that is not markup (`bugs/2026-10-05-edit-hint-undo-and-a-plain-memo`).
+Everything asked so far is done - the send-window wishlist, light and
+dark, the grid bugs, and the dialog round (`TextHint`, undo and the
+context menu on `TInkEdit`, `TInkCodeMemo`, `itfPlain`) - and the story
+moved to `docs/HISTORY.md`; each bug folder keeps its own "how".  Open
+here: whatever Heckers Sketch's next window finds.
+* `TInkCodeMemo` still scrolls with the stock scrollbar, not a
+  `TInkScrollBar`, and has no `ScrollBars` property yet.
 
 ### B. Selection, finished
 
@@ -96,12 +78,12 @@ text that is not markup (`bugs/2026-10-05-edit-hint-undo-and-a-plain-memo`).
 
 ### C. The demo
 
-* ~~A proper redesign~~ - done; the owner calls it "way better these days"
-  (4 October 2026).
-* **Color the Markdown source** in the editor tab with LazInk's own
-  machinery (the `TInkCodeMemo` idea - a multi-line plain-text editor with
-  per-character coloring).  If it turns out to be worth having, it belongs
-  in the package.  Markdown is the only language it colors.
+* **Rebuild the Markdown editor tab on the editors**: the WYSIWYG
+  `TInkRichEdit` as the main showcase, and/or the source in a
+  `TInkCodeMemo` colored through `OnGetCharAttrs` (the control exists now;
+  Markdown is the only language the demo colors).
+* **Show the new powers somewhere**: `TInkCodeMemo`, `TextHint`,
+  `itfPlain`, pills, `ColorScheme`.
 * **Source and preview scrolled together** - nice, not essential.
 * **A build on the current stable Lazarus** - only trunk has been run.
 
@@ -113,38 +95,17 @@ text that is not markup (`bugs/2026-10-05-edit-hint-undo-and-a-plain-memo`).
 * **Other widgetsets actually run** - win32, qt5/qt6, cocoa, gtk2 - with
   the results written into the README.  Don't claim what hasn't been run.
 
-### E. The big one - a WYSIWYG Markdown editor
+### E. The WYSIWYG Markdown editor - polish
 
-`TInkRichEdit` reading and writing Markdown: headings, lists, links, code,
-then tables.  Nothing in the Online Package Manager renders Markdown
-natively or edits it WYSIWYG (checked 16 September 2026), so this is where
-LazInk could be unique.
+The editor itself is **done as asked** (4 October 2026; the story is in
+`docs/HISTORY.md`): headings, lists, quotes, code, tables, Markdown in and
+out as a fixed point.  Nothing else for Lazarus does this.  Open polish:
 
-**The first piece is in (4 October 2026).**  The editor has paragraph
-kinds - `ipkH1`-`ipkH6`, `ipkBullet`, `ipkNumber`, `ipkQuote`, `ipkCode` -
-held per character the way `Align` is, so the flat document stays flat.
-They render (heading sizes and weight, list markers with hanging indents,
-a quote's bar, a shaded monospace code band), they edit (`ApplyParaKind`,
-`SelParaKind`; Enter at a heading's end starts plain text, Enter on an
-empty item ends its list), they survive the `Markup` round trip as
-`<h1>`-`<h6>`, `<li>`, `<oli>`, `<blockquote>` and `<pre>` wrappers, and
-`LoadMarkdown`/`AsMarkdown` carry a document in and out - the round trip is
-a fixed point, which the tests hold it to.
-
-**Tables are in too (4 October 2026), which completes E as it was asked.**
-A table row is a paragraph kind whose cells are the text between literal
-'|' characters - the pipes draw as the grid, not as glyphs, so the flat
-document and its one-dimensional caret survive untouched.  Consecutive
-rows share their column widths, the head row is bold on a band, Tab hops
-cells (a new row past the last), Enter adds a row and ends the table on an
-empty one, InsertTable starts one from nothing, and pipe tables round-trip
-through LoadMarkdown/AsMarkdown with their delimiter row - still a fixed
-point, still held there by the tests.
-
-Polish still open here: nested lists (they flatten to one level); the
-language tag on fenced code; images; cells cannot hold a pipe; and a demo
-tab that edits Markdown through this instead of a TMemo - which is also
-C's coloring item made moot.
+* **Nested lists** - they flatten to one level each way.
+* **The language tag on fenced code** - dropped today.
+* **Images** in the editor.
+* **A pipe inside a table cell** - the separator wins today.
+* The demo tab in C, which is this editor's shop window.
 
 ### F. An Online Package Manager listing
 
