@@ -1107,7 +1107,7 @@ var
   RowHeights, ColWidths, ColMin, ColMax, RowOffsets, ColOffsets: array of Integer;
   DefaultPad: TRect;
   R: TInkRenderRun; L: TInkRenderLine; Box: TInkBox; St: TInkBoxStyle;
-  Drop, MI, CellW, Share, Over, ShareMin, OverMin: Integer; VA, AV: string;
+  Drop, MI, CellW, Share, Over, ShareMin, OverMin, EdgeGap: Integer; VA, AV: string;
   InCell, FixedLayout, FillWidth: Boolean;
   TableAttrs, CellAttrs, Merge: TStringList;
   WidthText: string; WidthPercent: Integer;
@@ -1519,6 +1519,10 @@ begin
     end
     else if WidthText<>'' then FillWidth := True;
     Spacing := InkRenderScalePx(StrToIntDef(TableAttrs.Values['cellspacing'],0),Options.Scale);
+    { cellspacing frames a real table on every side; a grid's gap goes only
+      between its items, which is what gaponly says }
+    EdgeGap := Spacing;
+    if TableAttrs.Values['gaponly']='1' then EdgeGap := 0;
     { a cell a page says nothing about gets what a browser gives it: room
       enough to clear its border, and no more }
     DefaultPad := PadOf(TableAttrs.Values['cellpadding'],2,Options.Scale);
@@ -1602,7 +1606,7 @@ begin
     else TableWidth := Max(1,Options.Width-Options.Borders.Left-Options.Borders.Right);
     if (WidthPercent>0) and (WidthPercent<100) then
       TableWidth := Max(1,TableWidth*WidthPercent div 100);
-    Dec(TableWidth,Spacing*(Cols+1));
+    Dec(TableWidth,Spacing*(Cols-1)+2*EdgeGap);
     TableWidth := Max(Cols,TableWidth);
 
     for I := 0 to High(Cells) do
@@ -1725,7 +1729,7 @@ begin
     for I := 0 to Rows-1 do RowOffsets[I+1] := RowOffsets[I]+RowHeights[I]+Spacing;
     for I := 0 to Cols-1 do ColOffsets[I+1] := ColOffsets[I]+ColWidths[I]+Spacing;
     { and now place them, each as a box of its own }
-    SX := ALeft+Spacing; SY := Y+Spacing;
+    SX := ALeft+EdgeGap; SY := Y+EdgeGap;
     for I := 0 to High(Cells) do
     begin
       CellX := SX+ColOffsets[Cells[I].Col];
@@ -1808,8 +1812,15 @@ begin
         Cells[I].Row*1000+Cells[I].Col);
     end;
 
-    Y := SY; for I := 0 to Rows-1 do Inc(Y,RowHeights[I]+Spacing);
-    W := Spacing; for I := 0 to Cols-1 do Inc(W,ColWidths[I]+Spacing);
+    Y := SY;
+    for I := 0 to Rows-1 do
+    begin
+      Inc(Y,RowHeights[I]);
+      if I<Rows-1 then Inc(Y,Spacing);
+    end;
+    Inc(Y,EdgeGap);
+    W := 2*EdgeGap+Spacing*(Max(1,Cols)-1);
+    for I := 0 to Cols-1 do Inc(W,ColWidths[I]);
     X := ALeft+W; Inc(Line);
   finally TableAttrs.Free; CellAttrs.Free; Merge.Free end;
 end;
