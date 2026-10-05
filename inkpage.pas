@@ -1362,7 +1362,7 @@ procedure TInkCustomPage.Parse;
 var
   S, Raw, Element, Cls, Buffer, BlockTag, BlockClass, PendingAnchor, PendingMarker,
     Prefix, URL, Nest, Box, Kind, PendingAlign: string;
-  P,Q,I,Level,TableDepth,SkipDepth,PreDepth,Depth: Integer;
+  P,Q,I,K,Level,TableDepth,SkipDepth,PreDepth,Depth: Integer;
   Closing: Boolean;
   B: TInkPageBlock;
   ImageData: TMemoryStream;
@@ -1402,15 +1402,16 @@ var
     the tables it is nested in, one per level }
   TableCtx: string;
   TableCtxs: array[0..15] of string;
-  CellClose: string;
   { a flex/grid item that is itself a table, so the table's close ends it }
   ItemIsTable: Boolean;
   Margins: TRect;
   { a table whose cells are display: block - one to a row }
   CellsAsBlocks: Boolean;
   { the block elements open inside the cell being read, innermost last,
-    each entry the markup that closes it }
+    each entry the markup that closes it with its case and bottom margin;
+    and the same for the flex/grid item being read }
   CellBlocks: TStringList;
+  ItemBlocks: TStringList;
   TableSpacing: Integer;
   { an element hidden by display: none, and how deep inside it we are }
   HideDepth: Integer;
@@ -1419,6 +1420,8 @@ var
   FlexDepth, ItemDepth: Integer;
   FlexEl, FlexCls, FlexCtx, ItemCtx, ItemTag, Display, FlexText: string;
   FlexItems: TStringList;
+  { where the item's own words start in Buffer, past its <td> markup }
+  ItemFrom: Integer;
   FlexBasis, FlexGap, FlexMaxCols: Integer;
   FlexWrap, ItemIsLink: Boolean;
   FirstItemTag, FirstItemCls: string;
@@ -1663,18 +1666,6 @@ var
     else if A='right' then Result := '<right>'
     else Result := '';
   end;
-  { blocks left open inside a cell close with the cell, and a cell does not
-    end on a blank line of its own }
-  procedure FlushCellBlocks;
-  begin
-    while CellBlocks.Count>0 do
-    begin
-      Buffer := Buffer+CellBlocks[CellBlocks.Count-1];
-      CellBlocks.Delete(CellBlocks.Count-1);
-    end;
-    if Copy(Buffer,Length(Buffer)-3,4)='<br>' then
-      Delete(Buffer,Length(Buffer)-3,4);
-  end;
   { What a style attribute asks for, as markup, and in AClose the markup
     that puts it back.  Colors, size, weight, slant and decoration: the
     things people write a style attribute for. }
@@ -1748,12 +1739,14 @@ var
       Result := Result+'<s>'; AClose := '</s>'+AClose;
     end;
   end;
-  { A block element inside a table cell opens as a line of its own, in its
-    own size and weight - a <div> title over a line of detail, an <h3>
-    heading above a nested table.  Returns the opening markup; AClose is
-    what puts it back. }
-  function CellBlockOpen(out AClose: string): string;
-  var K, Base: Integer; V, CV, SM, SMClose: string; C: TColor;
+  { A block element inside a table cell or a flex/grid card opens as a line
+    of its own, in its own size, weight, color and case, and with the
+    margins its stylesheet asks for (as <vgap> markup the renderer reads).
+    Returns the opening markup; what closes it goes on AStack, with the
+    text-transform and the bottom margin riding along for PopCellBlock. }
+  function CellBlockOpen(const ACtx: string; AStack: TStringList): string;
+  var K, Base, MT, MB: Integer; V, CV, SM, SMClose, AClose, Kind: string;
+    C: TColor; Margins: TRect;
   begin
     Result := ''; AClose := '';
     Base := BaseFontPixels; K := Base;
@@ -1762,21 +1755,81 @@ var
     else if Element='h3' then K := Round(Base*1.17)
     else if Element='h5' then K := Max(1,Round(Base*0.83))
     else if Element='h6' then K := Max(1,Round(Base*0.67));
-    K := FStyles.Pixels(Element,Cls,'font-size',K,TableCtx);
+    K := FStyles.Pixels(Element,Cls,'font-size',K,ACtx);
     CV := '';
-    C := FStyles.Color(Element,Cls,'color',clNone,TableCtx);
+    C := FStyles.Color(Element,Cls,'color',clNone,ACtx);
     if C<>clNone then CV := ' color="'+ColorAttr(C)+'"';
     if (K<>Base) or (CV<>'') then
     begin
       Result := '<font size="'+IntToStr(-K)+'"'+CV+'>'; AClose := '</font>';
     end;
-    V := LowerCase(FStyles.Value(Element,Cls,'font-weight','',TableCtx));
+    V := LowerCase(FStyles.Value(Element,Cls,'font-weight','',ACtx));
     if (Element[1]='h') or (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
     begin
       Result := Result+'<b>'; AClose := '</b>'+AClose;
     end;
     SM := StyleMarkup(Attribute(Raw,'style'),SMClose);
     Result := Result+SM; AClose := SMClose+AClose;
+    { the margins above and below - the shorthand, the longhands over it,
+      and the style attribute over both: the gap a title asks for under
+      itself }
+    Margins := FStyles.Box(Element,Cls,'margin',Rect(0,0,0,0),ACtx);
+    MT := Max(0,FStyles.Pixels(Element,Cls,'margin-top',Margins.Top,ACtx));
+    MB := Max(0,FStyles.Pixels(Element,Cls,'margin-bottom',Margins.Bottom,ACtx));
+    V := StyleValue(Attribute(Raw,'style'),'margin-top');
+    if V<>'' then MT := Max(0,CSSPixels(FStyles.Resolve(V),MT));
+    V := StyleValue(Attribute(Raw,'style'),'margin-bottom');
+    if V<>'' then MB := Max(0,CSSPixels(FStyles.Resolve(V),MB));
+    if MT>0 then Result := '<vgap='+IntToStr(MT)+'>'+Result;
+    { and the case its stylesheet asks for, applied when it closes }
+    Kind := LowerCase(Trim(FStyles.Value(Element,Cls,'text-transform','',ACtx)));
+    if (Kind<>'uppercase') and (Kind<>'lowercase') and (Kind<>'capitalize') then
+      Kind := '';
+    AStack.Add(AClose+#1+Kind+#1+'0'+#1+IntToStr(MB));
+  end;
+  { the block is open and its markup appended: remember where its words
+    start, so its text-transform knows what to work on }
+  procedure MarkCellBlock(AStack: TStringList);
+  var E: string; P1, P2: Integer;
+  begin
+    if AStack.Count=0 then Exit;
+    E := AStack[AStack.Count-1];
+    P1 := Pos(#1,E); P2 := PosEx(#1,E,P1+1);
+    AStack[AStack.Count-1] := Copy(E,1,P2)+IntToStr(Length(Buffer))+
+      Copy(E,PosEx(#1,E,P2+1),MaxInt);
+  end;
+  { the block closes: its case applied to its words, its closing markup,
+    and the gap its margin-bottom asks for after the break }
+  function PopCellBlock(AStack: TStringList): Integer;
+  var E, CloseM, Kind: string; P1, P2, P3, StartAt: Integer;
+  begin
+    Result := 0;
+    if AStack.Count=0 then Exit;
+    E := AStack[AStack.Count-1]; AStack.Delete(AStack.Count-1);
+    P1 := Pos(#1,E); P2 := PosEx(#1,E,P1+1); P3 := PosEx(#1,E,P2+1);
+    CloseM := Copy(E,1,P1-1);
+    Kind := Copy(E,P1+1,P2-P1-1);
+    StartAt := StrToIntDef(Copy(E,P2+1,P3-P2-1),Length(Buffer));
+    Result := StrToIntDef(Copy(E,P3+1,MaxInt),0);
+    if (Kind<>'') and (StartAt<Length(Buffer)) then
+      Buffer := Copy(Buffer,1,StartAt)+Transformed(Copy(Buffer,StartAt+1,MaxInt),Kind);
+    Buffer := Buffer+CloseM;
+  end;
+  { whitespace at a block's edge is a browser's to drop, and so it is ours:
+    the source's indentation between block tags is not words }
+  procedure TrimLineEdge;
+  begin
+    while (Buffer<>'') and (Buffer[Length(Buffer)]=' ') do
+      SetLength(Buffer,Length(Buffer)-1);
+  end;
+  { blocks left open inside a cell close with the cell, and a cell does not
+    end on a blank line of its own }
+  procedure FlushCellBlocks(AStack: TStringList);
+  begin
+    while AStack.Count>0 do PopCellBlock(AStack);
+    TrimLineEdge;
+    if Copy(Buffer,Length(Buffer)-3,4)='<br>' then
+      Delete(Buffer,Length(Buffer)-3,4);
   end;
   function InlineMarkup: string;
   var BG, FG: string; C: TColor; K: Integer;
@@ -1955,12 +2008,15 @@ var
       FlexPad := FStyles.Box(Element,Cls,'padding',Rect(0,0,0,0),FlexCtx);
       FirstItemTag := Element; FirstItemCls := Cls;
     end;
+    ItemBlocks.Clear;
     Buffer := '<td'+CellStyleAttrs(Element,Cls,FlexCtx)+'>';
     ItemIsLink := (Element='a') and (Attribute(Raw,'href')<>'');
     if ItemIsLink then Buffer := Buffer+InlineTag;
+    ItemFrom := Length(Buffer);
   end;
   procedure EndItem;
   begin
+    FlushCellBlocks(ItemBlocks);
     if ItemIsLink then Buffer := Buffer+'</a>';
     ItemIsLink := False;
     Buffer := TrimRight(Buffer);
@@ -2052,6 +2108,7 @@ begin
   CodeBack := HTMLShadeColor(PageBack,7);
   Targets := TStringList.Create; Titles := TStringList.Create;
   StyleStack := TStringList.Create; CellBlocks := TStringList.Create;
+  ItemBlocks := TStringList.Create;
   try
   OpenHref := ''; OpenTarget := '';
   HideDepth := 0; FlexDepth := 0; ItemDepth := 0; ItemCtx := ''; ItemIsLink := False;
@@ -2163,7 +2220,19 @@ begin
       begin
         Inc(ItemDepth);
         if ItemDepth=1 then StartItem
-        else if IsHeadingTag(Element) then Buffer := Buffer+'<b>'
+        else if IsHeadingTag(Element) or (Element='div') or (Element='p') then
+        begin
+          { a heading or a div in a card is a line of its own, in the size,
+            weight, color and case its stylesheet asks for - as in a cell.
+            Words already on the line stay a line of their own; the item's
+            own <td> markup is not words. }
+          TrimLineEdge;
+          if (Length(Buffer)>ItemFrom) and
+            (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then
+            Buffer := Buffer+'<br>';
+          Buffer := Buffer+CellBlockOpen(ItemCtx,ItemBlocks);
+          MarkCellBlock(ItemBlocks);
+        end
         else if Element='li' then Buffer := Buffer+'• '
         else if not IsBlockElement(Element) then Buffer := Buffer+InlineTag;
         Continue;
@@ -2174,7 +2243,13 @@ begin
         Continue;
       end;
       if ItemDepth=1 then EndItem
-      else if IsHeadingTag(Element) then Buffer := Buffer+'</b><br>'
+      else if IsHeadingTag(Element) or (Element='div') or (Element='p') then
+      begin
+        TrimLineEdge;
+        K := PopCellBlock(ItemBlocks);
+        if Copy(Buffer,Length(Buffer)-3,4)<>'<br>' then Buffer := Buffer+'<br>';
+        if K>0 then Buffer := Buffer+'<vgap='+IntToStr(K)+'>';
+      end
       else if IsBlockElement(Element) then
       begin
         if (Buffer<>'') and (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then Buffer := Buffer+'<br>';
@@ -2231,8 +2306,10 @@ begin
         begin
           { a table inside a cell or a card is part of the block it is in -
             flushing here would cut the outer table in half - but it keeps
-            its dress: its own context for its cells, and its CSS on itself }
+            its dress: its own context for its cells, and its CSS on itself.
+            It is a block: the source's whitespace before it is not a line. }
           if TableDepth=0 then CellsAsBlocks := False;
+          TrimLineEdge;
           TableCtx := 'table'+DotClasses(Cls);
           Buffer := Buffer+'<table'+TableAttrs(True)+'>';
         end;
@@ -2274,7 +2351,7 @@ begin
           if Element='tr' then
           else if Closing then
           begin
-            FlushCellBlocks;
+            FlushCellBlocks(CellBlocks);
             Buffer := Buffer+'</'+Element+'></tr>';
           end
           else
@@ -2297,7 +2374,7 @@ begin
                 CellCase[TableDepth]);
             CellCase[TableDepth] := '';
           end;
-          if Element<>'tr' then FlushCellBlocks;
+          if Element<>'tr' then FlushCellBlocks(CellBlocks);
           Buffer := Buffer+'</'+Element+'>';
         end
         else if Element='tr' then Buffer := Buffer+'<tr>'
@@ -2331,20 +2408,19 @@ begin
           weight - not words run into the line before it }
         if Closing then
         begin
-          if CellBlocks.Count>0 then
-          begin
-            Buffer := Buffer+CellBlocks[CellBlocks.Count-1];
-            CellBlocks.Delete(CellBlocks.Count-1);
-          end;
+          TrimLineEdge;
+          K := PopCellBlock(CellBlocks);
           if Copy(Buffer,Length(Buffer)-3,4)<>'<br>' then Buffer := Buffer+'<br>';
+          if K>0 then Buffer := Buffer+'<vgap='+IntToStr(K)+'>';
         end
         else
         begin
           { words already on the line stay a line of their own }
+          TrimLineEdge;
           if (TableDepth<=High(CellFrom)) and (Length(Buffer)>CellFrom[TableDepth]) and
             (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then Buffer := Buffer+'<br>';
-          Buffer := Buffer+CellBlockOpen(CellClose);
-          CellBlocks.Add(CellClose);
+          Buffer := Buffer+CellBlockOpen(TableCtx,CellBlocks);
+          MarkCellBlock(CellBlocks);
         end;
       end
       else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
@@ -2572,7 +2648,7 @@ begin
     EndFlex;
   end;
   Flush;
-  finally Targets.Free; Titles.Free; StyleStack.Free; FlexItems.Free; CellBlocks.Free end;
+  finally Targets.Free; Titles.Free; StyleStack.Free; FlexItems.Free; CellBlocks.Free; ItemBlocks.Free end;
   if PendingAnchor<>'' then
   begin
     { ids at the very end still lead somewhere: the end }
