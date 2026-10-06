@@ -1,8 +1,7 @@
 { InkRender - LazInk's own renderer.
 
-  This unit is an isolated, from-scratch experiment for the renderer described
-  in docs/RENDERER_SPEC.md.  It intentionally has no dependency on InkHtml,
-  inktables.inc, or any LazInk control and is not part of lazink.lpk.
+  This unit implements the renderer described in docs/RENDERER_SPEC.md.
+  It lays out and paints markup through InkBox and is part of lazink.lpk.
 
   SPDX-License-Identifier: 0BSD
   Copyright (c) 2026 LazInk contributors
@@ -10,8 +9,7 @@
   The design is deliberately data-first:
     source -> lexical tokens -> styled runs -> cached line boxes -> paint.
   A layout is immutable while it is painted, so scrolling never reparses or
-  remeasures the source.  This is prototype plumbing, not a compatibility
-  wrapper for the existing renderer.
+  remeasures the source.
 }
 unit InkRender;
 

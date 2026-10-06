@@ -6,8 +6,7 @@
   drawing, so it looks identical on every LCL widgetset (win32, gtk2, gtk3,
   qt, cocoa).
 
-  License: component code MIT; the renderer unit InkDraw is derived
-  from the JVCL project (MPL 1.1) — see that unit's header.
+  SPDX-License-Identifier: 0BSD; see LICENSE.
 }
 unit InkLabel;
 

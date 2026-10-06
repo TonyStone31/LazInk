@@ -14,7 +14,7 @@
   Because it never touches a native text widget it renders identically on
   every LCL widgetset (win32, gtk2, gtk3, qt, cocoa).
 
-  License: MIT.
+  SPDX-License-Identifier: 0BSD; see LICENSE.
 }
 unit InkEdit;
 

@@ -106,6 +106,6 @@ it is a page.
 - **WYSIWYG editor** - a rich text editor whose document is LazInk markup.
 - **Label + Edit**, **Memo** and **List box** - the smaller controls, each
   reading the same markup.
-- **Credits** - where LazInk came from.
+- **About** - project information and the 0BSD license.
 
 LazInk lives at <https://github.com/TonyStone31/LazInk>.

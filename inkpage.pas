@@ -1,4 +1,4 @@
-{ Native scrolling HTML help viewer; no browser engine. Component code: MIT. }
+{ Native scrolling HTML help viewer; no browser engine. SPDX-License-Identifier: 0BSD; see LICENSE. }
 unit InkPage;
 {$mode objfpc}{$H+}
 interface

@@ -18,7 +18,7 @@
   two-dimensional (wrapping, line heights, baselines) is derived in Relayout
   and cached in FLines/FCharX/FCharW.
 
-  License: MIT.
+  SPDX-License-Identifier: 0BSD; see LICENSE.
 }
 unit InkRichEdit;
 

@@ -5,10 +5,6 @@
   give me its plain text.  This unit is that API, implemented on InkRender
   and InkBox, so the controls do not each have to know how the engine works.
 
-  It is also what lets the package change engines without changing controls:
-  the names and records here are the ones inkhtml.pas published, so a unit
-  that used to say "uses InkHtml" says "uses InkDraw" and nothing else moves.
-
   SPDX-License-Identifier: 0BSD
   Copyright (c) 2026 LazInk contributors }
 unit InkDraw;
