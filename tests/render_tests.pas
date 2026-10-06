@@ -2994,9 +2994,9 @@ begin
   finally Styles.Free end;
   Check((Rules > 0) and (APage.ImageCount = Rules),
     Format('README''s images load relative to it (%d of %d)', [APage.ImageCount, Rules]));
-  Check(Pos('Credits and origins', APage.PlainText) > 0, 'README text');
+  Check(Pos('BSD Zero Clause License', APage.PlainText) > 0, 'README text');
   Check(Pos('```', APage.PlainText) = 0, 'no fence marks are left in the README');
-  Check((Pos('Status: 0.9.', APage.PlainText) > 0) and (Pos('**Status', APage.PlainText) = 0),
+  Check((Pos('Status: 1.0.0.0.', APage.PlainText) > 0) and (Pos('**Status', APage.PlainText) = 0),
     'README''s bold marks are read, not shown');
   APage.JumpToAnchor('complete-help-pages');
   Check(APage.ScrollY > 0, 'README''s own contents links lead somewhere');

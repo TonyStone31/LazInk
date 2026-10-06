@@ -4,7 +4,7 @@
   TInkPage, which links on to the README.  Markdown editor is the source
   and its live preview side by side, and opens the README too.  Then the
   WYSIWYG editor, the labels and edit boxes, the memo, the list box the
-  package grew out of, and the credits.
+  package grew out of, and the About tab.
 
   Everything here is built at design time. Open main.lfm in the Lazarus form
   designer and every control, panel and event handler is there to be pushed
@@ -272,7 +272,7 @@ uses
   LazUTF8, URIParser;
 
 const
-  FORUM_URL = 'https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html';
+  PROJECT_URL = 'https://github.com/TonyStone31/LazInk';
 
 { ------------------------------------------------------------------ startup }
 
@@ -1049,7 +1049,7 @@ const
     '<img src="0"> Process <u>%s</u> finished',
     '<img src="2"> Process <u>%s</u> <font color="#B7950B">halted</font>',
     '<img src="3"> Process <u>%s</u> <font color="#C0392B"><b>error</b></font>',
-    '<img src="4"> Process <u>%s</u> retrying — see <a href="' + FORUM_URL + '">thread</a>'
+    '<img src="4"> Process <u>%s</u> retrying — see <a href="' + PROJECT_URL + '">project</a>'
   );
   NAMES: array[0..5] of string = ('alpha', 'bravo', 'charlie', 'delta',
     'echo', 'foxtrot');

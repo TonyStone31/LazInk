@@ -27,8 +27,7 @@
   If you would call Append, it is a memo; if you would call LoadFromFile,
   it is a page.
 
-  License: component code MIT; the renderer unit InkDraw is derived from the
-  JVCL project (MPL 1.1) - see that unit's header.
+  SPDX-License-Identifier: 0BSD; see LICENSE.
 }
 unit InkMemo;
 

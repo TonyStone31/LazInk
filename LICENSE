@@ -1,24 +1,14 @@
-LazInk licensing
-================
+BSD Zero Clause License (0BSD)
 
-0BSD - the BSD Zero Clause License. Do whatever you want with this code.
-You do not have to keep this notice, credit anyone, or ask. The full text
-is in LICENSES/0BSD.txt.
+Copyright (c) 2026 LazInk contributors
 
-That is the point of it, and it took some doing. Until 18 September 2026
-LazInk drew with a renderer derived from Project JEDI's JVCL, which stayed
-under MPL 1.1: the package carried two licenses, and anyone shipping a
-program built with it owed recipients that renderer's source. That renderer
-has been replaced by LazInk's own - inkrender.pas, inkbox.pas, inkdraw.pas -
-and deleted, so there is no third-party code in the package and nothing left
-to put conditions on it.
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
 
-The credit does not depend on the license and is not going anywhere:
-THIRD_PARTY_NOTICES.md tells where LazInk came from - Tony Stone's forum
-thread in 2021, wp's suggestion to take what was needed from JVCL and the
-list box example he wrote, and the JVCL authors whose drawing code got it
-off the ground. docs/RENDERER_CHANGES.md keeps the record of that renderer.
-None of their code remains here; the thanks do.
-
-Lazarus/LCL and Free Pascal are dependencies with their own licenses. They
-are not relicensed by LazInk.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

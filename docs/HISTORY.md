@@ -58,8 +58,7 @@ can use.  Nothing in LazInk may know about Heckers Sketch.
 * **Tested.**  `tests/run.sh` must stay green, and new behavior comes with
   checks.  Make sure a new check can actually fail.
 * **One license, and it is 0BSD** (since 18 September 2026): do whatever you
-  want with it, because the JVCL-derived renderer has been replaced by
-  LazInk's own and deleted - see 4.
+  want with it; see LICENSE and section 4.
 
 ---
 
@@ -260,8 +259,8 @@ test and the copied text.
 
 **Done for `TInkPage` (16 September 2026).**  The renderer reports each
 run of text it lays out (`THTMLOptions.OnRun`: text, position, line, part,
-font) - a few lines in the MPL renderer, and the one thing the new renderer
-must provide too.  `TInkPage` lays a block out once more with that hook
+font), which the current renderer provides too. `TInkPage` lays a block out
+once more with that hook
 (`htmlHyperLink` mode, so nothing is painted) and keeps the runs; a block's
 **words** are the runs joined by whatever lay between them in the source's
 plain text - a space where a line wrapped, a line break, a tab between
@@ -486,8 +485,8 @@ The idea, kept small on LazInk's side:
   package unless another program wants it too.
 
 **Tables: items 1-7 done (17 September 2026).**  `TInkPage` turns a
-table's CSS into attributes the table renderer reads (see
-`docs/RENDERER_CHANGES.md`): `width: 100%`, `table-layout: fixed` or `%`
+table's CSS into attributes the table renderer reads: `width: 100%`,
+`table-layout: fixed` or `%`
 cell widths for equal columns, `border-spacing` with `separate`, cell
 `padding` (1-4 values), `background`, `border` / `border-<side>` /
 `none`, `border-radius`, `color`, `text-align`, and the table's `margin`
@@ -575,143 +574,15 @@ Also fixed the same day: `LoadFromURL` on a `.webp` now makes the
 one-picture page (`bugs/2026-09-19-navigate-to-a-webp`), and tests cover
 all of the above.
 
-## 4. A renderer of our own, and a license with no strings
+## 4. Renderer and license
 
-**Done, 18 September 2026** - the part that mattered.  `inkhtml.pas` and
-`inktables.inc` are deleted.  LazInk draws with `inkrender.pas` (the engine),
-`inkbox.pas` (the box tree it lays out through) and `inkdraw.pas` (the calls
-the controls make), all written for LazInk, and the package is **0BSD
-throughout** with no third-party code in it.
+Since 18 September 2026, LazInk draws with `inkrender.pas` (the engine),
+`inkbox.pas` (the box tree) and `inkdraw.pas` (the API used by controls).
+The package is licensed under **0BSD**; see LICENSE.
 
-How it was checked before anything was deleted: the whole test suite and all
-38 Heckers Sketch help pages run on the new engine, with every visible text
-fragment preserved; the demo runs on it, every tab; and the two engines were
-compared token by token, the longest thing in common being 21 tokens of LCL
-boilerplate.  It is also faster - half the time to lay a page out, a tenth of
-the time to paint one.
-
-On `inklistbox.pas`, which grew out of wp's forum list box example: the owner,
-who was given that example, settled it - it was written for him to use, with
-no license attached and no restriction intended.  With that, and with the
-JVCL code gone, the package went to **0BSD**: no conditions at all, not even
-keeping a notice.  The thanks stay in THIRD_PARTY_NOTICES.md because they
-are deserved, not because a license demands them.
-
-The rest of this section is the plan as it was written, kept because the
-reasoning still explains the choices.
-
-### Why
-
-LazInk's renderer, `inkhtml.pas` (with `inktables.inc`), is derived from
-Project JEDI's JVCL and stays under **MPL 1.1** - it still contains JVCL
-routines line for line (see `THIRD_PARTY_NOTICES.md`).  MPL is a fair
-license, but it has conditions: the covered files keep their license, and
-anyone shipping a program built with them owes recipients that source.  So
-LazInk cannot be "do anything you like" while those two files are in it,
-and relabeling them is not an option - **only code we wrote ourselves can
-be relicensed.**
-
-Replacing the renderer is also the natural moment to get HTML right: the
-JVCL code was an inline-markup drawer that has been stretched to tables and
-pages.  A renderer designed for documents from the start can be both leaner
-and more capable.
-
-### The license to move to
-
-For "do whatever you want", in order of preference:
-
-1. **0BSD** (Zero-Clause BSD) - one paragraph, no conditions at all, not
-   even keeping the notice; OSI-approved, so companies' lawyers recognize
-   it.  **Recommended.**
-2. **MIT-0** - the MIT license with the attribution condition removed; also
-   OSI-approved.
-3. **The Unlicense** - a public-domain dedication with a fallback license
-   for countries without public domain.  Fine, but less widely accepted by
-   corporate policies than 0BSD.
-
-Avoid **WTFPL**: it says the right thing, but several large companies ban it
-because it is not a real legal instrument, which defeats the purpose.
-
-This is not legal advice - read the one you pick before switching.
-
-### Where the line is today
-
-Worth knowing before picking this up, because it decides how much is left:
-
-* **Ours already, MIT:** `inkpage.pas` (reading HTML into blocks, the CSS
-  that shapes them, flex and grid, tables built from CSS, folds, pictures,
-  selection, find, history), `inkcss.pas`, `inkmarkdown.pas`,
-  `inkscrollbar.pas`, `inkgif.pas`, `inktouch.pas`, `inkcopymenu.pas` and
-  every control.
-* **Not ours, MPL 1.1:** `inkhtml.pas` and `inktables.inc` - the part that
-  measures and paints a string of inline markup on a canvas, and the table
-  drawing built on it.  That is the whole of what is left to replace.
-* So **every feature since September 2026 has gone into our own code**: new
-  tags are turned into the small inline markup the old drawer already
-  understands (`<b>`, `<i>`, `<u>`, `<s>`, `<font>`, `<a>`, `<center>`,
-  `<table>`), and nothing new has been added to the MPL files.  Keep it that
-  way: it shrinks what the new renderer has to do and keeps the line clean.
-* What the drawer still owns, and the new one will have to do: word
-  wrapping, text measurement, the inline markup vocabulary above, hit
-  testing a link, run reporting for selection, and table measurement and
-  drawing (`inktables.inc`).
-
-### How to do it without carrying JVCL code across
-
-The new renderer has to be **genuinely new code**, not `inkhtml.pas`
-rewritten line by line, or it is still derived.
-
-* Write it from a **behavior specification**, not from the old source:
-  `docs/HELP_COMPATIBILITY.md`, the test suite, and a list of what each tag
-  and CSS property does.  **That specification is written**:
-  `docs/RENDERER_SPEC.md` (17 September 2026) says what markup the engine
-  must accept, the API the controls call, the layout, table, wrapping, hit
-  testing and speed rules, and how to bring a new engine in beside the old
-  one.  Build to it, not to the old source.
-* Use a **different design**, which is the honest evidence that it is new:
-  parse the document into a small tree of elements -> resolve styles ->
-  lay out boxes (block, inline, table, list item) -> paint.  The JVCL code
-  draws while it parses; the new one should not.
-* New files and unit names (for example `inkdom.pas`, `inklayout.pas`,
-  `inkpaint.pas`).  Don't open `inkhtml.pas` while writing them; if you
-  have read it, work from the specification rather than from memory of the
-  code.
-* Keep the **public API** the controls use today (`HTMLDrawOpt`,
-  `HTMLTextExtentOpt`, `HTMLHitTest`, `HTMLPlainText`, `HTMLStringToColor`
-  and friends) as thin wrappers over the new engine, so `TInkLabel`,
-  `TInkMemo`, `TInkListBox`, `TInkPage` and `TInkRichEdit` switch over
-  without rewrites.  `HTMLStringToColor` is one of the routines still
-  matching JVCL exactly - write a new one.
-* Run **both renderers side by side** behind a switch while it is being
-  built, and compare their output on the test pages.
-
-### Then
-
-1. The new renderer passes every existing test, renders all of Heckers
-   Sketch's `docs/help` pages completely (`tests/run.sh pages.txt ...` and
-   `check_help_text.py`), and is at least as fast.
-2. Delete `inkhtml.pas` and `inktables.inc`.
-3. **Check provenance of every remaining file before relicensing.**  All of
-   them say MIT today, but `inklistbox.pas` grew out of wp's forum list box
-   example (via the demo built on it) - confirm what, if anything, of
-   that example is still in it, and rewrite whatever is.  The goal is that
-   **no code from JVCL or from the forum example remains** - the forum
-   thread is credited as where LazInk came from, not as a source of code.
-   Relicense only files whose authors agree; anything uncertain gets
-   rewritten too.
-4. Switch `LICENSE` to the chosen license, drop `LICENSES/MPL-1.1.txt`,
-   update the SPDX lines and `lazink.lpk`'s license field.
-5. **Keep the credit.**  The story, as the owner tells it: he started the forum
-   thread in 2021 wanting simple HTML to decorate list box text; wp
-   suggested taking what was needed from JVCL and helped make it happen;
-   the demo on that example is where the idea for LazInk was born; and
-   the components have been LazInk's own since.  `THIRD_PARTY_NOTICES.md`,
-   the README and the demo's Credits tab keep saying so - JVCL, wp and the
-   other forum helpers as where it started, `TDzHTMLText` as a source of
-   ideas (no code) - with no borrowed code left in the package.  This is
-   not about discrediting anyone; the owner sees how code should be shared
-   differently, and that is only possible with code written for LazInk.
-   Keep `docs/RENDERER_CHANGES.md` as a record of the old renderer.
+The engine separates tokenizing, styling, layout and painting. Its design
+and behavior are documented in `docs/RENDERER_SPEC.md`. The test suite checks
+rendering, measurement, hit testing, navigation, selection and real help pages.
 
 ### What the new renderer should learn
 
@@ -812,7 +683,7 @@ help pages already use and LazInk currently drops (see
     bit-exact against dav1d.  It is no use for this item: AVIF is AV1 and
     WebP is VP8, so it shares nothing with the job, and the AV1 side is
     still-frame only, so no animation.  It is a day old, LGPL against our
-    MIT, and every unit builds with range and overflow checks off.  What it
+    0BSD, and every unit builds with range and overflow checks off.  What it
     is worth is the proof that a codec ports to Pascal and can be held
     bit-exact against the reference - which is how a WebP decoder should be
     built and shown correct.  Look again when it has tests and users.
@@ -846,7 +717,7 @@ minimums in other programs", and "we will parse and syntax highlight
 everything the same and yes knowing we will mostly get it wrong but at
 least there will be some sort of highlighting".
 
-So LazInk has **a small highlighter of its own** (`inkcode.pas`, ours, MIT),
+So LazInk has **a small highlighter of its own** (`inkcode.pas`, ours, 0BSD),
 and it stays small:
 
 * **Four kinds of token, and no more**: comments, strings, numbers,
@@ -898,8 +769,8 @@ editor tab (P5), because Markdown is LazInk's own business.
 * **Don't put Heckers Sketch specifics in LazInk.**  If Heckers Sketch
   needs something, build the general version.
 * **Don't claim support that hasn't been run** (widgetsets, touch hardware).
-* **Don't port `inkhtml.pas` line by line** into the new renderer, and don't
-  relicense a file until its provenance is checked - see 4.
+* **Keep the renderer behavior covered by tests**, and check provenance before
+  introducing third-party code.
 
 ---
 
@@ -937,12 +808,12 @@ editor tab (P5), because Markdown is LazInk's own business.
 ## 8. History
 
 * **August 2021** - started as an HTML-formatted list box from a Lazarus
-  forum thread (see the README credits); the renderer comes from JVCL.
+  experiment.
 * **1 September 2026** - LazInk 0.9: `TInkLabel`, `TInkEdit`, `TInkMemo`,
-  `TInkListBox`; the renderer renamed `InkHtml`.
+  `TInkListBox`.
 * **16 September 2026**
   * `TInkRichEdit`, `TInkPage`, tables, Markdown input, the CSS reader,
-    animated GIFs, the test suite, and the MIT/MPL license files.
+    animated GIFs and the test suite.
   * Published at https://github.com/TonyStone31/LazInk.
   * First real use: Heckers Sketch's What's New window.  `TInkPage` learned
     drag-to-scroll for Windows touch screens first.

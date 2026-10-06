@@ -5,7 +5,7 @@ Lightweight HTML-formatted text controls for Lazarus, drawn entirely with
 designed to render the same on every LCL widgetset. No RichMemo, no
 widgetset-specific backends, no browser engine.
 
-> **Status: 0.9.** Usable, and the API may still change. Built and tested with
+> **Status: 1.0.0.0.** Usable, and the API may still change. Built and tested with
 > FPC 3.3.1 and Lazarus trunk on **GTK3 / Linux x86-64**. Other widgetsets
 > (win32, gtk2, qt5/6, cocoa) should work because nothing here is
 > widgetset-specific, but they have not been run yet - reports welcome.
@@ -418,14 +418,21 @@ how the pictures here are made.
 
 ## Installing
 
-Open `lazink.lpk` in Lazarus → Install. The components appear on the
-**LazInk** palette tab. For lazbuild-only workflows:
+Open `lazink.lpk` with **Package → Open Package File (.lpk)**, then
+**Compile → Use → Install** and rebuild the IDE when prompted. The components
+appear on the **LazInk** palette tab. For lazbuild-only workflows:
 
 ```
 lazbuild --add-package-link /path/to/lazink.lpk
 ```
 
-then add `LazInk` to your project's required packages.
+then add `LazInk` to your project's required packages. The demo already requires
+`LazInk`: open `demo/lazinkdemo.lpi`, or run `lazbuild demo/lazinkdemo.lpi`
+from the repository root after registering the package link. Keep `demo/tour.md`,
+`demo/code.md`, the root README, and its relative images/docs alongside the demo.
+
+Dependencies are the Lazarus-supplied `LCL`, `LazUtils`, and `FCL` packages.
+See [OPM.md](OPM.md) for release and submission notes.
 
 ## Limits
 
@@ -534,57 +541,8 @@ reads, edits and writes Markdown whole, headings to tables, something
 nothing else for Lazarus does.  How everything already finished was built,
 and why, is [docs/HISTORY.md](docs/HISTORY.md).
 
-## Credits and origins
-
-### How LazInk started
-
-In August 2021 Tony Stone started a thread on the Lazarus forum,
-[Memo Component that supports HTML markup](https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html),
-asking for a simple way to decorate text in list boxes and memos with a
-little HTML - mostly color and bold - for showing log files, without
-pulling in a heavyweight HTML component.
-
-**wp** suggested taking what was needed from the HTML drawing code in
-Project JEDI's JVCL, and helped make it happen: he pulled those routines
-out into a standalone unit and wrote an owner-drawn list box example around
-it.  He built a demo on top of that example - the floating in-place
-editor over a list item, saving the list as text or as markup - and that
-demo is where the idea for LazInk was born.
-
-Since then LazInk has grown into its own set of Lazarus components: labels,
-memos, list boxes, a page viewer, a rich editor, a scrollbar, Markdown and
-tables.  AI assistants helped teach the component-writing process and
-worked on the design, the code and the debugging.
-
-### Where the code comes from today
-
-All of it is LazInk's own.  The JVCL-derived renderer was replaced on
-18 September 2026 by `inkrender.pas`, `inkbox.pas` and `inkdraw.pas`, and
-deleted - so the package is 0BSD throughout, with no third-party code in it.
-The credit below stands anyway: JVCL and wp's example are what got LazInk
-started, whatever the license says now.
-
-### Thanks
-
-* **Project JEDI's JVCL** - the HTML drawing code LazInk grew from; the full
-  notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-* **wp** - suggested the JVCL route and wrote the list box example LazInk
-  started from.
-* **Lazarus and Free Pascal**.
-
 ## License
 
-**0BSD** - do whatever you want with it.  No attribution required, no notice
-to keep, nothing to ask.  See [LICENSE](LICENSE) and the
-[0BSD text](LICENSES/0BSD.txt).
-
-It used to be two licenses, and the awkward one was the renderer: it came
-from Project JEDI's JVCL and stayed under MPL 1.1, so anyone shipping a
-program built with LazInk owed recipients that renderer's source.  That
-renderer has been replaced by LazInk's own and deleted, and with no
-third-party code left there is nothing to put conditions on it.
-
-The credit does not depend on the license and is not going anywhere:
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where LazInk came
-from, and [docs/RENDERER_CHANGES.md](docs/RENDERER_CHANGES.md) keeps the
-record of the renderer that got it off the ground.
+**0BSD** — the BSD Zero Clause License. See [LICENSE](LICENSE) and
+[LICENSES/0BSD.txt](LICENSES/0BSD.txt). Lazarus/LCL and Free Pascal dependencies
+retain their own licenses.
