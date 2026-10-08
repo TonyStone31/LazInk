@@ -2837,7 +2837,8 @@ begin
   HasHTML('&copy; & &#169;', '&copy; &amp; &#169;', 'entities kept, a lone ampersand escaped');
   { flattened for the inline controls }
   H := MarkdownToInk('- [x] done' + E + '- item' + E + '  - nested');
-  Check(Pos('☑ done', H) > 0, 'Ink: a finished task is ticked');
+  Check(Pos(InkCheckboxMarkup(True) + ' done', H) > 0,
+    'Ink: a finished task is ticked, Chromium-style');
   Check(Pos('• item', H) > 0, 'Ink: bullets');
   Check(Pos('<ind="20">', H) > 0, 'Ink: nested items are indented');
   H := MarkdownToInk('```' + E + 'a  b' + E + 'c' + E + '```');
@@ -2908,7 +2909,8 @@ begin
   Check(B2.Indent > B.Indent, 'and indented further');
   Check(FindBlock(APage, 'li', 'first').Marker = '1.', 'numbered item 1');
   Check(FindBlock(APage, 'li', 'second').Marker = '2.', 'numbered item 2');
-  Check(FindBlock(APage, 'li', 'shipped').Marker = '☑', 'a finished task shows a ticked box');
+  B2 := FindBlock(APage, 'li', 'shipped');
+  Check(Pos('#0075FF', B2.Source) > 0, 'a finished task shows the drawn blue box');
 
   B := FindBlock(APage, '', 'quoted words');
   Check(Length(B.Bars) = 1, 'a quote has a bar');

@@ -149,11 +149,11 @@ best after the widgetset runs in D, so the listing's claims are true.
 * On Qt and GTK2 a finger cannot be told from the mouse, so a memo selects
   unless `MouseDrag := imdScroll`.
 
-### H. Scrolling speed on very long pages - notes, not yet work
+### H. Scrolling speed on very long pages - wanted in the near future
 
 The 76-section comparison page (~1800 blocks, ~29000px) scrolls, but a
-fast wheel can feel it.  Measured nothing yet; when it matters, in the
-order worth trying:
+fast wheel can feel it.  Tony wants this improved in the near future.
+Measured nothing yet; in the order worth trying:
 
 * **Find the first visible block by binary search.**  Every paint walks
   all blocks front to back and rect-tests each; Bounds.Top is sorted, so
@@ -171,7 +171,7 @@ order worth trying:
   it while scrolling inside the strip, re-render when leaving it.  Only
   if the first three are not enough.
 
-### I. HTML and CSS worth adding - a survey, 8 October 2026
+### I. HTML and CSS to add - agreed 8 October 2026
 
 Checked against what generators and documentation pages actually write.
 Already in: thead/tbody/tfoot, the HTML5 containers (section, article,
@@ -179,7 +179,8 @@ nav, figure, header, footer, main, aside - all blocks), svg skipped
 cleanly, iframe showing its fallback content, task-list checkboxes,
 details/summary, dl, em and px units.
 
-Worth adding, smallest first:
+To do, smallest first (Tony: "go ahead and mark those... those will be
+good, and floated images should be important too"):
 
 * **`<wbr>`** - a break opportunity in a long identifier.  The tag is
   already parsed as void; the engine just never learns the spot.
@@ -195,7 +196,13 @@ Worth adding, smallest first:
 * **Images floated beside text** (`float: left/right`, `<img align=>`) -
   the one large layout feature real pages miss here.  "Nothing flows
   around a picture" is a stated limit; lifting it is engine work in the
-  line layout, not a patch.
+  line layout, not a patch.  Agreed as important - the big item of this
+  section.
+
+Done already from this list: the task-list checkbox now draws the way
+Chromium draws one (its blue behind a white check, gray-bordered white
+when empty - a pill, so every control gets the same box), replacing the
+Unicode ballot glyphs, 8 October 2026.
 
 Not worth it, deliberately: `<iframe>` as a real embedded page (offline
 help has no third-party embeds; the fallback text is the right render),

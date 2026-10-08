@@ -2630,10 +2630,10 @@ begin
     begin
       if LowerCase(Attribute(Raw,'type'))='checkbox' then
       begin
-        if HasAttribute(Raw,'checked') then Box := '☑' else Box := '☐';
-        { a task list's box takes the bullet's place }
-        if (PendingMarker<>'') and (Trim(Buffer)='') then PendingMarker := Box
-        else Buffer := Buffer+Box+' ';
+        Box := InkCheckboxMarkup(HasAttribute(Raw,'checked'));
+        { drawn inline after the bullet, as a browser without GitHub's
+          stylesheet draws a task list }
+        Buffer := Buffer+Box+' ';
       end;
       Continue;
     end;

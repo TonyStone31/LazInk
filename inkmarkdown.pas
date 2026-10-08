@@ -60,6 +60,11 @@ var
 function MarkdownSlug(const Text: string): string;
 { The fixed-width face code is drawn in on this platform. }
 function InkMonoFace: string;
+{ A task list's box, drawn the way Chromium draws a checkbox: its blue
+  behind a white check when checked, white behind a gray border when not
+  - #0075FF and #767676, sampled from the real thing.  It is a pill, so
+  every control the engine draws gets the same box. }
+function InkCheckboxMarkup(AChecked: Boolean): string;
 
 implementation
 
@@ -69,6 +74,16 @@ const
   BOX_EMPTY = #$E2#$98#$90;    // ☐
   BOX_TICKED = #$E2#$98#$91;   // ☑
   QUOTE_BAR = #$E2#$94#$82;    // │
+
+function InkCheckboxMarkup(AChecked: Boolean): string;
+begin
+  if AChecked then
+    Result := '<font color="#FFFFFF" bgcolor="#0075FF" pad="0 3" radius="3"'
+      + ' pillborder="#0075FF"><small>'#$E2#$9C#$93'</small></font>'
+  else
+    Result := '<font bgcolor="#FFFFFF" pad="0 6" radius="3"'
+      + ' pillborder="#767676"><small>'#$C2#$A0'</small></font>';
+end;
 
 function InkMonoFace: string;
 begin
@@ -1756,7 +1771,8 @@ begin
     begin
       if LowerCase(AttrValue(Tag, 'type')) = 'checkbox' then
       begin
-        if HasAttr(Tag, 'checked') then Text := BOX_TICKED else Text := BOX_EMPTY;
+        if HasAttr(Tag, 'checked') then Text := InkCheckboxMarkup(True)
+        else Text := InkCheckboxMarkup(False);
         if Marker <> '' then Marker := Text + ' '
         else begin LineStart; Put(Text + ' ') end;
       end;
