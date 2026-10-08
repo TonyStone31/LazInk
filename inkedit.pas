@@ -56,6 +56,7 @@ type
     FOnGetCharAttrs: TInkGetCharAttrsEvent;
     FTextHint: string;
     FTextHintColor: TColor;
+    FPasswordChar: Char;
     FEditMenu: Boolean;
     FMenu: TPopupMenu;
     FUndo, FRedo: TFPList;
@@ -64,6 +65,9 @@ type
     FLastTyped: string;
     procedure SetTextHint(const AValue: string);
     procedure SetTextHintColor(AValue: TColor);
+    procedure SetPasswordChar(AValue: Char);
+    { what character i is drawn and measured as - the mask while hidden }
+    function DisplayChar(AIndex: Integer): string;
     procedure PushUndo(AKind: Integer);
     procedure ClearUndoList(AList: TFPList);
     procedure MenuClick(Sender: TObject);
@@ -131,6 +135,11 @@ type
       the background, so it suits a light and a dark box unset. }
     property TextHint: string read FTextHint write SetTextHint;
     property TextHintColor: TColor read FTextHintColor write SetTextHintColor default clDefault;
+    { a typed secret: every character drawn as this one (a bullet when it
+      is '*', the way most toolkits draw it now).  While hidden, Copy and
+      Cut do nothing and the text never reaches the clipboard.  Text is
+      the real text, and undo still works. }
+    property PasswordChar: Char read FPasswordChar write SetPasswordChar default #0;
     { the box's own right-click menu - Undo, Redo, Cut, Copy, Paste, Delete,
       Select All, each enabled only when it can do something.  A PopupMenu
       of the host's own still wins. }
@@ -339,6 +348,23 @@ begin
   FUndoKind := 0;
 end;
 
+procedure TInkEdit.SetPasswordChar(AValue: Char);
+begin
+  if FPasswordChar = AValue then Exit;
+  FPasswordChar := AValue;
+  Invalidate;
+end;
+
+function TInkEdit.DisplayChar(AIndex: Integer): string;
+begin
+  if FPasswordChar = #0 then
+    Result := FChars[AIndex]
+  else if FPasswordChar = '*' then
+    Result := #$E2#$80#$A2
+  else
+    Result := FPasswordChar;
+end;
+
 procedure TInkEdit.SetTextHint(const AValue: string);
 begin
   if FTextHint = AValue then Exit;
@@ -493,10 +519,10 @@ begin
     // while measuring too
     AColor := Font.Color;
     AStyle := Font.Style;
-    if Assigned(FOnGetCharAttrs) then
+    if Assigned(FOnGetCharAttrs) and (FPasswordChar = #0) then
       FOnGetCharAttrs(Self, i + 1, FChars[i], AColor, AStyle);
     Canvas.Font.Style := AStyle;
-    Inc(X, Canvas.TextWidth(FChars[i]));
+    Inc(X, Canvas.TextWidth(DisplayChar(i)));
   end;
   Positions[CharCount] := X;
   TotalW := X;
@@ -693,13 +719,13 @@ begin
     if (X + W < 0) or (X > ClientWidth) then Continue;
     AColor := Font.Color;
     AStyle := Font.Style;
-    if Assigned(FOnGetCharAttrs) then
+    if Assigned(FOnGetCharAttrs) and (FPasswordChar = #0) then
       FOnGetCharAttrs(Self, i + 1, FChars[i], AColor, AStyle);
     if (i >= SelA) and (i < SelB) and Focused then
       AColor := clHighlightText;
     Canvas.Font.Color := AColor;
     Canvas.Font.Style := AStyle;
-    Canvas.TextOut(X, TextY, FChars[i]);
+    Canvas.TextOut(X, TextY, DisplayChar(i));
   end;
 
   if Focused and FCaretOn then
@@ -863,6 +889,8 @@ end;
 
 procedure TInkEdit.CopyToClipboard;
 begin
+  { a hidden text never reaches the clipboard }
+  if FPasswordChar <> #0 then Exit;
   if GetSelLength > 0 then
     Clipboard.AsText := GetSelText
   else
@@ -871,6 +899,8 @@ end;
 
 procedure TInkEdit.CutToClipboard;
 begin
+  { a hidden text never reaches the clipboard }
+  if FPasswordChar <> #0 then Exit;
   if FReadOnly then
   begin
     CopyToClipboard;
@@ -940,9 +970,9 @@ begin
     AddItem(SInkEditUndo, 1, CanUndo);
     AddItem(SInkEditRedo, 2, CanRedo);
     AddItem('-', 0, True);
-    AddItem(SInkEditCut, 3, GetSelLength > 0);
+    AddItem(SInkEditCut, 3, (GetSelLength > 0) and (FPasswordChar = #0));
   end;
-  AddItem(SInkEditCopy, 4, GetSelLength > 0);
+  AddItem(SInkEditCopy, 4, (GetSelLength > 0) and (FPasswordChar = #0));
   if not FReadOnly then
   begin
     AddItem(SInkEditPaste, 5, Clipboard.HasFormat(CF_TEXT));

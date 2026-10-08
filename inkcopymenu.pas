@@ -19,6 +19,7 @@ resourcestring
   SInkCopyAll = 'Copy all';
   SInkCopyParagraph = 'Copy this paragraph';
   SInkCopyLine = 'Copy this line';
+  SInkCopyMessage = 'Copy this message';
   SInkCopyItem = 'Copy this item';
   SInkCopyLink = 'Copy link address';
   SInkSelectAll = 'Select all';
