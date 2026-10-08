@@ -3339,6 +3339,7 @@ procedure TInkCustomPage.Paint;
 begin RenderTo(Canvas) end;
 procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
 var I,J,BarTop,BarBottom,Saved,RX: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
+  RuleC: TColor;
   SelFrom, SelTo: TInkPagePosition; Selected: Boolean;
 begin
   Layout;
@@ -3384,7 +3385,12 @@ begin
       end
       else if B.RuleInset and (TR.Bottom-TR.Top>=2) then
       begin
-        ACanvas.Brush.Color := HTMLShadeColor(B.BarColor,-35);
+        { the top row at two thirds of the color, which is how Chromium
+          darkens an inset border - shading toward white barely moves a
+          light gray at all }
+        RuleC := ColorToRGB(B.BarColor);
+        ACanvas.Brush.Color := RGBToColor(Red(RuleC)*2 div 3,
+          Green(RuleC)*2 div 3,Blue(RuleC)*2 div 3);
         ACanvas.FillRect(Rect(TR.Left,TR.Top,TR.Right,TR.Top+1));
         ACanvas.Brush.Color := B.BarColor;
         ACanvas.FillRect(Rect(TR.Left,TR.Top+1,TR.Right,TR.Bottom));
