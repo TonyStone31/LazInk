@@ -1959,7 +1959,9 @@ begin
     for I := 0 to Probe.BlockCount - 1 do
       if Probe.Block(I).Tag = 'hr' then
       begin
-        Y := Probe.Block(I).TextBounds.Top - Probe.ScrollY;
+        { the second row: an unstyled rule's top row is the darker half
+          of its inset pair, the asked-for color is below it }
+        Y := Probe.Block(I).TextBounds.Top + 1 - Probe.ScrollY;
         if (Y >= 0) and (Y < Shot.Height) then
           for X := Probe.Block(I).TextBounds.Left to
             Min(Probe.Block(I).TextBounds.Right, Shot.Width - 1) do
