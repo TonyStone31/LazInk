@@ -120,6 +120,10 @@ type
     { code: whitespace kept, the fixed face, never wrapped - a long line is
       cut off at the block's edge }
     Pre: Boolean;
+    { a rule's thickness in pixels (0 means a hairline), and whether its
+      border-top said dotted or dashed }
+    RuleHeight: Integer;
+    RuleDashed: Boolean;
     { laid out as written, and cut off at the edge - code, or a memo with
       WordWrap off }
     NoWrap: Boolean;
@@ -1506,7 +1510,7 @@ var
   { the code block being read: its text, the language it named, whether the
     page had already colored it itself, and each piece as it arrives }
   CodeRaw, CodeLang, Piece, Marked: string;
-  CodeMarked: Boolean;
+  CodeMarked, CodeTagged: Boolean;
   { the table being read: its classes as a CSS context, and the contexts of
     the tables it is nested in, one per level }
   TableCtx: string;
@@ -1610,7 +1614,9 @@ var
     if (BlockTag='pre') and (Trim(CodeRaw)<>'') then
     begin
       B.Code := TrimRight(CodeRaw); B.CodeLanguage := CodeLang;
-      if not CodeMarked then
+      { a <pre> that never said <code> is preformatted prose, not a
+        program: it keeps its spaces and stays uncolored }
+      if not CodeMarked and CodeTagged then
       begin
         Marked := CodeMarkup(B.Code,CodeLang);
         if Marked<>'' then B.Source := Marked;
@@ -2236,7 +2242,7 @@ begin
   for I := 0 to High(CellCase) do begin CellCase[I] := ''; CellFrom[I] := 0 end;
   PendingStyle := ''; PendingAlign := ''; CenterDepth := 0; RightDepth := 0;
   CaptionDepth := 0; CaptionText := ''; CurFold := -1; PendingHead := -1;
-  CodeRaw := ''; CodeLang := ''; CodeMarked := False;
+  CodeRaw := ''; CodeLang := ''; CodeMarked := False; CodeTagged := False;
   SetLength(Folds,0); SetLength(FoldSeen,0);
   SetLength(Containers,0);
   while P<=Length(S) do
@@ -2551,6 +2557,8 @@ begin
       begin
         Inc(PreDepth); BlockTag := 'pre'; BlockClass := Cls;
         CodeRaw := ''; CodeMarked := False;
+        { a fence's language on the <pre> itself is as good as a <code> }
+        CodeTagged := InkCodeLanguage(Cls)<>'';
         CodeLang := InkCodeLanguage(Cls);
         { a line break straight after <pre> is not part of the code }
         if (P<=Length(S)) and (S[P]=#13) then Inc(P);
@@ -2562,6 +2570,7 @@ begin
     begin
       { <pre><code> - the newline GitHub-style HTML puts after <code> is
         not code either }
+      CodeTagged := True;
       if CodeLang='' then CodeLang := InkCodeLanguage(Cls);
       if (P<=Length(S)) and (S[P]=#10) then Inc(P);
       Continue;
@@ -3122,11 +3131,22 @@ begin
     if K>=0 then B.Padding := K;
   end;
   if B.Tag='hr' then
-    { a rule: its color from color, border-color or background, in that
-      order }
-    B.BarColor := FStyles.Color('hr',B.CSSClass,'color',
-      FStyles.Color('hr',B.CSSClass,'border-color',
-      FStyles.Color('hr',B.CSSClass,'background',MixColor(FBodyText,FPageBack,0.7))));
+  begin
+    { a rule: a border-top wins, then background, then color; height or
+      the border's width sets its thickness, and a dotted or dashed
+      border draws in pieces }
+    V := FStyles.Resolve(FStyles.Value('hr',B.CSSClass,'border-top',''));
+    EdgeOf(V,C,K);
+    B.RuleDashed := (Pos('dotted',LowerCase(V))>0) or (Pos('dashed',LowerCase(V))>0);
+    X := FStyles.Pixels('hr',B.CSSClass,'height',0);
+    if X<=0 then X := K;
+    B.RuleHeight := X;
+    if C<>clNone then B.BarColor := C
+    else B.BarColor := FStyles.Color('hr',B.CSSClass,'background',
+      FStyles.Color('hr',B.CSSClass,'background-color',
+      FStyles.Color('hr',B.CSSClass,'color',
+      FStyles.Color('hr',B.CSSClass,'border-color',MixColor(FBodyText,FPageBack,0.7)))));
+  end;
 end;
 { a block that is an item of a list or a definition list: the list itself
   has the margins, and they belong to the first and last of these }
@@ -3221,8 +3241,9 @@ begin
     B.MarkerWidth := 0;
     if B.Tag='hr' then
     begin
-      { a rule is a hairline, as a browser draws it }
-      Thick := 1;
+      { a rule is a hairline, as a browser draws it, unless the page gave
+        it a height or a border of its own }
+      Thick := Max(1,B.RuleHeight);
       Sz.cx := W-B.Indent; Sz.cy := Thick;
       B.Wrapped := '';
     end
@@ -3307,7 +3328,7 @@ end;
 procedure TInkCustomPage.Paint;
 begin RenderTo(Canvas) end;
 procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
-var I,J,BarTop,BarBottom,Saved: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
+var I,J,BarTop,BarBottom,Saved,RX: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
   SelFrom, SelTo: TInkPagePosition; Selected: Boolean;
 begin
   Layout;
@@ -3342,7 +3363,17 @@ begin
     begin
       ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
       TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
-      ACanvas.FillRect(TR);
+      if B.RuleDashed then
+      begin
+        RX := TR.Left;
+        while RX<TR.Right do
+        begin
+          ACanvas.FillRect(Rect(RX,TR.Top,Min(RX+3,TR.Right),TR.Bottom));
+          Inc(RX,6);
+        end;
+      end
+      else
+        ACanvas.FillRect(TR);
       { and put the brush back: a rule's color has no business being the
         canvas's color for the rest of the page }
       ACanvas.Brush.Color := FPageBack; ACanvas.Brush.Style := bsClear;
