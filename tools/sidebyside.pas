@@ -36,6 +36,24 @@ uses
 
 type
 
+  TCompareForm = class;
+
+  { The page and the memo, with the form's crosshair painted on top of
+    their own rendering.  A TShape cannot do it: a windowed control always
+    paints above sibling graphic controls, so a shape's line would lie
+    under the page.  The list box and the label are left out - the list
+    paints per item, and the label is a graphic control the shapes do
+    cover. }
+  TGuidePage = class(TInkPage)
+  protected
+    procedure Paint; override;
+  end;
+
+  TGuideMemo = class(TInkMemo)
+  protected
+    procedure Paint; override;
+  end;
+
   { TCompareForm }
 
   TCompareForm = class(TForm)
@@ -57,10 +75,14 @@ type
     { the crosshair: a horizontal line across both halves and a vertical
       line in each at the same offset from its half's left edge, so an
       edge on one side can be held against the other }
-    FGuideH, FGuideVL, FGuideVR: TShape;
+    FGuideH, FGuideVL: TShape;
     FGuideTimer: TTimer;
     FGuideOn: Boolean;
+    FGuideY, FGuideLX: Integer;
     procedure GuideTick(Sender: TObject);
+  public
+    { called by the right-hand controls at the end of their Paint }
+    procedure PaintGuide(ACanvas: TCanvas; AControl: TControl);
     procedure PaintLeft(Sender: TObject);
     procedure ScrollBoth(ADelta: Integer);
     procedure ShowWhich(N: Integer);
@@ -114,7 +136,7 @@ begin
     FMarkup := Html.Text;
   finally Html.Free end;
 
-  FPage := TInkPage.Create(Self);
+  FPage := TGuidePage.Create(Self);
   FPage.Parent := Self;
   { wider than the browser's half by exactly its scrollbar, so the two text
     columns are the same width.  A headless browser screenshot reserves no
@@ -134,9 +156,6 @@ begin
   FGuideVL := TShape.Create(Self);
   FGuideVL.Parent := Self; FGuideVL.Visible := False; FGuideVL.Enabled := False;
   FGuideVL.Brush.Color := clRed; FGuideVL.Pen.Color := clRed;
-  FGuideVR := TShape.Create(Self);
-  FGuideVR.Parent := Self; FGuideVR.Visible := False; FGuideVR.Enabled := False;
-  FGuideVR.Brush.Color := clRed; FGuideVR.Pen.Color := clRed;
   FGuideTimer := TTimer.Create(Self);
   FGuideTimer.Interval := 30; FGuideTimer.Enabled := False;
   FGuideTimer.OnTimer := @GuideTick;
@@ -222,7 +241,7 @@ begin
     doing its work in each of them - made here, not at startup }
   if (N = 2) and (FMemo = nil) then
   begin
-    FMemo := TInkMemo.Create(Self);
+    FMemo := TGuideMemo.Create(Self);
     FMemo.Parent := Self; FMemo.BoundsRect := Where;
     FMemo.Anchors := FPage.Anchors; FMemo.WordWrap := True;
     FMemo.Lines.Text := FMarkup;
@@ -270,7 +289,7 @@ begin
 end;
 
 procedure TCompareForm.GuideTick(Sender: TObject);
-var P: TPoint; Half, LX, Y: Integer;
+var P: TPoint; Half, LX, Y: Integer; R: TControl;
 begin
   P := ScreenToClient(Mouse.CursorPos);
   Half := FLeft.Width;
@@ -279,10 +298,44 @@ begin
   if P.X >= Half + 12 then LX := P.X - (Half + 12) else LX := P.X;
   LX := EnsureRange(LX, 0, Half - 1);
   Y := EnsureRange(P.Y, FBar.Height, ClientHeight - 2);
-  FGuideH.SetBounds(0, Y, ClientWidth, 2);
+  if (Y = FGuideY) and (LX = FGuideLX) then Exit;
+  FGuideY := Y; FGuideLX := LX;
+  { the left half is a paint box, so shapes lie over it }
+  FGuideH.SetBounds(0, Y, Half, 2);
   FGuideVL.SetBounds(LX, FBar.Height, 2, ClientHeight - FBar.Height);
-  FGuideVR.SetBounds(Half + 12 + LX, FBar.Height, 2, ClientHeight - FBar.Height);
-  FGuideH.BringToFront; FGuideVL.BringToFront; FGuideVR.BringToFront;
+  FGuideH.BringToFront; FGuideVL.BringToFront;
+  { the right half paints its own cross, over its own rendering }
+  R := nil;
+  case FShown of
+    1: R := FPage;
+    2: R := FMemo;
+  end;
+  if R <> nil then R.Invalidate;
+end;
+
+procedure TCompareForm.PaintGuide(ACanvas: TCanvas; AControl: TControl);
+var Y: Integer;
+begin
+  if not FGuideOn then Exit;
+  Y := FGuideY - AControl.Top;
+  ACanvas.Brush.Style := bsSolid;
+  ACanvas.Brush.Color := clRed;
+  if (Y >= 0) and (Y < AControl.Height) then
+    ACanvas.FillRect(Rect(0, Y, AControl.Width, Y + 2));
+  if FGuideLX < AControl.Width then
+    ACanvas.FillRect(Rect(FGuideLX, 0, FGuideLX + 2, AControl.Height));
+end;
+
+procedure TGuidePage.Paint;
+begin
+  inherited Paint;
+  TCompareForm(Owner).PaintGuide(Canvas, Self);
+end;
+
+procedure TGuideMemo.Paint;
+begin
+  inherited Paint;
+  TCompareForm(Owner).PaintGuide(Canvas, Self);
 end;
 
 procedure TCompareForm.KeyDown(var Key: Word; Shift: TShiftState);
@@ -303,8 +356,10 @@ begin
         begin
           FGuideOn := not FGuideOn;
           FGuideH.Visible := FGuideOn; FGuideVL.Visible := FGuideOn;
-          FGuideVR.Visible := FGuideOn; FGuideTimer.Enabled := FGuideOn;
-          if FGuideOn then GuideTick(nil);
+          FGuideTimer.Enabled := FGuideOn;
+          FGuideY := -1; FGuideLX := -1;
+          if FGuideOn then GuideTick(nil) else FPage.Invalidate;
+          if (FMemo <> nil) and not FGuideOn then FMemo.Invalidate;
           Tell;
         end;
       'L': begin FLocked := not FLocked; Tell end;
