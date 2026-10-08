@@ -16,13 +16,13 @@ widgetset-specific backends, no browser engine.
 
 | | Control | What it is |
 |---|---|---|
-| ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `Ellipsis` for one line that ends in "..." when it does not fit, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. |
+| ![](images/TInkLabel.png) | `TInkLabel` | A label whose Caption understands inline markup. AutoSize aware, optional `WordWrap` and `MaxWidth`, `Ellipsis` for one line that ends in "..." when it does not fit, `VertAlign`/`HorzAlign` for placing the text block in a bigger box, transparent by default. Its text selects like a page's: a drag takes characters, a double click a word, a triple click everything. |
 | ![](images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment, `TextHint` for the empty box, undo/redo (Ctrl+Z, one step per typed word), its own right-click menu, and `PasswordChar` for a secret (drawn as bullets, never copied). |
 | ![](images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; paragraph kinds - headings, bullet and numbered lists (nested: Tab and Shift+Tab change the depth), quotes, code lines with their fence language, **tables** (`ApplyParaKind`, `InsertTable`; Tab hops cells, Enter adds a row); **Markdown in and out** (`LoadMarkdown`, `AsMarkdown`); word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
 | | `TInkCodeMemo` | A **plain multi-line editor** — the notes field on a form. `Text` and `Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, word wrap, undo, the right-click menu, pasting that brings in plain text only, and `AutoHeight` between `MinLines` and `MaxLines` - a question box that starts as one line and opens up as it is written. Its one decoration is yours: `OnGetCharAttrs` colors every character as it is drawn — how the demo will color Markdown source, without the control knowing any language. |
 | ![](images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. For a chat, `AppendBlock` makes a whole message - paragraphs, lists, tables, highlighted code - one entry with its own band color and indent, `ReplaceLast` grows the last entry in place for an answer arriving a word at a time, `AppendPlain` shows a stranger's text exactly as written, and `EntryAt` says which message is under the mouse. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
 | | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG, animated GIF and WebP images, relative links, anchors, Back and Forward, text selection, find in page, touch scrolling, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
-| ![](images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. |
+| ![](images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. A drag inside one item selects its characters for copying. |
 
 **Editing list items in place:** `TInkListBox.EditMode` says when the
 floating editor opens by itself - `emOnSelect` (the default; it opens when
@@ -262,10 +262,17 @@ so do Alt+Left, Alt+Right and a keyboard's Back and Forward keys.
 
 **The copy menu:** right-click any display control for **Copy**, **Copy this
 paragraph** (or line, or item), **Copy link address** over a link, **Copy
-all** and **Select all**. `TInkMemo` selects and copies like the page;
-`TInkListBox` copies its selected lines with Ctrl+C, and everything after
-Ctrl+A; `TInkLabel` offers its words and links. `CopyMenu := False` turns the menu off, a `PopupMenu` of your own
-replaces it, and `OnCopyMenu` lets you add items as it opens:
+all** and **Select all**. `TInkMemo` selects and copies like the page, and
+on both, Shift with the arrows, Home, End, PgUp and PgDn extends the
+selection from the keyboard. `TInkLabel` selects with the mouse - a drag,
+a word on a double click, everything on a triple - and so does
+`TInkListBox` inside one item: a drag that stays in the pressed item's row
+selects its characters (leaving the row drags the highlight, as always),
+and Ctrl+C copies the characters when some are selected, the selected
+lines otherwise, and everything after Ctrl+A. A mouse selection also lands
+on X11's primary clipboard, ready for a middle click. `CopyMenu := False`
+turns the menu off, a `PopupMenu` of your own replaces it, and
+`OnCopyMenu` lets you add items as it opens:
 
 ```pascal
 procedure TForm1.PageCopyMenu(Sender: TObject; Menu: TPopupMenu; X, Y: Integer);

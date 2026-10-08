@@ -16,7 +16,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, ImgList, LCLType, LCLIntf, Types,
-  Menus, InkDraw, InkMarkdown, InkCopyMenu;
+  Math, Menus, Clipbrd, InkDraw, InkMarkdown, InkCopyMenu;
 
 type
   TInkLinkEvent = procedure(Sender: TObject; const LinkName: string) of object;
@@ -64,6 +64,21 @@ type
     procedure SubPropChanged(Sender: TObject);
     procedure UpdateHover(const AHit: THTMLHitInfo);
   private
+    { character selection: offsets into the run map's Words }
+    FRunText: TInkRunText;
+    FRunsReady: Boolean;
+    FSelAnchor, FSelCaret: Integer;
+    FSelecting, FSelMoved: Boolean;
+    FSelectUnit: Integer;              // 0 characters, 1 words, 2 all
+    FUnitFrom, FUnitTo: Integer;
+    FPressX, FPressY: Integer;
+    FClicks, FLastClickX, FLastClickY: Integer;
+    FLastClickTime: QWord;
+    procedure NeedRuns;
+    procedure InvalidateRuns(AClearSelection: Boolean);
+    procedure ExtendSelectionTo(AOffset: Integer);
+    procedure DoSelectAll(Sender: TObject);
+  private
     FCopyMenu: Boolean;
     FCopyMenuHost: TInkCopyMenu;
     FOnCopyMenu: TInkCopyMenuEvent;
@@ -74,10 +89,13 @@ type
     { Everything the renderer needs beyond the text itself. }
     function Options: THTMLOptions;
     procedure Paint; override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer); override;
     procedure MouseLeave; override;
+    procedure FontChanged(Sender: TObject); override;
     procedure Click; override;
     procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: integer;
       WithThemeSpace: Boolean); override;
@@ -90,6 +108,12 @@ type
     destructor Destroy; override;
     { The caption with all markup stripped }
     function PlainText: string;
+    { character selection: a drag selects, a double click takes a word, a
+      triple click everything; the copy menu then offers Copy }
+    function HasSelection: Boolean;
+    function SelectedText: string;
+    procedure SelectAll;
+    procedure ClearSelection;
     { fills the copy menu for client X, Y without opening it }
     function BuildCopyMenu(X, Y: Integer): TPopupMenu;
     { The href under the mouse, '' when none }
@@ -176,6 +200,7 @@ begin
   inherited Create(AOwner);
   FCopyMenu := True;
   FCopyMenuHost := TInkCopyMenu.Create(Self);
+  FRunText := TInkRunText.Create;
   FHTMLScale := 100;
   FSuperSubScriptRatio := 0.7;
   FTransparent := True;
@@ -193,6 +218,7 @@ end;
 
 destructor TInkLabel.Destroy;
 begin
+  FreeAndNil(FRunText);
   FreeAndNil(FBorders);
   FreeAndNil(FLinkStyle);
   FreeAndNil(FLinkHoverStyle);
@@ -214,6 +240,7 @@ end;
 
 procedure TInkLabel.SubPropChanged(Sender: TObject);
 begin
+  InvalidateRuns(True);
   InvalidatePreferredSize;
   AdjustSize;
   Invalidate;
@@ -266,6 +293,7 @@ procedure TInkLabel.SetVertAlign(AValue: TInkVertAlign);
 begin
   if FVertAlign = AValue then Exit;
   FVertAlign := AValue;
+  InvalidateRuns(False);
   Invalidate;
 end;
 
@@ -273,6 +301,89 @@ procedure TInkLabel.SetHorzAlign(AValue: TInkHorzAlign);
 begin
   if FHorzAlign = AValue then Exit;
   FHorzAlign := AValue;
+  InvalidateRuns(False);
+  Invalidate;
+end;
+
+procedure TInkLabel.FontChanged(Sender: TObject);
+begin
+  inherited FontChanged(Sender);
+  InvalidateRuns(False);
+end;
+
+procedure TInkLabel.NeedRuns;
+begin
+  if FRunsReady then Exit;
+  FRunText.Build(Canvas, ClientRect, RenderText, Options);
+  FRunsReady := True;
+end;
+
+procedure TInkLabel.InvalidateRuns(AClearSelection: Boolean);
+begin
+  FRunsReady := False;
+  if AClearSelection and (FSelAnchor <> FSelCaret) then
+  begin
+    FSelAnchor := 0;
+    FSelCaret := 0;
+  end;
+end;
+
+function TInkLabel.HasSelection: Boolean;
+begin
+  Result := FSelAnchor <> FSelCaret;
+end;
+
+function TInkLabel.SelectedText: string;
+begin
+  Result := '';
+  if not HasSelection then Exit;
+  NeedRuns;
+  Result := FRunText.TextRange(FSelAnchor, FSelCaret);
+end;
+
+procedure TInkLabel.SelectAll;
+begin
+  NeedRuns;
+  FSelAnchor := 0;
+  FSelCaret := Length(FRunText.Words);
+  Invalidate;
+end;
+
+procedure TInkLabel.ClearSelection;
+begin
+  if not HasSelection then Exit;
+  FSelAnchor := FSelCaret;
+  Invalidate;
+end;
+
+procedure TInkLabel.DoSelectAll(Sender: TObject);
+begin
+  SelectAll;
+end;
+
+procedure TInkLabel.ExtendSelectionTo(AOffset: Integer);
+var
+  WordFrom, WordTo: Integer;
+begin
+  case FSelectUnit of
+    1:
+      begin
+        FRunText.WordAt(AOffset, WordFrom, WordTo);
+        if WordFrom < FUnitFrom then
+        begin
+          FSelAnchor := FUnitTo;
+          FSelCaret := WordFrom;
+        end
+        else
+        begin
+          FSelAnchor := FUnitFrom;
+          FSelCaret := WordTo;
+        end;
+      end;
+    2: ;   // everything is selected already
+  else
+    FSelCaret := AOffset;
+  end;
   Invalidate;
 end;
 
@@ -310,6 +421,7 @@ end;
 procedure TInkLabel.TextChanged;
 begin
   inherited TextChanged;
+  InvalidateRuns(True);
   InvalidatePreferredSize;
   AdjustSize;
   Invalidate;
@@ -325,6 +437,7 @@ var
   WidthChanged: Boolean;
 begin
   WidthChanged := AWidth <> Width;
+  if (AWidth <> Width) or (AHeight <> Height) then InvalidateRuns(False);
   inherited DoSetBounds(ALeft, ATop, AWidth, AHeight);
   if WidthChanged and FWordWrap then
   begin
@@ -362,6 +475,69 @@ begin
   end;
   Canvas.Brush.Style := bsClear;
   HTMLDrawOpt(Canvas, R, [], RenderText, Options);
+  if HasSelection then
+  begin
+    NeedRuns;
+    FRunText.PaintSelection(Canvas, FSelAnchor, FSelCaret, clHighlight);
+  end;
+end;
+
+{ the mouse selects, as in a browser: a click places (and follows a link),
+  a drag selects, a double click takes a word and a triple click all of it }
+procedure TInkLabel.MouseDown(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+var
+  P, WordFrom, WordTo: Integer;
+  Now_: QWord;
+  Near: Boolean;
+begin
+  inherited MouseDown(Button, Shift, X, Y);
+  if Button <> mbLeft then Exit;
+  NeedRuns;
+  P := FRunText.OffsetAt(Canvas, X, Y);
+  FSelecting := True;
+  FSelMoved := False;
+  FPressX := X; FPressY := Y;
+  { A press soon after another in the same place is its second or third
+    click.  GTK sends a double click as a press and then the same press
+    again, marked double, at the same moment: that is not one more click. }
+  Now_ := GetTickCount64;
+  Near := (Abs(X - FLastClickX) <= 4) and (Abs(Y - FLastClickY) <= 4);
+  if not (Near and (Now_ - FLastClickTime < 25)) then
+  begin
+    if Near and (Now_ - FLastClickTime <= GetDoubleClickTime) and (FClicks < 3) then
+      Inc(FClicks)
+    else
+      FClicks := 1;
+  end;
+  FLastClickTime := Now_; FLastClickX := X; FLastClickY := Y;
+  if ssTriple in Shift then FClicks := 3
+  else if (ssDouble in Shift) and (FClicks < 2) then FClicks := 2;
+  if FClicks = 3 then
+  begin
+    FSelectUnit := 2; FSelMoved := True;
+    SelectAll;
+  end
+  else if FClicks = 2 then
+  begin
+    FSelectUnit := 1; FSelMoved := True;
+    FRunText.WordAt(P, WordFrom, WordTo);
+    FUnitFrom := WordFrom; FUnitTo := WordTo;
+    FSelAnchor := WordFrom; FSelCaret := WordTo;
+    Invalidate;
+  end
+  else if (ssShift in Shift) and HasSelection then
+  begin
+    FSelectUnit := 0; FSelMoved := True;
+    FSelCaret := P;
+    Invalidate;
+  end
+  else
+  begin
+    FSelectUnit := 0;
+    FSelAnchor := P; FSelCaret := P;
+    Invalidate;
+  end;
 end;
 
 { Hover is tracked by link ordinal rather than by href, so two links to the
@@ -400,10 +576,26 @@ var
   Opts: THTMLOptions;
 begin
   inherited MouseMove(Shift, X, Y);
+  if FSelecting and (ssLeft in Shift) then
+  begin
+    if not FSelMoved and ((Abs(X - FPressX) > 3) or (Abs(Y - FPressY) > 3)) then
+      FSelMoved := True;
+    if FSelMoved then
+    begin
+      NeedRuns;
+      ExtendSelectionTo(FRunText.OffsetAt(Canvas, X, Y));
+      Exit;
+    end;
+  end;
   Opts := Options;
   Opts.HoverIndex := 0;   // the hit test must not depend on the current hover
   Canvas.Font := Font;
   UpdateHover(HTMLHitTest(Canvas, ClientRect, RenderText, Opts, X, Y));
+  if FHoverIndex = 0 then
+  begin
+    NeedRuns;
+    if FRunText.OverText(X, Y) then Cursor := crIBeam else Cursor := crDefault;
+  end;
 end;
 
 procedure TInkLabel.MouseLeave;
@@ -422,6 +614,13 @@ procedure TInkLabel.MouseUp(Button: TMouseButton; Shift: TShiftState;
   X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
+  if (Button = mbLeft) and FSelecting then
+  begin
+    FSelecting := False;
+    if FSelMoved and HasSelection then
+      { X11's other clipboard: what is selected is ready for a middle click }
+      Clipboard(ctPrimarySelection).AsText := SelectedText;
+  end;
   if (Button = mbRight) and (FHoverIndex > 0) and (FHoverLink <> '') and
     Assigned(FOnLinkRightClick) then
     FOnLinkRightClick(Self, FHoverLink);
@@ -430,6 +629,8 @@ end;
 procedure TInkLabel.Click;
 begin
   inherited Click;
+  { a drag that selected is not a click on a link }
+  if FSelMoved then Exit;
   if (FHoverIndex > 0) and (FHoverLink <> '') then
   begin
     if Assigned(FOnLinkClick) then
@@ -476,6 +677,9 @@ function TInkLabel.BuildCopyMenu(X, Y: Integer): TPopupMenu;
 var Texts: TInkCopyTexts;
 begin
   Texts := Default(TInkCopyTexts);
+  Texts.CanSelect := True;
+  Texts.Selection := SelectedText;
+  Texts.SelectAll := @DoSelectAll;
   Texts.Link := FHoverLink;
   Texts.All := PlainText;
   FCopyMenuHost.Build(Self, Texts, X, Y, FOnCopyMenu);
