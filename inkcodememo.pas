@@ -37,6 +37,13 @@ type
     FMaxLength: Integer;
     FWantReturns: Boolean;
     FWantTabs: Boolean;
+    FAutoHeight: Boolean;
+    FMinLines, FMaxLines: Integer;
+    FAdjusting: Boolean;
+    procedure SetAutoHeight(AValue: Boolean);
+    procedure SetMinLines(AValue: Integer);
+    procedure SetMaxLines(AValue: Integer);
+    procedure AdjustHeight;
     function GetText: string;
     procedure SetText(const AValue: string);
     function GetLines: TStrings;
@@ -52,6 +59,8 @@ type
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure Paint; override;
+    procedure Resize; override;
+    procedure FontChanged(Sender: TObject); override;
     procedure CMWantSpecialKey(var Message: TCMWantSpecialKey); message CM_WANTSPECIALKEY;
   public
     constructor Create(AOwner: TComponent); override;
@@ -70,6 +79,12 @@ type
       button); with WantTabs on, Tab indents instead of leaving the box }
     property WantReturns: Boolean read FWantReturns write FWantReturns default True;
     property WantTabs: Boolean read FWantTabs write FWantTabs default False;
+    { the box grows with its text, between MinLines and MaxLines of the
+      control's font, then scrolls - a question box that starts as one
+      line and opens up as it is written }
+    property AutoHeight: Boolean read FAutoHeight write SetAutoHeight default False;
+    property MinLines: Integer read FMinLines write SetMinLines default 1;
+    property MaxLines: Integer read FMaxLines write SetMaxLines default 8;
     { every character's color and style, asked as it is drawn and measured -
       AIndex counts from 1 over the whole text, line breaks included }
     property OnGetCharAttrs: TInkGetCharAttrsEvent read FOnGetCharAttrs write FOnGetCharAttrs;
@@ -89,6 +104,8 @@ begin
   FLines.OnChange := @LinesChanged;
   FTextHintColor := clDefault;
   FWantReturns := True;
+  FMinLines := 1;
+  FMaxLines := 8;
   { the plain editor keeps its own change hook under the inherited one }
   inherited OnChange := @SelfChanged;
 end;
@@ -109,7 +126,62 @@ begin
   finally
     FSettingLines := False;
   end;
+  AdjustHeight;
   if Assigned(FOnChangePlain) then FOnChangePlain(Self);
+end;
+
+procedure TInkCodeMemo.SetAutoHeight(AValue: Boolean);
+begin
+  if FAutoHeight = AValue then Exit;
+  FAutoHeight := AValue;
+  AdjustHeight;
+end;
+
+procedure TInkCodeMemo.SetMinLines(AValue: Integer);
+begin
+  AValue := Max(1, AValue);
+  if FMinLines = AValue then Exit;
+  FMinLines := AValue;
+  AdjustHeight;
+end;
+
+procedure TInkCodeMemo.SetMaxLines(AValue: Integer);
+begin
+  AValue := Max(1, AValue);
+  if FMaxLines = AValue then Exit;
+  FMaxLines := AValue;
+  AdjustHeight;
+end;
+
+procedure TInkCodeMemo.Resize;
+begin
+  inherited Resize;
+  { a new width re-wraps the text, and the height follows it }
+  AdjustHeight;
+end;
+
+procedure TInkCodeMemo.FontChanged(Sender: TObject);
+begin
+  inherited FontChanged(Sender);
+  AdjustHeight;
+end;
+
+procedure TInkCodeMemo.AdjustHeight;
+var
+  TH, Frame, Want: Integer;
+begin
+  if not FAutoHeight or FAdjusting or not HandleAllocated then Exit;
+  FAdjusting := True;
+  try
+    Canvas.Font := Font;
+    TH := Canvas.TextHeight('Ag') + 1;
+    Frame := Height - ClientHeight + 6;   // the border, and the margins
+    Want := EnsureRange(DocumentHeight,
+      Max(1, FMinLines) * TH, Max(FMinLines, FMaxLines) * TH) + Frame;
+    if Want <> Height then Height := Want;
+  finally
+    FAdjusting := False;
+  end;
 end;
 
 function TInkCodeMemo.GetText: string;
@@ -149,6 +221,9 @@ begin
   finally
     M.Free;
   end;
+  { SelfChanged steps aside while FSettingLines holds, so the height
+    follows a programmatic Text here }
+  AdjustHeight;
 end;
 
 function TInkCodeMemo.GetLines: TStrings;

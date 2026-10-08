@@ -112,6 +112,11 @@ type
     { the block, and the part of it the words are drawn in; page coordinates }
     Bounds, TextBounds: TRect;
     Indent, PointSize, Padding, GapBefore, GapAfter, MarkerWidth: Integer;
+    { which of a memo's entries this block belongs to; a page leaves it 0 }
+    Entry: Integer;
+    { the background continues through the gap to the next block - a
+      memo's entry band is one band, not one stripe per paragraph }
+    BandWithNext: Boolean;
     { code: whitespace kept, the fixed face, never wrapped - a long line is
       cut off at the block's edge }
     Pre: Boolean;
@@ -298,6 +303,12 @@ type
     { no blocks, no styles, no selection: what Parse starts from }
     procedure BeginDocument;
     procedure AddBlock(B: TInkPageBlock);
+    { every block handed over to AList, none kept and none freed - how a
+      memo borrows a scratch page's parser for one entry }
+    procedure ExtractBlocks(AList: TList);
+    { blocks from AFrom on freed and forgotten - how a memo replaces its
+      growing last entry without touching the rest }
+    procedure TruncateBlocks(AFrom: Integer);
     { blocks from Index on are laid out again when next needed; 0 for all }
     procedure InvalidateLayout(FromIndex: Integer = 0);
     procedure Layout;
@@ -319,8 +330,10 @@ type
     procedure LinkClicked(const Link: TInkLinkInfo); virtual;
     { the pointer moved onto another link, or off one (ABlock -1) }
     procedure HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo); virtual;
-    { the copy menu's name for the block under the pointer }
-    function CopyBlockCaption: string; virtual;
+    { the copy menu's name for the block under the pointer, and the text
+      its item copies - a memo answers for the whole entry }
+    function CopyBlockCaption(AIndex: Integer): string; virtual;
+    function MenuBlockText(AIndex: Integer): string; virtual;
     procedure BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     procedure CreateWnd; override;
@@ -1090,6 +1103,37 @@ begin
   { the coloring is in the blocks' markup, so they have to be read again }
   Parse;
 end;
+procedure TInkCustomPage.ExtractBlocks(AList: TList);
+var I: Integer;
+begin
+  if FRenderCache<>nil then FRenderCache.Clear;
+  if FAnimated<>nil then FAnimated.Clear;
+  FTimer.Enabled := False;
+  for I := 0 to FBlocks.Count-1 do AList.Add(FBlocks[I]);
+  FBlocks.Clear;
+  SetLength(FFoldOpen,0); SetLength(FFoldParent,0);
+  FLayoutDirty := True;
+end;
+
+procedure TInkCustomPage.TruncateBlocks(AFrom: Integer);
+var I: Integer;
+begin
+  if AFrom>=FBlocks.Count then Exit;
+  if FRenderCache<>nil then FRenderCache.Clear;
+  if FAnimated<>nil then
+    for I := FAnimated.Count-1 downto 0 do
+      if FBlocks.IndexOf(FAnimated[I])>=AFrom then FAnimated.Delete(I);
+  for I := FBlocks.Count-1 downto AFrom do
+  begin
+    TObject(FBlocks[I]).Free;
+    FBlocks.Delete(I);
+  end;
+  { nothing may keep pointing past the end }
+  if FHoverBlock>=FBlocks.Count then FHoverBlock := -1;
+  if FRunBlock<>nil then FRunBlock := nil;
+  FSelAnchor := Clamp(FSelAnchor); FSelCaret := Clamp(FSelCaret);
+end;
+
 procedure TInkCustomPage.ClearBlocks;
 var I: Integer;
 begin
@@ -1175,7 +1219,7 @@ end;
 procedure TInkCustomPage.HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo);
 begin
 end;
-function TInkCustomPage.CopyBlockCaption: string;
+function TInkCustomPage.CopyBlockCaption(AIndex: Integer): string;
 begin Result := SInkCopyParagraph end;
 procedure TInkCustomPage.Animate(Sender: TObject);
 var I: Integer; B: TInkPageBlock; R: TRect;
@@ -1344,6 +1388,11 @@ begin
   Result := StringReplace(Result,#9#10,#10,[rfReplaceAll]);
   while (Result<>'') and (Result[Length(Result)] in [#9,#10,#13]) do
     SetLength(Result,Length(Result)-1);
+end;
+
+function TInkCustomPage.MenuBlockText(AIndex: Integer): string;
+begin
+  Result := TidyCopy(BlockText(AIndex));
 end;
 
 function TInkCustomPage.PlainText: string;
@@ -3292,7 +3341,14 @@ begin
       ACanvas.Brush.Color := FPageBack; ACanvas.Brush.Style := bsClear;
       Continue;
     end;
-    if B.BackColor<>clNone then begin ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid; ACanvas.FillRect(R) end;
+    if B.BackColor<>clNone then
+    begin
+      ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid;
+      ACanvas.FillRect(R);
+      if B.BandWithNext and (I+1<FBlocks.Count) then
+        ACanvas.FillRect(Rect(R.Left,R.Bottom,R.Right,
+          TInkPageBlock(FBlocks[I+1]).Bounds.Top-FScroll.Position));
+    end;
     ACanvas.Brush.Style := bsClear;
     if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
     { a stripe down one edge, drawn over the background and inside the block.
@@ -4138,8 +4194,8 @@ begin
   if I>=0 then
   begin
     B := TInkPageBlock(FBlocks[I]);
-    Texts.Block := TidyCopy(BlockText(I));
-    Texts.BlockCaption := CopyBlockCaption;
+    Texts.Block := MenuBlockText(I);
+    Texts.BlockCaption := CopyBlockCaption(I);
     if (Texts.Block<>'') and (B.Marker<>'') then Texts.Block := B.Marker+' '+Texts.Block;
   end;
   Texts.Link := HitLink(X,Y);

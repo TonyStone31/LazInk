@@ -62,10 +62,13 @@ Linux** has been run.
 ### A. What real programs asked for
 
 Everything asked so far is done - the send-window wishlist, light and
-dark, the grid bugs, and the dialog round (`TextHint`, undo and the
-context menu on `TInkEdit`, `TInkCodeMemo`, `itfPlain`) - and the story
-moved to `docs/HISTORY.md`; each bug folder keeps its own "how".  Open
-here: whatever Heckers Sketch's next window finds.
+dark, the grid bugs, the dialog round (`TextHint`, undo and the
+context menu on `TInkEdit`, `TInkCodeMemo`, `itfPlain`), and the chat
+window (8 October 2026: `TInkEdit.PasswordChar`; whole-message entries in
+`TInkMemo` with `AppendBlock`/`AppendPlain`/`ReplaceLast`/`EntryAt`;
+`TInkCodeMemo.AutoHeight`) - and the story moved to `docs/HISTORY.md`;
+each bug folder keeps its own "how".  Open here: whatever Heckers
+Sketch's next window finds.
 * `TInkCodeMemo` still scrolls with the stock scrollbar, not a
   `TInkScrollBar`, and has no `ScrollBars` property yet.
 

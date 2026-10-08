@@ -43,11 +43,32 @@ type
   TInkMemoLinkEvent = procedure(Sender: TObject; LineIndex: Integer;
     const LinkName: string) of object;
 
+  { what one entry of the memo is: its line of Lines holds the source }
+  TInkMemoEntry = record
+    { itfHTML/itfMarkdown as an override; UseFormat False follows the
+      memo's own TextFormat }
+    Format: TInkTextFormat;
+    UseFormat: Boolean;
+    { shown exactly as written, markup and all }
+    Plain: Boolean;
+    { a whole message laid out like a fragment of a page - paragraphs,
+      lists, quotes, fenced code - instead of one line of inline markup }
+    Block: Boolean;
+    { a band behind the entry, and an inset, so a question can be set
+      apart from an answer }
+    Color: TColor;
+    Indent: Integer;
+    { where its blocks start, and how many - kept by Parse and the appends }
+    BlockFrom, BlockCount: Integer;
+  end;
+
   { TInkMemo }
 
   TInkMemo = class(TInkCustomPage)
   private
     FLines: TStringList;
+    FEntries: array of TInkMemoEntry;
+    FScratch: TInkCustomPage;   // parses a block entry's fragment
     FHTMLScale: Integer;
     FSuperSubScriptRatio: Double;
     FShowSelection: Boolean;
@@ -81,6 +102,12 @@ type
     procedure SubPropChanged(Sender: TObject);
     function MakeLine(AIndex: Integer): TInkPageBlock;
     function AtEnd: Boolean;
+    function DefaultEntry: TInkMemoEntry;
+    function EntryFormat(const E: TInkMemoEntry): TInkTextFormat;
+    procedure MakeEntryBlocks(AIndex: Integer);
+    procedure AddEntry(const AText: string; const E: TInkMemoEntry);
+    procedure ScratchHighlight(Sender: TObject; const ACode, ALanguage: string;
+      var AMarkup: string);
   protected
     procedure Parse; override;
     procedure LayoutColumn(out ALeft, AWidth: Integer); override;
@@ -90,7 +117,8 @@ type
     function BlockOptions(Index: Integer): THTMLOptions; override;
     procedure LinkClicked(const Link: TInkLinkInfo); override;
     procedure HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo); override;
-    function CopyBlockCaption: string; override;
+    function CopyBlockCaption(AIndex: Integer): string; override;
+    function MenuBlockText(AIndex: Integer): string; override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer); override;
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
@@ -99,6 +127,24 @@ type
     destructor Destroy; override;
     { adds a line at the end; the view follows it if it was at the end }
     procedure Append(const ALine: string);
+    { text that must never be read as markup, shown exactly as written -
+      what a stranger or a model wrote }
+    procedure AppendPlain(const AText: string);
+    { A whole message as ONE entry, laid out like a fragment of a page:
+      paragraphs, lists, quotes, tables, fenced code through
+      OnHighlightCode.  AColor puts a band behind it and AIndent sets it
+      in, so a question reads apart from an answer. }
+    procedure AppendBlock(const AText: string; AFormat: TInkTextFormat;
+      AColor: TColor = clNone; AIndent: Integer = 0);
+    { replaces the last entry's text and lays out only that entry - for an
+      answer arriving a word at a time.  The view follows only when it was
+      already at the end, and a selection elsewhere stays put. }
+    procedure ReplaceLast(const AText: string);
+    { the entry under a client point, -1 for none - for "Copy this answer"
+      on a right click }
+    function EntryAt(X, Y: Integer): Integer;
+    { entry AIndex with all markup stripped, however many paragraphs }
+    function GetEntryText(AIndex: Integer): string;
     { one complete HTML or Markdown document as the only line - a table or
       a list cannot be split across lines }
     procedure LoadDocument(const ADocument: string);
@@ -168,6 +214,10 @@ implementation
 uses
   Math;
 
+type
+  { reaches TInkCustomPage's protected side for the scratch parser }
+  TInkPageAccess = class(TInkCustomPage);
+
 { TInkMemo }
 
 constructor TInkMemo.Create(AOwner: TComponent);
@@ -196,6 +246,7 @@ end;
 
 destructor TInkMemo.Destroy;
 begin
+  FreeAndNil(FScratch);
   FLines.OnChange := nil;
   inherited Destroy;
   FreeAndNil(FLines);
@@ -205,27 +256,113 @@ begin
   FreeAndNil(FLinkHoverStyle);
 end;
 
+function TInkMemo.DefaultEntry: TInkMemoEntry;
+begin
+  Result := Default(TInkMemoEntry);
+  Result.Color := clNone;
+end;
+
+function TInkMemo.EntryFormat(const E: TInkMemoEntry): TInkTextFormat;
+begin
+  if E.Plain then Exit(itfPlain);
+  if E.UseFormat then Result := E.Format else Result := TextFormat;
+end;
+
 function TInkMemo.MakeLine(AIndex: Integer): TInkPageBlock;
 begin
   Result := TInkPageBlock.Create;
   Result.Tag := 'line';
-  Result.Source := InkToHTML(FLines[AIndex], TextFormat);
+  Result.Source := InkToHTML(FLines[AIndex], EntryFormat(FEntries[AIndex]));
 end;
 
-{ one block per line, and the view stays where it was }
+procedure TInkMemo.ScratchHighlight(Sender: TObject; const ACode,
+  ALanguage: string; var AMarkup: string);
+begin
+  if Assigned(OnHighlightCode) then OnHighlightCode(Self, ACode, ALanguage, AMarkup);
+end;
+
+{ The blocks of entry AIndex, appended to the memo's own.  A line entry is
+  one block of inline markup; a block entry is parsed by a hidden page -
+  the same parser the page viewer uses - and its blocks taken over whole,
+  so lists, quotes, tables and fenced code lay out as they would on a
+  page. }
+procedure TInkMemo.MakeEntryBlocks(AIndex: Integer);
+var
+  Taken: TList;
+  I, From: Integer;
+  B: TInkPageBlock;
+begin
+  From := BlockCount;
+  if FEntries[AIndex].Block then
+  begin
+    if FScratch = nil then
+    begin
+      FScratch := TInkCustomPage.Create(Self);
+      FScratch.Name := '';
+    end;
+    FScratch.Color := Color;
+    FScratch.Font := Font;
+    TInkPageAccess(FScratch).HighlightCode := HighlightCode;
+    TInkPageAccess(FScratch).OnHighlightCode := @ScratchHighlight;
+    if EntryFormat(FEntries[AIndex]) = itfMarkdown then
+      FScratch.LoadMarkdown(FLines[AIndex])
+    else
+      FScratch.LoadHTML(FLines[AIndex]);
+    FScratch.ClearHistory;
+    Taken := TList.Create;
+    try
+      TInkPageAccess(FScratch).ExtractBlocks(Taken);
+      for I := 0 to Taken.Count - 1 do
+        AddBlock(TInkPageBlock(Taken[I]));
+    finally
+      Taken.Free;
+    end;
+  end
+  else
+    AddBlock(MakeLine(AIndex));
+  FEntries[AIndex].BlockFrom := From;
+  FEntries[AIndex].BlockCount := BlockCount - From;
+  for I := From to BlockCount - 1 do
+  begin
+    B := Block(I);
+    B.Entry := AIndex;
+    { one band for the whole entry, gaps included }
+    B.BandWithNext := (FEntries[AIndex].Color <> clNone) and (I < BlockCount - 1);
+  end;
+end;
+
+{ every entry's blocks, and the view stays where it was }
 procedure TInkMemo.Parse;
 var
   I: Integer;
 begin
   if FLines = nil then Exit;
   BeginDocument;
+  if Length(FEntries) <> FLines.Count then
+  begin
+    I := Length(FEntries);
+    SetLength(FEntries, FLines.Count);
+    while I < Length(FEntries) do
+    begin
+      FEntries[I] := DefaultEntry;
+      Inc(I);
+    end;
+  end;
   for I := 0 to FLines.Count - 1 do
-    AddBlock(MakeLine(I));
+    MakeEntryBlocks(I);
   InvalidateLayout(0);
 end;
 
 procedure TInkMemo.LinesChanged(Sender: TObject);
+var
+  I: Integer;
 begin
+  { Lines changed from outside: every entry is an ordinary line again.
+    The entry kinds live with AppendPlain, AppendBlock and ReplaceLast,
+    which keep them while they edit Lines. }
+  SetLength(FEntries, FLines.Count);
+  for I := 0 to High(FEntries) do
+    FEntries[I] := DefaultEntry;
   Parse;
 end;
 
@@ -237,21 +374,108 @@ begin
   Result := ScrollY >= ContentHeight - ClientHeight - 2;
 end;
 
-procedure TInkMemo.Append(const ALine: string);
+{ one new entry and only its blocks laid out, not the whole memo again }
+procedure TInkMemo.AddEntry(const AText: string; const E: TInkMemoEntry);
 var
   Follow: Boolean;
 begin
   Follow := AtEnd;
-  { one new block and one block laid out, not the whole memo again }
   FLines.OnChange := nil;
   try
-    FLines.Add(ALine);
+    FLines.Add(AText);
   finally
     FLines.OnChange := @LinesChanged;
   end;
-  AddBlock(MakeLine(FLines.Count - 1));
-  InvalidateLayout(FLines.Count - 1);
+  SetLength(FEntries, FLines.Count);
+  FEntries[FLines.Count - 1] := E;
+  MakeEntryBlocks(FLines.Count - 1);
+  InvalidateLayout(FEntries[FLines.Count - 1].BlockFrom);
   if Follow then ScrollTo(MaxInt);
+end;
+
+procedure TInkMemo.Append(const ALine: string);
+begin
+  AddEntry(ALine, DefaultEntry);
+end;
+
+procedure TInkMemo.AppendPlain(const AText: string);
+var
+  E: TInkMemoEntry;
+begin
+  E := DefaultEntry;
+  E.Plain := True;
+  AddEntry(AText, E);
+end;
+
+procedure TInkMemo.AppendBlock(const AText: string; AFormat: TInkTextFormat;
+  AColor: TColor; AIndent: Integer);
+var
+  E: TInkMemoEntry;
+begin
+  E := DefaultEntry;
+  E.Block := True;
+  E.Format := AFormat;
+  E.UseFormat := True;
+  E.Color := AColor;
+  E.Indent := Max(0, AIndent);
+  AddEntry(AText, E);
+end;
+
+procedure TInkMemo.ReplaceLast(const AText: string);
+var
+  Follow: Boolean;
+  N: Integer;
+begin
+  N := FLines.Count - 1;
+  if N < 0 then
+  begin
+    Append(AText);
+    Exit;
+  end;
+  if FLines[N] = AText then Exit;
+  Follow := AtEnd;
+  FLines.OnChange := nil;
+  try
+    FLines[N] := AText;
+  finally
+    FLines.OnChange := @LinesChanged;
+  end;
+  { only the last entry's blocks are rebuilt and laid out; everything
+    before them - and a selection in it - stays exactly where it was }
+  TruncateBlocks(FEntries[N].BlockFrom);
+  MakeEntryBlocks(N);
+  InvalidateLayout(FEntries[N].BlockFrom);
+  if Follow then ScrollTo(MaxInt);
+end;
+
+function TInkMemo.EntryAt(X, Y: Integer): Integer;
+var
+  I: Integer;
+  R: TRect;
+begin
+  Result := -1;
+  Layout;
+  for I := 0 to BlockCount - 1 do
+  begin
+    R := Block(I).Bounds;
+    if (Y + ScrollY >= R.Top) and (Y + ScrollY < R.Bottom) then
+      Exit(Block(I).Entry);
+  end;
+end;
+
+function TInkMemo.GetEntryText(AIndex: Integer): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  if (AIndex < 0) or (AIndex >= FLines.Count) then Exit;
+  Layout;
+  for I := FEntries[AIndex].BlockFrom to
+    FEntries[AIndex].BlockFrom + FEntries[AIndex].BlockCount - 1 do
+  begin
+    if Result <> '' then Result := Result + LineEnding;
+    Result := Result + BlockText(I);
+  end;
 end;
 
 procedure TInkMemo.LoadDocument(const ADocument: string);
@@ -367,25 +591,40 @@ end;
 procedure TInkMemo.StyleBlock(B: TInkPageBlock);
 var
   C: TColor;
+  E: TInkMemoEntry;
 begin
-  SetLength(B.Bars, 0);
-  B.Indent := 0;
-  { negative: pixels, the way every other block spells its size - positive
-    read as points and drew the memo's text a third too big }
-  B.PointSize := -Max(1, Round(FLayoutBase * FHTMLScale / 100));
-  B.Bold := False;
-  B.FaceName := '';
-  B.Pre := False;
-  B.NoWrap := not FWordWrap;
-  C := Font.Color;
-  if C = clDefault then C := clWindowText;
-  B.TextColor := C;
-  B.Padding := 0;
-  B.GapBefore := FBorders.Top;
-  B.GapAfter := FBorders.Bottom;
-  B.BorderColor := clNone;
-  B.BackColor := clNone;
-  B.BarColor := clNone;
+  E := DefaultEntry;
+  if (B.Entry >= 0) and (B.Entry <= High(FEntries)) then E := FEntries[B.Entry];
+  if E.Block then
+  begin
+    { a block entry's paragraphs dress like a page's - heading sizes, list
+      markers, a quote's bar, a code block's shade }
+    inherited StyleBlock(B);
+  end
+  else
+  begin
+    SetLength(B.Bars, 0);
+    B.Indent := 0;
+    { negative: pixels, the way every other block spells its size - positive
+      read as points and drew the memo's text a third too big }
+    B.PointSize := -Max(1, Round(FLayoutBase * FHTMLScale / 100));
+    B.Bold := False;
+    B.FaceName := '';
+    B.Pre := False;
+    B.NoWrap := not FWordWrap;
+    C := Font.Color;
+    if C = clDefault then C := clWindowText;
+    B.TextColor := C;
+    B.Padding := 0;
+    B.GapBefore := FBorders.Top;
+    B.GapAfter := FBorders.Bottom;
+    B.BorderColor := clNone;
+    B.BackColor := clNone;
+    B.BarColor := clNone;
+  end;
+  { the entry's own band and inset, over whichever dress }
+  if E.Color <> clNone then B.BackColor := E.Color;
+  if E.Indent > 0 then Inc(B.Indent, E.Indent);
 end;
 
 function TInkMemo.Options: THTMLOptions;
@@ -404,9 +643,21 @@ begin
       FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, FHoverIndex);
 end;
 
-function TInkMemo.CopyBlockCaption: string;
+function TInkMemo.CopyBlockCaption(AIndex: Integer): string;
 begin
   Result := SInkCopyLine;
+  if (AIndex >= 0) and (AIndex < BlockCount) then
+    if FEntries[Block(AIndex).Entry].Block then Result := SInkCopyMessage;
+end;
+
+function TInkMemo.MenuBlockText(AIndex: Integer): string;
+begin
+  if (AIndex >= 0) and (AIndex < BlockCount) and
+    FEntries[Block(AIndex).Entry].Block then
+    { the whole message, not the paragraph the mouse happened to be on }
+    Result := GetEntryText(Block(AIndex).Entry)
+  else
+    Result := inherited MenuBlockText(AIndex);
 end;
 
 { --- links -------------------------------------------------------------- }
@@ -424,7 +675,7 @@ begin
     FOnLinkLeave(Self, OldLine, OldLink);
   if AHit.OnLink and (ABlock >= 0) then
   begin
-    FHoverLine := ABlock;
+    FHoverLine := Block(ABlock).Entry;
     FHoverIndex := AHit.LinkIndex;
     FHoverHref := LinkHref(AHit);
     FHoverLinkText := AHit.LinkText;
@@ -443,7 +694,7 @@ end;
 procedure TInkMemo.LinkClicked(const Link: TInkLinkInfo);
 begin
   if Assigned(FOnLinkClick) then
-    FOnLinkClick(Self, Link.Block, Link.Href)
+    FOnLinkClick(Self, Block(Link.Block).Entry, Link.Href)
   else if FAutoOpenLink then
     OpenURL(Link.Href);
 end;
@@ -463,8 +714,10 @@ function TInkMemo.GetPlainText(ALine: Integer): string;
 begin
   if (ALine < 0) or (ALine >= FLines.Count) then
     Result := ''
+  else if FEntries[ALine].Block then
+    Result := GetEntryText(ALine)
   else
-    Result := HTMLPlainText(InkToHTML(FLines[ALine], TextFormat));
+    Result := HTMLPlainText(InkToHTML(FLines[ALine], EntryFormat(FEntries[ALine])));
 end;
 
 function TInkMemo.PlainText: string;

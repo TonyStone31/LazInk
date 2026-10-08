@@ -3549,6 +3549,111 @@ begin
   end;
 end;
 
+{ --- the chat window: whole-message entries, a growing question box --- }
+procedure ChatWindowChecks;
+var MM: TInkMemo; E: TEditProbe; CM: TInkCodeMemo;
+  Shot: TBitmap; Kept: string; N, H1, H3, H4, H8: Integer;
+  Menu: TPopupMenu; P: TPoint; Found: Boolean; i: Integer;
+const EL = LineEnding;
+begin
+  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 0, 400, 300);
+  E := TEditProbe.Create(F); E.Parent := F; E.SetBounds(0, 310, 160, 28);
+  CM := TInkCodeMemo.Create(F); CM.Parent := F; CM.SetBounds(0, 350, 300, 60);
+  Shot := TBitmap.Create;
+  try
+    { a whole message as one entry, beside ordinary lines }
+    MM.Append('a plain <b>line</b> entry');
+    MM.AppendBlock('A **question** with a list:' + EL + EL +
+      '- first' + EL + '- second' + EL + EL +
+      '```pascal' + EL + 'begin end.' + EL + '```',
+      itfMarkdown, $00F4EFEA, 0);
+    MM.AppendPlain('a model wrote <b>this</b> & more');
+    Check(MM.Count = 3, Format('chat: three entries (%d)', [MM.Count]));
+    Check(MM.BlockCount > 4, Format('chat: the block entry brought its paragraphs (%d blocks)',
+      [MM.BlockCount]));
+    Check(Pos('A question with a list:', MM.GetPlainText(1)) = 1,
+      'chat: the entry''s text, markup stripped: ' + MM.GetPlainText(1));
+    Check(Pos('begin end.', MM.GetPlainText(1)) > 0, 'chat: through to the code');
+    Check(MM.GetPlainText(2) = 'a model wrote <b>this</b> & more',
+      'chat: AppendPlain stays literal: ' + MM.GetPlainText(2));
+
+    { the band, and which entry each block belongs to }
+    Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
+    MM.RenderTo(Shot.Canvas);
+    Check(MM.Block(0).Entry = 0, 'chat: the first block is entry 0');
+    Check(MM.Block(1).Entry = 1, 'chat: the message''s first block is entry 1');
+    Check(MM.Block(MM.BlockCount - 1).Entry = 2, 'chat: the last block is entry 2');
+    Found := False;
+    for i := 0 to MM.BlockCount - 1 do
+      if (MM.Block(i).Entry = 1) and (MM.Block(i).BackColor = $00F4EFEA) then Found := True;
+    Check(Found, 'chat: the entry''s band color reached its blocks');
+
+    { the entry under a point, and its copy menu }
+    P := MM.PositionPoint(Pos2(1, 1));
+    Check(MM.EntryAt(P.X, P.Y + 2) = 1, 'chat: EntryAt finds the message');
+    Check(MM.EntryAt(5, MM.ClientHeight - 1) = -1, 'chat: and nothing below the last block');
+    Menu := MM.BuildCopyMenu(P.X, P.Y + 2);
+    Found := False;
+    for i := 0 to Menu.Items.Count - 1 do
+      if Menu.Items[i].Caption = SInkCopyMessage then Found := True;
+    Check(Found, 'chat: the menu offers the whole message');
+    Menu.Free;
+
+    { the answer grows in place; a selection elsewhere stays put }
+    MM.Select(Pos2(0, 2), Pos2(0, 7));
+    Kept := MM.SelectedText;
+    Check(Kept <> '', 'chat: something is selected in the first entry');
+    N := MM.Count;
+    MM.ReplaceLast('grown, a word at a time');
+    MM.ReplaceLast('grown, a word at a time, and longer');
+    Check(MM.Count = N, 'chat: ReplaceLast makes no new entry');
+    Check(MM.GetPlainText(2) = 'grown, a word at a time, and longer',
+      'chat: the last entry holds the latest text');
+    Check(MM.SelectedText = Kept, 'chat: the selection above it did not move');
+
+    { PasswordChar: dots on the screen, nothing to the clipboard }
+    E.PasswordChar := '*';
+    E.Text := 'secret';
+    E.SelectAll;
+    Clipboard.AsText := 'sentinel';
+    E.CopyToClipboard;
+    Check(Clipboard.AsText = 'sentinel', 'password: Copy hands over nothing');
+    E.CutToClipboard;
+    Check((Clipboard.AsText = 'sentinel') and (E.Text = 'secret'),
+      'password: Cut neither copies nor deletes');
+    E.PasswordChar := #0;
+    E.CopyToClipboard;
+    Check(Clipboard.AsText = 'secret', 'password: cleared, the edit copies again');
+
+    { the question box grows with its text, between MinLines and MaxLines }
+    CM.MinLines := 1; CM.MaxLines := 4; CM.AutoHeight := True;
+    CM.Text := 'one';
+    Application.ProcessMessages;
+    H1 := CM.Height;
+    CM.Text := 'one' + EL + 'two' + EL + 'three';
+    Application.ProcessMessages;
+    H3 := CM.Height;
+    CM.Text := 'one' + EL + 'two' + EL + 'three' + EL + 'four';
+    Application.ProcessMessages;
+    H4 := CM.Height;
+    CM.Text := 'one' + EL + 'two' + EL + 'three' + EL + 'four' + EL +
+      'five' + EL + 'six' + EL + 'seven' + EL + 'eight';
+    Application.ProcessMessages;
+    H8 := CM.Height;
+    Check(H3 > H1, Format('autoheight: three lines are taller than one (%d > %d)', [H3, H1]));
+    Check(H4 > H3, Format('autoheight: four taller still (%d > %d)', [H4, H3]));
+    Check(H8 = H4, Format('autoheight: MaxLines caps it there (%d = %d)', [H8, H4]));
+    CM.Text := 'one';
+    Application.ProcessMessages;
+    Check(CM.Height = H1, 'autoheight: and it shrinks back down');
+  finally
+    Shot.Free;
+    CM.Free;
+    E.Free;
+    MM.Free;
+  end;
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -3760,6 +3865,7 @@ begin
     RichEditMarkdownChecks;
     RichEditTableChecks;
     EditAndPlainChecks;
+    ChatWindowChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

@@ -173,6 +173,8 @@ type
     procedure AdjustAttr(AIndex: Integer; var A: TInkAttr); virtual;
     { inserts plain text (line breaks kept) in the attributes at the caret }
     procedure InsertPlainText(const AText: string);
+    { the laid-out document's height in pixels, for a box that grows }
+    function DocumentHeight: Integer;
     procedure CreateWnd; override;
     procedure Paint; override;
     procedure Resize; override;
@@ -1355,6 +1357,12 @@ begin
     Result := FChars[AIndex]
   else
     Result := '';
+end;
+
+function TInkRichEdit.DocumentHeight: Integer;
+begin
+  NeedLayout;
+  Result := FDocHeight;
 end;
 
 procedure TInkRichEdit.InsertPlainText(const AText: string);
