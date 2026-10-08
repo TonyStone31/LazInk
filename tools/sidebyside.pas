@@ -54,6 +54,13 @@ type
     FLocked: Boolean;
     FShown: Integer;
     FSnaps: Integer;
+    { the crosshair: a horizontal line across both halves and a vertical
+      line in each at the same offset from its half's left edge, so an
+      edge on one side can be held against the other }
+    FGuideH, FGuideVL, FGuideVR: TShape;
+    FGuideTimer: TTimer;
+    FGuideOn: Boolean;
+    procedure GuideTick(Sender: TObject);
     procedure PaintLeft(Sender: TObject);
     procedure ScrollBoth(ADelta: Integer);
     procedure ShowWhich(N: Integer);
@@ -121,6 +128,19 @@ begin
     pouring seventy kilobytes of markup into a label is slow, and a run that
     only ever looks at the page should not wait for it }
 
+  FGuideH := TShape.Create(Self);
+  FGuideH.Parent := Self; FGuideH.Visible := False; FGuideH.Enabled := False;
+  FGuideH.Brush.Color := clRed; FGuideH.Pen.Color := clRed;
+  FGuideVL := TShape.Create(Self);
+  FGuideVL.Parent := Self; FGuideVL.Visible := False; FGuideVL.Enabled := False;
+  FGuideVL.Brush.Color := clRed; FGuideVL.Pen.Color := clRed;
+  FGuideVR := TShape.Create(Self);
+  FGuideVR.Parent := Self; FGuideVR.Visible := False; FGuideVR.Enabled := False;
+  FGuideVR.Brush.Color := clRed; FGuideVR.Pen.Color := clRed;
+  FGuideTimer := TTimer.Create(Self);
+  FGuideTimer.Interval := 30; FGuideTimer.Enabled := False;
+  FGuideTimer.OnTimer := @GuideTick;
+
   Tell;
 end;
 
@@ -139,7 +159,7 @@ begin
   Drift := FPage.ContentHeight - FShot.Height;
   if Drift >= 0 then Sign := '+' else Sign := '-';
   FCaption.Caption := Format('  browser %d  |  %s %d  (%s%d)   -   y=%d   ' +
-    'wheel/keys scroll, S snapshot, 1-4 control, L %s, Q quit',
+    'wheel/keys scroll, S snapshot, G crosshair, 1-4 control, L %s, Q quit',
     [FShot.Height, Names[FShown], FPage.ContentHeight, Sign, Abs(Drift), FTop,
      BoolToStr(FLocked, 'unlock', 'lock')]);
 end;
@@ -249,6 +269,22 @@ begin
   finally PNG.Free; Shot.Free end;
 end;
 
+procedure TCompareForm.GuideTick(Sender: TObject);
+var P: TPoint; Half, LX, Y: Integer;
+begin
+  P := ScreenToClient(Mouse.CursorPos);
+  Half := FLeft.Width;
+  { the same offset from each half's left edge, whichever half the mouse
+    is in }
+  if P.X >= Half + 12 then LX := P.X - (Half + 12) else LX := P.X;
+  LX := EnsureRange(LX, 0, Half - 1);
+  Y := EnsureRange(P.Y, FBar.Height, ClientHeight - 2);
+  FGuideH.SetBounds(0, Y, ClientWidth, 2);
+  FGuideVL.SetBounds(LX, FBar.Height, 2, ClientHeight - FBar.Height);
+  FGuideVR.SetBounds(Half + 12 + LX, FBar.Height, 2, ClientHeight - FBar.Height);
+  FGuideH.BringToFront; FGuideVL.BringToFront; FGuideVR.BringToFront;
+end;
+
 procedure TCompareForm.KeyDown(var Key: Word; Shift: TShiftState);
 begin
   case Key of
@@ -263,6 +299,14 @@ begin
   else
     case Char(Key) of
       'S': Snap;
+      'G':
+        begin
+          FGuideOn := not FGuideOn;
+          FGuideH.Visible := FGuideOn; FGuideVL.Visible := FGuideOn;
+          FGuideVR.Visible := FGuideOn; FGuideTimer.Enabled := FGuideOn;
+          if FGuideOn then GuideTick(nil);
+          Tell;
+        end;
       'L': begin FLocked := not FLocked; Tell end;
       'Q': Close;
       '1': ShowWhich(1);

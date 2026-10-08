@@ -3828,6 +3828,11 @@ begin
   Check(Probe.Block(1).RuleDashed and
     (Probe.Block(1).BarColor=RGBToColor($B4,$53,$09)),
     'hr: a dotted border-top draws dotted, in its color');
+  Check(not Probe.Block(0).RuleInset and not Probe.Block(1).RuleInset,
+    'hr: a styled rule draws exactly as asked, no inset pair');
+  Probe.LoadHTML('<html><body><hr></body></html>');
+  Check((Probe.Block(0).RuleHeight=2) and Probe.Block(0).RuleInset,
+    'hr: an unstyled rule is the browser''s two-row inset pair');
 
   { the table's own width attribute spreads it, CSS or no CSS }
   Probe.LoadHTML('<html><body><table width="100%"><tr>'+
