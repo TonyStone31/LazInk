@@ -149,6 +149,59 @@ best after the widgetset runs in D, so the listing's claims are true.
 * On Qt and GTK2 a finger cannot be told from the mouse, so a memo selects
   unless `MouseDrag := imdScroll`.
 
+### H. Scrolling speed on very long pages - notes, not yet work
+
+The 76-section comparison page (~1800 blocks, ~29000px) scrolls, but a
+fast wheel can feel it.  Measured nothing yet; when it matters, in the
+order worth trying:
+
+* **Find the first visible block by binary search.**  Every paint walks
+  all blocks front to back and rect-tests each; Bounds.Top is sorted, so
+  the walk can start at the first visible block and stop past the last.
+  Cheapest change, helps every long page.
+* **Blit on scroll.**  A scroll of 40px repaints the whole viewport; the
+  still-visible region could be copied down and only the exposed strip
+  painted.  Classic, biggest win, but the selection overlay, the find
+  bar and the band fills must be invalidated honestly.
+* **Check the layout cache fits the page.**  THTMLLayoutCache holds 128
+  entries / 16MB; an 1800-block page may thrash it, re-laying-out blocks
+  every time they scroll back in.  Count hits and misses (the fields are
+  there) before assuming.
+* **A retained strip.**  Render viewport+margin to one bitmap, blit from
+  it while scrolling inside the strip, re-render when leaving it.  Only
+  if the first three are not enough.
+
+### I. HTML and CSS worth adding - a survey, 8 October 2026
+
+Checked against what generators and documentation pages actually write.
+Already in: thead/tbody/tfoot, the HTML5 containers (section, article,
+nav, figure, header, footer, main, aside - all blocks), svg skipped
+cleanly, iframe showing its fallback content, task-list checkboxes,
+details/summary, dl, em and px units.
+
+Worth adding, smallest first:
+
+* **`<wbr>`** - a break opportunity in a long identifier.  The tag is
+  already parsed as void; the engine just never learns the spot.
+* **`tr:nth-child(even)` / `(odd)` backgrounds** - zebra striping, the
+  single most common table CSS there is.  One selector special-case.
+* **`text-overflow: ellipsis`** - the engine already ellipsizes
+  (NoWrap+Ellipsis); the CSS reader just never says so.
+* **`vertical-align` / `valign` in table cells** - top-aligning a tall
+  row's neighbors; docs tables use it.  Verify what the engine has.
+* **`em` relative to the current font** - CSSPixels multiplies em by a
+  fixed 16; a page at font-size 14px gets slightly wrong em margins.
+* **`#id` selectors** in the CSS reader - occasional, cheap.
+* **Images floated beside text** (`float: left/right`, `<img align=>`) -
+  the one large layout feature real pages miss here.  "Nothing flows
+  around a picture" is a stated limit; lifting it is engine work in the
+  line layout, not a patch.
+
+Not worth it, deliberately: `<iframe>` as a real embedded page (offline
+help has no third-party embeds; the fallback text is the right render),
+`<video>`/`<audio>`, web fonts, floats beyond images, `position:`,
+JavaScript - the "what not to do" list below still holds.
+
 ## 4. What not to do
 
 * **Don't build a browser** or chase CSS conformance.
