@@ -124,6 +124,9 @@ type
       border-top said dotted or dashed }
     RuleHeight: Integer;
     RuleDashed: Boolean;
+    { an unstyled rule draws as a browser draws one: two rows, the top
+      darker - the inset border pair every browser ships for <hr> }
+    RuleInset: Boolean;
     { laid out as written, and cut off at the edge - code, or a memo with
       WordWrap off }
     NoWrap: Boolean;
@@ -3140,6 +3143,13 @@ begin
     B.RuleDashed := (Pos('dotted',LowerCase(V))>0) or (Pos('dashed',LowerCase(V))>0);
     X := FStyles.Pixels('hr',B.CSSClass,'height',0);
     if X<=0 then X := K;
+    { nothing asked for: a browser's default <hr> is a 1px inset border
+      pair, which reads as two rows with a darker top - a flat hairline
+      beside it looks thinner and lighter than every real page's rule }
+    B.RuleInset := (X<=0) and
+      (FStyles.Value('hr',B.CSSClass,'background','')='') and
+      (FStyles.Value('hr',B.CSSClass,'background-color','')='');
+    if B.RuleInset then X := 2;
     B.RuleHeight := X;
     if C<>clNone then B.BarColor := C
     else B.BarColor := FStyles.Color('hr',B.CSSClass,'background',
@@ -3371,6 +3381,13 @@ begin
           ACanvas.FillRect(Rect(RX,TR.Top,Min(RX+3,TR.Right),TR.Bottom));
           Inc(RX,6);
         end;
+      end
+      else if B.RuleInset and (TR.Bottom-TR.Top>=2) then
+      begin
+        ACanvas.Brush.Color := HTMLShadeColor(B.BarColor,-35);
+        ACanvas.FillRect(Rect(TR.Left,TR.Top,TR.Right,TR.Top+1));
+        ACanvas.Brush.Color := B.BarColor;
+        ACanvas.FillRect(Rect(TR.Left,TR.Top+1,TR.Right,TR.Bottom));
       end
       else
         ACanvas.FillRect(TR);
