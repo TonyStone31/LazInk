@@ -135,6 +135,10 @@ best after the widgetset runs in D, so the listing's claims are true.
 
 ### G. Small gaps, when they get in the way
 
+* **Nested block boxes flatten**: a `<div>` with a background holding
+  another block element loses the nesting - each piece becomes its own
+  block, and the outer box's background only wraps the first words.  The
+  block model is flat; found by the side-by-side page, 8 October 2026.
 * `<abbr title>`: a title on anything that is not a link is dropped.
 * Flex/grid: `justify`/`align`, `order`, grow/shrink ratios are not read.
 * Markdown: emphasis does not follow full CommonMark delimiter rules, link

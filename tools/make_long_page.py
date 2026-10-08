@@ -71,6 +71,12 @@ HEAD = """<!doctype html>
   .badge { background: #176bbd; color: #ffffff; border-radius: 4px;
            padding: 1px 6px; font-size: 12px }
   code.chip { background: #eef0f3; border-radius: 6px; padding: 1px 6px }
+  img { max-width: 100% }
+  .frame { background: #f4f6f8; padding: 14px; margin: 10px 0 }
+  .boxed { background: #ffffff; border: 1px solid #c8ccd2;
+           padding: 10px; margin: 8px 0 }
+  hr.thick { height: 4px; background: #176bbd; border: none }
+  hr.dotted { border: none; border-top: 2px dotted #b45309 }
   @media (max-width: 420px) {
     .grid { grid-template-columns: 1fr }
     body { font-size: 13px }
@@ -89,8 +95,9 @@ something worth comparing on it.</p>
 
 <p>What is <b>expected</b> to differ, and is not a bug: LazInk takes its
 colors from the control's theme rather than the page's, it draws no form
-controls, and nothing floats or flows around a picture. Everything else
-should line up.</p>
+controls, nothing floats or flows around a picture, and a line holding a
+padded pill grows to fit it rather than letting the pill overlap its
+neighbors the way a browser does. Everything else should line up.</p>
 
 <hr>
 """
@@ -410,6 +417,54 @@ def oldschool(n):
 <p>{prose(n)}</p>"""
 
 
+def preformatted(n):
+    return f"""<p>A &lt;pre&gt; with no code in it keeps every space and
+blank line exactly as written:</p>
+<pre>
+column one      column two      column three
+   indented         by three        spaces   {n}
+
+a blank line above, and trailing spaces after this:   .
+       deep indent, seven spaces
+</pre>
+<p>And prose right after it, to show the gap the pre leaves behind.</p>"""
+
+
+def rules(n):
+    return f"""<p>Rules: a plain one, a thick colored one, and a dotted one.</p>
+<hr>
+<hr class="thick">
+<hr class="dotted">
+<p>Line breaks: one&nbsp;sentence broken<br>by a single &lt;br&gt;,<br>
+twice,<br><br>and a double break above this line, section {n}.</p>
+<p>{prose(n)[:80]}</p>"""
+
+
+def links(n):
+    return f"""<p>A paragraph that is mostly <a href="#s{n}">one long link, with
+enough words inside it that the link wraps onto a second line and its
+underline has to carry on there</a>, then plain words.</p>
+<p>A link holding <a href="#s{n}"><b>bold</b>, <i>italic</i> and
+<code>code({n})</code></a> inside it, and one to
+<a href="mailto:nobody@example.org">an address</a>.</p>
+<h3>A heading that is <a href="#top">itself a link</a></h3>
+<ul><li><a href="#s{n}">a link that is the whole item</a></li>
+<li>and one at the item's end: <a href="#top">back to the top</a></li></ul>"""
+
+
+def boxes(n):
+    return f"""<div class="frame">A gray frame with 14px of padding around
+these words, section {n}. {prose(n)[:70]}</div>
+<div class="boxed">A white box with a border, padding and vertical
+margins of its own, long enough to wrap so the padding shows on more
+than one line.</div>
+<div class="note">A note box between them, which is how most
+documentation sites draw a callout.</div>
+<div class="boxed"><b>Boxes in a row:</b> the second box, right after the
+first, so the gap between them is the two margins meeting.</div>
+<p>{prose(n)[:100]}</p>"""
+
+
 SECTIONS = [
     ("Headings", headings),
     ("Inline text", inline),
@@ -426,14 +481,18 @@ SECTIONS = [
     ("Pills and badges", pills),
     ("Mixed lists", mixed_lists),
     ("Old-school HTML", oldschool),
+    ("Preformatted text", preformatted),
+    ("Rules and breaks", rules),
+    ("Links in depth", links),
+    ("Nested boxes", boxes),
 ]
 
 
 def main():
-    # 75 = five full cycles of the 15 sections, and a page that stays under
+    # 76 = four full cycles of the 19 sections, and a page that stays under
     # the browser screenshot's 32000-pixel ceiling (X11 coordinates end at
     # 32767); more sections and the browser strip is cut off at the bottom
-    count = int(sys.argv[1]) if len(sys.argv) > 1 else 75
+    count = int(sys.argv[1]) if len(sys.argv) > 1 else 76
     out = [HEAD]
     for n in range(1, count + 1):
         name, build = SECTIONS[(n - 1) % len(SECTIONS)]

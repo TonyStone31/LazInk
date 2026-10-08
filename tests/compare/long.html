@@ -54,6 +54,12 @@
   .badge { background: #176bbd; color: #ffffff; border-radius: 4px;
            padding: 1px 6px; font-size: 12px }
   code.chip { background: #eef0f3; border-radius: 6px; padding: 1px 6px }
+  img { max-width: 100% }
+  .frame { background: #f4f6f8; padding: 14px; margin: 10px 0 }
+  .boxed { background: #ffffff; border: 1px solid #c8ccd2;
+           padding: 10px; margin: 8px 0 }
+  hr.thick { height: 4px; background: #176bbd; border: none }
+  hr.dotted { border: none; border-top: 2px dotted #b45309 }
   @media (max-width: 420px) {
     .grid { grid-template-columns: 1fr }
     body { font-size: 13px }
@@ -72,8 +78,9 @@ something worth comparing on it.</p>
 
 <p>What is <b>expected</b> to differ, and is not a bug: LazInk takes its
 colors from the control's theme rather than the page's, it draws no form
-controls, and nothing floats or flows around a picture. Everything else
-should line up.</p>
+controls, nothing floats or flows around a picture, and a line holding a
+padded pill grows to fit it rather than letting the pill overlap its
+neighbors the way a browser does. Everything else should line up.</p>
 
 <hr>
 
@@ -317,525 +324,663 @@ goes</mark>, ending in plain words.</p>
 </tr></table>
 <p>Line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because.</p>
 
-<h2 id="s16">16. Headings</h2>
-<h3>Every heading level, at section 16</h3>
+<h2 id="s16">16. Preformatted text</h2>
+<p>A &lt;pre&gt; with no code in it keeps every space and
+blank line exactly as written:</p>
+<pre>
+column one      column two      column three
+   indented         by three        spaces   16
+
+a blank line above, and trailing spaces after this:   .
+       deep indent, seven spaces
+</pre>
+<p>And prose right after it, to show the gap the pre leaves behind.</p>
+<hr>
+
+<h2 id="s17">17. Rules and breaks</h2>
+<p>Rules: a plain one, a thick colored one, and a dotted one.</p>
+<hr>
+<hr class="thick">
+<hr class="dotted">
+<p>Line breaks: one&nbsp;sentence broken<br>by a single &lt;br&gt;,<br>
+twice,<br><br>and a double break above this line, section 17.</p>
+<p>Never enough to show where a renderer chooses to break a line and where it carri</p>
+
+<h2 id="s18">18. Links in depth</h2>
+<p>A paragraph that is mostly <a href="#s18">one long link, with
+enough words inside it that the link wraps onto a second line and its
+underline has to carry on there</a>, then plain words.</p>
+<p>A link holding <a href="#s18"><b>bold</b>, <i>italic</i> and
+<code>code(18)</code></a> inside it, and one to
+<a href="mailto:nobody@example.org">an address</a>.</p>
+<h3>A heading that is <a href="#top">itself a link</a></h3>
+<ul><li><a href="#s18">a link that is the whole item</a></li>
+<li>and one at the item's end: <a href="#top">back to the top</a></li></ul>
+
+<h2 id="s19">19. Nested boxes</h2>
+<div class="frame">A gray frame with 14px of padding around
+these words, section 19. To show where a renderer chooses to break a line and where it carries </div>
+<div class="boxed">A white box with a border, padding and vertical
+margins of its own, long enough to wrap so the padding shows on more
+than one line.</div>
+<div class="note">A note box between them, which is how most
+documentation sites draw a callout.</div>
+<div class="boxed"><b>Boxes in a row:</b> the second box, right after the
+first, so the gap between them is the two margins meeting.</div>
+<p>To show where a renderer chooses to break a line and where it carries on the quick brown fox jumps o</p>
+
+<h2 id="s20">20. Headings</h2>
+<h3>Every heading level, at section 20</h3>
 <h4>An h4, which a browser leaves the size of the body text</h4>
 <h5>An h5, smaller</h5>
 <h6>And an h6, smaller again</h6>
-<p>Is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough.</p>
+<p>Show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps.</p>
 <hr>
 
-<h2 id="s17">17. Inline text</h2>
+<h2 id="s21">21. Inline text</h2>
 <p>Ordinary words, then <b>bold</b>, <i>italic</i>,
-<u>underlined</u>, <s>struck through</s>, <code>inline_code(17)</code>,
-<kbd>Ctrl</kbd>+<kbd>R</kbd>, <mark>highlighted</mark>,
-<del>deleted</del>, <ins>inserted</ins>, <small>small print</small>,
-H<sub>2</sub>O, E=mc<sup>2</sup>, <cite>a citation</cite>,
-<abbr title="as it happens">abbr</abbr> and
-<a href="#s16">a link back one section</a>.</p>
-<p>Entities: &amp; &lt; &gt; &quot; &copy; &reg; &trade; &rarr; &larr;
-&mdash; &ndash; &hellip; &times; &deg; &euro; &nbsp; &#233; &#x2713; and a
-<q>quotation inside a sentence</q>.</p>
-<p>Never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and. And
-averylongunbreakablewordthatcannotbesplitanywhere17 sits in it on purpose.</p>
-
-<h2 id="s18">18. Lists</h2>
-<ul>
-  <li>a bullet with enough words in it that the line wraps and the wrapped
-      part lines up under the first word rather than under the bullet</li>
-  <li>another bullet
-    <ul>
-      <li>a nested one</li>
-      <li>and another, with <a href="#s18">a link</a> in it
-        <ul><li>and a third level, to see the indent step</li></ul>
-      </li>
-    </ul>
-  </li>
-  <li>a third</li>
-</ul>
-<ol start="15">
-  <li>numbered from 15, because the list says so</li>
-  <li>the next one</li>
-  <li>and one that wraps in the same way a bullet does when the text in it
-      runs past the edge of the column</li>
-</ol>
-<ol type="a"><li>lettered</li><li>and again</li></ol>
-<ul>
-  <li><input type="checkbox" checked> a task that is done</li>
-  <li><input type="checkbox"> and one that is not</li>
-</ul>
-<dl>
-  <dt>A term</dt>
-  <dd>and what it means.</dd>
-  <dt>Another</dt>
-  <dd>and its meaning, which is longer and wraps onto a second line to show
-      how the indent behaves.</dd>
-</dl>
-
-<h2 id="s19">19. A plain table</h2>
-<table class='tight'>
-  <caption>Table 19, with a caption above it</caption>
-  <tr><th>Link</th><th>Middle</th><th>Wrapping text</th></tr>
-  <tr><td><a href='#s19'>Row 1</a></td><td>middle column 1</td><td>Show where a renderer chooses to break a</td></tr><tr><td><a href='#s19'>Row 2</a></td><td>middle column 2</td><td>Where a renderer chooses to break a line</td></tr><tr><td><a href='#s19'>Row 3</a></td><td>middle column 3</td><td>A renderer chooses to break a line and w</td></tr><tr><td><a href='#s19'>Row 4</a></td><td>middle column 4</td><td>Renderer chooses to break a line and whe</td></tr>
-</table>
-
-<h2 id="s20">20. Spans and nesting</h2>
-<table class="span">
-  <tr><th>Release</th><th>Part</th><th>What changed</th></tr>
-  <tr>
-    <td rowspan="3">20.0</td>
-    <td>renderer</td><td>font sizes in pixels</td>
-  </tr>
-  <tr><td>tables</td><td>rowspan as well as colspan</td></tr>
-  <tr><td>pictures</td><td>sized the way the page asks</td></tr>
-  <tr><td colspan="2">both parts of 19.9</td><td>the one before</td></tr>
-  <tr>
-    <td style="background:#f4f7ff">its own background</td>
-    <td style="background:#fff7ed">
-      <table><tr><td>inner one</td><td>inner two</td></tr>
-      <tr><td colspan="2">and a spanning inner cell</td></tr></table>
-    </td>
-    <td><a href="#s20">a link in the third column</a></td>
-  </tr>
-</table>
-<hr>
-
-<h2 id="s21">21. Cards</h2>
-<table class="cards">
-  <tr>
-    <td><b>Card one</b><br><small>section 21</small></td>
-    <td><b>Card two</b><br><small>with rather more words in it than the
-        first one has, so the row has to grow</small></td>
-    <td class="empty"></td>
-  </tr>
-</table>
-<div class="grid">
-  <a class="card" href="#s21"><b>A grid card</b><br><small>first</small></a>
-  <a class="card" href="#s21"><b>Another</b><br><small>second</small></a>
-  <a class="card" href="#s21"><b>And a third</b><br><small>third</small></a>
-</div>
-
-<h2 id="s22">22. Code</h2>
-<pre><code class="language-c">/* a block comment */
-int main(int argc, char **argv) {
-    if (argc &gt; 22) return 0;   // too many
-    printf("%s\n", "hello");
-}</code></pre>
-<pre><code>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx = a line far too long for the column, which is cut off at its edge rather than wrapped, yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy</code></pre>
-
-<h2 id="s23">23. Quotes and notes</h2>
-<blockquote>
-  <p>A quote has a bar down its side, and it can hold more than one
-  paragraph. Renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and.</p>
-  <blockquote><p>And a quote inside a quote has two bars.</p>
-    <blockquote><p>Three, at the third level.</p></blockquote>
-  </blockquote>
-</blockquote>
-<div class="note"><b>A note box.</b> A div with a background, a left border
-and some padding, which is how most documentation sites draw a callout.</div>
-<div class="warn"><b>And a warning.</b> The same shape in another color.</div>
-
-<h2 id="s24">24. Pictures</h2>
-<p>A PNG at its own size, then at a width in pixels, then at
-half the column, then with a max-width:</p>
-<p><img src="../../images/palette.png" alt="palette.png"></p>
-<p><img src="../../images/palette.png" alt="palette.png at 140px" width="140"></p>
-<p><img src="../../images/palette.png" alt="palette.png at half" width="50%"></p>
-<p><img src="../../images/palette.png" alt="palette.png capped" style="max-width: 200px"></p>
-<figure>
-  <img src="../fixtures/webp/drawing-lossless.webp" alt="drawing-lossless.webp">
-  <figcaption>Figure 24. A WebP, which LazInk decodes itself.</figcaption>
-</figure>
-<p>And inside a &lt;picture&gt;, plus one that is not there at all:</p>
-<p><picture><source srcset="../../images/palette.png" type="image/png">
-<img src="../../images/palette.png" alt="in a picture element" style="width: 90px"></picture></p>
-<p><img src="missing-24.png" alt="[this picture is missing]"></p>
-<hr>
-
-<h2 id="s25">25. Folding</h2>
-<details>
-  <summary>Click to see more, in section 25</summary>
-  <p>This paragraph is folded away until the summary is clicked.</p>
-  <ul><li>and so is this list</li><li>with two items</li></ul>
-  <table><tr><th>Even</th><th>a table</th></tr>
-    <tr><td>is</td><td>hidden</td></tr></table>
-</details>
-<details open>
-  <summary>Already open</summary>
-  <p>This one was written with the open attribute, so it starts showing.</p>
-</details>
-
-<h2 id="s26">26. Spacing and case</h2>
-<p class="airy">Line-height 2.2, so the lines stand well apart.
-Break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses.</p>
-<p class="snug">Line-height 1, so they close up. Break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses.</p>
-<p class="shout">A line the stylesheet shouts in uppercase, with
-<b>bold</b> and an &amp; entity in it.</p>
-<p class="quiet">AND ONE IT QUIETENS BACK DOWN.</p>
-<p class="title-case">and one it puts in title case</p>
-<p class="keep">A line that says white-space: nowrap, so it runs off the edge of the column instead of wrapping onto a second line at all.</p>
-<p class="middle">A centered line.</p>
-<p class="right">And one against the right edge.</p>
-
-<h2 id="s27">27. Other scripts</h2>
-<p>CJK, which wraps between characters rather than at spaces:
-中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試27。</p>
-<p>日本語のテキストもここにあります。カタカナ、ひらがな、漢字。</p>
-<p>한국어도 여기에 있습니다.</p>
-<p>And a line with a <span style="color:#c0392b">red span</span>, a
-<span style="background:#fff3a0">highlighted span</span>, a
-<span style="font-size:22px">bigger one</span> and a
-<span style="font-size:10px">smaller one</span> on it, to show how a line
-with mixed sizes sits on its baseline.</p>
-
-<h2 id="s28">28. Pills and badges</h2>
-<p>Status pills, drawn from the stylesheet's padding and
-border-radius: <span class="pill">neutral</span>
-<span class="pill-ok">passing 28</span>
-<span class="pill-warn">flaky</span> <span class="badge">NEW</span>
-and <code class="chip">a code chip</code> sitting in a sentence.</p>
-<p>A pill in a wrapping line: Line and where it carries on the quick brown fox jumps over 
-<span class="pill-ok">still round</span> And where it carries on the quick brown fox jumps over the l.</p>
-<ul>
-  <li>a list item holding <span class="pill">a pill</span> of its own</li>
-  <li>and one with <span class="badge">TWO</span>
-      <span class="pill-warn">of them</span></li>
-</ul>
-<p>Inline code that wraps across lines, whose shading must cover its own
-words and nothing above or below them:
-<code>a_rather_long_inline_code_span_28(with, enough, arguments, that,
-it, cannot, fit, on, one, line, and, must, wrap, somewhere)</code> and the
-line goes on after it.</p>
-<p>The same for <mark>a highlighted stretch of words that is long enough
-to wrap onto the next line and must carry its mark with it as it
-goes</mark>, ending in plain words.</p>
-<table><tr><th>Cell</th><th>With pills</th></tr>
-<tr><td><span class="pill-ok">in a cell</span></td>
-<td>beside <span class="badge">28</span> words</td></tr></table>
-<hr>
-
-<h2 id="s29">29. Mixed lists</h2>
-<ol>
-  <li>a numbered item
-    <ul>
-      <li>whose sublist is bulleted</li>
-      <li>with a second bullet
-        <ol><li>and numbers again at the third level</li>
-            <li>counting on</li></ol>
-      </li>
-    </ul>
-  </li>
-  <li>the numbering carries on at two after the sublist</li>
-  <li>and three, with <code>code(29)</code> and <b>bold</b> in it</li>
-</ol>
-<ol start="99">
-  <li>numbered from 99, so the markers are wide</li>
-  <li>100, and the wrapped text under a wide marker keeps its
-      indent all the way down the line as it goes on and on</li>
-</ol>
-<ul>
-  <li>a bullet holding a quote:
-    <blockquote><p>the quote keeps its bar inside the list</p></blockquote>
-  </li>
-  <li>and one holding a small table:
-    <table><tr><td>in</td><td>a list</td></tr></table>
-  </li>
-</ul>
-
-<h2 id="s30">30. Old-school HTML</h2>
-<center>A &lt;center&gt; tag, which browsers still honor.</center>
-<p align="right">A paragraph whose align attribute says right.</p>
-<p align="center">And one the attribute centers.</p>
-<p><font color="#b02a2a">A font tag in red,</font>
-<font face="monospace">one in monospace,</font>
-<font size="5">one at size 5,</font>
-<font size="1">one at size 1,</font>
-<tt>teletype text</tt> and <strike>struck the old way</strike>.</p>
-<table width="100%"><tr>
-  <td align="left">left cell</td>
-  <td align="center">centered cell 30</td>
-  <td align="right">right cell</td>
-</tr></table>
-<p>Where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps.</p>
-
-<h2 id="s31">31. Headings</h2>
-<h3>Every heading level, at section 31</h3>
-<h4>An h4, which a browser leaves the size of the body text</h4>
-<h5>An h5, smaller</h5>
-<h6>And an h6, smaller again</h6>
-<p>It carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line.</p>
-
-<h2 id="s32">32. Inline text</h2>
-<p>Ordinary words, then <b>bold</b>, <i>italic</i>,
-<u>underlined</u>, <s>struck through</s>, <code>inline_code(32)</code>,
-<kbd>Ctrl</kbd>+<kbd>G</kbd>, <mark>highlighted</mark>,
-<del>deleted</del>, <ins>inserted</ins>, <small>small print</small>,
-H<sub>2</sub>O, E=mc<sup>2</sup>, <cite>a citation</cite>,
-<abbr title="as it happens">abbr</abbr> and
-<a href="#s31">a link back one section</a>.</p>
-<p>Entities: &amp; &lt; &gt; &quot; &copy; &reg; &trade; &rarr; &larr;
-&mdash; &ndash; &hellip; &times; &deg; &euro; &nbsp; &#233; &#x2713; and a
-<q>quotation inside a sentence</q>.</p>
-<p>Carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the. And
-averylongunbreakablewordthatcannotbesplitanywhere32 sits in it on purpose.</p>
-<hr>
-
-<h2 id="s33">33. Lists</h2>
-<ul>
-  <li>a bullet with enough words in it that the line wraps and the wrapped
-      part lines up under the first word rather than under the bullet</li>
-  <li>another bullet
-    <ul>
-      <li>a nested one</li>
-      <li>and another, with <a href="#s33">a link</a> in it
-        <ul><li>and a third level, to see the indent step</li></ul>
-      </li>
-    </ul>
-  </li>
-  <li>a third</li>
-</ul>
-<ol start="20">
-  <li>numbered from 20, because the list says so</li>
-  <li>the next one</li>
-  <li>and one that wraps in the same way a bullet does when the text in it
-      runs past the edge of the column</li>
-</ol>
-<ol type="a"><li>lettered</li><li>and again</li></ol>
-<ul>
-  <li><input type="checkbox" checked> a task that is done</li>
-  <li><input type="checkbox"> and one that is not</li>
-</ul>
-<dl>
-  <dt>A term</dt>
-  <dd>and what it means.</dd>
-  <dt>Another</dt>
-  <dd>and its meaning, which is longer and wraps onto a second line to show
-      how the indent behaves.</dd>
-</dl>
-
-<h2 id="s34">34. A plain table</h2>
-<table class='tight'>
-  <caption>Table 34, with a caption above it</caption>
-  <tr><th>Link</th><th>Middle</th><th>Wrapping text</th></tr>
-  <tr><td><a href='#s34'>Row 1</a></td><td>middle column 1</td><td>Quick brown fox jumps over the lazy dog </td></tr><tr><td><a href='#s34'>Row 2</a></td><td>middle column 2</td><td>Brown fox jumps over the lazy dog and ke</td></tr><tr><td><a href='#s34'>Row 3</a></td><td>middle column 3</td><td>Fox jumps over the lazy dog and keeps on</td></tr><tr><td><a href='#s34'>Row 4</a></td><td>middle column 4</td><td>Jumps over the lazy dog and keeps on jum</td></tr>
-</table>
-
-<h2 id="s35">35. Spans and nesting</h2>
-<table class="span">
-  <tr><th>Release</th><th>Part</th><th>What changed</th></tr>
-  <tr>
-    <td rowspan="3">35.0</td>
-    <td>renderer</td><td>font sizes in pixels</td>
-  </tr>
-  <tr><td>tables</td><td>rowspan as well as colspan</td></tr>
-  <tr><td>pictures</td><td>sized the way the page asks</td></tr>
-  <tr><td colspan="2">both parts of 34.9</td><td>the one before</td></tr>
-  <tr>
-    <td style="background:#f4f7ff">its own background</td>
-    <td style="background:#fff7ed">
-      <table><tr><td>inner one</td><td>inner two</td></tr>
-      <tr><td colspan="2">and a spanning inner cell</td></tr></table>
-    </td>
-    <td><a href="#s35">a link in the third column</a></td>
-  </tr>
-</table>
-
-<h2 id="s36">36. Cards</h2>
-<table class="cards">
-  <tr>
-    <td><b>Card one</b><br><small>section 36</small></td>
-    <td><b>Card two</b><br><small>with rather more words in it than the
-        first one has, so the row has to grow</small></td>
-    <td class="empty"></td>
-  </tr>
-</table>
-<div class="grid">
-  <a class="card" href="#s36"><b>A grid card</b><br><small>first</small></a>
-  <a class="card" href="#s36"><b>Another</b><br><small>second</small></a>
-  <a class="card" href="#s36"><b>And a third</b><br><small>third</small></a>
-</div>
-<hr>
-
-<h2 id="s37">37. Code</h2>
-<pre><code class="language-c">/* a block comment */
-int main(int argc, char **argv) {
-    if (argc &gt; 37) return 0;   // too many
-    printf("%s\n", "hello");
-}</code></pre>
-<pre><code>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx = a line far too long for the column, which is cut off at its edge rather than wrapped, yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy</code></pre>
-
-<h2 id="s38">38. Quotes and notes</h2>
-<blockquote>
-  <p>A quote has a bar down its side, and it can hold more than one
-  paragraph. Jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the.</p>
-  <blockquote><p>And a quote inside a quote has two bars.</p>
-    <blockquote><p>Three, at the third level.</p></blockquote>
-  </blockquote>
-</blockquote>
-<div class="note"><b>A note box.</b> A div with a background, a left border
-and some padding, which is how most documentation sites draw a callout.</div>
-<div class="warn"><b>And a warning.</b> The same shape in another color.</div>
-
-<h2 id="s39">39. Pictures</h2>
-<p>A PNG at its own size, then at a width in pixels, then at
-half the column, then with a max-width:</p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png"></p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png at 140px" width="140"></p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png at half" width="50%"></p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png capped" style="max-width: 200px"></p>
-<figure>
-  <img src="../fixtures/webp/column-lossy.webp" alt="column-lossy.webp">
-  <figcaption>Figure 39. A WebP, which LazInk decodes itself.</figcaption>
-</figure>
-<p>And inside a &lt;picture&gt;, plus one that is not there at all:</p>
-<p><picture><source srcset="../../images/TInkLabel.png" type="image/png">
-<img src="../../images/TInkLabel.png" alt="in a picture element" style="width: 90px"></picture></p>
-<p><img src="missing-39.png" alt="[this picture is missing]"></p>
-
-<h2 id="s40">40. Folding</h2>
-<details>
-  <summary>Click to see more, in section 40</summary>
-  <p>This paragraph is folded away until the summary is clicked.</p>
-  <ul><li>and so is this list</li><li>with two items</li></ul>
-  <table><tr><th>Even</th><th>a table</th></tr>
-    <tr><td>is</td><td>hidden</td></tr></table>
-</details>
-<details open>
-  <summary>Already open</summary>
-  <p>This one was written with the open attribute, so it starts showing.</p>
-</details>
-<hr>
-
-<h2 id="s41">41. Spacing and case</h2>
-<p class="airy">Line-height 2.2, so the lines stand well apart.
-Lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where.</p>
-<p class="snug">Line-height 1, so they close up. Lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where.</p>
-<p class="shout">A line the stylesheet shouts in uppercase, with
-<b>bold</b> and an &amp; entity in it.</p>
-<p class="quiet">AND ONE IT QUIETENS BACK DOWN.</p>
-<p class="title-case">and one it puts in title case</p>
-<p class="keep">A line that says white-space: nowrap, so it runs off the edge of the column instead of wrapping onto a second line at all.</p>
-<p class="middle">A centered line.</p>
-<p class="right">And one against the right edge.</p>
-
-<h2 id="s42">42. Other scripts</h2>
-<p>CJK, which wraps between characters rather than at spaces:
-中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試42。</p>
-<p>日本語のテキストもここにあります。カタカナ、ひらがな、漢字。</p>
-<p>한국어도 여기에 있습니다.</p>
-<p>And a line with a <span style="color:#c0392b">red span</span>, a
-<span style="background:#fff3a0">highlighted span</span>, a
-<span style="font-size:22px">bigger one</span> and a
-<span style="font-size:10px">smaller one</span> on it, to show how a line
-with mixed sizes sits on its baseline.</p>
-
-<h2 id="s43">43. Pills and badges</h2>
-<p>Status pills, drawn from the stylesheet's padding and
-border-radius: <span class="pill">neutral</span>
-<span class="pill-ok">passing 43</span>
-<span class="pill-warn">flaky</span> <span class="badge">NEW</span>
-and <code class="chip">a code chip</code> sitting in a sentence.</p>
-<p>A pill in a wrapping line: And keeps on jumping because one line is never enough to sho
-<span class="pill-ok">still round</span> Keeps on jumping because one line is never enough to show wh.</p>
-<ul>
-  <li>a list item holding <span class="pill">a pill</span> of its own</li>
-  <li>and one with <span class="badge">TWO</span>
-      <span class="pill-warn">of them</span></li>
-</ul>
-<p>Inline code that wraps across lines, whose shading must cover its own
-words and nothing above or below them:
-<code>a_rather_long_inline_code_span_43(with, enough, arguments, that,
-it, cannot, fit, on, one, line, and, must, wrap, somewhere)</code> and the
-line goes on after it.</p>
-<p>The same for <mark>a highlighted stretch of words that is long enough
-to wrap onto the next line and must carry its mark with it as it
-goes</mark>, ending in plain words.</p>
-<table><tr><th>Cell</th><th>With pills</th></tr>
-<tr><td><span class="pill-ok">in a cell</span></td>
-<td>beside <span class="badge">43</span> words</td></tr></table>
-
-<h2 id="s44">44. Mixed lists</h2>
-<ol>
-  <li>a numbered item
-    <ul>
-      <li>whose sublist is bulleted</li>
-      <li>with a second bullet
-        <ol><li>and numbers again at the third level</li>
-            <li>counting on</li></ol>
-      </li>
-    </ul>
-  </li>
-  <li>the numbering carries on at two after the sublist</li>
-  <li>and three, with <code>code(44)</code> and <b>bold</b> in it</li>
-</ol>
-<ol start="99">
-  <li>numbered from 99, so the markers are wide</li>
-  <li>100, and the wrapped text under a wide marker keeps its
-      indent all the way down the line as it goes on and on</li>
-</ol>
-<ul>
-  <li>a bullet holding a quote:
-    <blockquote><p>the quote keeps its bar inside the list</p></blockquote>
-  </li>
-  <li>and one holding a small table:
-    <table><tr><td>in</td><td>a list</td></tr></table>
-  </li>
-</ul>
-<hr>
-
-<h2 id="s45">45. Old-school HTML</h2>
-<center>A &lt;center&gt; tag, which browsers still honor.</center>
-<p align="right">A paragraph whose align attribute says right.</p>
-<p align="center">And one the attribute centers.</p>
-<p><font color="#b02a2a">A font tag in red,</font>
-<font face="monospace">one in monospace,</font>
-<font size="5">one at size 5,</font>
-<font size="1">one at size 1,</font>
-<tt>teletype text</tt> and <strike>struck the old way</strike>.</p>
-<table width="100%"><tr>
-  <td align="left">left cell</td>
-  <td align="center">centered cell 45</td>
-  <td align="right">right cell</td>
-</tr></table>
-<p>On jumping because one line is never enough to show where a renderer chooses to break a line and where it.</p>
-
-<h2 id="s46">46. Headings</h2>
-<h3>Every heading level, at section 46</h3>
-<h4>An h4, which a browser leaves the size of the body text</h4>
-<h5>An h5, smaller</h5>
-<h6>And an h6, smaller again</h6>
-<p>Jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown.</p>
-
-<h2 id="s47">47. Inline text</h2>
-<p>Ordinary words, then <b>bold</b>, <i>italic</i>,
-<u>underlined</u>, <s>struck through</s>, <code>inline_code(47)</code>,
+<u>underlined</u>, <s>struck through</s>, <code>inline_code(21)</code>,
 <kbd>Ctrl</kbd>+<kbd>V</kbd>, <mark>highlighted</mark>,
 <del>deleted</del>, <ins>inserted</ins>, <small>small print</small>,
 H<sub>2</sub>O, E=mc<sup>2</sup>, <cite>a citation</cite>,
 <abbr title="as it happens">abbr</abbr> and
-<a href="#s46">a link back one section</a>.</p>
+<a href="#s20">a link back one section</a>.</p>
 <p>Entities: &amp; &lt; &gt; &quot; &copy; &reg; &trade; &rarr; &larr;
 &mdash; &ndash; &hellip; &times; &deg; &euro; &nbsp; &#233; &#x2713; and a
 <q>quotation inside a sentence</q>.</p>
-<p>Because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a. And
-averylongunbreakablewordthatcannotbesplitanywhere47 sits in it on purpose.</p>
+<p>Where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and. And
+averylongunbreakablewordthatcannotbesplitanywhere21 sits in it on purpose.</p>
 
-<h2 id="s48">48. Lists</h2>
+<h2 id="s22">22. Lists</h2>
 <ul>
   <li>a bullet with enough words in it that the line wraps and the wrapped
       part lines up under the first word rather than under the bullet</li>
   <li>another bullet
     <ul>
       <li>a nested one</li>
-      <li>and another, with <a href="#s48">a link</a> in it
+      <li>and another, with <a href="#s22">a link</a> in it
         <ul><li>and a third level, to see the indent step</li></ul>
       </li>
     </ul>
   </li>
   <li>a third</li>
 </ul>
-<ol start="5">
-  <li>numbered from 5, because the list says so</li>
+<ol start="7">
+  <li>numbered from 7, because the list says so</li>
+  <li>the next one</li>
+  <li>and one that wraps in the same way a bullet does when the text in it
+      runs past the edge of the column</li>
+</ol>
+<ol type="a"><li>lettered</li><li>and again</li></ol>
+<ul>
+  <li><input type="checkbox" checked> a task that is done</li>
+  <li><input type="checkbox"> and one that is not</li>
+</ul>
+<dl>
+  <dt>A term</dt>
+  <dd>and what it means.</dd>
+  <dt>Another</dt>
+  <dd>and its meaning, which is longer and wraps onto a second line to show
+      how the indent behaves.</dd>
+</dl>
+
+<h2 id="s23">23. A plain table</h2>
+<table class='roomy'>
+  <caption>Table 23, with a caption above it</caption>
+  <tr><th>Link</th><th>Middle</th><th>Wrapping text</th></tr>
+  <tr><td><a href='#s23'>Row 1</a></td><td>middle column 1</td><td>Chooses to break a line and where it car</td></tr><tr><td><a href='#s23'>Row 2</a></td><td>middle column 2</td><td>To break a line and where it carries on </td></tr><tr><td><a href='#s23'>Row 3</a></td><td>middle column 3</td><td>Break a line and where it carries on the</td></tr><tr><td><a href='#s23'>Row 4</a></td><td>middle column 4</td><td>A line and where it carries on the quick</td></tr>
+</table>
+
+<h2 id="s24">24. Spans and nesting</h2>
+<table class="span">
+  <tr><th>Release</th><th>Part</th><th>What changed</th></tr>
+  <tr>
+    <td rowspan="3">24.0</td>
+    <td>renderer</td><td>font sizes in pixels</td>
+  </tr>
+  <tr><td>tables</td><td>rowspan as well as colspan</td></tr>
+  <tr><td>pictures</td><td>sized the way the page asks</td></tr>
+  <tr><td colspan="2">both parts of 23.9</td><td>the one before</td></tr>
+  <tr>
+    <td style="background:#f4f7ff">its own background</td>
+    <td style="background:#fff7ed">
+      <table><tr><td>inner one</td><td>inner two</td></tr>
+      <tr><td colspan="2">and a spanning inner cell</td></tr></table>
+    </td>
+    <td><a href="#s24">a link in the third column</a></td>
+  </tr>
+</table>
+<hr>
+
+<h2 id="s25">25. Cards</h2>
+<table class="cards">
+  <tr>
+    <td><b>Card one</b><br><small>section 25</small></td>
+    <td><b>Card two</b><br><small>with rather more words in it than the
+        first one has, so the row has to grow</small></td>
+    <td class="empty"></td>
+  </tr>
+</table>
+<div class="grid">
+  <a class="card" href="#s25"><b>A grid card</b><br><small>first</small></a>
+  <a class="card" href="#s25"><b>Another</b><br><small>second</small></a>
+  <a class="card" href="#s25"><b>And a third</b><br><small>third</small></a>
+</div>
+
+<h2 id="s26">26. Code</h2>
+<pre><code class="language-python">@property
+def greeting(self) -&gt; str:
+    """What the greeter says."""
+    return f"{self.name} says ready, {26} times"</code></pre>
+<pre><code>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx = a line far too long for the column, which is cut off at its edge rather than wrapped, yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy</code></pre>
+
+<h2 id="s27">27. Quotes and notes</h2>
+<blockquote>
+  <p>A quote has a bar down its side, and it can hold more than one
+  paragraph. A line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and.</p>
+  <blockquote><p>And a quote inside a quote has two bars.</p>
+    <blockquote><p>Three, at the third level.</p></blockquote>
+  </blockquote>
+</blockquote>
+<div class="note"><b>A note box.</b> A div with a background, a left border
+and some padding, which is how most documentation sites draw a callout.</div>
+<div class="warn"><b>And a warning.</b> The same shape in another color.</div>
+
+<h2 id="s28">28. Pictures</h2>
+<p>A PNG at its own size, then at a width in pixels, then at
+half the column, then with a max-width:</p>
+<p><img src="../../images/demo-markdown.png" alt="demo-markdown.png"></p>
+<p><img src="../../images/demo-markdown.png" alt="demo-markdown.png at 140px" width="140"></p>
+<p><img src="../../images/demo-markdown.png" alt="demo-markdown.png at half" width="50%"></p>
+<p><img src="../../images/demo-markdown.png" alt="demo-markdown.png capped" style="max-width: 200px"></p>
+<figure>
+  <img src="../fixtures/webp/drawing-lossless.webp" alt="drawing-lossless.webp">
+  <figcaption>Figure 28. A WebP, which LazInk decodes itself.</figcaption>
+</figure>
+<p>And inside a &lt;picture&gt;, plus one that is not there at all:</p>
+<p><picture><source srcset="../../images/demo-markdown.png" type="image/png">
+<img src="../../images/demo-markdown.png" alt="in a picture element" style="width: 90px"></picture></p>
+<p><img src="missing-28.png" alt="[this picture is missing]"></p>
+<hr>
+
+<h2 id="s29">29. Folding</h2>
+<details>
+  <summary>Click to see more, in section 29</summary>
+  <p>This paragraph is folded away until the summary is clicked.</p>
+  <ul><li>and so is this list</li><li>with two items</li></ul>
+  <table><tr><th>Even</th><th>a table</th></tr>
+    <tr><td>is</td><td>hidden</td></tr></table>
+</details>
+<details open>
+  <summary>Already open</summary>
+  <p>This one was written with the open attribute, so it starts showing.</p>
+</details>
+
+<h2 id="s30">30. Spacing and case</h2>
+<p class="airy">Line-height 2.2, so the lines stand well apart.
+Where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps.</p>
+<p class="snug">Line-height 1, so they close up. Where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps.</p>
+<p class="shout">A line the stylesheet shouts in uppercase, with
+<b>bold</b> and an &amp; entity in it.</p>
+<p class="quiet">AND ONE IT QUIETENS BACK DOWN.</p>
+<p class="title-case">and one it puts in title case</p>
+<p class="keep">A line that says white-space: nowrap, so it runs off the edge of the column instead of wrapping onto a second line at all.</p>
+<p class="middle">A centered line.</p>
+<p class="right">And one against the right edge.</p>
+
+<h2 id="s31">31. Other scripts</h2>
+<p>CJK, which wraps between characters rather than at spaces:
+中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試31。</p>
+<p>日本語のテキストもここにあります。カタカナ、ひらがな、漢字。</p>
+<p>한국어도 여기에 있습니다.</p>
+<p>And a line with a <span style="color:#c0392b">red span</span>, a
+<span style="background:#fff3a0">highlighted span</span>, a
+<span style="font-size:22px">bigger one</span> and a
+<span style="font-size:10px">smaller one</span> on it, to show how a line
+with mixed sizes sits on its baseline.</p>
+
+<h2 id="s32">32. Pills and badges</h2>
+<p>Status pills, drawn from the stylesheet's padding and
+border-radius: <span class="pill">neutral</span>
+<span class="pill-ok">passing 32</span>
+<span class="pill-warn">flaky</span> <span class="badge">NEW</span>
+and <code class="chip">a code chip</code> sitting in a sentence.</p>
+<p>A pill in a wrapping line: Carries on the quick brown fox jumps over the lazy dog and k
+<span class="pill-ok">still round</span> On the quick brown fox jumps over the lazy dog and keeps on .</p>
+<ul>
+  <li>a list item holding <span class="pill">a pill</span> of its own</li>
+  <li>and one with <span class="badge">TWO</span>
+      <span class="pill-warn">of them</span></li>
+</ul>
+<p>Inline code that wraps across lines, whose shading must cover its own
+words and nothing above or below them:
+<code>a_rather_long_inline_code_span_32(with, enough, arguments, that,
+it, cannot, fit, on, one, line, and, must, wrap, somewhere)</code> and the
+line goes on after it.</p>
+<p>The same for <mark>a highlighted stretch of words that is long enough
+to wrap onto the next line and must carry its mark with it as it
+goes</mark>, ending in plain words.</p>
+<table><tr><th>Cell</th><th>With pills</th></tr>
+<tr><td><span class="pill-ok">in a cell</span></td>
+<td>beside <span class="badge">32</span> words</td></tr></table>
+<hr>
+
+<h2 id="s33">33. Mixed lists</h2>
+<ol>
+  <li>a numbered item
+    <ul>
+      <li>whose sublist is bulleted</li>
+      <li>with a second bullet
+        <ol><li>and numbers again at the third level</li>
+            <li>counting on</li></ol>
+      </li>
+    </ul>
+  </li>
+  <li>the numbering carries on at two after the sublist</li>
+  <li>and three, with <code>code(33)</code> and <b>bold</b> in it</li>
+</ol>
+<ol start="97">
+  <li>numbered from 97, so the markers are wide</li>
+  <li>98, and the wrapped text under a wide marker keeps its
+      indent all the way down the line as it goes on and on</li>
+</ol>
+<ul>
+  <li>a bullet holding a quote:
+    <blockquote><p>the quote keeps its bar inside the list</p></blockquote>
+  </li>
+  <li>and one holding a small table:
+    <table><tr><td>in</td><td>a list</td></tr></table>
+  </li>
+</ul>
+
+<h2 id="s34">34. Old-school HTML</h2>
+<center>A &lt;center&gt; tag, which browsers still honor.</center>
+<p align="right">A paragraph whose align attribute says right.</p>
+<p align="center">And one the attribute centers.</p>
+<p><font color="#b02a2a">A font tag in red,</font>
+<font face="monospace">one in monospace,</font>
+<font size="5">one at size 5,</font>
+<font size="1">one at size 1,</font>
+<tt>teletype text</tt> and <strike>struck the old way</strike>.</p>
+<table width="100%"><tr>
+  <td align="left">left cell</td>
+  <td align="center">centered cell 34</td>
+  <td align="right">right cell</td>
+</tr></table>
+<p>The quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show.</p>
+
+<h2 id="s35">35. Preformatted text</h2>
+<p>A &lt;pre&gt; with no code in it keeps every space and
+blank line exactly as written:</p>
+<pre>
+column one      column two      column three
+   indented         by three        spaces   35
+
+a blank line above, and trailing spaces after this:   .
+       deep indent, seven spaces
+</pre>
+<p>And prose right after it, to show the gap the pre leaves behind.</p>
+
+<h2 id="s36">36. Rules and breaks</h2>
+<p>Rules: a plain one, a thick colored one, and a dotted one.</p>
+<hr>
+<hr class="thick">
+<hr class="dotted">
+<p>Line breaks: one&nbsp;sentence broken<br>by a single &lt;br&gt;,<br>
+twice,<br><br>and a double break above this line, section 36.</p>
+<p>Brown fox jumps over the lazy dog and keeps on jumping because one line is never</p>
+<hr>
+
+<h2 id="s37">37. Links in depth</h2>
+<p>A paragraph that is mostly <a href="#s37">one long link, with
+enough words inside it that the link wraps onto a second line and its
+underline has to carry on there</a>, then plain words.</p>
+<p>A link holding <a href="#s37"><b>bold</b>, <i>italic</i> and
+<code>code(37)</code></a> inside it, and one to
+<a href="mailto:nobody@example.org">an address</a>.</p>
+<h3>A heading that is <a href="#top">itself a link</a></h3>
+<ul><li><a href="#s37">a link that is the whole item</a></li>
+<li>and one at the item's end: <a href="#top">back to the top</a></li></ul>
+
+<h2 id="s38">38. Nested boxes</h2>
+<div class="frame">A gray frame with 14px of padding around
+these words, section 38. Jumps over the lazy dog and keeps on jumping because one line is never</div>
+<div class="boxed">A white box with a border, padding and vertical
+margins of its own, long enough to wrap so the padding shows on more
+than one line.</div>
+<div class="note">A note box between them, which is how most
+documentation sites draw a callout.</div>
+<div class="boxed"><b>Boxes in a row:</b> the second box, right after the
+first, so the gap between them is the two margins meeting.</div>
+<p>Jumps over the lazy dog and keeps on jumping because one line is never enough to show where a render</p>
+
+<h2 id="s39">39. Headings</h2>
+<h3>Every heading level, at section 39</h3>
+<h4>An h4, which a browser leaves the size of the body text</h4>
+<h5>An h5, smaller</h5>
+<h6>And an h6, smaller again</h6>
+<p>Over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on.</p>
+
+<h2 id="s40">40. Inline text</h2>
+<p>Ordinary words, then <b>bold</b>, <i>italic</i>,
+<u>underlined</u>, <s>struck through</s>, <code>inline_code(40)</code>,
+<kbd>Ctrl</kbd>+<kbd>O</kbd>, <mark>highlighted</mark>,
+<del>deleted</del>, <ins>inserted</ins>, <small>small print</small>,
+H<sub>2</sub>O, E=mc<sup>2</sup>, <cite>a citation</cite>,
+<abbr title="as it happens">abbr</abbr> and
+<a href="#s39">a link back one section</a>.</p>
+<p>Entities: &amp; &lt; &gt; &quot; &copy; &reg; &trade; &rarr; &larr;
+&mdash; &ndash; &hellip; &times; &deg; &euro; &nbsp; &#233; &#x2713; and a
+<q>quotation inside a sentence</q>.</p>
+<p>The lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown. And
+averylongunbreakablewordthatcannotbesplitanywhere40 sits in it on purpose.</p>
+<hr>
+
+<h2 id="s41">41. Lists</h2>
+<ul>
+  <li>a bullet with enough words in it that the line wraps and the wrapped
+      part lines up under the first word rather than under the bullet</li>
+  <li>another bullet
+    <ul>
+      <li>a nested one</li>
+      <li>and another, with <a href="#s41">a link</a> in it
+        <ul><li>and a third level, to see the indent step</li></ul>
+      </li>
+    </ul>
+  </li>
+  <li>a third</li>
+</ul>
+<ol start="4">
+  <li>numbered from 4, because the list says so</li>
+  <li>the next one</li>
+  <li>and one that wraps in the same way a bullet does when the text in it
+      runs past the edge of the column</li>
+</ol>
+<ol type="a"><li>lettered</li><li>and again</li></ol>
+<ul>
+  <li><input type="checkbox" checked> a task that is done</li>
+  <li><input type="checkbox"> and one that is not</li>
+</ul>
+<dl>
+  <dt>A term</dt>
+  <dd>and what it means.</dd>
+  <dt>Another</dt>
+  <dd>and its meaning, which is longer and wraps onto a second line to show
+      how the indent behaves.</dd>
+</dl>
+
+<h2 id="s42">42. A plain table</h2>
+<table>
+  <caption>Table 42, with a caption above it</caption>
+  <tr><th>Link</th><th>Middle</th><th>Wrapping text</th></tr>
+  <tr><td><a href='#s42'>Row 1</a></td><td>middle column 1</td><td>And keeps on jumping because one line is</td></tr><tr><td><a href='#s42'>Row 2</a></td><td>middle column 2</td><td>Keeps on jumping because one line is nev</td></tr><tr><td><a href='#s42'>Row 3</a></td><td>middle column 3</td><td>On jumping because one line is never eno</td></tr><tr><td><a href='#s42'>Row 4</a></td><td>middle column 4</td><td>Jumping because one line is never enough</td></tr>
+</table>
+
+<h2 id="s43">43. Spans and nesting</h2>
+<table class="span">
+  <tr><th>Release</th><th>Part</th><th>What changed</th></tr>
+  <tr>
+    <td rowspan="3">43.0</td>
+    <td>renderer</td><td>font sizes in pixels</td>
+  </tr>
+  <tr><td>tables</td><td>rowspan as well as colspan</td></tr>
+  <tr><td>pictures</td><td>sized the way the page asks</td></tr>
+  <tr><td colspan="2">both parts of 42.9</td><td>the one before</td></tr>
+  <tr>
+    <td style="background:#f4f7ff">its own background</td>
+    <td style="background:#fff7ed">
+      <table><tr><td>inner one</td><td>inner two</td></tr>
+      <tr><td colspan="2">and a spanning inner cell</td></tr></table>
+    </td>
+    <td><a href="#s43">a link in the third column</a></td>
+  </tr>
+</table>
+
+<h2 id="s44">44. Cards</h2>
+<table class="cards">
+  <tr>
+    <td><b>Card one</b><br><small>section 44</small></td>
+    <td><b>Card two</b><br><small>with rather more words in it than the
+        first one has, so the row has to grow</small></td>
+    <td class="empty"></td>
+  </tr>
+</table>
+<div class="grid">
+  <a class="card" href="#s44"><b>A grid card</b><br><small>first</small></a>
+  <a class="card" href="#s44"><b>Another</b><br><small>second</small></a>
+  <a class="card" href="#s44"><b>And a third</b><br><small>third</small></a>
+</div>
+<hr>
+
+<h2 id="s45">45. Code</h2>
+<pre><code class="language-pascal">procedure TForm45.FormCreate(Sender: TObject);
+const Greeting = 'It''s ready';      { a doubled quote }
+begin
+  {$IFDEF WINDOWS}
+  InkPage1.Color := $00FF8800;       // a Delphi-style hex number
+  {$ENDIF}
+  if Sender &lt;&gt; nil then
+    InkPage1.LoadFromFile('help/index.html');  (* an old-style comment *)
+end;</code></pre>
+<pre><code>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx = a line far too long for the column, which is cut off at its edge rather than wrapped, yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy</code></pre>
+
+<h2 id="s46">46. Quotes and notes</h2>
+<blockquote>
+  <p>A quote has a bar down its side, and it can hold more than one
+  paragraph. Jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown.</p>
+  <blockquote><p>And a quote inside a quote has two bars.</p>
+    <blockquote><p>Three, at the third level.</p></blockquote>
+  </blockquote>
+</blockquote>
+<div class="note"><b>A note box.</b> A div with a background, a left border
+and some padding, which is how most documentation sites draw a callout.</div>
+<div class="warn"><b>And a warning.</b> The same shape in another color.</div>
+
+<h2 id="s47">47. Pictures</h2>
+<p>A PNG at its own size, then at a width in pixels, then at
+half the column, then with a max-width:</p>
+<p><img src="../../images/demo-listbox.png" alt="demo-listbox.png"></p>
+<p><img src="../../images/demo-listbox.png" alt="demo-listbox.png at 140px" width="140"></p>
+<p><img src="../../images/demo-listbox.png" alt="demo-listbox.png at half" width="50%"></p>
+<p><img src="../../images/demo-listbox.png" alt="demo-listbox.png capped" style="max-width: 200px"></p>
+<figure>
+  <img src="../fixtures/webp/column-lossy.webp" alt="column-lossy.webp">
+  <figcaption>Figure 47. A WebP, which LazInk decodes itself.</figcaption>
+</figure>
+<p>And inside a &lt;picture&gt;, plus one that is not there at all:</p>
+<p><picture><source srcset="../../images/demo-listbox.png" type="image/png">
+<img src="../../images/demo-listbox.png" alt="in a picture element" style="width: 90px"></picture></p>
+<p><img src="missing-47.png" alt="[this picture is missing]"></p>
+
+<h2 id="s48">48. Folding</h2>
+<details>
+  <summary>Click to see more, in section 48</summary>
+  <p>This paragraph is folded away until the summary is clicked.</p>
+  <ul><li>and so is this list</li><li>with two items</li></ul>
+  <table><tr><th>Even</th><th>a table</th></tr>
+    <tr><td>is</td><td>hidden</td></tr></table>
+</details>
+<details open>
+  <summary>Already open</summary>
+  <p>This one was written with the open attribute, so it starts showing.</p>
+</details>
+<hr>
+
+<h2 id="s49">49. Spacing and case</h2>
+<p class="airy">Line-height 2.2, so the lines stand well apart.
+Line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never.</p>
+<p class="snug">Line-height 1, so they close up. Line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never.</p>
+<p class="shout">A line the stylesheet shouts in uppercase, with
+<b>bold</b> and an &amp; entity in it.</p>
+<p class="quiet">AND ONE IT QUIETENS BACK DOWN.</p>
+<p class="title-case">and one it puts in title case</p>
+<p class="keep">A line that says white-space: nowrap, so it runs off the edge of the column instead of wrapping onto a second line at all.</p>
+<p class="middle">A centered line.</p>
+<p class="right">And one against the right edge.</p>
+
+<h2 id="s50">50. Other scripts</h2>
+<p>CJK, which wraps between characters rather than at spaces:
+中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試50。</p>
+<p>日本語のテキストもここにあります。カタカナ、ひらがな、漢字。</p>
+<p>한국어도 여기에 있습니다.</p>
+<p>And a line with a <span style="color:#c0392b">red span</span>, a
+<span style="background:#fff3a0">highlighted span</span>, a
+<span style="font-size:22px">bigger one</span> and a
+<span style="font-size:10px">smaller one</span> on it, to show how a line
+with mixed sizes sits on its baseline.</p>
+
+<h2 id="s51">51. Pills and badges</h2>
+<p>Status pills, drawn from the stylesheet's padding and
+border-radius: <span class="pill">neutral</span>
+<span class="pill-ok">passing 51</span>
+<span class="pill-warn">flaky</span> <span class="badge">NEW</span>
+and <code class="chip">a code chip</code> sitting in a sentence.</p>
+<p>A pill in a wrapping line: Never enough to show where a renderer chooses to break a lin
+<span class="pill-ok">still round</span> Enough to show where a renderer chooses to break a line and .</p>
+<ul>
+  <li>a list item holding <span class="pill">a pill</span> of its own</li>
+  <li>and one with <span class="badge">TWO</span>
+      <span class="pill-warn">of them</span></li>
+</ul>
+<p>Inline code that wraps across lines, whose shading must cover its own
+words and nothing above or below them:
+<code>a_rather_long_inline_code_span_51(with, enough, arguments, that,
+it, cannot, fit, on, one, line, and, must, wrap, somewhere)</code> and the
+line goes on after it.</p>
+<p>The same for <mark>a highlighted stretch of words that is long enough
+to wrap onto the next line and must carry its mark with it as it
+goes</mark>, ending in plain words.</p>
+<table><tr><th>Cell</th><th>With pills</th></tr>
+<tr><td><span class="pill-ok">in a cell</span></td>
+<td>beside <span class="badge">51</span> words</td></tr></table>
+
+<h2 id="s52">52. Mixed lists</h2>
+<ol>
+  <li>a numbered item
+    <ul>
+      <li>whose sublist is bulleted</li>
+      <li>with a second bullet
+        <ol><li>and numbers again at the third level</li>
+            <li>counting on</li></ol>
+      </li>
+    </ul>
+  </li>
+  <li>the numbering carries on at two after the sublist</li>
+  <li>and three, with <code>code(52)</code> and <b>bold</b> in it</li>
+</ol>
+<ol start="98">
+  <li>numbered from 98, so the markers are wide</li>
+  <li>99, and the wrapped text under a wide marker keeps its
+      indent all the way down the line as it goes on and on</li>
+</ol>
+<ul>
+  <li>a bullet holding a quote:
+    <blockquote><p>the quote keeps its bar inside the list</p></blockquote>
+  </li>
+  <li>and one holding a small table:
+    <table><tr><td>in</td><td>a list</td></tr></table>
+  </li>
+</ul>
+<hr>
+
+<h2 id="s53">53. Old-school HTML</h2>
+<center>A &lt;center&gt; tag, which browsers still honor.</center>
+<p align="right">A paragraph whose align attribute says right.</p>
+<p align="center">And one the attribute centers.</p>
+<p><font color="#b02a2a">A font tag in red,</font>
+<font face="monospace">one in monospace,</font>
+<font size="5">one at size 5,</font>
+<font size="1">one at size 1,</font>
+<tt>teletype text</tt> and <strike>struck the old way</strike>.</p>
+<table width="100%"><tr>
+  <td align="left">left cell</td>
+  <td align="center">centered cell 53</td>
+  <td align="right">right cell</td>
+</tr></table>
+<p>To show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox.</p>
+
+<h2 id="s54">54. Preformatted text</h2>
+<p>A &lt;pre&gt; with no code in it keeps every space and
+blank line exactly as written:</p>
+<pre>
+column one      column two      column three
+   indented         by three        spaces   54
+
+a blank line above, and trailing spaces after this:   .
+       deep indent, seven spaces
+</pre>
+<p>And prose right after it, to show the gap the pre leaves behind.</p>
+
+<h2 id="s55">55. Rules and breaks</h2>
+<p>Rules: a plain one, a thick colored one, and a dotted one.</p>
+<hr>
+<hr class="thick">
+<hr class="dotted">
+<p>Line breaks: one&nbsp;sentence broken<br>by a single &lt;br&gt;,<br>
+twice,<br><br>and a double break above this line, section 55.</p>
+<p>Where a renderer chooses to break a line and where it carries on the quick brown</p>
+
+<h2 id="s56">56. Links in depth</h2>
+<p>A paragraph that is mostly <a href="#s56">one long link, with
+enough words inside it that the link wraps onto a second line and its
+underline has to carry on there</a>, then plain words.</p>
+<p>A link holding <a href="#s56"><b>bold</b>, <i>italic</i> and
+<code>code(56)</code></a> inside it, and one to
+<a href="mailto:nobody@example.org">an address</a>.</p>
+<h3>A heading that is <a href="#top">itself a link</a></h3>
+<ul><li><a href="#s56">a link that is the whole item</a></li>
+<li>and one at the item's end: <a href="#top">back to the top</a></li></ul>
+<hr>
+
+<h2 id="s57">57. Nested boxes</h2>
+<div class="frame">A gray frame with 14px of padding around
+these words, section 57. Renderer chooses to break a line and where it carries on the quick bro</div>
+<div class="boxed">A white box with a border, padding and vertical
+margins of its own, long enough to wrap so the padding shows on more
+than one line.</div>
+<div class="note">A note box between them, which is how most
+documentation sites draw a callout.</div>
+<div class="boxed"><b>Boxes in a row:</b> the second box, right after the
+first, so the gap between them is the two margins meeting.</div>
+<p>Renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog</p>
+
+<h2 id="s58">58. Headings</h2>
+<h3>Every heading level, at section 58</h3>
+<h4>An h4, which a browser leaves the size of the body text</h4>
+<h5>An h5, smaller</h5>
+<h6>And an h6, smaller again</h6>
+<p>Chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough.</p>
+
+<h2 id="s59">59. Inline text</h2>
+<p>Ordinary words, then <b>bold</b>, <i>italic</i>,
+<u>underlined</u>, <s>struck through</s>, <code>inline_code(59)</code>,
+<kbd>Ctrl</kbd>+<kbd>H</kbd>, <mark>highlighted</mark>,
+<del>deleted</del>, <ins>inserted</ins>, <small>small print</small>,
+H<sub>2</sub>O, E=mc<sup>2</sup>, <cite>a citation</cite>,
+<abbr title="as it happens">abbr</abbr> and
+<a href="#s58">a link back one section</a>.</p>
+<p>Entities: &amp; &lt; &gt; &quot; &copy; &reg; &trade; &rarr; &larr;
+&mdash; &ndash; &hellip; &times; &deg; &euro; &nbsp; &#233; &#x2713; and a
+<q>quotation inside a sentence</q>.</p>
+<p>To break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and. And
+averylongunbreakablewordthatcannotbesplitanywhere59 sits in it on purpose.</p>
+
+<h2 id="s60">60. Lists</h2>
+<ul>
+  <li>a bullet with enough words in it that the line wraps and the wrapped
+      part lines up under the first word rather than under the bullet</li>
+  <li>another bullet
+    <ul>
+      <li>a nested one</li>
+      <li>and another, with <a href="#s60">a link</a> in it
+        <ul><li>and a third level, to see the indent step</li></ul>
+      </li>
+    </ul>
+  </li>
+  <li>a third</li>
+</ul>
+<ol start="1">
+  <li>numbered from 1, because the list says so</li>
   <li>the next one</li>
   <li>and one that wraps in the same way a bullet does when the text in it
       runs past the edge of the column</li>
@@ -854,61 +999,58 @@ averylongunbreakablewordthatcannotbesplitanywhere47 sits in it on purpose.</p>
 </dl>
 <hr>
 
-<h2 id="s49">49. A plain table</h2>
+<h2 id="s61">61. A plain table</h2>
 <table class='tight'>
-  <caption>Table 49, with a caption above it</caption>
+  <caption>Table 61, with a caption above it</caption>
   <tr><th>Link</th><th>Middle</th><th>Wrapping text</th></tr>
-  <tr><td><a href='#s49'>Row 1</a></td><td>middle column 1</td><td>Is never enough to show where a renderer</td></tr><tr><td><a href='#s49'>Row 2</a></td><td>middle column 2</td><td>Never enough to show where a renderer ch</td></tr><tr><td><a href='#s49'>Row 3</a></td><td>middle column 3</td><td>Enough to show where a renderer chooses </td></tr><tr><td><a href='#s49'>Row 4</a></td><td>middle column 4</td><td>To show where a renderer chooses to brea</td></tr>
+  <tr><td><a href='#s61'>Row 1</a></td><td>middle column 1</td><td>Line and where it carries on the quick b</td></tr><tr><td><a href='#s61'>Row 2</a></td><td>middle column 2</td><td>And where it carries on the quick brown </td></tr><tr><td><a href='#s61'>Row 3</a></td><td>middle column 3</td><td>Where it carries on the quick brown fox </td></tr><tr><td><a href='#s61'>Row 4</a></td><td>middle column 4</td><td>It carries on the quick brown fox jumps </td></tr>
 </table>
 
-<h2 id="s50">50. Spans and nesting</h2>
+<h2 id="s62">62. Spans and nesting</h2>
 <table class="span">
   <tr><th>Release</th><th>Part</th><th>What changed</th></tr>
   <tr>
-    <td rowspan="3">50.0</td>
+    <td rowspan="3">62.0</td>
     <td>renderer</td><td>font sizes in pixels</td>
   </tr>
   <tr><td>tables</td><td>rowspan as well as colspan</td></tr>
   <tr><td>pictures</td><td>sized the way the page asks</td></tr>
-  <tr><td colspan="2">both parts of 49.9</td><td>the one before</td></tr>
+  <tr><td colspan="2">both parts of 61.9</td><td>the one before</td></tr>
   <tr>
     <td style="background:#f4f7ff">its own background</td>
     <td style="background:#fff7ed">
       <table><tr><td>inner one</td><td>inner two</td></tr>
       <tr><td colspan="2">and a spanning inner cell</td></tr></table>
     </td>
-    <td><a href="#s50">a link in the third column</a></td>
+    <td><a href="#s62">a link in the third column</a></td>
   </tr>
 </table>
 
-<h2 id="s51">51. Cards</h2>
+<h2 id="s63">63. Cards</h2>
 <table class="cards">
   <tr>
-    <td><b>Card one</b><br><small>section 51</small></td>
+    <td><b>Card one</b><br><small>section 63</small></td>
     <td><b>Card two</b><br><small>with rather more words in it than the
         first one has, so the row has to grow</small></td>
     <td class="empty"></td>
   </tr>
 </table>
 <div class="grid">
-  <a class="card" href="#s51"><b>A grid card</b><br><small>first</small></a>
-  <a class="card" href="#s51"><b>Another</b><br><small>second</small></a>
-  <a class="card" href="#s51"><b>And a third</b><br><small>third</small></a>
+  <a class="card" href="#s63"><b>A grid card</b><br><small>first</small></a>
+  <a class="card" href="#s63"><b>Another</b><br><small>second</small></a>
+  <a class="card" href="#s63"><b>And a third</b><br><small>third</small></a>
 </div>
 
-<h2 id="s52">52. Code</h2>
-<pre><code class="language-c">/* a block comment */
-int main(int argc, char **argv) {
-    if (argc &gt; 52) return 0;   // too many
-    printf("%s\n", "hello");
-}</code></pre>
+<h2 id="s64">64. Code</h2>
+<pre><code>a line of code that names no language, which is colored by
+the rules most languages share: if (n &gt; 64) return "too big";  // a comment</code></pre>
 <pre><code>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx = a line far too long for the column, which is cut off at its edge rather than wrapped, yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy</code></pre>
 <hr>
 
-<h2 id="s53">53. Quotes and notes</h2>
+<h2 id="s65">65. Quotes and notes</h2>
 <blockquote>
   <p>A quote has a bar down its side, and it can hold more than one
-  paragraph. To show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox.</p>
+  paragraph. It carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to.</p>
   <blockquote><p>And a quote inside a quote has two bars.</p>
     <blockquote><p>Three, at the third level.</p></blockquote>
   </blockquote>
@@ -917,7 +1059,7 @@ int main(int argc, char **argv) {
 and some padding, which is how most documentation sites draw a callout.</div>
 <div class="warn"><b>And a warning.</b> The same shape in another color.</div>
 
-<h2 id="s54">54. Pictures</h2>
+<h2 id="s66">66. Pictures</h2>
 <p>A PNG at its own size, then at a width in pixels, then at
 half the column, then with a max-width:</p>
 <p><img src="../../images/palette.png" alt="palette.png"></p>
@@ -926,16 +1068,16 @@ half the column, then with a max-width:</p>
 <p><img src="../../images/palette.png" alt="palette.png capped" style="max-width: 200px"></p>
 <figure>
   <img src="../fixtures/webp/palette-lossless.webp" alt="palette-lossless.webp">
-  <figcaption>Figure 54. A WebP, which LazInk decodes itself.</figcaption>
+  <figcaption>Figure 66. A WebP, which LazInk decodes itself.</figcaption>
 </figure>
 <p>And inside a &lt;picture&gt;, plus one that is not there at all:</p>
 <p><picture><source srcset="../../images/palette.png" type="image/png">
 <img src="../../images/palette.png" alt="in a picture element" style="width: 90px"></picture></p>
-<p><img src="missing-54.png" alt="[this picture is missing]"></p>
+<p><img src="missing-66.png" alt="[this picture is missing]"></p>
 
-<h2 id="s55">55. Folding</h2>
+<h2 id="s67">67. Folding</h2>
 <details>
-  <summary>Click to see more, in section 55</summary>
+  <summary>Click to see more, in section 67</summary>
   <p>This paragraph is folded away until the summary is clicked.</p>
   <ul><li>and so is this list</li><li>with two items</li></ul>
   <table><tr><th>Even</th><th>a table</th></tr>
@@ -946,10 +1088,10 @@ half the column, then with a max-width:</p>
   <p>This one was written with the open attribute, so it starts showing.</p>
 </details>
 
-<h2 id="s56">56. Spacing and case</h2>
+<h2 id="s68">68. Spacing and case</h2>
 <p class="airy">Line-height 2.2, so the lines stand well apart.
-A renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog.</p>
-<p class="snug">Line-height 1, so they close up. A renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog.</p>
+The quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses.</p>
+<p class="snug">Line-height 1, so they close up. The quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses.</p>
 <p class="shout">A line the stylesheet shouts in uppercase, with
 <b>bold</b> and an &amp; entity in it.</p>
 <p class="quiet">AND ONE IT QUIETENS BACK DOWN.</p>
@@ -959,9 +1101,9 @@ A renderer chooses to break a line and where it carries on the quick brown fox j
 <p class="right">And one against the right edge.</p>
 <hr>
 
-<h2 id="s57">57. Other scripts</h2>
+<h2 id="s69">69. Other scripts</h2>
 <p>CJK, which wraps between characters rather than at spaces:
-中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試57。</p>
+中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試69。</p>
 <p>日本語のテキストもここにあります。カタカナ、ひらがな、漢字。</p>
 <p>한국어도 여기에 있습니다.</p>
 <p>And a line with a <span style="color:#c0392b">red span</span>, a
@@ -970,14 +1112,14 @@ A renderer chooses to break a line and where it carries on the quick brown fox j
 <span style="font-size:10px">smaller one</span> on it, to show how a line
 with mixed sizes sits on its baseline.</p>
 
-<h2 id="s58">58. Pills and badges</h2>
+<h2 id="s70">70. Pills and badges</h2>
 <p>Status pills, drawn from the stylesheet's padding and
 border-radius: <span class="pill">neutral</span>
-<span class="pill-ok">passing 58</span>
+<span class="pill-ok">passing 70</span>
 <span class="pill-warn">flaky</span> <span class="badge">NEW</span>
 and <code class="chip">a code chip</code> sitting in a sentence.</p>
-<p>A pill in a wrapping line: Chooses to break a line and where it carries on the quick br
-<span class="pill-ok">still round</span> To break a line and where it carries on the quick brown fox .</p>
+<p>A pill in a wrapping line: Brown fox jumps over the lazy dog and keeps on jumping becau
+<span class="pill-ok">still round</span> Fox jumps over the lazy dog and keeps on jumping because one.</p>
 <ul>
   <li>a list item holding <span class="pill">a pill</span> of its own</li>
   <li>and one with <span class="badge">TWO</span>
@@ -985,7 +1127,7 @@ and <code class="chip">a code chip</code> sitting in a sentence.</p>
 </ul>
 <p>Inline code that wraps across lines, whose shading must cover its own
 words and nothing above or below them:
-<code>a_rather_long_inline_code_span_58(with, enough, arguments, that,
+<code>a_rather_long_inline_code_span_70(with, enough, arguments, that,
 it, cannot, fit, on, one, line, and, must, wrap, somewhere)</code> and the
 line goes on after it.</p>
 <p>The same for <mark>a highlighted stretch of words that is long enough
@@ -993,9 +1135,9 @@ to wrap onto the next line and must carry its mark with it as it
 goes</mark>, ending in plain words.</p>
 <table><tr><th>Cell</th><th>With pills</th></tr>
 <tr><td><span class="pill-ok">in a cell</span></td>
-<td>beside <span class="badge">58</span> words</td></tr></table>
+<td>beside <span class="badge">70</span> words</td></tr></table>
 
-<h2 id="s59">59. Mixed lists</h2>
+<h2 id="s71">71. Mixed lists</h2>
 <ol>
   <li>a numbered item
     <ul>
@@ -1007,7 +1149,7 @@ goes</mark>, ending in plain words.</p>
     </ul>
   </li>
   <li>the numbering carries on at two after the sublist</li>
-  <li>and three, with <code>code(59)</code> and <b>bold</b> in it</li>
+  <li>and three, with <code>code(71)</code> and <b>bold</b> in it</li>
 </ol>
 <ol start="99">
   <li>numbered from 99, so the markers are wide</li>
@@ -1023,7 +1165,7 @@ goes</mark>, ending in plain words.</p>
   </li>
 </ul>
 
-<h2 id="s60">60. Old-school HTML</h2>
+<h2 id="s72">72. Old-school HTML</h2>
 <center>A &lt;center&gt; tag, which browsers still honor.</center>
 <p align="right">A paragraph whose align attribute says right.</p>
 <p align="center">And one the attribute centers.</p>
@@ -1034,251 +1176,56 @@ goes</mark>, ending in plain words.</p>
 <tt>teletype text</tt> and <strike>struck the old way</strike>.</p>
 <table width="100%"><tr>
   <td align="left">left cell</td>
-  <td align="center">centered cell 60</td>
+  <td align="center">centered cell 72</td>
   <td align="right">right cell</td>
 </tr></table>
-<p>Break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line.</p>
+<p>Jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps.</p>
 <hr>
 
-<h2 id="s61">61. Headings</h2>
-<h3>Every heading level, at section 61</h3>
-<h4>An h4, which a browser leaves the size of the body text</h4>
-<h5>An h5, smaller</h5>
-<h6>And an h6, smaller again</h6>
-<p>A line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on.</p>
+<h2 id="s73">73. Preformatted text</h2>
+<p>A &lt;pre&gt; with no code in it keeps every space and
+blank line exactly as written:</p>
+<pre>
+column one      column two      column three
+   indented         by three        spaces   73
 
-<h2 id="s62">62. Inline text</h2>
-<p>Ordinary words, then <b>bold</b>, <i>italic</i>,
-<u>underlined</u>, <s>struck through</s>, <code>inline_code(62)</code>,
-<kbd>Ctrl</kbd>+<kbd>K</kbd>, <mark>highlighted</mark>,
-<del>deleted</del>, <ins>inserted</ins>, <small>small print</small>,
-H<sub>2</sub>O, E=mc<sup>2</sup>, <cite>a citation</cite>,
-<abbr title="as it happens">abbr</abbr> and
-<a href="#s61">a link back one section</a>.</p>
-<p>Entities: &amp; &lt; &gt; &quot; &copy; &reg; &trade; &rarr; &larr;
-&mdash; &ndash; &hellip; &times; &deg; &euro; &nbsp; &#233; &#x2713; and a
-<q>quotation inside a sentence</q>.</p>
-<p>Line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses. And
-averylongunbreakablewordthatcannotbesplitanywhere62 sits in it on purpose.</p>
+a blank line above, and trailing spaces after this:   .
+       deep indent, seven spaces
+</pre>
+<p>And prose right after it, to show the gap the pre leaves behind.</p>
 
-<h2 id="s63">63. Lists</h2>
-<ul>
-  <li>a bullet with enough words in it that the line wraps and the wrapped
-      part lines up under the first word rather than under the bullet</li>
-  <li>another bullet
-    <ul>
-      <li>a nested one</li>
-      <li>and another, with <a href="#s63">a link</a> in it
-        <ul><li>and a third level, to see the indent step</li></ul>
-      </li>
-    </ul>
-  </li>
-  <li>a third</li>
-</ul>
-<ol start="10">
-  <li>numbered from 10, because the list says so</li>
-  <li>the next one</li>
-  <li>and one that wraps in the same way a bullet does when the text in it
-      runs past the edge of the column</li>
-</ol>
-<ol type="a"><li>lettered</li><li>and again</li></ol>
-<ul>
-  <li><input type="checkbox" checked> a task that is done</li>
-  <li><input type="checkbox"> and one that is not</li>
-</ul>
-<dl>
-  <dt>A term</dt>
-  <dd>and what it means.</dd>
-  <dt>Another</dt>
-  <dd>and its meaning, which is longer and wraps onto a second line to show
-      how the indent behaves.</dd>
-</dl>
-
-<h2 id="s64">64. A plain table</h2>
-<table class='tight'>
-  <caption>Table 64, with a caption above it</caption>
-  <tr><th>Link</th><th>Middle</th><th>Wrapping text</th></tr>
-  <tr><td><a href='#s64'>Row 1</a></td><td>middle column 1</td><td>It carries on the quick brown fox jumps </td></tr><tr><td><a href='#s64'>Row 2</a></td><td>middle column 2</td><td>Carries on the quick brown fox jumps ove</td></tr><tr><td><a href='#s64'>Row 3</a></td><td>middle column 3</td><td>On the quick brown fox jumps over the la</td></tr><tr><td><a href='#s64'>Row 4</a></td><td>middle column 4</td><td>The quick brown fox jumps over the lazy </td></tr>
-</table>
+<h2 id="s74">74. Rules and breaks</h2>
+<p>Rules: a plain one, a thick colored one, and a dotted one.</p>
 <hr>
+<hr class="thick">
+<hr class="dotted">
+<p>Line breaks: one&nbsp;sentence broken<br>by a single &lt;br&gt;,<br>
+twice,<br><br>and a double break above this line, section 74.</p>
+<p>The lazy dog and keeps on jumping because one line is never enough to show where</p>
 
-<h2 id="s65">65. Spans and nesting</h2>
-<table class="span">
-  <tr><th>Release</th><th>Part</th><th>What changed</th></tr>
-  <tr>
-    <td rowspan="3">65.0</td>
-    <td>renderer</td><td>font sizes in pixels</td>
-  </tr>
-  <tr><td>tables</td><td>rowspan as well as colspan</td></tr>
-  <tr><td>pictures</td><td>sized the way the page asks</td></tr>
-  <tr><td colspan="2">both parts of 64.9</td><td>the one before</td></tr>
-  <tr>
-    <td style="background:#f4f7ff">its own background</td>
-    <td style="background:#fff7ed">
-      <table><tr><td>inner one</td><td>inner two</td></tr>
-      <tr><td colspan="2">and a spanning inner cell</td></tr></table>
-    </td>
-    <td><a href="#s65">a link in the third column</a></td>
-  </tr>
-</table>
+<h2 id="s75">75. Links in depth</h2>
+<p>A paragraph that is mostly <a href="#s75">one long link, with
+enough words inside it that the link wraps onto a second line and its
+underline has to carry on there</a>, then plain words.</p>
+<p>A link holding <a href="#s75"><b>bold</b>, <i>italic</i> and
+<code>code(75)</code></a> inside it, and one to
+<a href="mailto:nobody@example.org">an address</a>.</p>
+<h3>A heading that is <a href="#top">itself a link</a></h3>
+<ul><li><a href="#s75">a link that is the whole item</a></li>
+<li>and one at the item's end: <a href="#top">back to the top</a></li></ul>
 
-<h2 id="s66">66. Cards</h2>
-<table class="cards">
-  <tr>
-    <td><b>Card one</b><br><small>section 66</small></td>
-    <td><b>Card two</b><br><small>with rather more words in it than the
-        first one has, so the row has to grow</small></td>
-    <td class="empty"></td>
-  </tr>
-</table>
-<div class="grid">
-  <a class="card" href="#s66"><b>A grid card</b><br><small>first</small></a>
-  <a class="card" href="#s66"><b>Another</b><br><small>second</small></a>
-  <a class="card" href="#s66"><b>And a third</b><br><small>third</small></a>
-</div>
-
-<h2 id="s67">67. Code</h2>
-<pre><code class="language-c">/* a block comment */
-int main(int argc, char **argv) {
-    if (argc &gt; 67) return 0;   // too many
-    printf("%s\n", "hello");
-}</code></pre>
-<pre><code>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx = a line far too long for the column, which is cut off at its edge rather than wrapped, yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy</code></pre>
-
-<h2 id="s68">68. Quotes and notes</h2>
-<blockquote>
-  <p>A quote has a bar down its side, and it can hold more than one
-  paragraph. The quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses.</p>
-  <blockquote><p>And a quote inside a quote has two bars.</p>
-    <blockquote><p>Three, at the third level.</p></blockquote>
-  </blockquote>
-</blockquote>
-<div class="note"><b>A note box.</b> A div with a background, a left border
-and some padding, which is how most documentation sites draw a callout.</div>
-<div class="warn"><b>And a warning.</b> The same shape in another color.</div>
+<h2 id="s76">76. Nested boxes</h2>
+<div class="frame">A gray frame with 14px of padding around
+these words, section 76. Dog and keeps on jumping because one line is never enough to show wher</div>
+<div class="boxed">A white box with a border, padding and vertical
+margins of its own, long enough to wrap so the padding shows on more
+than one line.</div>
+<div class="note">A note box between them, which is how most
+documentation sites draw a callout.</div>
+<div class="boxed"><b>Boxes in a row:</b> the second box, right after the
+first, so the gap between them is the two margins meeting.</div>
+<p>Dog and keeps on jumping because one line is never enough to show where a renderer chooses to break </p>
 <hr>
-
-<h2 id="s69">69. Pictures</h2>
-<p>A PNG at its own size, then at a width in pixels, then at
-half the column, then with a max-width:</p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png"></p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png at 140px" width="140"></p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png at half" width="50%"></p>
-<p><img src="../../images/TInkLabel.png" alt="TInkLabel.png capped" style="max-width: 200px"></p>
-<figure>
-  <img src="../fixtures/webp/gradient-lossy.webp" alt="gradient-lossy.webp">
-  <figcaption>Figure 69. A WebP, which LazInk decodes itself.</figcaption>
-</figure>
-<p>And inside a &lt;picture&gt;, plus one that is not there at all:</p>
-<p><picture><source srcset="../../images/TInkLabel.png" type="image/png">
-<img src="../../images/TInkLabel.png" alt="in a picture element" style="width: 90px"></picture></p>
-<p><img src="missing-69.png" alt="[this picture is missing]"></p>
-
-<h2 id="s70">70. Folding</h2>
-<details>
-  <summary>Click to see more, in section 70</summary>
-  <p>This paragraph is folded away until the summary is clicked.</p>
-  <ul><li>and so is this list</li><li>with two items</li></ul>
-  <table><tr><th>Even</th><th>a table</th></tr>
-    <tr><td>is</td><td>hidden</td></tr></table>
-</details>
-<details open>
-  <summary>Already open</summary>
-  <p>This one was written with the open attribute, so it starts showing.</p>
-</details>
-
-<h2 id="s71">71. Spacing and case</h2>
-<p class="airy">Line-height 2.2, so the lines stand well apart.
-Fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over.</p>
-<p class="snug">Line-height 1, so they close up. Fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over.</p>
-<p class="shout">A line the stylesheet shouts in uppercase, with
-<b>bold</b> and an &amp; entity in it.</p>
-<p class="quiet">AND ONE IT QUIETENS BACK DOWN.</p>
-<p class="title-case">and one it puts in title case</p>
-<p class="keep">A line that says white-space: nowrap, so it runs off the edge of the column instead of wrapping onto a second line at all.</p>
-<p class="middle">A centered line.</p>
-<p class="right">And one against the right edge.</p>
-
-<h2 id="s72">72. Other scripts</h2>
-<p>CJK, which wraps between characters rather than at spaces:
-中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試中文測試72。</p>
-<p>日本語のテキストもここにあります。カタカナ、ひらがな、漢字。</p>
-<p>한국어도 여기에 있습니다.</p>
-<p>And a line with a <span style="color:#c0392b">red span</span>, a
-<span style="background:#fff3a0">highlighted span</span>, a
-<span style="font-size:22px">bigger one</span> and a
-<span style="font-size:10px">smaller one</span> on it, to show how a line
-with mixed sizes sits on its baseline.</p>
-<hr>
-
-<h2 id="s73">73. Pills and badges</h2>
-<p>Status pills, drawn from the stylesheet's padding and
-border-radius: <span class="pill">neutral</span>
-<span class="pill-ok">passing 73</span>
-<span class="pill-warn">flaky</span> <span class="badge">NEW</span>
-and <code class="chip">a code chip</code> sitting in a sentence.</p>
-<p>A pill in a wrapping line: Over the lazy dog and keeps on jumping because one line is n
-<span class="pill-ok">still round</span> The lazy dog and keeps on jumping because one line is never .</p>
-<ul>
-  <li>a list item holding <span class="pill">a pill</span> of its own</li>
-  <li>and one with <span class="badge">TWO</span>
-      <span class="pill-warn">of them</span></li>
-</ul>
-<p>Inline code that wraps across lines, whose shading must cover its own
-words and nothing above or below them:
-<code>a_rather_long_inline_code_span_73(with, enough, arguments, that,
-it, cannot, fit, on, one, line, and, must, wrap, somewhere)</code> and the
-line goes on after it.</p>
-<p>The same for <mark>a highlighted stretch of words that is long enough
-to wrap onto the next line and must carry its mark with it as it
-goes</mark>, ending in plain words.</p>
-<table><tr><th>Cell</th><th>With pills</th></tr>
-<tr><td><span class="pill-ok">in a cell</span></td>
-<td>beside <span class="badge">73</span> words</td></tr></table>
-
-<h2 id="s74">74. Mixed lists</h2>
-<ol>
-  <li>a numbered item
-    <ul>
-      <li>whose sublist is bulleted</li>
-      <li>with a second bullet
-        <ol><li>and numbers again at the third level</li>
-            <li>counting on</li></ol>
-      </li>
-    </ul>
-  </li>
-  <li>the numbering carries on at two after the sublist</li>
-  <li>and three, with <code>code(74)</code> and <b>bold</b> in it</li>
-</ol>
-<ol start="99">
-  <li>numbered from 99, so the markers are wide</li>
-  <li>100, and the wrapped text under a wide marker keeps its
-      indent all the way down the line as it goes on and on</li>
-</ol>
-<ul>
-  <li>a bullet holding a quote:
-    <blockquote><p>the quote keeps its bar inside the list</p></blockquote>
-  </li>
-  <li>and one holding a small table:
-    <table><tr><td>in</td><td>a list</td></tr></table>
-  </li>
-</ul>
-
-<h2 id="s75">75. Old-school HTML</h2>
-<center>A &lt;center&gt; tag, which browsers still honor.</center>
-<p align="right">A paragraph whose align attribute says right.</p>
-<p align="center">And one the attribute centers.</p>
-<p><font color="#b02a2a">A font tag in red,</font>
-<font face="monospace">one in monospace,</font>
-<font size="5">one at size 5,</font>
-<font size="1">one at size 1,</font>
-<tt>teletype text</tt> and <strike>struck the old way</strike>.</p>
-<table width="100%"><tr>
-  <td align="left">left cell</td>
-  <td align="center">centered cell 75</td>
-  <td align="right">right cell</td>
-</tr></table>
-<p>Lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to break a line and where it carries on the quick brown fox jumps over the lazy dog and keeps on jumping because one line is never enough to show where a renderer chooses to.</p>
 
 <hr>
 

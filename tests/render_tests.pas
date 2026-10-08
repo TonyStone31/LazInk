@@ -3809,6 +3809,26 @@ begin
       'while size="12" stays twelve points, as LazInk''s own markup means it');
   finally BM.Free end;
 
+  { a <pre> that never said <code> is preformatted prose: uncolored }
+  Probe.LoadHTML('<html><body><pre>if and this 16</pre></body></html>');
+  Check(Pos('<font color',Probe.Block(0).Source)=0,
+    'a plain pre is not run through the highlighter');
+  Probe.LoadHTML('<html><body><pre><code>if and this 16</code></pre></body></html>');
+  Check(Pos('<font color',Probe.Block(0).Source)>0,
+    'while pre-code still is');
+
+  { a rule reads its height, color and dots from the stylesheet }
+  Probe.LoadHTML('<html><head><style>'+
+    'hr.thick{height:4px;background:#176bbd}'+
+    'hr.dot{border:none;border-top:2px dotted #b45309}'+
+    '</style></head><body><hr class="thick"><hr class="dot"></body></html>');
+  Check((Probe.Block(0).RuleHeight=4) and
+    (Probe.Block(0).BarColor=RGBToColor($17,$6B,$BD)),
+    'hr: height and background from the stylesheet');
+  Check(Probe.Block(1).RuleDashed and
+    (Probe.Block(1).BarColor=RGBToColor($B4,$53,$09)),
+    'hr: a dotted border-top draws dotted, in its color');
+
   { the table's own width attribute spreads it, CSS or no CSS }
   Probe.LoadHTML('<html><body><table width="100%"><tr>'+
     '<td>left</td><td><center>middle</center></td><td><right>edge</right></td>'+
