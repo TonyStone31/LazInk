@@ -3157,7 +3157,7 @@ end;
 
 { --- inline pills, span classes, and changing one element by its id --- }
 procedure PillChecks;
-var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string; Y: Integer;
+var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string; X, Y: Integer;
 begin
   { a span styled from the stylesheet, pill and plain }
   Probe.LoadHTML('<html><head><style>'+
@@ -3193,6 +3193,28 @@ begin
     A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,70,0),[],
       '<font bgcolor="#664d03" pad="2 8" radius="9">did not go</font>',O);
     Check(A.cy<N.cy+30,'a pill holds one line in a narrow space');
+  finally BM.Free end;
+
+  { radius: 999px is the pill idiom - fully round ends, clamped to the box
+    the way a browser clamps it, never arcs that sweep across the page }
+  Probe.LoadHTML('<html><head><style>'+
+    'span.p{background:#1a7f37;color:#ffffff;padding:2px 8px;border-radius:999px}'+
+    '</style></head><body><p>a <span class="p">pill</span> here</p>'+
+    '<p>second line</p><p>third line</p><p>fourth line</p></body></html>');
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(Probe.ClientWidth,Probe.ClientHeight);
+    Probe.RenderTo(BM.Canvas);
+    N.cx := 0; N.cy := 0;
+    for Y := 0 to BM.Height-1 do
+      for X := 0 to BM.Width-1 do
+        if BM.Canvas.Pixels[X,Y]=RGBToColor($1a,$7f,$37) then
+        begin
+          Inc(N.cx);
+          if Y>=Probe.Block(0).Bounds.Bottom then Inc(N.cy);
+        end;
+    Check(N.cx>0,'a 999px-radius pill still paints');
+    Check(N.cy=0,Format('and stays inside its own line (%d stray pixels below)',[N.cy]));
   finally BM.Free end;
 
   { SetInnerHTML: one element changes, the rest of the page stays put }
@@ -3766,6 +3788,35 @@ begin
   end;
 end;
 
+{ --- old-school HTML: the font size ladder and a table's width attribute --- }
+procedure OldSchoolChecks;
+var BM: TBitmap; O: THTMLOptions; Five, One, Plus, Twelve, Plain: TSize;
+begin
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(400,120); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
+    O := DefaultHTMLOptions;
+    Plain := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'word',O);
+    Five := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="5">word</font>',O);
+    One := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="1">word</font>',O);
+    Plus := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="+2">word</font>',O);
+    Twelve := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="12">word</font>',O);
+    Check(Five.cy>Plain.cy+4,Format('font size="5" is the old ladder''s large (%d > %d)',
+      [Five.cy,Plain.cy]));
+    Check(One.cy<Plain.cy,'and size="1" its small');
+    Check(Plus.cy=Five.cy,'size="+2" steps up from 3 to the same rung');
+    Check((Twelve.cy>One.cy) and (Twelve.cy<Five.cy),
+      'while size="12" stays twelve points, as LazInk''s own markup means it');
+  finally BM.Free end;
+
+  { the table's own width attribute spreads it, CSS or no CSS }
+  Probe.LoadHTML('<html><body><table width="100%"><tr>'+
+    '<td>left</td><td><center>middle</center></td><td><right>edge</right></td>'+
+    '</tr></table></body></html>');
+  Check(Pos('width="100%"',Probe.Block(0).Source)>0,
+    'a table''s width attribute reaches the engine');
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -3979,6 +4030,7 @@ begin
     EditAndPlainChecks;
     ChatWindowChecks;
     SelectionBChecks;
+    OldSchoolChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

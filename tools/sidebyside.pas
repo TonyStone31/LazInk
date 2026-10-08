@@ -41,6 +41,7 @@ type
   TCompareForm = class(TForm)
   private
     FShot: TPortableNetworkGraphic;
+    FShotBmp: TBitmap;
     FPage: TInkPage;
     FMemo: TInkMemo;
     FList: TInkListBox;
@@ -87,6 +88,12 @@ begin
 
   FShot := TPortableNetworkGraphic.Create;
   if FileExists(AShot) then FShot.LoadFromFile(AShot);
+  { the picture as one server-side bitmap: painting then copies only the
+    visible slice, instead of pushing all 32000 rows per frame - which is
+    what made a fast wheel freeze the window }
+  FShotBmp := TBitmap.Create;
+  if (FShot.Width > 0) and (FShot.Height > 0) then
+    FShotBmp.Assign(FShot);
 
   FLeft := TPaintBox.Create(Self);
   FLeft.Parent := Self;
@@ -119,6 +126,7 @@ end;
 
 destructor TCompareForm.Destroy;
 begin
+  FShotBmp.Free;
   FShot.Free;
   inherited Destroy;
 end;
@@ -158,9 +166,12 @@ begin
     FLeft.Canvas.TextOut(8, 8, 'no browser picture: run tools/browser_shot.sh first');
     Exit;
   end;
-  { the browser's picture, moved up by however far the pair is scrolled }
-  R := Rect(0, -FTop, FShot.Width, FShot.Height - FTop);
-  FLeft.Canvas.Draw(R.Left, R.Top, FShot);
+  { the browser's picture, moved up by however far the pair is scrolled -
+    only the rows on screen, never the whole strip }
+  R := Rect(0, FTop, FShot.Width, Min(FShot.Height, FTop + FLeft.Height));
+  if R.Bottom > R.Top then
+    FLeft.Canvas.CopyRect(Rect(0, 0, R.Right, R.Bottom - R.Top),
+      FShotBmp.Canvas, R);
 end;
 
 procedure TCompareForm.ScrollBoth(ADelta: Integer);

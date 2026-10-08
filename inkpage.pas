@@ -1723,7 +1723,11 @@ var
     end
     else
     begin
-      if FStyles.Value('table',Cls,'width','')='100%' then Result := Result+' width="100%"';
+      { the tag's own width attribute, then the stylesheet's; a percent is
+        what the engine spreads a table by }
+      V := Trim(Attribute(Raw,'width'));
+      if V='' then V := Trim(FStyles.Value('table',Cls,'width',''));
+      if (V<>'') and (V[Length(V)]='%') then Result := Result+' width="'+V+'"';
       V := FStyles.Value('td','','width','',TableCtx);
       if (LowerCase(FStyles.Value('table',Cls,'table-layout',''))='fixed') or
         ((V<>'') and (V[Length(V)]='%')) then Result := Result+' layout="fixed"';

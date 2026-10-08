@@ -831,9 +831,12 @@ begin
 end;
 
 procedure TInkRenderer.BuildStyles(const Options: TInkRenderOptions);
+const
+  { HTML's old font size ladder, in pixels, as browsers still draw it }
+  cFontLadder: array[1..7] of Integer = (10,13,16,18,24,32,48);
 var Stack: array of TInkRenderStyle; StackNames: array of string;
   Base, S: TInkRenderStyle; I,N,Part,K: Integer; T: TInkRenderToken;
-  PillPad: TRect;
+  PillPad: TRect; AV: string;
   procedure Push(const V: TInkRenderStyle; const TagName: string);
   begin
     K := Length(Stack); SetLength(Stack,K+1); SetLength(StackNames,K+1);
@@ -889,8 +892,15 @@ begin
           begin
             S.Face := InkRenderAttr(T.Attributes,'face');
             { a size the LCL's way: points when positive, pixels when
-              negative, and zero meaning the tag said nothing }
-            N := StrToIntDef(InkRenderAttr(T.Attributes,'size'),0); if N<>0 then S.Size := N;
+              negative, and zero meaning the tag said nothing - except that
+              a bare 1..7 is HTML's old size ladder (3 is normal, 5 is
+              large), because <font size="5"> never meant five-point type;
+              +N steps up that ladder from 3, as browsers still read it }
+            AV := Trim(InkRenderAttr(T.Attributes,'size'));
+            N := StrToIntDef(AV,0);
+            if (AV<>'') and (AV[1]='+') then N := 3+N;
+            if (N>=1) and (N<=7) then S.Size := -cFontLadder[N]
+            else if N<>0 then S.Size := N;
             S.Color := InkRenderColor(InkRenderAttr(T.Attributes,'color'),S.Color);
             S.BackColor := InkRenderColor(InkRenderAttr(T.Attributes,'bgcolor'),S.BackColor);
             { a pill: pad="V H" (CSS order), radius, and a border color }
@@ -2209,6 +2219,10 @@ begin
             else if BG<>clNone then Canvas.Pen.Color:=BG
             else Canvas.Pen.Style:=psClear;
             Canvas.Pen.Width:=1;
+            { a radius past half the box means fully round ends, as a
+              browser clamps it - radius: 999px is the pill idiom, not a
+              request for arcs that sweep across the page }
+            Radius:=Min(Radius,Min(DrawRect.Right-DrawRect.Left,DrawRect.Bottom-DrawRect.Top));
             Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,Radius,Radius);
             Canvas.Pen.Style:=psSolid;
             Continue;
@@ -2242,7 +2256,8 @@ begin
             Canvas.Pen.Width:=1;
             if R.Style.PillRadius>0 then
               Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,
-                R.Style.PillRadius*2,R.Style.PillRadius*2)
+                Min(R.Style.PillRadius*2,Min(DrawRect.Right-DrawRect.Left,DrawRect.Bottom-DrawRect.Top)),
+                Min(R.Style.PillRadius*2,Min(DrawRect.Right-DrawRect.Left,DrawRect.Bottom-DrawRect.Top)))
             else Canvas.Rectangle(DrawRect);
             Canvas.Pen.Style:=psSolid;
             Continue;

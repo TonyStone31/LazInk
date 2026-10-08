@@ -62,6 +62,15 @@ HEAD = """<!doctype html>
   figure { background: #f4f6f8; padding: 8px }
   figcaption { color: #7a828c; font-size: 13px }
   dt { color: #14315c }
+  .pill { background: #eef0f3; border: 1px solid #c8ccd2;
+          border-radius: 999px; padding: 1px 10px }
+  .pill-ok { background: #e7f6ec; border: 1px solid #9fd8b0;
+             border-radius: 999px; padding: 1px 10px; color: #176b3d }
+  .pill-warn { background: #fff3e0; border: 1px solid #f0c27d;
+               border-radius: 999px; padding: 1px 10px; color: #8a5a00 }
+  .badge { background: #176bbd; color: #ffffff; border-radius: 4px;
+           padding: 1px 6px; font-size: 12px }
+  code.chip { background: #eef0f3; border-radius: 6px; padding: 1px 6px }
   @media (max-width: 420px) {
     .grid { grid-template-columns: 1fr }
     body { font-size: 13px }
@@ -328,6 +337,79 @@ def scripts(n):
 with mixed sizes sits on its baseline.</p>"""
 
 
+def pills(n):
+    return f"""<p>Status pills, drawn from the stylesheet's padding and
+border-radius: <span class="pill">neutral</span>
+<span class="pill-ok">passing {n}</span>
+<span class="pill-warn">flaky</span> <span class="badge">NEW</span>
+and <code class="chip">a code chip</code> sitting in a sentence.</p>
+<p>A pill in a wrapping line: {prose(n)[:60]}
+<span class="pill-ok">still round</span> {prose(n + 1)[:60]}.</p>
+<ul>
+  <li>a list item holding <span class="pill">a pill</span> of its own</li>
+  <li>and one with <span class="badge">TWO</span>
+      <span class="pill-warn">of them</span></li>
+</ul>
+<p>Inline code that wraps across lines, whose shading must cover its own
+words and nothing above or below them:
+<code>a_rather_long_inline_code_span_{n}(with, enough, arguments, that,
+it, cannot, fit, on, one, line, and, must, wrap, somewhere)</code> and the
+line goes on after it.</p>
+<p>The same for <mark>a highlighted stretch of words that is long enough
+to wrap onto the next line and must carry its mark with it as it
+goes</mark>, ending in plain words.</p>
+<table><tr><th>Cell</th><th>With pills</th></tr>
+<tr><td><span class="pill-ok">in a cell</span></td>
+<td>beside <span class="badge">{n}</span> words</td></tr></table>"""
+
+
+def mixed_lists(n):
+    start = 97 + (n % 3)
+    return f"""<ol>
+  <li>a numbered item
+    <ul>
+      <li>whose sublist is bulleted</li>
+      <li>with a second bullet
+        <ol><li>and numbers again at the third level</li>
+            <li>counting on</li></ol>
+      </li>
+    </ul>
+  </li>
+  <li>the numbering carries on at two after the sublist</li>
+  <li>and three, with <code>code({n})</code> and <b>bold</b> in it</li>
+</ol>
+<ol start="{start}">
+  <li>numbered from {start}, so the markers are wide</li>
+  <li>{start + 1}, and the wrapped text under a wide marker keeps its
+      indent all the way down the line as it goes on and on</li>
+</ol>
+<ul>
+  <li>a bullet holding a quote:
+    <blockquote><p>the quote keeps its bar inside the list</p></blockquote>
+  </li>
+  <li>and one holding a small table:
+    <table><tr><td>in</td><td>a list</td></tr></table>
+  </li>
+</ul>"""
+
+
+def oldschool(n):
+    return f"""<center>A &lt;center&gt; tag, which browsers still honor.</center>
+<p align="right">A paragraph whose align attribute says right.</p>
+<p align="center">And one the attribute centers.</p>
+<p><font color="#b02a2a">A font tag in red,</font>
+<font face="monospace">one in monospace,</font>
+<font size="5">one at size 5,</font>
+<font size="1">one at size 1,</font>
+<tt>teletype text</tt> and <strike>struck the old way</strike>.</p>
+<table width="100%"><tr>
+  <td align="left">left cell</td>
+  <td align="center">centered cell {n}</td>
+  <td align="right">right cell</td>
+</tr></table>
+<p>{prose(n)}</p>"""
+
+
 SECTIONS = [
     ("Headings", headings),
     ("Inline text", inline),
@@ -341,11 +423,17 @@ SECTIONS = [
     ("Folding", folding),
     ("Spacing and case", spacing),
     ("Other scripts", scripts),
+    ("Pills and badges", pills),
+    ("Mixed lists", mixed_lists),
+    ("Old-school HTML", oldschool),
 ]
 
 
 def main():
-    count = int(sys.argv[1]) if len(sys.argv) > 1 else 96
+    # 75 = five full cycles of the 15 sections, and a page that stays under
+    # the browser screenshot's 32000-pixel ceiling (X11 coordinates end at
+    # 32767); more sections and the browser strip is cut off at the bottom
+    count = int(sys.argv[1]) if len(sys.argv) > 1 else 75
     out = [HEAD]
     for n in range(1, count + 1):
         name, build = SECTIONS[(n - 1) % len(SECTIONS)]
