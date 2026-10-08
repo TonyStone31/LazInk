@@ -6,7 +6,8 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, StdCtrls, ExtCtrls, ImgList,
-  LCLType, LCLIntf, Types, Forms, Menus, InkDraw, InkMarkdown, InkCopyMenu;
+  LCLType, LCLIntf, Types, Forms, Menus, Math, Clipbrd, InkDraw, InkMarkdown,
+  InkCopyMenu;
 
 type
   { When the in-place editor opens by itself.  Whatever the mode, a program
@@ -83,7 +84,17 @@ type
     { the left button is down on the list: the selection follows the
       pointer, and emOnSelect waits for the release }
     FButtonDown, FEditOnRelease: Boolean;
+    { character selection inside one item: a drag over an item's text
+      selects its characters, clamped to the item the press landed on }
+    FCharRuns: TInkRunText;
+    FCharItem: Integer;                 // -1 when nothing is selected
+    FCharAnchor, FCharCaret: Integer;   // offsets into that item's words
+    FCharSelecting, FCharMoved: Boolean;
+    FCharPressX, FCharPressY: Integer;
     FClickEditTimer: TTimer;
+    procedure BuildItemRuns(Index: Integer; const ARect: TRect);
+    function GetTextSelection: string;
+    procedure ClearTextSelection;
     procedure ClickEditTick(Sender: TObject);
     procedure DoSelectAll(Sender: TObject);
     procedure SetAlternateColor(AValue: TColor);
@@ -142,6 +153,8 @@ type
     function PlainText: string;
     { the selected items as plain text - every one after Ctrl+A }
     function SelectedText: string;
+    { a drag over one item's text selected some of its characters }
+    function HasTextSelection: Boolean;
     procedure CopyToClipboard;
     { fills the copy menu for client X, Y without opening it }
     function BuildCopyMenu(X, Y: Integer): TPopupMenu;
@@ -248,9 +261,6 @@ type
 
 implementation
 
-uses
-  Math;
-
 procedure TInkListBox.SetTextFormat(AValue: TInkTextFormat);
 begin
   if FTextFormat = AValue then Exit;
@@ -283,6 +293,8 @@ begin
   FEditRawHTML := False;
   FAlternateColor := clNone;
   FHoverItem := -1;
+  FCharRuns := TInkRunText.Create;
+  FCharItem := -1;
   FBorders := TInkBorders.Create;
   FBorders.OnChange := @SubPropChanged;
   FLinkStyle := TInkLinkStyle.Create(False);
@@ -296,6 +308,7 @@ end;
 destructor TInkListBox.Destroy;
 begin
   FClickEditTimer.Enabled := False;
+  FreeAndNil(FCharRuns);
   FreeAndNil(FEditTimer);
   FreeAndNil(FEdit);
   FreeAndNil(FBorders);
@@ -413,6 +426,7 @@ begin
   Cancel := False;
   if Assigned(FOnBeforeEdit) then FOnBeforeEdit(Self, Index, Cancel);
   if Cancel then Exit;
+  ClearTextSelection;
 
   EnsureEdit;
   if FEdit = nil then Exit;
@@ -562,6 +576,11 @@ begin
     HTMLDrawOpt(Canvas, TextR, State, InkToHTML(Items[Index], FTextFormat), Opts)
   else
     Canvas.TextRect(TextR, TextR.Left + 2, TextR.Top, Items[Index]);
+  if FHTMLEnabled and (Index = FCharItem) and (FCharAnchor <> FCharCaret) then
+  begin
+    BuildItemRuns(Index, TextR);
+    FCharRuns.PaintSelection(Canvas, FCharAnchor, FCharCaret, clHighlight);
+  end;
 end;
 
 procedure TInkListBox.InternalSelectionChange(Sender: TObject; User: Boolean);
@@ -648,6 +667,34 @@ var
   Hit: THTMLHitInfo;
 begin
   inherited MouseMove(Shift, X, Y);
+  { A drag that stays inside the pressed item's row selects its
+    characters.  The moment it leaves the row it is an ordinary item drag
+    again - the highlight follows the pointer as it always has - and the
+    character selection lets go. }
+  if FCharSelecting and (ssLeft in Shift) and (FCharItem >= 0) and
+    (FCharItem < Items.Count) then
+  begin
+    R := ItemRect(FCharItem);
+    if (Y < R.Top) or (Y >= R.Bottom) then
+      ClearTextSelection
+    else
+    begin
+      if not FCharMoved and ((Abs(X - FCharPressX) > 3) or (Abs(Y - FCharPressY) > 3)) then
+        FCharMoved := True;
+      if FCharMoved then
+      begin
+        if R.Right > ClientWidth then R.Right := ClientWidth;
+        BuildItemRuns(FCharItem, R);
+        Idx := FCharRuns.OffsetAt(Canvas, X, Y);
+        if Idx <> FCharCaret then
+        begin
+          FCharCaret := Idx;
+          Invalidate;
+        end;
+        Exit;
+      end;
+    end;
+  end;
   { with the button held the highlight follows the pointer, as in most
     list boxes - and past the top or bottom the list scrolls along }
   if FButtonDown and (ssLeft in Shift) and not MultiSelect and (Items.Count > 0) then
@@ -759,6 +806,45 @@ begin
     Result := Result + GetPlainText(I) + LineEnding;
 end;
 
+{ --- character selection inside one item -------------------------------- }
+
+procedure TInkListBox.BuildItemRuns(Index: Integer; const ARect: TRect);
+begin
+  Canvas.Font := Font;
+  FCharRuns.Build(Canvas, ARect, InkToHTML(Items[Index], FTextFormat), Options);
+end;
+
+function TInkListBox.HasTextSelection: Boolean;
+begin
+  Result := (FCharItem >= 0) and (FCharItem < Items.Count) and
+    (FCharAnchor <> FCharCaret);
+end;
+
+function TInkListBox.GetTextSelection: string;
+var
+  R: TRect;
+begin
+  Result := '';
+  if not HasTextSelection then Exit;
+  R := ItemRect(FCharItem);
+  if R.Right > ClientWidth then R.Right := ClientWidth;
+  BuildItemRuns(FCharItem, R);
+  Result := FCharRuns.TextRange(FCharAnchor, FCharCaret);
+end;
+
+procedure TInkListBox.ClearTextSelection;
+var
+  Had: Boolean;
+begin
+  Had := HasTextSelection;
+  FCharItem := -1;
+  FCharAnchor := 0;
+  FCharCaret := 0;
+  FCharSelecting := False;
+  FCharMoved := False;
+  if Had then Invalidate;
+end;
+
 { --- copying ------------------------------------------------------------ }
 
 procedure TInkListBox.DoSelectAll(Sender: TObject);
@@ -770,6 +856,7 @@ end;
 function TInkListBox.SelectedText: string;
 begin
   if FAllChosen then Result := TrimRight(PlainText)
+  else if HasTextSelection then Result := GetTextSelection
   else Result := InkListSelection(Self, @GetPlainText);
 end;
 
@@ -842,6 +929,7 @@ var
   Now_: QWord;
   Near: Boolean;
   Idx: Integer;
+  R: TRect;
 begin
   if Button <> mbLeft then
   begin
@@ -871,6 +959,25 @@ begin
   else if (ssDouble in Shift) and (FClicks < 2) then FClicks := 2;
   FButtonDown := True;
   FEditOnRelease := False;
+  { a fresh press owns the character selection: a first click over an
+    item's text starts tracking a drag; more clicks leave it alone }
+  ClearTextSelection;
+  if (FClicks = 1) and FHTMLEnabled and not Editing then
+  begin
+    Idx := ItemAtPos(Point(X, Y), True);
+    if Idx >= 0 then
+    begin
+      R := ItemRect(Idx);
+      if R.Right > ClientWidth then R.Right := ClientWidth;
+      BuildItemRuns(Idx, R);
+      FCharItem := Idx;
+      FCharAnchor := FCharRuns.OffsetAt(Canvas, X, Y);
+      FCharCaret := FCharAnchor;
+      FCharSelecting := True;
+      FCharMoved := False;
+      FCharPressX := X; FCharPressY := Y;
+    end;
+  end;
   if (FEditMode = emOnSelect) and not MultiSelect then
   begin
     { the item is selected here rather than by the widget, so that the
@@ -895,6 +1002,10 @@ begin
   if Button = mbLeft then
   begin
     FButtonDown := False;
+    FCharSelecting := False;
+    if FCharMoved and HasTextSelection then
+      { X11's other clipboard: what is selected is ready for a middle click }
+      Clipboard(ctPrimarySelection).AsText := GetTextSelection;
     if FEditOnRelease and (FEditMode = emOnSelect) and (FHoverLink = '') then
     begin
       FEditOnRelease := False;

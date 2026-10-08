@@ -14,7 +14,7 @@ unit InkDraw;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, LCLIntf, StdCtrls, Types, Math, InkRender;
+  Classes, SysUtils, Graphics, Controls, ImgList, LCLType, LCLIntf, StdCtrls, Types, Math, LazUTF8, InkRender;
 
 type
   { where a block sits when the rectangle is bigger than the text }
@@ -131,6 +131,49 @@ type
     property Top: Integer index 1 read GetSide write SetSide default 0;
     property Right: Integer index 2 read GetSide write SetSide default 0;
     property Bottom: Integer index 3 read GetSide write SetSide default 0;
+  end;
+
+  { one run of one rendered text: where it went, in what font }
+  TInkRun = record
+    Text: string;
+    { where Text begins in Words, from 0 }
+    Start: Integer;
+    Left, Top, Width, Height, LineHeight, Line, Part: Integer;
+    FontName: string;
+    FontSize: Integer;
+    FontStyle: TFontStyles;
+    FontColor: TColor;
+  end;
+
+  { The runs one rendered text left behind - how a control without the
+    page's blocks (a label, a list box item) finds the character under the
+    mouse, paints a selection over the same pixels, and hands back the
+    selected words.  Build it with the same canvas font, rectangle and
+    options the text is drawn with, and the runs land where the draw did. }
+  TInkRunText = class
+  private
+    FRuns: array of TInkRun;
+    FCount: Integer;
+    FWords: string;
+    procedure Collect(const AText: string; ALeft, ATop, AWidth, AHeight,
+      ALine, APart: integer; AFont: TFont);
+    procedure RunFont(ACanvas: TCanvas; const R: TInkRun);
+    function RunX(ACanvas: TCanvas; const R: TInkRun; Offset: Integer): Integer;
+  public
+    procedure Build(ACanvas: TCanvas; const ARect: TRect; const AText: string;
+      AOpts: THTMLOptions; ACache: THTMLLayoutCache = nil);
+    procedure Clear;
+    { the character boundary nearest X,Y, as an offset into Words (0..Length) }
+    function OffsetAt(ACanvas: TCanvas; X, Y: Integer): Integer;
+    { True when X,Y is on a run of text }
+    function OverText(X, Y: Integer): Boolean;
+    { the word around AOffset, a browser's double click }
+    procedure WordAt(AOffset: Integer; out AFrom, ATo: Integer);
+    { fills ABack behind Words[A+1..Z] and draws those characters again }
+    procedure PaintSelection(ACanvas: TCanvas; A, Z: Integer; ABack: TColor);
+    function TextRange(A, Z: Integer): string;
+    property Words: string read FWords;
+    property RunCount: Integer read FCount;
   end;
 
 function DefaultHTMLOptions(ASuperSubScriptRatio: Double = 0.7;
@@ -702,6 +745,203 @@ begin
     if Assigned(FOnChange) then FOnChange(Self);
   end
   else inherited Assign(Source);
+end;
+
+{ --- TInkRunText -------------------------------------------------------- }
+
+function IsWordByte(C: Char): Boolean;
+begin
+  Result := (C in ['a'..'z','A'..'Z','0'..'9','_']) or (Ord(C)>=$80);
+end;
+
+procedure TInkRunText.Clear;
+begin
+  FCount := 0;
+  SetLength(FRuns,0);
+  FWords := '';
+end;
+
+procedure TInkRunText.Collect(const AText: string; ALeft, ATop, AWidth, AHeight,
+  ALine, APart: integer; AFont: TFont);
+begin
+  if FCount=Length(FRuns) then SetLength(FRuns,Max(8,FCount*2));
+  with FRuns[FCount] do
+  begin
+    Text := AText; Left := ALeft; Top := ATop; Width := AWidth; Height := AHeight;
+    Line := ALine; Part := APart; LineHeight := AHeight;
+    FontName := AFont.Name; FontStyle := AFont.Style;
+    { pixels when the font carries them, points otherwise - the same
+      convention the renderer and TFont itself use }
+    if AFont.Height<>0 then FontSize := AFont.Height else FontSize := AFont.Size;
+    FontColor := AFont.Color;
+  end;
+  Inc(FCount);
+end;
+
+procedure TInkRunText.Build(ACanvas: TCanvas; const ARect: TRect; const AText: string;
+  AOpts: THTMLOptions; ACache: THTMLLayoutCache);
+var W,H,I,J,K,P,Q,Tallest: Integer; Hit: THTMLHitInfo; Plain: string;
+begin
+  Clear;
+  if AText='' then Exit;
+  AOpts.OnRun := @Collect; AOpts.RunPart := 0;
+  { the same layout the text is drawn with, measured instead of painted }
+  HTMLMeasureAndHit(ACanvas,ARect,AText,AOpts,-1,-1,W,H,Hit,ACache);
+  SetLength(FRuns,FCount);
+  { every run on a line is as tall as the line }
+  I := 0;
+  while I<FCount do
+  begin
+    J := I; Tallest := 0;
+    while (J<FCount) and (FRuns[J].Line=FRuns[I].Line) and (FRuns[J].Part=FRuns[I].Part) do
+    begin Tallest := Max(Tallest,FRuns[J].Height); Inc(J) end;
+    for K := I to J-1 do FRuns[K].LineHeight := Tallest;
+    I := J;
+  end;
+  { The words are the runs in order, with whatever lay between them in the
+    source's own plain text: the space a wrap took away, the tab between
+    two cells. }
+  Plain := HTMLPlainText(AText);
+  P := 1;
+  for I := 0 to FCount-1 do
+  begin
+    Q := Pos(FRuns[I].Text,Plain,P);
+    if Q>0 then
+    begin
+      FWords := FWords+Copy(Plain,P,Q-P);
+      P := Q+Length(FRuns[I].Text);
+    end
+    else if (I>0) and ((FRuns[I].Line<>FRuns[I-1].Line) or (FRuns[I].Part<>FRuns[I-1].Part)) then
+      FWords := FWords+' ';
+    FRuns[I].Start := Length(FWords);
+    FWords := FWords+FRuns[I].Text;
+  end;
+end;
+
+procedure TInkRunText.RunFont(ACanvas: TCanvas; const R: TInkRun);
+begin
+  ACanvas.Font.Name := R.FontName;
+  HTMLFontSize(ACanvas,R.FontSize);
+  ACanvas.Font.Style := R.FontStyle;
+end;
+
+function TInkRunText.RunX(ACanvas: TCanvas; const R: TInkRun; Offset: Integer): Integer;
+var K: Integer;
+begin
+  K := EnsureRange(Offset-R.Start,0,Length(R.Text));
+  if K=0 then Exit(R.Left);
+  if K=Length(R.Text) then Exit(R.Left+R.Width);
+  RunFont(ACanvas,R);
+  Result := R.Left+ACanvas.TextWidth(Copy(R.Text,1,K));
+end;
+
+function TInkRunText.OffsetAt(ACanvas: TCanvas; X, Y: Integer): Integer;
+var K,Best,BestDY,BestDX,DY,DX,Prev,W,Len: Integer; R: TInkRun;
+begin
+  Result := 0;
+  if FCount=0 then Exit;
+  { the nearest line, then the nearest run on it }
+  Best := 0; BestDY := MaxInt; BestDX := MaxInt;
+  for K := 0 to FCount-1 do
+  begin
+    R := FRuns[K];
+    if Y<R.Top then DY := R.Top-Y
+    else if Y>=R.Top+R.LineHeight then DY := Y-(R.Top+R.LineHeight)+1
+    else DY := 0;
+    if X<R.Left then DX := R.Left-X
+    else if X>R.Left+R.Width then DX := X-(R.Left+R.Width)
+    else DX := 0;
+    if (DY<BestDY) or ((DY=BestDY) and (DX<BestDX)) then
+    begin Best := K; BestDY := DY; BestDX := DX end;
+  end;
+  R := FRuns[Best];
+  Result := R.Start;
+  if X<=R.Left then Exit;
+  if X>=R.Left+R.Width then begin Result := R.Start+Length(R.Text); Exit end;
+  { between the two characters whose middle it is nearest }
+  RunFont(ACanvas,R);
+  K := 1; Prev := 0;
+  while K<=Length(R.Text) do
+  begin
+    Len := Max(1,UTF8CodepointSize(@R.Text[K]));
+    W := ACanvas.TextWidth(Copy(R.Text,1,K+Len-1));
+    if X-R.Left<(Prev+W) div 2 then Break;
+    Result := R.Start+K+Len-1;
+    Prev := W; Inc(K,Len);
+  end;
+end;
+
+function TInkRunText.OverText(X, Y: Integer): Boolean;
+var K: Integer; R: TInkRun;
+begin
+  Result := False;
+  for K := 0 to FCount-1 do
+  begin
+    R := FRuns[K];
+    if (X>=R.Left) and (X<R.Left+R.Width) and (Y>=R.Top) and (Y<R.Top+R.LineHeight) then
+      Exit(True);
+  end;
+end;
+
+procedure TInkRunText.WordAt(AOffset: Integer; out AFrom, ATo: Integer);
+var A,Z: Integer; Kind: Boolean;
+begin
+  AFrom := EnsureRange(AOffset,0,Length(FWords)); ATo := AFrom;
+  if FWords='' then Exit;
+  A := AFrom;
+  if A>=Length(FWords) then A := Length(FWords)-1;
+  { the character after the place, as a browser takes it; a word, or a run
+    of the same kind of not-word }
+  Kind := IsWordByte(FWords[A+1]);
+  if not Kind and (FWords[A+1] in [' ',#9]) and (A>0) and IsWordByte(FWords[A]) then
+  begin Dec(A); Kind := True end;
+  Z := A+1;
+  while (A>0) and (IsWordByte(FWords[A])=Kind) and not (FWords[A] in [#10,#13]) do Dec(A);
+  while (Z<Length(FWords)) and (IsWordByte(FWords[Z+1])=Kind) and not (FWords[Z+1] in [#10,#13]) do Inc(Z);
+  if not Kind then
+  begin
+    { punctuation on its own is taken one character at a time }
+    A := EnsureRange(AOffset,0,Length(FWords)-1);
+    Z := A+1;
+  end;
+  AFrom := A; ATo := Z;
+end;
+
+procedure TInkRunText.PaintSelection(ACanvas: TCanvas; A, Z: Integer; ABack: TColor);
+var K,SA,SZ,X1,X2,RunEnd: Integer; R: TInkRun; Space: Boolean;
+begin
+  if A>Z then begin K := A; A := Z; Z := K end;
+  ACanvas.Brush.Color := ABack;
+  for K := 0 to FCount-1 do
+  begin
+    R := FRuns[K];
+    RunEnd := R.Start+Length(R.Text);
+    SA := Max(A,R.Start); SZ := Min(Z,RunEnd);
+    if SA>=SZ then Continue;
+    X1 := RunX(ACanvas,R,SA); X2 := RunX(ACanvas,R,SZ);
+    { a selection that runs on past the end of a line shows a little of
+      the space it takes with it }
+    Space := (SZ=RunEnd) and (Z>RunEnd) and
+      ((K=FCount-1) or (FRuns[K+1].Line<>R.Line) or (FRuns[K+1].Part<>R.Part));
+    if Space then begin RunFont(ACanvas,R); Inc(X2,ACanvas.TextWidth(' ')) end;
+    { painted over the text, which is then drawn again on it: a span's own
+      background would otherwise hide the selection }
+    ACanvas.Brush.Style := bsSolid;
+    ACanvas.FillRect(Rect(X1,R.Top,X2,R.Top+R.LineHeight));
+    RunFont(ACanvas,R);
+    ACanvas.Font.Color := R.FontColor;
+    ACanvas.Brush.Style := bsClear;
+    ACanvas.TextOut(X1,R.Top,Copy(R.Text,SA-R.Start+1,SZ-SA));
+  end;
+end;
+
+function TInkRunText.TextRange(A, Z: Integer): string;
+var K: Integer;
+begin
+  if A>Z then begin K := A; A := Z; Z := K end;
+  A := EnsureRange(A,0,Length(FWords));
+  Z := EnsureRange(Z,0,Length(FWords));
+  Result := Copy(FWords,A+1,Z-A);
 end;
 
 finalization

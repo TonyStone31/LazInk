@@ -45,10 +45,10 @@ Sketch.
 
 | Control | What it does now | Missing |
 |---|---|---|
-| `TInkLabel` | inline markup, HTML or Markdown, copy menu | character selection; links out of a finger's reach on GTK3 |
+| `TInkLabel` | inline markup, HTML or Markdown, copy menu, character selection | links out of a finger's reach on GTK3 |
 | `TInkMemo` | page-engine lines, selection, copy menu, find, touch, `ScrollBars` | wrap measures a line without its images |
-| `TInkListBox` | markup items, in-place editor, copy menu | character selection |
-| `TInkPage` | whole HTML/Markdown documents: headings, lists, tables, code, PNG/GIF/WebP, links, history, CSS reader, flex/grid cards, media queries, selection, find, touch and flick, `ScrollBars` | hardware check of touch |
+| `TInkListBox` | markup items, in-place editor, copy menu, character selection in an item | - |
+| `TInkPage` | whole HTML/Markdown documents: headings, lists, tables, code, PNG/GIF/WebP, links, history, CSS reader, flex/grid cards, media queries, mouse and keyboard selection, find, touch and flick, `ScrollBars` | hardware check of touch |
 | `TInkEdit` | single-line edit, per-character colors, `TextHint`, undo/redo, context menu | - |
 | `TInkRichEdit` | WYSIWYG editor: inline styles, headings, nested lists, quotes, code with fence languages, tables, Markdown in and out, undo, context menu | images |
 | `TInkCodeMemo` | plain multi-line editor: `Text`/`Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, per-character colors, undo, context menu | a `TInkScrollBar` of its own |
@@ -74,10 +74,17 @@ Sketch's next window finds.
 
 ### B. Selection, finished
 
-* **Character selection in `TInkLabel` and `TInkListBox`** (they have the
-  copy menu and line-level copying today).  `TInkPage` and `TInkMemo` have
-  the real thing; the hit-test machinery exists.
-* **Keyboard selection** (Shift+arrows) on the page-based controls.
+Done, 8 October 2026.  A `TInkLabel` selects like a page: a drag takes
+characters, a double click a word, a triple click everything, and the copy
+menu grew Copy and Select all; a click still follows a link.  A
+`TInkListBox` selects characters with a drag that stays inside the pressed
+item's row - the moment it leaves the row it is an ordinary item drag
+again, so the held-button highlight and `emOnSelect` behave as they always
+have - and `SelectedText`/Ctrl+C prefer the characters when some are
+selected.  Both are built on `TInkRunText` in `InkDraw`, the single-rect
+version of the page's run map, and both hand a mouse selection to X11's
+primary clipboard.  The page controls take Shift with the arrows, Home,
+End, PgUp and PgDn to extend the selection from its caret end.
 
 ### C. The demo
 

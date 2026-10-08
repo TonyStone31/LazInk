@@ -555,8 +555,12 @@ begin
   ALabel.Caption := '**hello** [there](http://x.org)';
   Check(ALabel.PlainText = 'hello there', 'label: a Markdown caption''s plain text: ' + ALabel.PlainText);
   Menu := ALabel.BuildCopyMenu(0, 0);
-  Check((Menu.Items.Count = 1) and (Menu.Items[0].Caption = SInkCopyAll), 'label menu: Copy all');
-  Menu.Items[0].Click;
+  Check((Menu.Items[0].Caption = SInkCopy) and not Menu.Items[0].Enabled,
+    'label menu: Copy leads, gray with nothing selected');
+  Check(Menu.Items[1].Caption = SInkCopyAll, 'label menu: then Copy all');
+  Check(Menu.Items[Menu.Items.Count - 1].Caption = SInkSelectAll,
+    'label menu: Select all now that the label selects');
+  Menu.Items[1].Click;
   Check(Clipboard.AsText = 'hello there', 'label menu copies the caption''s words');
   ALabel.CopyMenu := False;
   Handled := False;
@@ -3654,6 +3658,114 @@ begin
   end;
 end;
 
+{ --- character selection in the label and the list box, and the keyboard --- }
+procedure SelectionBChecks;
+var L: TInkLabel; LB: TInkListBox; MM: TInkMemo; Menu: TPopupMenu;
+  R: TRect; S: string; i: Integer; Found: Boolean; K: Word;
+const EL = LineEnding;
+begin
+  L := TInkLabel.Create(F); L.Parent := F; L.SetBounds(0, 0, 400, 24);
+  L.AutoSize := False;
+  LB := TInkListBox.Create(F); LB.Parent := F; LB.SetBounds(0, 30, 400, 120);
+  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 160, 400, 150);
+  try
+    { the label: a drag selects characters, styled text and all }
+    L.Caption := 'brave <b>new</b> world of <i>selectable</i> labels';
+    Application.ProcessMessages;
+    TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 2, 8);
+    TLabelAccess(L).MouseMove([ssLeft], 90, 8);
+    TLabelAccess(L).MouseUp(mbLeft, [], 90, 8);
+    Check(L.HasSelection, 'label: a drag selects');
+    S := L.SelectedText;
+    Check((Pos('brave', S) = 1) and (Pos('new', S) > 0),
+      'label: through the bold word: "' + S + '"');
+    { a double click takes the word under it }
+    TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 12, 8);
+    TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
+    TLabelAccess(L).MouseDown(mbLeft, [ssLeft, ssDouble], 12, 8);
+    TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
+    Check(L.SelectedText = 'brave', 'label: a double click takes a word: "' + L.SelectedText + '"');
+    L.SelectAll;
+    Check(L.SelectedText = 'brave new world of selectable labels',
+      'label: select all, markup stripped: "' + L.SelectedText + '"');
+    Menu := L.BuildCopyMenu(12, 8);
+    Check(Menu.Items[0].Caption = SInkCopy, 'label menu: Copy leads when something is selected');
+    Found := False;
+    for i := 0 to Menu.Items.Count - 1 do
+      if Menu.Items[i].Caption = SInkSelectAll then Found := True;
+    Check(Found, 'label menu: and Select all is offered');
+    L.ClearSelection;
+    Check(not L.HasSelection, 'label: cleared');
+
+    { the list box: a drag inside one item selects its characters and stays
+      clamped to that item; the item selection is untouched by the clamp }
+    LB.EditMode := emNone;
+    LB.Items.Add('first item with <b>bold</b> words');
+    LB.Items.Add('second item entirely plain');
+    Application.ProcessMessages;
+    R := LB.ItemRect(0);
+    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+    TListAccess(LB).MouseMove([ssLeft], 80, R.Top + 4);
+    TListAccess(LB).MouseUp(mbLeft, [], 80, R.Top + 4);
+    Check(LB.HasTextSelection, 'list: a drag over text selects characters');
+    Check(Pos('first', LB.SelectedText) = 1, 'list: from the start: "' + LB.SelectedText + '"');
+    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+    TListAccess(LB).MouseMove([ssLeft], 390, R.Top + 4);
+    TListAccess(LB).MouseUp(mbLeft, [], 390, R.Top + 4);
+    Check(LB.SelectedText = 'first item with bold words',
+      'list: a drag past the words takes them all: "' + LB.SelectedText + '"');
+    Clipboard.AsText := '';
+    LB.CopyToClipboard;
+    Check(Clipboard.AsText = 'first item with bold words', 'list: Ctrl+C copies the characters');
+    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+    TListAccess(LB).MouseUp(mbLeft, [], 2, R.Top + 4);
+    Check(not LB.HasTextSelection, 'list: a plain click clears it');
+    { and a drag that leaves the row goes back to dragging the highlight }
+    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+    TListAccess(LB).MouseMove([ssLeft], 40, R.Top + 4);
+    TListAccess(LB).MouseMove([ssLeft], 40, LB.ItemRect(1).Top + 4);
+    TListAccess(LB).MouseUp(mbLeft, [], 40, LB.ItemRect(1).Top + 4);
+    Check(not LB.HasTextSelection, 'list: leaving the row lets the characters go');
+    Check(LB.ItemIndex = 1, Format('list: and the highlight followed (%d)', [LB.ItemIndex]));
+
+    { the page controls: Shift and an arrow extend the selection }
+    MM.TextFormat := itfHTML;
+    MM.Lines.Add('alpha beta gamma');
+    MM.Lines.Add('delta epsilon zeta');
+    Application.ProcessMessages;
+    MM.Select(Pos2(0, 0), Pos2(0, 0));
+    for i := 1 to 5 do
+    begin
+      K := VK_RIGHT; TMemoAccess(MM).KeyDown(K, [ssShift]);
+    end;
+    Check(MM.SelectedText = 'alpha', 'keyboard: five Shift+Rights take the first word: "'
+      + MM.SelectedText + '"');
+    K := VK_DOWN; TMemoAccess(MM).KeyDown(K, [ssShift]);
+    { the caret keeps its X, so it lands at the nearest boundary in 'delta' }
+    Check(Pos('alpha beta gamma' + EL + 'delta', MM.SelectedText) = 1,
+      'keyboard: Shift+Down goes on through the line below: "' + MM.SelectedText + '"');
+    K := VK_END; TMemoAccess(MM).KeyDown(K, [ssShift]);
+    Check(MM.SelectedText = 'alpha beta gamma' + EL + 'delta epsilon zeta',
+      'keyboard: Shift+End reaches the line''s end');
+    K := VK_UP; TMemoAccess(MM).KeyDown(K, [ssShift]);
+    K := VK_HOME; TMemoAccess(MM).KeyDown(K, [ssShift]);
+    Check(not MM.HasSelection, 'keyboard: back up and Shift+Home collapses it');
+    K := VK_LEFT; TMemoAccess(MM).KeyDown(K, [ssShift]);
+    Check(not MM.HasSelection, 'keyboard: Shift+Left at the very start stays put');
+    for i := 1 to 3 do
+    begin
+      K := VK_RIGHT; TMemoAccess(MM).KeyDown(K, [ssShift]);
+    end;
+    Clipboard.AsText := '';
+    K := VK_C; TMemoAccess(MM).KeyDown(K, [ssCtrl]);
+    Check(Clipboard.AsText = 'alp', 'keyboard: and Ctrl+C copies what Shift selected');
+  finally
+    MM.Free;
+    LB.Free;
+    L.Free;
+  end;
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -3866,6 +3978,7 @@ begin
     RichEditTableChecks;
     EditAndPlainChecks;
     ChatWindowChecks;
+    SelectionBChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

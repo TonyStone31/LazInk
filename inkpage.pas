@@ -238,6 +238,9 @@ type
     function Clamp(const P: TInkPagePosition): TInkPagePosition;
     function WordAt(const P: TInkPagePosition; out AFrom, ATo: TInkPagePosition): Boolean;
     procedure ExtendTo(const P: TInkPagePosition);
+    function StepChar(const P: TInkPagePosition; ADelta: Integer): TInkPagePosition;
+    function CaretLineHeight(const P: TInkPagePosition): Integer;
+    procedure ExtendByKey(Key: Word);
     procedure SelectionChanged;
     procedure PaintSelection(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock;
       const AFrom, ATo: TInkPagePosition);
@@ -4002,6 +4005,113 @@ begin
   AFrom.Offset := A; ATo.Offset := Z;
 end;
 
+function TInkCustomPage.StepChar(const P: TInkPagePosition; ADelta: Integer): TInkPagePosition;
+var Words: string;
+begin
+  Result := Clamp(P);
+  Words := BlockText(Result.Block);
+  if ADelta>0 then
+  begin
+    if Result.Offset<Length(Words) then
+      Inc(Result.Offset,Max(1,UTF8CodepointSize(@Words[Result.Offset+1])))
+    else if Result.Block<FBlocks.Count-1 then
+    begin Inc(Result.Block); Result.Offset := 0 end;
+  end
+  else
+  begin
+    if Result.Offset>0 then
+    begin
+      Dec(Result.Offset);
+      while (Result.Offset>0) and ((Ord(Words[Result.Offset+1]) and $C0)=$80) do Dec(Result.Offset);
+    end
+    else if Result.Block>0 then
+    begin Dec(Result.Block); Result.Offset := Length(BlockText(Result.Block)) end;
+  end;
+end;
+
+function TInkCustomPage.CaretLineHeight(const P: TInkPagePosition): Integer;
+var B: TInkPageBlock; K,Found: Integer;
+begin
+  B := TInkPageBlock(FBlocks[P.Block]);
+  PrepareRuns(B);
+  Found := -1;
+  for K := 0 to B.RunCount-1 do
+  begin
+    if B.Runs[K].Start>P.Offset then Break;
+    Found := K;
+    if P.Offset<B.Runs[K].Start+Length(B.Runs[K].Text) then Break;
+  end;
+  if Found>=0 then Result := B.Runs[Found].LineHeight
+  else Result := Max(12,B.Bounds.Bottom-B.Bounds.Top);
+end;
+
+{ Shift with an arrow extends the selection from its caret end, the way a
+  browser's find-and-select does: by a character sideways, by a line up and
+  down, to the line's ends with Home and End, by a page with PgUp and PgDn.
+  There is no blinking caret; the selection's moving end is the caret. }
+procedure TInkCustomPage.ExtendByKey(Key: Word);
+var P,P2: TInkPagePosition; Pt: TPoint; LH: Integer; B: TInkPageBlock; K,Found,A,Z: Integer;
+begin
+  Layout;
+  if FBlocks.Count=0 then Exit;
+  P := Clamp(FSelCaret);
+  case Key of
+    VK_LEFT: P := StepChar(P,-1);
+    VK_RIGHT: P := StepChar(P,1);
+    VK_HOME, VK_END:
+      begin
+        B := TInkPageBlock(FBlocks[P.Block]);
+        PrepareRuns(B);
+        Found := -1;
+        for K := 0 to B.RunCount-1 do
+        begin
+          if B.Runs[K].Start>P.Offset then Break;
+          Found := K;
+          if P.Offset<B.Runs[K].Start+Length(B.Runs[K].Text) then Break;
+        end;
+        if Found<0 then
+        begin
+          if Key=VK_HOME then P.Offset := 0 else P.Offset := Length(B.Words);
+        end
+        else
+        begin
+          A := Found; Z := Found;
+          while (A>0) and (B.Runs[A-1].Line=B.Runs[Found].Line) and
+            (B.Runs[A-1].Part=B.Runs[Found].Part) do Dec(A);
+          while (Z<B.RunCount-1) and (B.Runs[Z+1].Line=B.Runs[Found].Line) and
+            (B.Runs[Z+1].Part=B.Runs[Found].Part) do Inc(Z);
+          if Key=VK_HOME then P.Offset := B.Runs[A].Start
+          else P.Offset := B.Runs[Z].Start+Length(B.Runs[Z].Text);
+        end;
+      end;
+  else
+    begin
+      Pt := PositionPoint(P);
+      LH := CaretLineHeight(P);
+      case Key of
+        VK_UP: Pt.Y := Pt.Y-2;
+        VK_DOWN: Pt.Y := Pt.Y+LH+1;
+        VK_PRIOR: Pt.Y := Pt.Y-Max(LH+1,ClientHeight-LH);
+        VK_NEXT: Pt.Y := Pt.Y+Max(LH+1,ClientHeight-LH);
+      end;
+      P2 := PositionAt(Pt.X,Pt.Y);
+      { a line move that went nowhere was at the edge of its block: step
+        over the gap to the neighbor }
+      if (ComparePositions(P2,P)=0) and (Key=VK_UP) and (P.Block>0) then
+        P2 := PositionAt(Pt.X,TInkPageBlock(FBlocks[P.Block-1]).Bounds.Bottom-1-FScroll.Position)
+      else if (ComparePositions(P2,P)=0) and (Key=VK_DOWN) and (P.Block<FBlocks.Count-1) then
+        P2 := PositionAt(Pt.X,TInkPageBlock(FBlocks[P.Block+1]).Bounds.Top+1-FScroll.Position);
+      P := P2;
+    end;
+  end;
+  FSelCaret := Clamp(P);
+  SelectionChanged;
+  ScrollIntoView(FSelCaret);
+  if HasSelection then
+    { X11's other clipboard: what is selected is ready for a middle click }
+    Clipboard(ctPrimarySelection).AsText := SelectedText;
+end;
+
 procedure TInkCustomPage.ExtendTo(const P: TInkPagePosition);
 var WordFrom, WordTo: TInkPagePosition;
 begin
@@ -4234,6 +4344,12 @@ begin
       VK_C, VK_INSERT: begin CopyToClipboard; Key := 0; Exit end;
       VK_F: begin ShowFindBar; Key := 0; Exit end;
     end;
+  if (Shift*[ssAlt,ssCtrl,ssShift]=[ssShift]) and
+    (Key in [VK_LEFT,VK_RIGHT,VK_UP,VK_DOWN,VK_HOME,VK_END,VK_PRIOR,VK_NEXT]) then
+  begin
+    ExtendByKey(Key);
+    Key := 0; Exit;
+  end;
   if (Shift*[ssAlt,ssCtrl,ssShift]=[ssAlt]) and (Key in [VK_LEFT,VK_RIGHT]) then
   begin
     if Key=VK_LEFT then Back else Forward;
