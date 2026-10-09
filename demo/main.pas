@@ -1,8 +1,8 @@
 { LazInk demo - a tour of the package, a tab for each control.
 
   Documents opens on tour.md, a Markdown page about LazInk shown by
-  TInkPage, which links on to the README.  Markdown editor is the source
-  and its live preview side by side, and opens the README too.  Then the
+  TInkPage, which links on to the guide.  Markdown editor is the source
+  and its live preview side by side, and opens the guide too.  Then the
   WYSIWYG editor, the labels and edit boxes, the memo, the list box the
   package grew out of, and the About tab.
 
@@ -320,7 +320,7 @@ begin
 end;
 
 
-{ tour.md and the README sit beside the program or a folder up from it, as
+{ tour.md and the guide sit beside the program or a folder up from it, as
   they do in the source tree; the working folder is tried last }
 function TfrmMain.DemoFile(const AName: string): string;
 var
@@ -350,7 +350,7 @@ begin
         '`tour.md` was not found next to the program. **Open...** shows ' +
         'any HTML or Markdown page.');
   end;
-  S := DemoFile('README.md');
+  S := DemoFile('docs' + PathDelim + 'GUIDE.md');
   if S <> '' then LoadMarkdownFile(S)
   else
   begin
