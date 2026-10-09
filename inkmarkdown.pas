@@ -77,12 +77,8 @@ const
 
 function InkCheckboxMarkup(AChecked: Boolean): string;
 begin
-  if AChecked then
-    Result := '<font color="#FFFFFF" bgcolor="#0075FF" pad="0 3" radius="3"'
-      + ' pillborder="#0075FF"><small>'#$E2#$9C#$93'</small></font>'
-  else
-    Result := '<font bgcolor="#FFFFFF" pad="0 6" radius="3"'
-      + ' pillborder="#767676"><small>'#$C2#$A0'</small></font>';
+  if AChecked then Result := '<checkbox checked="1">'
+  else Result := '<checkbox>';
 end;
 
 function InkMonoFace: string;

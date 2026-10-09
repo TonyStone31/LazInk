@@ -76,6 +76,8 @@ type
     Part: Integer;
     IsImage: Boolean;
     ImageIndex: Integer;
+    { 0 none, 1 an empty checkbox, 2 a checked one - drawn, not a glyph }
+    Check: Byte;
     Control: Byte; { 0=text, 1=table, 2=row, 3=cell, 4/5/6=closes, 7=rule, 8=cell box, 9=vertical gap }
     Meta: string; { serialized attributes on structural runs }
   end;
@@ -663,7 +665,7 @@ begin
     (N = 'br') or (N = 'hr') or (N = 'p') or (N = 'center') or
     (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'img') or
     (N = 'table') or (N = 'tr') or (N = 'td') or (N = 'th') or
-    (N = 'vgap');
+    (N = 'vgap') or (N = 'checkbox');
 end;
 
 function TInkRenderer.IsStyleTag(const N: string): Boolean;
@@ -827,6 +829,7 @@ begin
   if Text = '' then Exit; N := Length(FStyled); SetLength(FStyled,N+1);
   FStyled[N].Text := Text; FStyled[N].Style := Style; FStyled[N].Part := APart;
   FStyled[N].Line := -1; FStyled[N].IsImage := False; FStyled[N].ImageIndex := -1;
+  FStyled[N].Check := 0;
   FStyled[N].Control := 0; FStyled[N].Meta := '';
 end;
 
@@ -858,6 +861,7 @@ var Stack: array of TInkRenderStyle; StackNames: array of string;
     FStyled[Z].Text := ''; FStyled[Z].Style := StyleFor(Stack);
     FStyled[Z].Part := Part; FStyled[Z].Line := -1;
     FStyled[Z].IsImage := False; FStyled[Z].ImageIndex := -1;
+    FStyled[Z].Check := 0;
     FStyled[Z].Control := Kind; FStyled[Z].Meta := Meta;
   end;
 begin
@@ -915,6 +919,7 @@ begin
           end
           else if T.Name='a' then begin Inc(FNextLink); S.LinkIndex := FNextLink; S.LinkName := InkRenderAttr(T.Attributes,'href') end
           else if T.Name='img' then begin AddStyledText(#1,S,Part); N := Length(FStyled)-1; FStyled[N].IsImage := True; FStyled[N].ImageIndex := StrToIntDef(InkRenderAttr(T.Attributes,'src'),-1) end
+          else if T.Name='checkbox' then begin AddStyledText(#1,S,Part); N := Length(FStyled)-1; if InkRenderAttr(T.Attributes,'checked')<>'' then FStyled[N].Check := 2 else FStyled[N].Check := 1 end
           else if T.Name='table' then AddControl(1,T.Attributes.Text)
           else if T.Name='tr' then AddControl(2,T.Attributes.Text)
           else if (T.Name='td') or (T.Name='th') then
@@ -1808,7 +1813,7 @@ begin
       R.Text := ''; R.Style := BaseStyle(Options);
       R.Bounds := Rect(CellX,CellY,CellX+CellW,CellY+CellHeight(I));
       R.Line := Length(FLayout.FLines); R.Part := Cells[I].Row*1000+Cells[I].Col;
-      R.IsImage := False; R.ImageIndex := -1; R.Control := 8;
+      R.IsImage := False; R.ImageIndex := -1; R.Check := 0; R.Control := 8;
       R.Meta := CellAttrs.Text;
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1);
       FLayout.FRuns[High(FLayout.FRuns)] := R;
@@ -1912,7 +1917,13 @@ begin
     R:=FStyled[I];
     if R.Control<>0 then begin Inc(I); Continue end;
     ImgSz:=Types.Size(0,0);
-    if R.IsImage then
+    if R.Check>0 then
+    begin
+      { a checkbox is Chromium's: a fixed 13px square whatever the font }
+      ImgSz:=Types.Size(InkRenderScalePx(13,FOpt.Scale),InkRenderScalePx(13,FOpt.Scale));
+      Text:=#1;
+    end
+    else if R.IsImage then
     begin
       { the picture's own size, kept aside: the run's text is a placeholder
         character and measuring that would say nothing about the picture }
@@ -1947,7 +1958,7 @@ begin
           X:=FOpt.Borders.Left+Round(R.Style.Indent*FOpt.Scale/100)
         else X:=FOpt.Borders.Left+R.Style.Indent;
       end;
-      if R.IsImage then Sz:=ImgSz else Sz:=MeasureRun(Canvas,R);
+      if R.IsImage or (R.Check>0) then Sz:=ImgSz else Sz:=MeasureRun(Canvas,R);
       W:=Sz.cx;
       if Pill then Inc(W,2*R.Style.PillPadH);
       { NoWrap with an ellipsis: the atom that crosses the right edge is cut
@@ -1964,7 +1975,7 @@ begin
         EllRun:=R; EllRun.Text:=EllText; EllRun.IsImage:=False;
         EllSz:=MeasureRun(Canvas,EllRun);
         FLayout.FWasCut:=True; CutLine:=True;
-        if R.IsImage or Pill then begin Atom:=''; R.IsImage:=False; R.Style.PillRadius:=0; R.Style.PillPadH:=0; R.Style.PillPadV:=0; R.Style.PillBorder:=clNone end;
+        if R.IsImage or (R.Check>0) or Pill then begin Atom:=''; R.IsImage:=False; R.Check:=0; R.Style.PillRadius:=0; R.Style.PillPadH:=0; R.Style.PillPadV:=0; R.Style.PillBorder:=clNone end;
         if Atom<>'' then
         begin
           R.Text:=Atom; Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
@@ -1994,6 +2005,12 @@ begin
         { a picture sits on the baseline, as one does in a browser }
         RunAsc:=Max(1,Sz.cy); RunDesc:=0;
       end
+      else if R.Check>0 then
+      begin
+        { a checkbox hangs a little below it, as Chromium's does }
+        RunDesc:=InkRenderScalePx(2,FOpt.Scale);
+        RunAsc:=Max(1,Sz.cy-RunDesc);
+      end
       else Metrics(Canvas,R,RunAsc,RunDesc);
       if Pill then begin Inc(RunAsc,R.Style.PillPadV); Inc(RunDesc,R.Style.PillPadV) end;
       R.Ascent:=RunAsc; R.Descent:=RunDesc;
@@ -2003,7 +2020,7 @@ begin
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W); MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
       { where the next break may fall: after whitespace, or after a CJK
         character, which needs no space to break beside }
-      CanBreak := (Atom[1]=' ') or (Atom[1]=#9) or R.IsImage;
+      CanBreak := (Atom[1]=' ') or (Atom[1]=#9) or R.IsImage or (R.Check>0);
       if not CanBreak then
       begin
         Bytes := 1; Start := Length(Atom);
@@ -2118,6 +2135,7 @@ begin
       a rule is as wide as the column by definition rather than by content }
     if FLayout.FRuns[I].Control=7 then Continue;
     if (FLayout.FRuns[I].Control=0) and not FLayout.FRuns[I].IsImage and
+      (FLayout.FRuns[I].Check=0) and
       (Trim(FLayout.FRuns[I].Text)='') then Continue;
     W:=Max(W,FLayout.FRuns[I].Bounds.Right);
   end;
@@ -2141,7 +2159,7 @@ end;
 procedure TInkRenderer.PaintLayout(Canvas: TCanvas; const Bounds: TRect;
   const Options: TInkRenderOptions; ALayout: TInkRenderLayout;
   AOffsetX: Integer; AOffsetY: Integer);
-var I,J,DX,DY,Pass,TextY: Integer; L: TInkRenderLine; R: TInkRenderRun; Clip: TRect; C,BG: TColor; DrawRect,Fill: TRect;
+var I,J,DX,DY,Pass,TextY,CheckRad,CheckW: Integer; L: TInkRenderLine; R: TInkRenderRun; Clip: TRect; C,BG: TColor; DrawRect,Fill,CheckR: TRect;
   BoxAttrs: TStringList; Sides: string; BorderColor: TColor; BorderOn: Boolean; Radius: Integer;
   OldFont: TFont; OldBrushStyle: TBrushStyle; OldBrushColor: TColor;
   { the ascent of the font a run is painted in, remembered for the style it
@@ -2297,6 +2315,41 @@ begin
           - the font's whole cell - whenever the brush is solid }
         Canvas.Brush.Style:=bsClear;
         if R.Control=7 then begin Canvas.Pen.Color:=C; Canvas.Line(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Top); Continue end;
+        if R.Check>0 then
+        begin
+          { Chromium's checkbox: a 13px rounded square, its blue behind a
+            white check when checked, a gray border on white when not -
+            #0075FF and #767676, sampled from the real thing }
+          CheckR:=Rect(DrawRect.Left,DrawRect.Top,
+            DrawRect.Left+(DrawRect.Bottom-DrawRect.Top),DrawRect.Bottom);
+          Canvas.Pen.Style:=psSolid; Canvas.Pen.Width:=1;
+          if R.Check=2 then
+          begin
+            Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=RGBToColor($00,$75,$FF);
+            Canvas.Pen.Color:=RGBToColor($00,$75,$FF);
+          end
+          else
+          begin
+            Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=clWhite;
+            Canvas.Pen.Color:=RGBToColor($76,$76,$76);
+          end;
+          CheckRad:=Max(2,InkRenderScalePx(3,Options.Scale));
+          Canvas.RoundRect(CheckR.Left,CheckR.Top,CheckR.Right,CheckR.Bottom,
+            CheckRad*2,CheckRad*2);
+          if R.Check=2 then
+          begin
+            CheckW:=CheckR.Right-CheckR.Left;
+            Canvas.Pen.Color:=clWhite;
+            Canvas.Pen.Width:=Max(2,InkRenderScalePx(2,Options.Scale));
+            Canvas.Polyline([
+              Point(CheckR.Left+(CheckW*22) div 100,CheckR.Top+(CheckW*52) div 100),
+              Point(CheckR.Left+(CheckW*41) div 100,CheckR.Top+(CheckW*71) div 100),
+              Point(CheckR.Left+(CheckW*78) div 100,CheckR.Top+(CheckW*30) div 100)]);
+            Canvas.Pen.Width:=1;
+          end;
+          Canvas.Brush.Style:=bsClear;
+          Continue;
+        end;
         if R.IsImage and (Options.Images<>nil) and (R.ImageIndex>=0) and (R.ImageIndex<Options.Images.Count) then
           Options.Images.Draw(Canvas,DrawRect.Left,DrawRect.Top,R.ImageIndex)
         else if not R.IsImage then

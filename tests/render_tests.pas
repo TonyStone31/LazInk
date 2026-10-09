@@ -2910,7 +2910,7 @@ begin
   Check(FindBlock(APage, 'li', 'first').Marker = '1.', 'numbered item 1');
   Check(FindBlock(APage, 'li', 'second').Marker = '2.', 'numbered item 2');
   B2 := FindBlock(APage, 'li', 'shipped');
-  Check(Pos('#0075FF', B2.Source) > 0, 'a finished task shows the drawn blue box');
+  Check(Pos('<checkbox checked', B2.Source) > 0, 'a finished task carries the drawn box');
 
   B := FindBlock(APage, '', 'quoted words');
   Check(Length(B.Bars) = 1, 'a quote has a bar');
@@ -3795,6 +3795,7 @@ end;
 { --- old-school HTML: the font size ladder and a table's width attribute --- }
 procedure OldSchoolChecks;
 var BM: TBitmap; O: THTMLOptions; Five, One, Plus, Twelve, Plain: TSize;
+  X, Y, MinX, MaxX, MinY, MaxY: Integer;
 begin
   BM := TBitmap.Create;
   try
@@ -3837,6 +3838,30 @@ begin
   Probe.LoadHTML('<html><body><hr></body></html>');
   Check((Probe.Block(0).RuleHeight=2) and Probe.Block(0).RuleInset,
     'hr: an unstyled rule is the browser''s two-row inset pair');
+
+  { the drawn checkbox: Chromium's 13px square, blue when checked, and
+    the same square whatever the line-height around it }
+  Probe.LoadHTML('<html><head><style>body{line-height:1.45}</style></head>'+
+    '<body><ul><li><input type="checkbox" checked> done</li>'+
+    '<li><input type="checkbox"> open</li></ul></body></html>');
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(Probe.ClientWidth,Probe.ClientHeight);
+    Probe.RenderTo(BM.Canvas);
+    MinX := MaxInt; MaxX := -1; MinY := MaxInt; MaxY := -1;
+    for Y := 0 to BM.Height-1 do
+      for X := 0 to BM.Width-1 do
+        if BM.Canvas.Pixels[X,Y]=RGBToColor($00,$75,$FF) then
+        begin
+          if X<MinX then MinX := X; if X>MaxX then MaxX := X;
+          if Y<MinY then MinY := Y; if Y>MaxY then MaxY := Y;
+        end;
+    Check(MaxX>=0,'checkbox: the checked box paints in Chromium''s blue');
+    Check(Abs((MaxX-MinX)-(MaxY-MinY))<=1,
+      Format('checkbox: and it is square (%dx%d)',[MaxX-MinX+1,MaxY-MinY+1]));
+    Check((MaxY-MinY+1)<=15,
+      Format('checkbox: 13px, not the line''s height (%d)',[MaxY-MinY+1]));
+  finally BM.Free end;
 
   { the table's own width attribute spreads it, CSS or no CSS }
   Probe.LoadHTML('<html><body><table width="100%"><tr>'+
