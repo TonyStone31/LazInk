@@ -33,13 +33,62 @@ Sketch.
 * **One renderer, two input formats.**  Markdown is converted and drawn by
   the same renderer; every display control has `TextFormat`, and new
   Markdown features go in the converter, once.
-* **A subset, on purpose.**  Not a browser.  Add what real documents need,
-  and say plainly what is not supported (`docs/HELP_COMPATIBILITY.md`,
-  README "Limits").
+* **Real pages, no JavaScript.**  The measure is HTML and CSS as people
+  actually write them (see "Where it is going").  Say plainly what is not
+  supported yet (`docs/HELP_COMPATIBILITY.md`, README "Limits").
 * **US English** everywhere: color, center, license, gray.
 * **Tested.**  `tests/run.sh` stays green, new behavior comes with checks,
   and a new check must be able to fail.
 * **0BSD throughout**, no third-party code in the package.
+
+### Where it is going (decided 9 October 2026)
+
+Controls that render **most real web pages** - HTML and CSS as anyone
+writes them - efficiently, and with **no JavaScript, ever**.  Not special
+rendering for Lazarus programs: an HTML help file from any program, a
+documentation site, a Wikipedia article, a blog or a forum thread should
+come out the way a browser draws it.  Someone could build a web browser on
+it, and that would be fine; LazInk itself is not trying to be Chromium, and
+a page that only exists once script has run shows its `<noscript>` or
+nothing.
+
+What that takes, roughly in order:
+
+1. **A real DOM.**  A tolerant HTML5 parser - tag soup, implied end tags,
+   entities, charsets - building an element tree.  Today the parser makes
+   a flat token stream (`TInkRenderToken`) and nested blocks flatten
+   (3 G); everything below stands on the tree.
+2. **The cascade on that tree**: full selectors (descendant, child,
+   sibling, attribute, `:first-child`, `:not`, `:hover`...), specificity,
+   inheritance, `<link>`, `<style>`, `@import`, `@media`, CSS variables,
+   and a computed style on every element.
+3. **Layout from the tree**: block and inline formatting, margin
+   collapsing, floats, inline-block, positioned elements, tables with
+   automatic column widths, flex and grid, `overflow` that scrolls inside
+   a box, list counters.
+4. **Paint and hit-testing from the layout boxes**; lay out and paint only
+   what is on screen, and lay out again only what changed.
+5. **Resources through the host**: an event asks the program for a URL's
+   bytes (LazInk does no networking itself); text shows first, images as
+   they arrive.  SVG belongs here (icons are SVG now); web fonts to be
+   decided.
+6. **A Pascal DOM API**: find by id or selector; change text, attributes
+   and classes; add and remove nodes; element events (click, hover,
+   change) carrying the element.  The host program does what script would.
+7. **Forms drawn by LazInk**: input, button, select, checkbox, textarea -
+   shown and usable, with submission handed to the host.
+
+**How to measure it**: a corpus of saved real pages (other programs' help
+files, the FPC and Lazarus docs, a Wikipedia article, a blog, a forum
+thread), each with a reference picture from a real browser; the page test
+in section 5 grows into that comparison.  Today's checks and the Heckers
+Sketch manual guard against going backwards while the engine moves onto
+the tree.
+
+The controls stay as they are to their users - `TInkPage`, `TInkMemo`,
+`TInkLabel`, `TInkListBox` keep their properties and markup - with the new
+engine underneath.  Trees, file lists, code viewers and tabs are HTML on a
+page, not new controls.
 
 ## 2. Where it stands
 
@@ -211,14 +260,15 @@ Chromium draws one (its blue behind a white check, gray-bordered white
 when empty - a pill, so every control gets the same box), replacing the
 Unicode ballot glyphs, 8 October 2026.
 
-Not worth it, deliberately: `<iframe>` as a real embedded page (offline
-help has no third-party embeds; the fallback text is the right render),
-`<video>`/`<audio>`, web fonts, floats beyond images, `position:`,
-JavaScript - the "what not to do" list below still holds.
+Still out: `<iframe>` as a real embedded page (the fallback text is the
+right render), `<video>`/`<audio>`, and JavaScript.  Floats and `position:`
+were on this list until 9 October 2026; they are part of the direction in
+section 1 now, and web fonts are an open question there.
 
 ## 4. What not to do
 
-* **Don't build a browser** or chase CSS conformance.
+* **Don't support JavaScript**, and don't chase conformance tests for
+  their own sake - the measure is real pages rendering right.
 * **Don't use or depend on `TSynMarkdownSyn`** - not in the package, not in
   the demo.
 * **Don't grow the highlighter into a real one** - four token kinds, word

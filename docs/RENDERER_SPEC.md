@@ -680,9 +680,10 @@ allow for now and expensive to retrofit.
 * **Hi-DPI.**  `Scale` is in the options and in the cache key already; keep
   every measurement going through it rather than reading `Font.Size`
   directly, and this stays a one-line concern.
-* **Not wanted, still:** JavaScript, forms, video, web fonts, positioning,
-  animations beyond a picture's own frames, and printing.  A document
-  renderer with a media framework behind it is a different program.
+* **Not wanted, still:** JavaScript, video, animations beyond a picture's
+  own frames, and printing.  Forms and positioning moved into the
+  direction set on 9 October 2026 (ROADMAP, "Where it is going"): a DOM
+  and real web pages, no script; web fonts are an open question there.
 
 ---
 
