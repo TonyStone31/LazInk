@@ -95,7 +95,15 @@ type
     { a finger, at a time of the test's choosing }
     procedure Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
     procedure Coast(Milliseconds: Integer);
+  public
+    Reads: Integer;
+    procedure CountRead(Sender: TObject; const URL: string; Destination: TStream; var Handled: Boolean);
   end;
+
+procedure TPageProbe.CountRead(Sender: TObject; const URL: string; Destination: TStream; var Handled: Boolean);
+begin
+  if Pos('.png',URL)>0 then Inc(Reads);
+end;
 
 procedure TPageProbe.Press(X, Y: Integer; Shift: TShiftState);
 begin
@@ -3990,6 +3998,16 @@ begin
   Probe.LoadFromFile(FileName);
   Check(Pos('café “quoted”',Probe.PlainText)>0,'an old page in Windows-1252 reads right: '+Probe.PlainText);
   DeleteFile(FileName);
+  { the same picture three times is read and decoded once, and not again
+    when the page is shown afresh }
+  Probe.Reads := 0; Probe.OnResource := @Probe.CountRead;
+  Probe.LoadHTML('<p id=s>x</p><img src="TInkLabel.png"><img src="TInkLabel.png" width=40>'+
+    '<img src="TInkLabel.png" width=20>',FilenameToURI(ExpandFileName('images'))+'/');
+  Check((Probe.ImageCount=3) and (Probe.Reads=1),Format('a picture used three times is read once (%d reads, %d shown)',
+    [Probe.Reads,Probe.ImageCount]));
+  Probe.SetInnerHTML('s','y');
+  Check((Probe.ImageCount=3) and (Probe.Reads=1),'and not read again when the page is shown afresh');
+  Probe.OnResource := nil;
   Probe.LoadHTML('<p>&frac78; &hookleftarrow; &NotEqualTilde;</p>');
   Check(Pos('⅞ ↩ ≂̸',Probe.PlainText)>0,'every character the standard names');
 end;
