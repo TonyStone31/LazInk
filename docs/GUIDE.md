@@ -161,6 +161,29 @@ pixels or percentages, WebP, folding sections, `line-height`,
 `SetInnerHTML('status', '<b>sent</b>')` changes one element by its `id`
 without rebuilding the page, for a live status page.
 
+**The page as a tree:** every page - HTML, Markdown or plain text - is
+parsed into `Document`, a `TInkDocument` built the way a browser builds
+one (unit `InkDOM`): implied `<html>`, `<head>`, `<body>` and `<tbody>`,
+paragraphs and list items closed by what follows them, misnested tags
+mended, text a table had no room for moved in front of it, the full table
+of named characters, and an old page's code page (Windows-1252 and the
+others a `<meta charset>` names) read as UTF-8.  A program can read it and
+change it, then call `DocumentChanged`:
+
+```pascal
+var N: TInkNode;
+...
+N := InkPage1.Document.GetElementById('status');
+N.TextContent := 'Sent';
+N.SetAttribute('class', 'ok');
+InkPage1.DocumentChanged;   // shown, scroll kept, N still valid
+```
+
+`GetElementsByTagName`, `InnerHTML`, `OuterHTML`, `AppendChild`,
+`InsertBefore`, `Remove` and `Clone` are there too.  The parser needs no
+widgetset, so `InkParseHTML` works in a console program as well.  It never
+runs script: `<noscript>` is ordinary content.
+
 It reads Markdown just as well - a `.md` file is recognized by its name, and
 `LoadMarkdown` takes a string. Relative images and links are resolved against
 the document. A Markdown document has no stylesheet of its own, so
@@ -499,7 +522,19 @@ real help site against it.
 LAZARUS_DIR=/path/to/lazarus FPC=/path/to/fpc tests/run.sh
 ```
 
-runs the renderer and Markdown checks.  Given a file listing HTML pages and an
+runs the document-tree checks (`tests/dom_tests.pas`, no widgetset needed),
+then the renderer and Markdown checks.  The parser is also measured against
+the html5lib tree-construction tests, which are not in this repository:
+
+```sh
+git clone https://github.com/html5lib/html5lib-tests
+git -C html5lib-tests checkout 224991e^ -- tree-construction
+fpc -Fu. -Fu$LAZARUS_DIR/components/lazutils/lib/x86_64-linux tests/html5lib_check.pas
+tests/html5lib_check html5lib-tests/tree-construction      # add 20 to see failures
+```
+
+1706 of their 1784 cases build the same tree (9 October 2026); most of the
+rest are the 2025 `<select>` rules and stray NUL bytes.  Given a file listing HTML pages and an
 output folder, it also loads and renders every page at several widths and
 checks every image decodes:
 

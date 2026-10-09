@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit, InkDOM;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Everything about a clicked link. }
@@ -182,6 +182,10 @@ type
     FAnimated: TList;
     FRenderCache: THTMLLayoutCache;
     FStyles: TInkStyleSheet;
+    { the page as a tree, and whether it was changed through Document and
+      must be shown as it stands rather than parsed again }
+    FDocument: TInkDocument;
+    FKeepDocument: Boolean;
     FScroll: TInkScrollBar;
     FScrollBars: TInkScrollBarStyle;
     FColorScheme: TInkColorScheme;
@@ -415,6 +419,14 @@ type
       whole source.  True when the element was found.  HTML sources only;
       history is left alone. }
     function SetInnerHTML(const AID, AHTML: string): Boolean;
+    { The page as the tree a browser builds from it, HTML or Markdown alike.
+      A program may read it and change it - add, remove, set text and
+      attributes - and then calls DocumentChanged to see the result.  It
+      belongs to the page: a new page frees it. }
+    property Document: TInkDocument read FDocument;
+    { Document was changed: show it, keeping the scroll where it was.  The
+      nodes held stay valid; Source becomes the document's HTML. }
+    procedure DocumentChanged;
     procedure RenderTo(ACanvas: TCanvas);
     function PlainText: string;
     function ImageCount: Integer;
@@ -1164,6 +1176,7 @@ begin
   FCodeTimer.Enabled := False; FCodeActions.OnChange := nil; FCodeActions.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   FreeAndNil(FRenderCache);
+  FreeAndNil(FDocument);
   inherited;
 end;
 procedure TInkCustomPage.BeginDocument;
@@ -1394,54 +1407,23 @@ end;
 procedure TInkCustomPage.LoadHTML(const HTML: string; const BaseURL: string);
 begin FLocation := BaseURL; FSource := HTML; FTextFormat := itfHTML; Parse; AddTextHistory; Navigated end;
 function TInkCustomPage.SetInnerHTML(const AID, AHTML: string): Boolean;
-var P, Q, OpenEnd, CloseStart, Depth: Integer; Raw, ElName, Rest: string;
+var N: TInkNode;
 begin
   Result := False;
-  if FTextFormat<>itfHTML then Exit;
-  { the opening tag that carries id="AID" }
-  P := 1; OpenEnd := 0; ElName := '';
-  while P<=Length(FSource) do
-  begin
-    P := PosEx('<',FSource,P);
-    if P=0 then Exit;
-    Q := PosEx('>',FSource,P);
-    if Q=0 then Exit;
-    Raw := Copy(FSource,P,Q-P+1);
-    if SameText(Attribute(Raw,'id'),AID) then
-    begin
-      ElName := TagName(Raw);
-      if (ElName='') or IsVoidElement(ElName) or (Copy(Raw,1,2)='</') then Exit;
-      OpenEnd := Q;
-      Break;
-    end;
-    P := Q+1;
-  end;
-  if OpenEnd=0 then Exit;
-  { its matching close, counting same-name elements opened inside it }
-  Depth := 1; P := OpenEnd+1; CloseStart := 0;
-  while (P<=Length(FSource)) and (Depth>0) do
-  begin
-    P := PosEx('<',FSource,P);
-    if P=0 then Exit;
-    Q := PosEx('>',FSource,P);
-    if Q=0 then Exit;
-    Raw := Copy(FSource,P,Q-P+1);
-    Rest := TagName(Raw);
-    if Rest=ElName then
-    begin
-      if Copy(Raw,1,2)='</' then
-      begin
-        Dec(Depth);
-        if Depth=0 then begin CloseStart := P; Break end;
-      end
-      else if Copy(Raw,Length(Raw)-1,2)<>'/>' then Inc(Depth);
-    end;
-    P := Q+1;
-  end;
-  if CloseStart=0 then Exit;
-  FSource := Copy(FSource,1,OpenEnd)+AHTML+Copy(FSource,CloseStart,MaxInt);
-  Reread;
+  if (FTextFormat<>itfHTML) or (FDocument=nil) then Exit;
+  N := FDocument.GetElementById(AID);
+  if (N=nil) or InkIsVoidElement(N.Name) then Exit;
+  N.InnerHTML := AHTML;
+  DocumentChanged;
   Result := True;
+end;
+procedure TInkCustomPage.DocumentChanged;
+begin
+  if FDocument=nil then Exit;
+  FSource := InkSerializeHTML(FDocument);
+  FTextFormat := itfHTML;
+  FKeepDocument := True;
+  Reread;
 end;
 procedure TInkCustomPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
 begin FLocation := BaseURL; FSource := Markdown; FTextFormat := itfMarkdown; Parse; AddTextHistory; Navigated end;
@@ -1473,7 +1455,7 @@ begin
         '</title></head><body><img src="'+
         StringReplace(HTMLEscape(PageURL),'"','&quot;',[rfReplaceAll])+'" alt=""></body></html>'
     else
-      NewSource := ReadText(PageURL);
+      NewSource := InkDecodeHTML(ReadText(PageURL));
     FLocation := PageURL; FSource := NewSource;
     { a .md file is Markdown, whatever the page before it was }
     if (Ext='.md') or (Ext='.markdown') then FTextFormat := itfMarkdown
@@ -2292,6 +2274,15 @@ begin
     S := '<html><body>'+StringReplace(StringReplace(HTMLEscape(FSource),
       #13,'',[rfReplaceAll]),#10,'<br>',[rfReplaceAll])+'</body></html>'
   else S := FSource;
+  { the tree a browser would build, and the page read from it - which is
+    where implied ends, misnested tags and stray table text get mended }
+  if FKeepDocument and (FDocument<>nil) then FKeepDocument := False
+  else
+  begin
+    FreeAndNil(FDocument);
+    FDocument := InkParseHTML(S);
+  end;
+  S := InkSerializeHTML(FDocument);
   { @media width queries are judged against the page's own width }
   if ClientWidth>0 then FStyles.MediaWidth := ClientWidth else FStyles.MediaWidth := 1024;
   { the host's styles first, so the page's own come after them and win }
