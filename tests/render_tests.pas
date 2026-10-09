@@ -3006,7 +3006,7 @@ begin
   Check(Pos('```', APage.PlainText) = 0, 'no fence marks are left in the README');
   Check((Pos('Status: 1.0.0.0.', APage.PlainText) > 0) and (Pos('**Status', APage.PlainText) = 0),
     'README''s bold marks are read, not shown');
-  APage.JumpToAnchor('complete-help-pages');
+  APage.JumpToAnchor('license');
   Check(APage.ScrollY > 0, 'README''s own contents links lead somewhere');
 end;
 

@@ -26,7 +26,7 @@ reading a Markdown file that sits beside the demo.
    address* over a link, *Copy all*, *Select all*.
 3. **Find**: Ctrl+F, or the Find button. Enter goes to the next match,
    Shift+Enter to the one before.
-4. **Follow a link** - [LazInk's own README](../README.md) is a long
+4. **Follow a link** - [the LazInk guide](../docs/GUIDE.md) is a long
    Markdown document - and come back with the **Back** button, the mouse's
    back button or Alt+Left.
 5. **Change the look** with the list above the page. That is
