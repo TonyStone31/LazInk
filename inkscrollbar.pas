@@ -7,6 +7,7 @@ type
   TInkScrollBar = class(TCustomControl)
   private
     FPosition, FMin, FMax, FPageSize, FGrabY, FGrabPosition: Integer;
+    FWheelRest: Double;
     FDragging, FHover: Boolean;
     FThumbColor, FTrackColor: TColor;
     FOnChange: TNotifyEvent;
@@ -141,5 +142,5 @@ begin
   Key := 0;
 end;
 function TInkScrollBar.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
-begin Position := FPosition-WheelDelta div 3; Result := True end;
+begin Position := FPosition+InkWheelPixels(WheelDelta,40,FWheelRest); Result := True end;
 end.

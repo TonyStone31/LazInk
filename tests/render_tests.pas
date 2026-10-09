@@ -229,6 +229,30 @@ begin
   gtk_widget_event(Widget, Event);
   gdk_event_free(Event);
 end;
+{ a wheel's smooth scroll, queued the way GDK queues one, then handled by
+  the main loop - so the control reads it as the event being handled }
+procedure SendSmoothScroll(Control: TWinControl; DeltaY: Double; Count: Integer);
+var
+  Event: PGdkEvent;
+  Widget: PGtkWidget;
+  I: Integer;
+begin
+  Widget := TGtk3Widget(Control.Handle).GetContainerWidget;
+  for I := 1 to Count do
+  begin
+    Event := gdk_event_new(GDK_SCROLL);
+    Event^.scroll.window := PGdkWindow(g_object_ref(gtk_widget_get_window(Widget)));
+    Event^.scroll.direction := GDK_SCROLL_SMOOTH;
+    Event^.scroll.delta_y := DeltaY;
+    Event^.scroll.x := 20;
+    Event^.scroll.y := 20;
+    Event^.scroll.time := GetTickCount64 and $FFFFFFFF;
+    gdk_event_set_device(Event, gdk_seat_get_pointer(gdk_display_get_default_seat(gdk_display_get_default)));
+    gdk_display_put_event(gdk_display_get_default, Event);
+    gdk_event_free(Event);
+  end;
+  while g_main_context_pending(nil) do g_main_context_iteration(nil, False);
+end;
 {$ENDIF}
 
 type
@@ -2599,6 +2623,27 @@ end;
 { --- a finger on the page ---
   J is set by the mouse tap test before this: a release at (33, J + 3) is
   on Probe's first line, a link. }
+{ a fine or free-spinning wheel sends fractions of a notch; each is that
+  fraction of the way, not a whole notch }
+procedure WheelChecks;
+var Tall: string; K: Integer;
+begin
+  {$IFDEF LCLGTK3}
+  Tall := '';
+  for K := 1 to 200 do Tall := Tall+'<p>line '+IntToStr(K)+'</p>';
+  Probe.LoadHTML('<html><body>'+Tall+'</body></html>');
+  Probe.ScrollTo(0); Application.ProcessMessages;
+  SendSmoothScroll(Probe, 0.25, 8);
+  Check(Probe.ScrollY=80, Format('eight quarter notches scroll two notches, 80 px (%d)',[Probe.ScrollY]));
+  SendSmoothScroll(Probe, 1, 1);
+  Check(Probe.ScrollY=120, Format('a whole notch is 40 px (%d)',[Probe.ScrollY]));
+  SendSmoothScroll(Probe, 0.1, 5);
+  Check(Probe.ScrollY=140, Format('and slow turning still adds up (%d)',[Probe.ScrollY]));
+  SendSmoothScroll(Probe, -0.5, 2);
+  Check(Probe.ScrollY=100, Format('and back up (%d)',[Probe.ScrollY]));
+  {$ENDIF}
+end;
+
 procedure TouchChecks;
 var K, Before, LinkY: Integer;
 begin
@@ -4209,6 +4254,7 @@ begin
     Check(Probe.ScrollY = 0, 'DragScroll off leaves the page where it is');
     Probe.DragScroll := True;
     TouchChecks;
+    WheelChecks;
     SelectionChecks;
     NavigationChecks;
     PictureChecks;

@@ -32,7 +32,7 @@ program sidebyside;
 
 uses
   Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, Math,
-  ExtCtrls, StdCtrls, Process, InkPage, InkMemo, InkListBox, InkLabel, InkDraw;
+  ExtCtrls, StdCtrls, Process, InkPage, InkMemo, InkListBox, InkLabel, InkDraw, InkTouch;
 
 type
 
@@ -58,6 +58,7 @@ type
 
   TCompareForm = class(TForm)
   private
+    FWheelRest: Double;
     FShot: TPortableNetworkGraphic;
     FShotBmp: TBitmap;
     FPage: TInkPage;
@@ -377,7 +378,7 @@ end;
 function TCompareForm.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
   MousePos: TPoint): Boolean;
 begin
-  ScrollBoth(-WheelDelta div 2);
+  ScrollBoth(InkWheelPixels(WheelDelta, 60, FWheelRest));
   Result := True;
 end;
 
