@@ -3,7 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   InkRichEdit, InkCodeMemo,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
-  InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkCode, InkGIF,
+  InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkDOM, InkCode, InkGIF,
   InkWebP, WebP_Checks, Layout_Cache_Checks,
   LResources, LazInkReg,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
@@ -3918,6 +3918,37 @@ begin
 end;
 
 { --- old-school HTML: the font size ladder and a table's width attribute --- }
+{ every page is read through the tree a browser would build from it }
+procedure DocumentTreeChecks;
+var FileName: string; Bytes: TFileStream; Raw: RawByteString; N: TInkNode;
+begin
+  Probe.LoadHTML('<p><b>one<p>two');
+  Check((Probe.BlockCount=2) and (Pos('<b>',Probe.Block(1).Source)>0),
+    'bold left open when a paragraph closes is still bold in the next');
+  Probe.LoadHTML('<table>stray<tr><td>cell</table>');
+  Check((Probe.Block(0).Tag<>'table') and (Pos('stray',Probe.Block(0).Source)>0),
+    'words a table has no place for come out in front of it');
+  Probe.LoadHTML('<p id=a>first</p><p>second</p>');
+  N := Probe.Document.GetElementById('a');
+  Check(N<>nil,'Document finds an element by its id');
+  N.TextContent := 'changed';
+  Probe.DocumentChanged;
+  Check(Pos('changed',Probe.PlainText)>0,'DocumentChanged shows the change');
+  Check(Probe.Document.GetElementById('a')=N,'and the nodes a program holds are still the page''s');
+  Check(Probe.SetInnerHTML('a','<i>again</i>') and (Pos('again',Probe.PlainText)>0) and
+    (Pos('changed',Probe.PlainText)=0),'SetInnerHTML works through the tree');
+  Check(not Probe.SetInnerHTML('nowhere','x'),'and says so when there is no such id');
+  FileName := GetTempDir+'lazink-1252.html';
+  Raw := '<html><body><p>caf'#$E9' '#$93'quoted'#$94'</p></body></html>';
+  Bytes := TFileStream.Create(FileName,fmCreate);
+  try Bytes.WriteBuffer(Raw[1],Length(Raw)) finally Bytes.Free end;
+  Probe.LoadFromFile(FileName);
+  Check(Pos('café “quoted”',Probe.PlainText)>0,'an old page in Windows-1252 reads right: '+Probe.PlainText);
+  DeleteFile(FileName);
+  Probe.LoadHTML('<p>&frac78; &hookleftarrow; &NotEqualTilde;</p>');
+  Check(Pos('⅞ ↩ ≂̸',Probe.PlainText)>0,'every character the standard names');
+end;
+
 procedure OldSchoolChecks;
 var BM: TBitmap; O: THTMLOptions; Five, One, Plus, Twelve, Plain: TSize;
   X, Y, MinX, MaxX, MinY, MaxY: Integer;
@@ -4211,6 +4242,7 @@ begin
     CodeHeaderChecks;
     SelectionBChecks;
     OldSchoolChecks;
+    DocumentTreeChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;

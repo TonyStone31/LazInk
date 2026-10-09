@@ -129,6 +129,12 @@ through without disturbing the rows.
   status can be a rounded badge in a sentence or a cell.  A pill's words
   stay on one line.  `span.x { color; background; font-size; font-weight }`
   also style a span's words with no pill involved.
+* **Any HTML a browser would accept**: a page is parsed into a document
+  tree by the HTML standard's rules before anything is drawn, so tag soup
+  comes out as a browser builds it - `<p>` and `<li>` closed by what
+  follows, `<b>one<i>two</b>three</i>` mended, `<tbody>` implied, stray
+  text in a table moved before it, every named character, and old pages in
+  Windows-1252 or another code page their `<meta charset>` names.
 * **One element at a time**: `SetInnerHTML('status', '<b>sent</b>')`
   replaces what is inside the element with that `id` and reads the page
   again, keeping the scroll where it was - a live status page changes one
