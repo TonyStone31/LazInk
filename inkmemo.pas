@@ -165,6 +165,10 @@ type
     property Lines: TStrings read GetLines write SetLines;
     property HighlightCode;
     property OnHighlightCode;
+    property CodeHeader;
+    property CodeFoldLines;
+    property CodeActions;
+    property OnCodeAction;
     { the text's size, in percent of Font }
     property HTMLScale: Integer read FHTMLScale write SetHTMLScale default 100;
     property SuperSubScriptRatio: Double read FSuperSubScriptRatio write SetSuperSubScriptRatio;
@@ -636,11 +640,11 @@ end;
 
 function TInkMemo.BlockOptions(Index: Integer): THTMLOptions;
 begin
-  Result := Options;
+  { the block's own say first - a code block in an entry never wraps, and
+    a block entry keeps its line height - as on a page }
+  Result := inherited BlockOptions(Index);
   { the hovered link only lights up on the line it is actually on }
-  if Index = FHoverLine then
-    Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
-      FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, FHoverIndex);
+  if Index = FHoverLine then Result.HoverIndex := FHoverIndex;
 end;
 
 function TInkMemo.CopyBlockCaption(AIndex: Integer): string;

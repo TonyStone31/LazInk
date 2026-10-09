@@ -69,6 +69,13 @@ window (8 October 2026: `TInkEdit.PasswordChar`; whole-message entries in
 `TInkCodeMemo.AutoHeight`) - and the story moved to `docs/HISTORY.md`;
 each bug folder keeps its own "how".  Open here: whatever Heckers
 Sketch's next window finds.
+* ~~Code blocks a reader can handle~~ - done 9 October 2026
+  (bugs/2026-10-09-code-blocks-in-a-chat): a header on every code block
+  with the language, the line count and Copy; `CodeFoldLines` folds a long
+  block to its first lines; `CodeActions` / `OnCodeAction` give the host
+  its own buttons.  Still open from that note: a block scrolling inside a
+  height of its own (folding covers the need for now), line numbers, and
+  `CodeBlockAt`.
 * `TInkCodeMemo` still scrolls with the stock scrollbar, not a
   `TInkScrollBar`, and has no `ScrollBars` property yet.
 
@@ -155,10 +162,10 @@ The 76-section comparison page (~1800 blocks, ~29000px) scrolls, but a
 fast wheel can feel it.  Tony wants this improved in the near future.
 Measured nothing yet; in the order worth trying:
 
-* **Find the first visible block by binary search.**  Every paint walks
-  all blocks front to back and rect-tests each; Bounds.Top is sorted, so
-  the walk can start at the first visible block and stop past the last.
-  Cheapest change, helps every long page.
+* ~~Find the first visible block by binary search~~ - done 9 October
+  2026: a paint starts at the first block that can show (and the one before
+  it, whose band or bar may reach down into view) and stops at the first
+  that starts below the window.  Not yet measured on the 76-section page.
 * **Blit on scroll.**  A scroll of 40px repaints the whole viewport; the
   still-visible region could be copied down and only the exposed strip
   painted.  Classic, biggest win, but the selection overlay, the find

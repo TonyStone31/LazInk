@@ -59,12 +59,32 @@ type
     AMarkup empty and the page colors the block itself. }
   TInkHighlightEvent = procedure(Sender: TObject; const ACode, ALanguage: string;
     var AMarkup: string) of object;
+  { A press on one of the buttons CodeActions puts on every code block's
+    header: the block (Block(ABlock).Entry is a memo's entry), the button's
+    caption, and the block's code as plain text with its language. }
+  TInkCodeActionEvent = procedure(Sender: TObject; ABlock: Integer;
+    const AAction, ACode, ALanguage: string) of object;
+  { a button on a code block's header, in page coordinates: Kind 0 folds
+    and opens, 1 is one of CodeActions (Action says which), 2 is Copy }
+  TInkCodeButton = record
+    Kind, Action: Integer;
+    Caption: string;
+    R: TRect;
+  end;
+  TInkCodeButtons = array of TInkCodeButton;
   TInkPageBlock = class
   public
     Source, Wrapped, Tag, CSSClass: string;
     { a code block: the code as plain text, and the language the fence or
       the class named ('' when it named none) }
     Code, CodeLanguage: string;
+    { A code block's header (CodeHeader): its height, 0 for none; how many
+      lines the code has; whether it shows only its first CodeFoldLines
+      lines, decided once and then the reader's to change; and when Copy
+      was pressed, for the "Copied" it says for a moment. }
+    CodeHead, CodeLines: Integer;
+    CodeFolded, CodeFoldSet: Boolean;
+    CodeCopiedAt: QWord;
     { the ids that lead to this block, separated by spaces }
     Anchor: string;
     { a list item's bullet, number or task box, drawn hanging to the left of
@@ -196,6 +216,12 @@ type
     FOnResource: TInkPageResourceEvent;
     FOnHighlightCode: TInkHighlightEvent;
     FHighlightCode: Boolean;
+    FCodeHeader: Boolean;
+    FCodeFoldLines: Integer;
+    FCodeActions: TStringList;
+    FOnCodeAction: TInkCodeActionEvent;
+    FCodeHotBlock, FCodeHotButton: Integer;
+    FCodeTimer: TTimer;
     { dragging the page, which is how a finger scrolls.  A finger arrives as
       a touch (GTK3, through InkTouch) or as mouse events (everywhere else);
       both end up in the Grab* methods, and FGrabFinger remembers which it
@@ -303,6 +329,17 @@ type
     FFoldOpen: array of Boolean;
     FFoldParent: array of Integer;
     procedure SetHighlightCode(AValue: Boolean);
+    procedure SetCodeHeader(AValue: Boolean);
+    procedure SetCodeFoldLines(AValue: Integer);
+    function GetCodeActions: TStrings;
+    procedure SetCodeActions(AValue: TStrings);
+    procedure CodeActionsChanged(Sender: TObject);
+    procedure CodeTimerTick(Sender: TObject);
+    procedure CodeHeadFont(ACanvas: TCanvas);
+    procedure PaintCodeHead(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock; const R: TRect);
+    function CodeButtonAt(X,Y: Integer; out ABlock, AButton: Integer): Boolean;
+    procedure PressCodeButton(ABlock, AButton: Integer);
+    function FirstShownBlock(ATop: Integer): Integer;
     { a code block's markup: the host's coloring, or the page's own }
     function CodeMarkup(const ACode, ALanguage: string): string;
     procedure ClearBlocks;
@@ -389,6 +426,11 @@ type
       block; ToggleFold on any other block does nothing. }
     function FoldOpen(Index: Integer): Boolean;
     procedure ToggleFold(Index: Integer);
+    { the buttons on code block ABlock's header, in page coordinates, right
+      to left; none when it has no header }
+    function CodeButtons(ABlock: Integer): TInkCodeButtons;
+    { shows only code block ABlock's first CodeFoldLines lines, or all }
+    procedure FoldCode(ABlock: Integer; AFolded: Boolean);
     { is this block showing, or is it folded away inside a shut <details> }
     function BlockVisible(Index: Integer): Boolean;
     { Through the pages visited by links and LoadFromFile / LoadFromURL.
@@ -509,6 +551,17 @@ type
     property HighlightCode: Boolean read FHighlightCode write SetHighlightCode default True;
     { a host that would rather color code itself - see TInkHighlightEvent }
     property OnHighlightCode: TInkHighlightEvent read FOnHighlightCode write FOnHighlightCode;
+    { A header on each code block, as code viewers draw one: the language
+      and how many lines on the left; Copy, CodeActions and, for a long
+      block, Show all / Show less on the right. }
+    property CodeHeader: Boolean read FCodeHeader write SetCodeHeader default True;
+    { a code block longer than this many lines starts folded to them, with
+      Show all on its header; 0 never folds }
+    property CodeFoldLines: Integer read FCodeFoldLines write SetCodeFoldLines default 0;
+    { the captions of buttons every code block's header gets beside Copy;
+      OnCodeAction says which was pressed, on which block }
+    property CodeActions: TStrings read GetCodeActions write SetCodeActions;
+    property OnCodeAction: TInkCodeActionEvent read FOnCodeAction write FOnCodeAction;
     { drag the page with the left button - or a finger - to scroll it; a
       press that moves less than a few pixels is still a click }
     property DragScroll: Boolean read FDragScroll write FDragScroll default True;
@@ -559,6 +612,10 @@ type
     property OnResource;
     property HighlightCode;
     property OnHighlightCode;
+    property CodeHeader;
+    property CodeFoldLines;
+    property CodeActions;
+    property OnCodeAction;
     property DragScroll;
     property FlickScroll;
     property MouseDrag;
@@ -1025,6 +1082,38 @@ begin
   Result := RGBToColor(Round(Red(A)+(Red(B)-Red(A))*Amount),
     Round(Green(A)+(Green(B)-Green(A))*Amount),Round(Blue(A)+(Blue(B)-Blue(A))*Amount));
 end;
+
+{ how many lines a block of code is }
+function CodeLineCount(const ACode: string): Integer;
+var I: Integer;
+begin
+  Result := 1;
+  for I := 1 to Length(ACode) do if ACode[I]=#10 then Inc(Result);
+end;
+
+{ the first N lines of a code block's markup, cut at the Nth line break }
+function FirstCodeLines(const S: string; N: Integer): string;
+var P, Count: Integer;
+begin
+  Count := 0; P := 1;
+  while P<=Length(S) do
+  begin
+    if (S[P]=#10) or ((S[P]='<') and (LowerCase(Copy(S,P,4))='<br>')) then
+    begin
+      Inc(Count);
+      if Count=N then Exit(Copy(S,1,P-1));
+    end;
+    Inc(P);
+  end;
+  Result := S;
+end;
+
+function ColorToHTMLHex(C: TColor): string;
+begin
+  C := ColorToRGB(C);
+  Result := Format('#%.2x%.2x%.2x',[Red(C),Green(C),Blue(C)]);
+end;
+
 function ColorAttr(C: TColor): string;
 begin
   C := ColorToRGB(C);
@@ -1062,12 +1151,17 @@ begin
   FAutoScroll.Interval := 40; FAutoScroll.OnTimer := @AutoScrollTimer;
   FSelectionColor := clDefault; FCopyMenu := True;
   FCopyMenuHost := TInkCopyMenu.Create(Self);
+  FCodeHeader := True; FCodeHotBlock := -1; FCodeHotButton := -1;
+  FCodeActions := TStringList.Create; FCodeActions.OnChange := @CodeActionsChanged;
+  FCodeTimer := TTimer.Create(Self); FCodeTimer.Enabled := False;
+  FCodeTimer.OnTimer := @CodeTimerTick;
   Cursor := crIBeam;
   Color := clWindow; Font.Color := clWindowText; Font.Size := 11;
 end;
 destructor TInkCustomPage.Destroy;
 begin
   FTimer.Enabled := False; FFlickTimer.Enabled := False; FAutoScroll.Enabled := False; ClearBlocks; FBlocks.Free; FAnimated.Free; FStyles.Free; FHistory.Free;
+  FCodeTimer.Enabled := False; FCodeActions.OnChange := nil; FCodeActions.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   FreeAndNil(FRenderCache);
   inherited;
@@ -3249,6 +3343,7 @@ begin
     O.LineHeight := B.LineHeight;
     O.NoWrap := B.NoWrap;
     B.MarkerWidth := 0;
+    B.CodeHead := 0;
     if B.Tag='hr' then
     begin
       { a rule is a hairline, as a browser draws it, unless the page gave
@@ -3313,16 +3408,32 @@ begin
       end;
       if B.NoWrap then B.Wrapped := B.Source
       else B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,O.SuperSubScriptRatio,O.Scale);
+      { a code block gets its header row, and a long one may show only its
+        first lines until asked for the rest }
+      if FCodeHeader and (B.Code<>'') then
+      begin
+        B.CodeHead := Max(16,Round(FLayoutBase*1.9));
+        B.CodeLines := CodeLineCount(B.Code);
+        if not B.CodeFoldSet then
+        begin
+          B.CodeFolded := (FCodeFoldLines>0) and (B.CodeLines>FCodeFoldLines);
+          B.CodeFoldSet := True;
+        end;
+        if B.CodeFolded and (FCodeFoldLines>0) and (B.CodeLines>FCodeFoldLines) then
+          B.Wrapped := FirstCodeLines(B.Wrapped,FCodeFoldLines)+'<br><font color="'+
+            ColorToHTMLHex(MixColor(B.TextColor,B.BackColor,0.5))+'">...</font>';
+      end;
       Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
     end;
-    B.Bounds := Rect(BlockLeft+B.Indent+B.MarginLeft,Y,BlockLeft+W-B.MarginRight,Y+Sz.cy+B.Padding*2);
-    B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.Padding,
+    B.Bounds := Rect(BlockLeft+B.Indent+B.MarginLeft,Y,BlockLeft+W-B.MarginRight,
+      Y+B.CodeHead+Sz.cy+B.Padding*2);
+    B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.CodeHead+B.Padding,
       B.Bounds.Right-B.Padding,B.Bounds.Bottom-B.Padding);
     { a picture sits at the block's top; one fitted to the window, centered }
     ImageX := B.Bounds.Left;
     if FImageFit=iifWindow then ImageX := B.Bounds.Left+Max(0,(W-B.Indent-Sz.cx) div 2);
     B.ImageRect := Rect(ImageX,Y,ImageX+Sz.cx,Y+Sz.cy);
-    Inc(Y,Sz.cy+B.Padding*2); Pending := B.GapAfter;
+    Inc(Y,B.CodeHead+Sz.cy+B.Padding*2); Pending := B.GapAfter;
   end;
   if (Start>0) and (Start>=FBlocks.Count) and (FBlocks.Count>0) then
   begin
@@ -3335,6 +3446,196 @@ begin
   FContentHeight := Y;
   FScroll.SetParams(Min(FScroll.Position,Max(0,Y-ClientHeight)),0,Max(ClientHeight,Y),Max(1,ClientHeight));
 end;
+{ ---------------------------------------------------------- code blocks }
+
+const
+  CODE_COPIED_MS = 1500;
+
+procedure TInkCustomPage.SetCodeHeader(AValue: Boolean);
+begin
+  if FCodeHeader=AValue then Exit;
+  FCodeHeader := AValue; InvalidateLayout(0); Invalidate;
+end;
+
+procedure TInkCustomPage.SetCodeFoldLines(AValue: Integer);
+var I: Integer;
+begin
+  AValue := Max(0,AValue);
+  if FCodeFoldLines=AValue then Exit;
+  FCodeFoldLines := AValue;
+  { every block decides again under the new rule }
+  for I := 0 to FBlocks.Count-1 do TInkPageBlock(FBlocks[I]).CodeFoldSet := False;
+  InvalidateLayout(0); Invalidate;
+end;
+
+function TInkCustomPage.GetCodeActions: TStrings;
+begin Result := FCodeActions end;
+
+procedure TInkCustomPage.SetCodeActions(AValue: TStrings);
+begin FCodeActions.Assign(AValue) end;
+
+procedure TInkCustomPage.CodeActionsChanged(Sender: TObject);
+begin Invalidate end;
+
+{ "Copied" has had its moment: back to "Copy" }
+procedure TInkCustomPage.CodeTimerTick(Sender: TObject);
+begin FCodeTimer.Enabled := False; Invalidate end;
+
+{ the header's words: the control's own font, a little smaller than the page }
+procedure TInkCustomPage.CodeHeadFont(ACanvas: TCanvas);
+begin
+  ACanvas.Font.Assign(Font);
+  ACanvas.Font.Height := -Max(8,Round(Max(8,FLayoutBase)*0.85));
+  ACanvas.Font.Style := [];
+end;
+
+function TInkCustomPage.CodeButtons(ABlock: Integer): TInkCodeButtons;
+var B: TInkPageBlock; X, Gap, PadX, I, CopyW: Integer;
+  procedure Add(AKind, AAction: Integer; const ACaption: string; AWidth: Integer);
+  var W: Integer;
+  begin
+    W := AWidth+PadX*2;
+    Dec(X,W);
+    SetLength(Result,Length(Result)+1);
+    Result[High(Result)].Kind := AKind;
+    Result[High(Result)].Action := AAction;
+    Result[High(Result)].Caption := ACaption;
+    Result[High(Result)].R := Rect(X,B.Bounds.Top+Gap,X+W,B.Bounds.Top+B.CodeHead-Gap);
+    Dec(X,Gap);
+  end;
+begin
+  Result := nil;
+  Layout;
+  if (ABlock<0) or (ABlock>=FBlocks.Count) then Exit;
+  B := TInkPageBlock(FBlocks[ABlock]);
+  if B.CodeHead<=0 then Exit;
+  CodeHeadFont(Canvas);
+  Gap := Max(2,B.CodeHead div 7);
+  PadX := Max(4,Canvas.TextWidth('n'));
+  X := B.Bounds.Right-Gap;
+  { right to left: Copy, which keeps its width when it says Copied, then
+    the host's buttons, then the fold }
+  CopyW := Max(Canvas.TextWidth('Copy'),Canvas.TextWidth('Copied'));
+  if (B.CodeCopiedAt>0) and (GetTickCount64-B.CodeCopiedAt<CODE_COPIED_MS) then
+    Add(2,-1,'Copied',CopyW)
+  else
+    Add(2,-1,'Copy',CopyW);
+  for I := FCodeActions.Count-1 downto 0 do
+    Add(1,I,FCodeActions[I],Canvas.TextWidth(FCodeActions[I]));
+  if (FCodeFoldLines>0) and (B.CodeLines>FCodeFoldLines) then
+    if B.CodeFolded then
+      Add(0,-1,Format('Show all %d lines',[B.CodeLines]),
+        Canvas.TextWidth(Format('Show all %d lines',[B.CodeLines])))
+    else
+      Add(0,-1,'Show less',Canvas.TextWidth('Show less'));
+end;
+
+procedure TInkCustomPage.FoldCode(ABlock: Integer; AFolded: Boolean);
+var B: TInkPageBlock;
+begin
+  if (ABlock<0) or (ABlock>=FBlocks.Count) then Exit;
+  B := TInkPageBlock(FBlocks[ABlock]);
+  if B.Code='' then Exit;
+  B.CodeFolded := AFolded; B.CodeFoldSet := True;
+  InvalidateLayout(ABlock); Invalidate;
+end;
+
+function TInkCustomPage.CodeButtonAt(X,Y: Integer; out ABlock, AButton: Integer): Boolean;
+var I, K: Integer; Btns: TInkCodeButtons; P: TPoint;
+begin
+  Result := False; ABlock := -1; AButton := -1;
+  if not FCodeHeader then Exit;
+  I := BlockAt(X,Y);
+  if (I<0) or (TInkPageBlock(FBlocks[I]).CodeHead<=0) then Exit;
+  Btns := CodeButtons(I);
+  P := Point(X,Y+FScroll.Position);
+  for K := 0 to High(Btns) do
+    if PtInRect(Btns[K].R,P) then
+    begin
+      ABlock := I; AButton := K;
+      Exit(True);
+    end;
+end;
+
+procedure TInkCustomPage.PressCodeButton(ABlock, AButton: Integer);
+var Btns: TInkCodeButtons; B: TInkPageBlock;
+begin
+  Btns := CodeButtons(ABlock);
+  if (AButton<0) or (AButton>High(Btns)) then Exit;
+  B := TInkPageBlock(FBlocks[ABlock]);
+  case Btns[AButton].Kind of
+    0: FoldCode(ABlock,not B.CodeFolded);
+    1: if Assigned(FOnCodeAction) then
+         FOnCodeAction(Self,ABlock,FCodeActions[Btns[AButton].Action],B.Code,B.CodeLanguage);
+    2: begin
+         Clipboard.AsText := B.Code;
+         B.CodeCopiedAt := GetTickCount64;
+         FCodeTimer.Enabled := False;
+         FCodeTimer.Interval := CODE_COPIED_MS+50;
+         FCodeTimer.Enabled := True;
+         Invalidate;
+       end;
+  end;
+end;
+
+{ A code block's header: a shade apart from the code, its language and
+  size on the left, its buttons on the right - the hot one lit. }
+procedure TInkCustomPage.PaintCodeHead(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock;
+  const R: TRect);
+var H, BR: TRect; Btns: TInkCodeButtons; I, TY: Integer; HeadBack, HeadFore: TColor; Lang: string;
+  Hot: Boolean;
+begin
+  Btns := CodeButtons(Index);
+  H := Rect(R.Left,R.Top,R.Right,R.Top+B.CodeHead);
+  HeadBack := B.BackColor; if HeadBack=clNone then HeadBack := FCodeBack;
+  HeadFore := B.TextColor; if HeadFore=clNone then HeadFore := FBodyText;
+  ACanvas.Brush.Style := bsSolid;
+  ACanvas.Brush.Color := MixColor(HeadBack,HeadFore,0.07);
+  ACanvas.FillRect(H);
+  CodeHeadFont(ACanvas);
+  TY := H.Top+(B.CodeHead-ACanvas.TextHeight('Ag')) div 2;
+  ACanvas.Brush.Style := bsClear;
+  Lang := B.CodeLanguage;
+  if Lang='' then Lang := 'code';
+  if B.CodeLines=1 then Lang := Lang+'  -  1 line'
+  else Lang := Lang+'  -  '+IntToStr(B.CodeLines)+' lines';
+  ACanvas.Font.Color := MixColor(HeadFore,HeadBack,0.45);
+  ACanvas.TextOut(H.Left+Max(B.Padding,Scale96ToFont(8)),TY,Lang);
+  for I := 0 to High(Btns) do
+  begin
+    BR := Btns[I].R; OffsetRect(BR,0,-FScroll.Position);
+    Hot := (Index=FCodeHotBlock) and (I=FCodeHotButton);
+    if Hot then
+    begin
+      ACanvas.Brush.Style := bsSolid;
+      ACanvas.Brush.Color := MixColor(HeadBack,HeadFore,0.2);
+      ACanvas.FillRect(BR);
+      ACanvas.Brush.Style := bsClear;
+      ACanvas.Font.Color := HeadFore;
+    end
+    else
+      ACanvas.Font.Color := MixColor(HeadFore,HeadBack,0.25);
+    ACanvas.TextOut(BR.Left+(BR.Right-BR.Left-ACanvas.TextWidth(Btns[I].Caption)) div 2,
+      TY,Btns[I].Caption);
+  end;
+  ACanvas.Brush.Style := bsClear;
+end;
+
+{ the first block that can show with the page scrolled to ATop: blocks are
+  laid out top to bottom, so a binary search finds it - and one before it,
+  whose band or quote bar may reach down into view }
+function TInkCustomPage.FirstShownBlock(ATop: Integer): Integer;
+var Lo, Hi, Mid: Integer;
+begin
+  Lo := 0; Hi := FBlocks.Count;
+  while Lo<Hi do
+  begin
+    Mid := (Lo+Hi) div 2;
+    if TInkPageBlock(FBlocks[Mid]).Bounds.Bottom<ATop then Lo := Mid+1 else Hi := Mid;
+  end;
+  Result := Max(0,Lo-1);
+end;
+
 procedure TInkCustomPage.Paint;
 begin RenderTo(Canvas) end;
 procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
@@ -3349,10 +3650,12 @@ begin
     FStyles.Color('body','','background-color',Color));
   ACanvas.Brush.Style := bsSolid;
   ACanvas.FillRect(ClientRect); O := Options;
-  for I := 0 to FBlocks.Count-1 do
+  for I := FirstShownBlock(FScroll.Position) to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
-    if (R.Bottom+B.GapAfter<0) or (R.Top-B.GapBefore>ClientHeight) then Continue;
+    { blocks are laid out top to bottom: past the window's bottom, done }
+    if R.Top-B.GapBefore>ClientHeight then Break;
+    if R.Bottom+B.GapAfter<0 then Continue;
     if BlockHidden(B) then Continue;
     { a quote's bar runs on through the gap to the next block in the same
       quote, so a quote of several paragraphs has one bar }
@@ -3469,6 +3772,7 @@ begin
       if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
         PaintSelection(ACanvas,I,B,SelFrom,SelTo);
     end;
+    if B.CodeHead>0 then PaintCodeHead(ACanvas,I,B,R);
   end;
   if FScroll.Visible then
     FScroll.RenderTo(ACanvas,Rect(ClientWidth-FScroll.Width,0,ClientWidth,ClientHeight));
@@ -3591,9 +3895,14 @@ begin
 end;
 
 procedure TInkCustomPage.ClickAt(X,Y: Integer);
-var B: Integer; Hit: THTMLHitInfo; Info: TInkLinkInfo; Blk: TInkPageBlock;
+var B, CI: Integer; Hit: THTMLHitInfo; Info: TInkLinkInfo; Blk: TInkPageBlock;
 begin
   if CanFocus then SetFocus;
+  if CodeButtonAt(X,Y,B,CI) then
+  begin
+    PressCodeButton(B,CI);
+    Exit;
+  end;
   if not HitTestLink(X,Y,B,Hit) then
   begin
     { not a link: a click on a <summary> opens or shuts its <details> }
@@ -3674,7 +3983,7 @@ begin
 end;
 
 procedure TInkCustomPage.MouseDown(Button: TMouseButton; Shift: TShiftState; X,Y: Integer);
-var P, WordFrom, WordTo: TInkPagePosition; Now_: QWord; Near: Boolean;
+var P, WordFrom, WordTo: TInkPagePosition; Now_: QWord; Near: Boolean; CB, CI: Integer;
 begin
   inherited;
   StopFlick;
@@ -3684,6 +3993,13 @@ begin
     if PtInRect(FindButtonRect(0),Point(X,Y)) then Find(FFindEdit.Text,[ifoBackwards])
     else if PtInRect(FindButtonRect(1),Point(X,Y)) then Find(FFindEdit.Text)
     else if PtInRect(FindButtonRect(2),Point(X,Y)) then HideFindBar;
+    Exit;
+  end;
+  { a code block's own button is pressed, not selected through; a finger's
+    tap reaches it through ClickAt }
+  if not InkMouseIsTouch and CodeButtonAt(X,Y,CB,CI) then
+  begin
+    PressCodeButton(CB,CI);
     Exit;
   end;
   { a platform that sends a copy of a touch as mouse events as well must not
@@ -3740,7 +4056,7 @@ begin
 end;
 
 procedure TInkCustomPage.MouseMove(Shift: TShiftState; X,Y: Integer);
-var I,Fold: Integer; B: TInkPageBlock; OnText: Boolean; R: TRect; Tip: string;
+var I,Fold,CB,CI: Integer; B: TInkPageBlock; OnText: Boolean; R: TRect; Tip: string;
   HoverBlock: Integer; HoverHit: THTMLHitInfo;
 begin
   inherited;
@@ -3782,6 +4098,20 @@ begin
     Hint := Tip; ShowHint := Tip<>'';
     { a tooltip already showing is for the link the pointer has left }
     Application.CancelHint;
+  end;
+  { a code block's button lights under the pointer }
+  if CodeButtonAt(X,Y,CB,CI) then
+  begin
+    if (CB<>FCodeHotBlock) or (CI<>FCodeHotButton) then
+    begin
+      FCodeHotBlock := CB; FCodeHotButton := CI; Invalidate;
+    end;
+    Cursor := crHandPoint;
+    Exit;
+  end
+  else if FCodeHotBlock>=0 then
+  begin
+    FCodeHotBlock := -1; FCodeHotButton := -1; Invalidate;
   end;
   Fold := BlockAt(X,Y);
   if (Fold>=0) and (TInkPageBlock(FBlocks[Fold]).FoldHead>=0) and (FHoverLink='') then

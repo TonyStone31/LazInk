@@ -476,6 +476,15 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
   right; `HighlightCode` turns it off, and `OnHighlightCode` lets a program
   color the block itself (with SynEdit, say).  `demo/code.md` has a block of
   each.
+* Every code block has a **header**, as code viewers draw one: the
+  language and how many lines on the left, **Copy** on the right (it copies
+  the code alone and says "Copied" for a moment).  `CodeFoldLines` folds a
+  longer block to its first lines with **Show all N lines** / **Show less**;
+  `CodeActions` adds the program's own buttons ("Use this", "Run") and
+  `OnCodeAction` says which was pressed, on which block, with the code and
+  its language.  `CodeHeader := False` takes the header away.  On
+  `TInkPage` and `TInkMemo` alike; `CodeButtons` and `FoldCode` do the same
+  from code.
 * No built-in HTTP downloads - a host supplies remote content through
   `OnResource`.
 

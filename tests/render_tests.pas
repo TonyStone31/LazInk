@@ -1831,7 +1831,9 @@ procedure InlineShadeChecks;
 const
   CSS = 'body { background: #ffffff; color: #000000; font-size: 14px; ' +
         'line-height: 1 } code { background: #ff0000 }';
-  Doc = 'A plain paragraph with `one piece of code` in the middle of a line ' +
+  { one word of code, so it never wraps across two lines - where a font
+    is wide enough to wrap it, two shaded lines touch and read as one band }
+  Doc = 'A plain paragraph with `code` in the middle of a line ' +
         'that is long enough to wrap at least twice, so that there is a line ' +
         'of ordinary text above the shaded piece and another below it, with ' +
         'letters that hang down - g j p q y - above it and tall ones - ' +
@@ -2939,7 +2941,8 @@ begin
     Shot.SetSize(APage.ClientWidth, APage.ClientHeight);
     APage.RenderTo(Shot.Canvas);
     R := B.Bounds; OffsetRect(R, 0, -APage.ScrollY);
-    Check(ColorToRGB(Shot.Canvas.Pixels[R.Right - 2, R.Top + 2]) = ColorToRGB(B.BackColor),
+    { under its header (CodeHeader), which is a shade apart }
+    Check(ColorToRGB(Shot.Canvas.Pixels[R.Right - 2, R.Top + B.CodeHead + 2]) = ColorToRGB(B.BackColor),
       'the code background is painted');
     { beside the block is bare page, all the way down it }
     Rules := 0;
@@ -3580,6 +3583,128 @@ begin
 end;
 
 { --- the chat window: whole-message entries, a growing question box --- }
+type
+  TCodeActionSink = class
+    Action, Code, Language: string;
+    Block: Integer;
+    procedure Pressed(Sender: TObject; ABlock: Integer; const AAction, ACode, ALanguage: string);
+  end;
+
+procedure TCodeActionSink.Pressed(Sender: TObject; ABlock: Integer; const AAction, ACode, ALanguage: string);
+begin
+  Block := ABlock; Action := AAction; Code := ACode; Language := ALanguage;
+end;
+
+{ A code block's header: its language and size, Copy, the host's own
+  buttons, and a long block folded to its first lines until asked. }
+procedure CodeHeaderChecks;
+var Doc: string; I, Pre, H1, H2: Integer; B: TInkPageBlock; Btns: TInkCodeButtons;
+  Sink: TCodeActionSink; P: TPoint; MM: TInkMemo; Shot: TBitmap; Before: string;
+  function Middle(const R: TRect): TPoint;
+  begin
+    Result := Point((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2 - Probe.ScrollY);
+  end;
+begin
+  Doc := 'Before.' + LineEnding + LineEnding + '```pascal' + LineEnding;
+  for I := 1 to 30 do Doc := Doc + 'WriteLn(' + IntToStr(I) + ');' + LineEnding;
+  Doc := Doc + '```' + LineEnding + LineEnding + 'After.';
+  Probe.SetBounds(0, 0, 500, 400);
+  Probe.CodeFoldLines := 10;
+  Probe.TextFormat := itfMarkdown;
+  Probe.LoadMarkdown(Doc);
+  Probe.ScrollTo(0);
+  Pre := -1;
+  for I := 0 to Probe.BlockCount - 1 do
+    if Probe.Block(I).Code <> '' then begin Pre := I; Break end;
+  Check(Pre >= 0, 'code header: the fence is a code block');
+  if Pre < 0 then Exit;
+  B := Probe.Block(Pre);
+  Check(B.CodeHead > 0, 'code header: a code block has a header');
+  Check(B.TextBounds.Top >= B.Bounds.Top + B.CodeHead, 'code header: the code starts under it');
+  Check(B.CodeLines = 30, Format('code header: it counts the lines (%d)', [B.CodeLines]));
+  Check(B.CodeFolded, 'code header: a block over CodeFoldLines starts folded');
+  Check(Pos('WriteLn(10)', HTMLPlainText(B.Wrapped)) > 0, 'code header: folded, the first lines show');
+  Check(Pos('WriteLn(11)', HTMLPlainText(B.Wrapped)) = 0, 'code header: and not the rest');
+  Btns := Probe.CodeButtons(Pre);
+  Check(Length(Btns) = 2, Format('code header: Copy and Show all (%d buttons)', [Length(Btns)]));
+  if Length(Btns) <> 2 then Exit;
+  Check((Btns[0].Kind = 2) and (Btns[0].Caption = 'Copy'), 'code header: Copy on the right');
+  Check((Btns[1].Kind = 0) and (Btns[1].Caption = 'Show all 30 lines'),
+    'code header: Show all names the size: ' + Btns[1].Caption);
+  Check(Btns[1].R.Right < Btns[0].R.Left, 'code header: the buttons do not overlap');
+
+  { Show all, then Show less }
+  H1 := B.Bounds.Bottom - B.Bounds.Top;
+  Before := Probe.SelectedText;
+  P := Middle(Btns[1].R);
+  Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
+  B := Probe.Block(Pre);
+  H2 := B.Bounds.Bottom - B.Bounds.Top;
+  Check(not B.CodeFolded, 'code header: Show all opens it');
+  Check(H2 > H1, Format('code header: and the block grows (%d to %d)', [H1, H2]));
+  Check(Pos('WriteLn(30)', HTMLPlainText(B.Wrapped)) > 0, 'code header: to its last line');
+  Check(Probe.CodeButtons(Pre)[1].Caption = 'Show less', 'code header: the button says Show less');
+  Check(Probe.SelectedText = Before, 'code header: pressing a button selects nothing');
+  Probe.FoldCode(Pre, True);
+  Check(Probe.Block(Pre).CodeFolded, 'code header: FoldCode folds it again');
+
+  { Copy takes the code itself, whole, folded or not }
+  Clipboard.AsText := '';
+  P := Middle(Probe.CodeButtons(Pre)[0].R);
+  Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
+  Check(Clipboard.AsText = Probe.Block(Pre).Code, 'code header: Copy puts the whole code on the clipboard');
+  Check(Probe.CodeButtons(Pre)[0].Caption = 'Copied', 'code header: and says Copied');
+
+  { the host's own button }
+  Sink := TCodeActionSink.Create;
+  try
+    Probe.OnCodeAction := @Sink.Pressed;
+    Probe.CodeActions.Add('Use this');
+    Btns := Probe.CodeButtons(Pre);
+    Check(Length(Btns) = 3, Format('code header: a host button joins them (%d)', [Length(Btns)]));
+    Check((Btns[1].Kind = 1) and (Btns[1].Caption = 'Use this'), 'code header: beside Copy');
+    P := Middle(Btns[1].R);
+    Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
+    Check(Sink.Action = 'Use this', 'code header: OnCodeAction says which: ' + Sink.Action);
+    Check((Sink.Block = Pre) and (Sink.Language = 'pascal') and (Pos('WriteLn(30);', Sink.Code) > 0),
+      'code header: with the block, its language and all its code');
+  finally
+    Probe.OnCodeAction := nil;
+    Probe.CodeActions.Clear;
+    Sink.Free;
+  end;
+
+  { off: no header, and the code starts at the block's top again }
+  Probe.CodeHeader := False;
+  B := Probe.Block(Pre);
+  Probe.Layout;
+  Check(B.CodeHead = 0, 'code header: CodeHeader off takes it away');
+  Check(Length(Probe.CodeButtons(Pre)) = 0, 'code header: and its buttons');
+  Probe.CodeHeader := True;
+  Probe.CodeFoldLines := 0;
+  Probe.Layout;
+  Check(not Probe.Block(Pre).CodeFolded, 'code header: CodeFoldLines 0 never folds');
+
+  { a memo's entry gets one too }
+  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 0, 400, 300);
+  try
+    MM.AppendBlock('Here:' + LineEnding + LineEnding + '```heck' + LineEnding +
+      'box = 0 east, 0 north, 0 up; 1'' east, 1'' north, 1'' up' + LineEnding + '```', itfMarkdown);
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
+      MM.RenderTo(Shot.Canvas);
+    finally Shot.Free end;
+    Pre := -1;
+    for I := 0 to MM.BlockCount - 1 do
+      if MM.Block(I).Code <> '' then Pre := I;
+    Check((Pre >= 0) and (MM.Block(Pre).CodeHead > 0), 'code header: a memo''s code block has one');
+    Check((Pre >= 0) and (MM.Block(Pre).CodeLanguage = 'heck'), 'code header: with the fence''s language');
+  finally
+    MM.Free;
+  end;
+end;
+
 procedure ChatWindowChecks;
 var MM: TInkMemo; E: TEditProbe; CM: TInkCodeMemo;
   Shot: TBitmap; Kept: string; N, H1, H3, H4, H8: Integer;
@@ -4083,6 +4208,7 @@ begin
     RichEditTableChecks;
     EditAndPlainChecks;
     ChatWindowChecks;
+    CodeHeaderChecks;
     SelectionBChecks;
     OldSchoolChecks;
 
