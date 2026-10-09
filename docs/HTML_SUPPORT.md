@@ -86,8 +86,9 @@ under the first word rather than under the bullet.
 * `<ol type="a">`, or `list-style-type` in CSS - `disc`, `circle`, `square`,
   `decimal`, `lower-alpha`, `upper-alpha`, `lower-roman`, `upper-roman`,
   `none`.
-* A task list (`<input type="checkbox">` first in the item, or Markdown's
-  `- [x]`) shows a box where the bullet would be.
+* A task list (`<input type="checkbox">` anywhere in a line, or Markdown's
+  `- [x]`) draws the checkbox the way Chromium draws one: a 13px rounded
+  square, blue behind a white check when checked, gray-bordered when not.
 
 ---
 
