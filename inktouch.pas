@@ -45,6 +45,15 @@ function InkHookTouchAsMouse(AControl: TWinControl): Boolean;
   by the platform (Windows marks them).  Lets a control scroll for a finger
   and select for a mouse.  False where it cannot be told. }
 function InkMouseIsTouch: Boolean;
+{ How far the wheel turned in the wheel event being handled, in notches,
+  down positive - with the fraction a high-resolution or free-spinning wheel
+  or a touchpad sends.  The GTK3 backend rounds each such event up to a
+  whole notch of 120, so a fast wheel raced; elsewhere this is
+  -WheelDelta / 120. }
+function InkWheelNotches(WheelDelta: Integer): Double;
+{ The same as pixels, PerNotch to a notch; Rest carries the part of a
+  pixel left over to the next event, so slow turning still moves. }
+function InkWheelPixels(WheelDelta, PerNotch: Integer; var Rest: Double): Integer;
 
 implementation
 
@@ -70,6 +79,38 @@ begin
   Result := False;
 end;
 {$ENDIF}
+
+{$IFDEF LCLGTK3}
+function InkWheelNotches(WheelDelta: Integer): Double;
+var E: PGdkEvent;
+begin
+  Result := -WheelDelta / 120;
+  E := gtk_get_current_event;
+  if E = nil then Exit;
+  try
+    if E^.type_ = GDK_SCROLL then
+      case E^.scroll.direction of
+        GDK_SCROLL_SMOOTH: Result := E^.scroll.delta_y;
+        GDK_SCROLL_UP: Result := -1;
+        GDK_SCROLL_DOWN: Result := 1;
+      end;
+  finally
+    gdk_event_free(E);
+  end;
+end;
+{$ELSE}
+function InkWheelNotches(WheelDelta: Integer): Double;
+begin
+  Result := -WheelDelta / 120;
+end;
+{$ENDIF}
+
+function InkWheelPixels(WheelDelta, PerNotch: Integer; var Rest: Double): Integer;
+begin
+  Rest := Rest + InkWheelNotches(WheelDelta) * PerNotch;
+  Result := Trunc(Rest);
+  Rest := Rest - Result;
+end;
 
 { what the left mouse button would have sent }
 procedure SendAsMouse(AControl: TWinControl; Phase: TInkTouchPhase; X, Y: Integer);

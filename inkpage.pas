@@ -186,6 +186,10 @@ type
       must be shown as it stands rather than parsed again }
     FDocument: TInkDocument;
     FKeepDocument: Boolean;
+    { the wheel's part of a pixel not yet scrolled, and when the page last
+      reached the screen }
+    FWheelRest: Double;
+    FLastPaint: QWord;
     FScroll: TInkScrollBar;
     FScrollBars: TInkScrollBarStyle;
     FColorScheme: TInkColorScheme;
@@ -403,6 +407,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X,Y: Integer); override;
     procedure MouseLeave; override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
+    procedure KeepPainting;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
   public
     constructor Create(AOwner: TComponent); override;
@@ -3628,7 +3633,7 @@ begin
 end;
 
 procedure TInkCustomPage.Paint;
-begin RenderTo(Canvas) end;
+begin RenderTo(Canvas); FLastPaint := GetTickCount64 end;
 procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
 var I,J,BarTop,BarBottom,Saved,RX: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
   RuleC: TColor;
@@ -4710,8 +4715,17 @@ end;
 
 function TInkCustomPage.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
 begin
-  FScroll.Position := EnsureRange(FScroll.Position-WheelDelta div 3,0,Max(0,FContentHeight-ClientHeight));
+  { forty pixels a notch, and a fast wheel's fractions in proportion }
+  FScroll.Position := EnsureRange(FScroll.Position+InkWheelPixels(WheelDelta,40,FWheelRest),
+    0,Max(0,FContentHeight-ClientHeight));
+  KeepPainting;
   Result := True;
+end;
+{ GTK draws only once input stops, and a wheel spun hard sends events for a
+  second or more: meanwhile, a frame at least every 33 ms }
+procedure TInkCustomPage.KeepPainting;
+begin
+  if GetTickCount64-FLastPaint>=33 then Update;
 end;
 procedure TInkCustomPage.KeyDown(var Key: Word; Shift: TShiftState);
 var Delta: Integer;

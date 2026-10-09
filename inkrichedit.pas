@@ -90,6 +90,7 @@ type
     FLayoutValid: Boolean;
     FDocHeight: Integer;
     FScrollY: Integer;
+    FWheelRest: Double;
     FVScroll: TScrollBar;
     FTypingAttr: TInkAttr;        // what the next typed character will wear
     FHasTypingAttr: Boolean;
@@ -1073,7 +1074,7 @@ begin
   Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);
   if Result then Exit;
   if not FVScroll.Visible then Exit;
-  FScrollY := FScrollY - (WheelDelta * 3) div 8;
+  FScrollY := FScrollY + InkWheelPixels(WheelDelta, 45, FWheelRest);
   if FScrollY > FDocHeight - ClientHeight then
     FScrollY := FDocHeight - ClientHeight;
   if FScrollY < 0 then FScrollY := 0;
