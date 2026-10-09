@@ -190,6 +190,9 @@ type
       reached the screen }
     FWheelRest: Double;
     FLastPaint: QWord;
+    { pictures decoded for the page at FImageCacheFor, by address }
+    FImageCache: TStringList;
+    FImageCacheFor: string;
     FScroll: TInkScrollBar;
     FScrollBars: TInkScrollBarStyle;
     FColorScheme: TInkColorScheme;
@@ -1154,6 +1157,8 @@ begin
   FHoverBlock := -1; FHighlightCode := True;
   FBlocks := TList.Create; FAnimated := TList.Create;
   FStyles := TInkStyleSheet.Create;
+  FImageCache := TStringList.Create; FImageCache.OwnsObjects := True;
+  FImageCache.CaseSensitive := True; FImageCache.Sorted := True;
   FRenderCache := THTMLLayoutCache.Create;
   FStyleSheet := TStringList.Create; FStyleSheet.OnChange := @StyleSheetChanged;
   FHistory := TStringList.Create; FHistory.OwnsObjects := True; FHistoryIndex := -1;
@@ -1182,6 +1187,7 @@ begin
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   FreeAndNil(FRenderCache);
   FreeAndNil(FDocument);
+  FreeAndNil(FImageCache);
   inherited;
 end;
 procedure TInkCustomPage.BeginDocument;
@@ -1565,6 +1571,7 @@ var
   ImageData: TMemoryStream;
   ImageHeader: RawByteString;
   Containers: array of TPageContainer;
+  Cached: TPicture;
   CodeBack, PageBack: TColor;
   { the link open where the parser is, so a picture inside it is clickable,
     and the targets of the links in the buffer, in order }
@@ -2267,6 +2274,10 @@ var
 begin
   if FBlocks=nil then Exit;
   BeginDocument;
+  if FImageCacheFor<>FLocation then
+  begin
+    FImageCache.Clear; FImageCacheFor := FLocation;
+  end;
   if FTextFormat=itfMarkdown then
   begin
     if FMarkdownRawHTML then S := MarkdownToHTML(FSource,[imoRawHTML])
@@ -2734,7 +2745,14 @@ begin
       B.ImageSrc := ResolveURL(Attribute(Raw,'src'));
       ImageSize(B,Raw);
       B.LinkHref := OpenHref; B.LinkTarget := OpenTarget;
-      B.Anchor := PendingAnchor; PendingAnchor := ''; ImageData := TMemoryStream.Create;
+      B.Anchor := PendingAnchor; PendingAnchor := '';
+      { a picture used again is decoded once: the same file twenty times on a
+        page, or the page read again after DocumentChanged }
+      I := FImageCache.IndexOf(B.ImageSrc);
+      if I>=0 then B.Picture.Assign(TPicture(FImageCache.Objects[I]))
+      else
+      begin
+      ImageData := TMemoryStream.Create;
       try
         try
           if ReadResource(ResolveURL(Attribute(Raw,'src')),ImageData) then
@@ -2758,6 +2776,14 @@ begin
           end;
         except on E: Exception do B.Picture.Clear end;
       finally ImageData.Free end;
+      { a still picture only: a moving one keeps its own frame }
+      if (B.Picture.Graphic<>nil) and (B.WebP=nil) and (B.Animation=nil) then
+      begin
+        Cached := TPicture.Create;
+        Cached.Assign(B.Picture);
+        FImageCache.AddObject(B.ImageSrc,Cached);
+      end;
+      end;
       if B.Picture.Graphic=nil then
       begin
         { a picture that did not load is its alt text - still a link }
