@@ -102,7 +102,7 @@ it is a page.
 
 ## The other tabs
 
-- **Markdown editor** - this kind of page, with its source beside it.
+- **Markdown source** - this kind of page, with its source beside it.
 - **WYSIWYG editor** - a rich text editor whose document is LazInk markup.
 - **Label + Edit**, **Memo** and **List box** - the smaller controls, each
   reading the same markup.
