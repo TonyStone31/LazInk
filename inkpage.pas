@@ -2,7 +2,7 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit, InkDOM;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit, InkDOM, InkStyle;
 type
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Everything about a clicked link. }
@@ -186,6 +186,10 @@ type
       must be shown as it stands rather than parsed again }
     FDocument: TInkDocument;
     FKeepDocument: Boolean;
+    { the document's computed styles, worked out the first time they are
+      asked for }
+    FStyler: TInkStyler;
+    FStyled: Boolean;
     { the wheel's part of a pixel not yet scrolled, and when the page last
       reached the screen }
     FWheelRest: Double;
@@ -199,6 +203,7 @@ type
     { what the last read of the document resolved icsAuto to }
     FSchemeApplied: TInkColorScheme;
     FTimer: TTimer;
+    function FetchSheet(const URL: string): string;
     procedure Animate(Sender: TObject);
     procedure SetImageFit(AValue: TInkImageFit);
     procedure SetScrollBars(AValue: TInkScrollBarStyle);
@@ -435,6 +440,13 @@ type
     { Document was changed: show it, keeping the scroll where it was.  The
       nodes held stay valid; Source becomes the document's HTML. }
     procedure DocumentChanged;
+    { An element's computed style - the cascade a browser runs, with the
+      page's sheets, the host's StyleSheet and the browser's defaults, at
+      the page's width.  nil for anything not an element of Document. }
+    function ComputedStyle(ANode: TInkNode): TInkStyle;
+    { the rules that apply to an element, weakest first, as an inspector
+      shows them; the caller frees the list }
+    function ExplainStyle(ANode: TInkNode): TStringList;
     procedure RenderTo(ACanvas: TCanvas);
     function PlainText: string;
     function ImageCount: Integer;
@@ -1186,6 +1198,7 @@ begin
   FCodeTimer.Enabled := False; FCodeActions.OnChange := nil; FCodeActions.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   FreeAndNil(FRenderCache);
+  FreeAndNil(FStyler);
   FreeAndNil(FDocument);
   FreeAndNil(FImageCache);
   inherited;
@@ -1427,6 +1440,40 @@ begin
   N.InnerHTML := AHTML;
   DocumentChanged;
   Result := True;
+end;
+function TInkCustomPage.FetchSheet(const URL: string): string;
+begin
+  try Result := ReadText(URL) except on E: EReadError do Result := '' end;
+end;
+function TInkCustomPage.ComputedStyle(ANode: TInkNode): TInkStyle;
+begin
+  Result := nil;
+  if (FDocument=nil) or (ANode=nil) then Exit;
+  if not FStyled then
+  begin
+    if FStyler=nil then
+    begin
+      FStyler := TInkStyler.Create;
+      FStyler.OnFetch := @FetchSheet;
+    end;
+    FStyler.Clear;
+    if ClientWidth>0 then FStyler.Media.Width := ClientWidth else FStyler.Media.Width := 1024;
+    if ClientHeight>0 then FStyler.Media.Height := ClientHeight else FStyler.Media.Height := 768;
+    FStyler.Media.Dark := GetActiveColorScheme=icsDark;
+    { the page's colors stand for the system ones a page names }
+    FStyler.CanvasColor := Cardinal(ColorToRGB(Color)) or $FF000000;
+    FStyler.CanvasTextColor := Cardinal(ColorToRGB(Font.Color)) or $FF000000;
+    if FStyleSheet.Count>0 then FStyler.AddSheet(FStyleSheet.Text,FLocation);
+    FStyler.AddDocumentSheets(FDocument,FLocation);
+    FStyler.Compute(FDocument);
+    FStyled := True;
+  end;
+  Result := FStyler.StyleOf(ANode);
+end;
+function TInkCustomPage.ExplainStyle(ANode: TInkNode): TStringList;
+begin
+  if ComputedStyle(ANode)<>nil then Result := FStyler.Explain(ANode)
+  else Result := TStringList.Create;
 end;
 procedure TInkCustomPage.DocumentChanged;
 begin
@@ -2292,6 +2339,10 @@ begin
   else S := FSource;
   { the tree a browser would build, and the page read from it - which is
     where implied ends, misnested tags and stray table text get mended }
+  { the styles go with the tree they were worked out for; a tree its
+    program changed may have lost nodes, which are not touched again }
+  if FStyler<>nil then FStyler.Release(not FKeepDocument);
+  FStyled := False;
   if FKeepDocument and (FDocument<>nil) then FKeepDocument := False
   else
   begin
