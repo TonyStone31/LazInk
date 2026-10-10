@@ -1054,6 +1054,17 @@ begin
   Check(R.Right - R.Left <= Probe.ClientWidth - Probe.ScrollBar.Width, 'nor wider');
   Check((R.Right - R.Left >= B.Bounds.Right - B.Bounds.Left - 2) or
     (R.Bottom - R.Top >= Probe.ClientHeight - 60), 'and as big as fits');
+  { a bigger window zooms it, past its own size }
+  W := R.Right - R.Left;
+  Probe.SetBounds(0, 0, 1200, 1100);
+  B := Probe.Block(0); Probe.ScrollTo(0);
+  R := B.ImageRect;
+  Check((R.Right - R.Left > W) and (R.Right - R.Left > B.Picture.Width),
+    Format('iifWindow: a bigger window zooms the picture (%d, was %d, its own %d)',
+      [R.Right - R.Left, W, B.Picture.Width]));
+  Check((R.Bottom - R.Top <= Probe.ClientHeight) and
+    (R.Right - R.Left <= Probe.ClientWidth - Probe.ScrollBar.Width), 'and it still fits');
+  Probe.SetBounds(0, 0, 400, 200);
   Probe.ImageFit := iifShrink;
 end;
 

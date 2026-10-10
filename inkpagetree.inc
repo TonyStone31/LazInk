@@ -30,13 +30,22 @@ begin
 end;
 
 procedure TPageMeasure.ImageSize(ABox: TInkBox; out AWidth, AHeight: Integer);
-var B: TInkPageBlock; N: TInkNode; VB: TStringArray;
+var B: TInkPageBlock; N: TInkNode; VB: TStringArray; Fit: Double;
 begin
   AWidth := 0; AHeight := 0;
   B := TInkPageBlock(ABox.Data);
   if (B <> nil) and (B.Picture.Graphic <> nil) then
   begin
     AWidth := B.Picture.Width; AHeight := B.Picture.Height;
+    { a window for one picture: as large as fits in it, up or down }
+    if (Page.ImageFit = iifWindow) and (AWidth > 0) and (AHeight > 0) then
+    begin
+      Fit := Min((Page.TreeViewWidth - 16) / AWidth, (Max(1, Page.ClientHeight) - 16) / AHeight);
+      if Fit > 0 then
+      begin
+        AWidth := Max(1, Round(AWidth * Fit)); AHeight := Max(1, Round(AHeight * Fit));
+      end;
+    end;
     Exit;
   end;
   N := ABox.Node;
