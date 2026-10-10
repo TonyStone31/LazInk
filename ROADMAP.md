@@ -164,12 +164,15 @@ Left over from steps 1 and 2, when they get in the way:
 * **Shadow DOM**: `<template shadowrootmode>` is kept as an ordinary
   element and its sheets are skipped; `:host` and `::part` are not read.
   The one disagreement left on the MDN comparison page.
-* **`@layer` order** - layers are read in source order; **`@container`**
-  queries are skipped; **`@font-face`** is not read.
+* ~~`@layer` order~~ - done 9 October 2026, with `@property`, `lab()`/
+  `lch()` and the logical border properties: a saved Tailwind 4 page went
+  from 86.6% to all but two values (the headless browser's `pointer`).
+  Still: **`@container`** queries are skipped; **`@font-face`** is not read.
 * **Parser corners**: the 2025 `<select>` content rules, NUL bytes, some
   `<template>` edge cases (78 of html5lib's 1784 cases).
-* **Parser speed**: about half Chromium's (1.7 MB in 73 ms against 36);
-  interning tag names would close most of it.
+* **Parser speed** - tag names are numbers now (9 October 2026): 1.7 MB
+  in 53 ms, from 73, against Chromium's 36.  What is left is the tokenizer
+  (22 ms) and making nodes.
 
 ### A. What real programs asked for
 
