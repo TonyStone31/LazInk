@@ -455,10 +455,15 @@ Markdown it would be saved as, and **Apply** reads either back:
 
 ![The WYSIWYG editor tab](../images/demo-editor.png)
 
-**Label + Edit**, **Memo** and **List box** show the smaller controls - the
-list box is the demo this whole package grew out of, a simulated log arriving
-into an owner-drawn list with an editor that floats into place over the item
-you click:
+**Label + Edit**, **Memo** and **List box** show the smaller controls.
+Label + Edit adds a `PasswordChar` toggle on the strength-colored edit and
+a `TInkCodeMemo` whose `AutoHeight` opens a one-line question box as you
+type.  The memo's sidebar holds a little chat: **Append a message** adds a
+question and a whole Markdown answer with `AppendBlock` - each one entry,
+on its own band - and **Stream an answer** grows the last entry word by
+word with `ReplaceLast`.  The list box is the demo this whole package grew
+out of, a simulated log arriving into an owner-drawn list with an editor
+that floats into place over the item you click:
 
 ![The list box tab](../images/demo-listbox.png)
 

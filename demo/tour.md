@@ -109,3 +109,13 @@ it is a page.
 - **About** - project information and the 0BSD license.
 
 LazInk lives at <https://github.com/TonyStone31/LazInk>.
+
+---
+
+## About
+
+LazInk is HTML and Markdown text controls for Lazarus, drawn with
+TCanvas. **License: 0BSD** - the BSD Zero Clause License: permission to
+use, copy, modify and distribute this software for any purpose with or
+without fee is granted. Lazarus/LCL and Free Pascal dependencies retain
+their own licenses. [Source and documentation on GitHub](https://github.com/TonyStone31/LazInk).

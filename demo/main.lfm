@@ -58,6 +58,13 @@ object frmMain: TfrmMain
       ParentColor = False
     end
   end
+  object tmrChat: TTimer
+    Enabled = False
+    Interval = 120
+    OnTimer = tmrChatTimer
+    Left = 56
+    Top = 8
+  end
   object pcMain: TPageControl
     Left = 0
     Height = 726
@@ -299,12 +306,12 @@ object frmMain: TfrmMain
       ClientWidth = 1138
       object pnlTools: TPanel
         Left = 0
-        Height = 42
+        Height = 76
         Top = 0
         Width = 1138
         Align = alTop
         BevelOuter = bvNone
-        ClientHeight = 42
+        ClientHeight = 76
         ClientWidth = 1138
         TabOrder = 0
         object btnBold: TSpeedButton
@@ -375,7 +382,7 @@ object frmMain: TfrmMain
           OnClick = btnStyleClick
         end
         object btnSup: TSpeedButton
-          Left = 132
+          Left = 138
           Height = 28
           Hint = 'Superscript'
           Top = 7
@@ -389,7 +396,7 @@ object frmMain: TfrmMain
         end
         object btnSub: TSpeedButton
           Tag = 1
-          Left = 170
+          Left = 176
           Height = 28
           Hint = 'Subscript'
           Top = 7
@@ -402,7 +409,7 @@ object frmMain: TfrmMain
           OnClick = btnScriptClick
         end
         object btnColor: TSpeedButton
-          Left = 214
+          Left = 224
           Height = 28
           Hint = 'Text color of the selection'
           Top = 7
@@ -413,7 +420,7 @@ object frmMain: TfrmMain
           OnClick = btnColorClick
         end
         object btnFill: TSpeedButton
-          Left = 272
+          Left = 282
           Height = 28
           Hint = 'Highlight color behind the selection'
           Top = 7
@@ -424,10 +431,10 @@ object frmMain: TfrmMain
           OnClick = btnFillClick
         end
         object cbSize: TComboBox
-          Left = 324
+          Left = 340
           Height = 30
-          Top = 7
-          Width = 66
+          Top = 5
+          Width = 86
           ItemHeight = 0
           Items.Strings = (
             'default'
@@ -450,10 +457,10 @@ object frmMain: TfrmMain
           OnChange = cbSizeChange
         end
         object cbFace: TComboBox
-          Left = 394
+          Left = 432
           Height = 30
-          Top = 7
-          Width = 136
+          Top = 5
+          Width = 150
           ItemHeight = 0
           Items.Strings = (
             'default'
@@ -471,10 +478,10 @@ object frmMain: TfrmMain
           OnChange = cbFaceChange
         end
         object btnAlignL: TSpeedButton
-          Left = 538
+          Left = 270
           Height = 28
           Hint = 'Align left'
-          Top = 7
+          Top = 41
           Width = 26
           Caption = 'L'
           Down = True
@@ -485,10 +492,10 @@ object frmMain: TfrmMain
         end
         object btnAlignC: TSpeedButton
           Tag = 1
-          Left = 566
+          Left = 298
           Height = 28
           Hint = 'Center'
-          Top = 7
+          Top = 41
           Width = 26
           Caption = 'C'
           GroupIndex = 6
@@ -498,10 +505,10 @@ object frmMain: TfrmMain
         end
         object btnAlignR: TSpeedButton
           Tag = 2
-          Left = 594
+          Left = 326
           Height = 28
           Hint = 'Align right'
-          Top = 7
+          Top = 41
           Width = 26
           Caption = 'R'
           GroupIndex = 6
@@ -510,7 +517,7 @@ object frmMain: TfrmMain
           OnClick = btnAlignClick
         end
         object btnLink: TSpeedButton
-          Left = 628
+          Left = 594
           Height = 28
           Hint = 'Turn the selection into a link'
           Top = 7
@@ -521,7 +528,7 @@ object frmMain: TfrmMain
           OnClick = btnLinkClick
         end
         object btnClearFmt: TSpeedButton
-          Left = 680
+          Left = 646
           Height = 28
           Hint = 'Strip all formatting from the selection'
           Top = 7
@@ -532,7 +539,7 @@ object frmMain: TfrmMain
           OnClick = btnClearFmtClick
         end
         object btnUndo: TSpeedButton
-          Left = 742
+          Left = 714
           Height = 28
           Hint = 'Undo (Ctrl+Z)'
           Top = 7
@@ -543,7 +550,7 @@ object frmMain: TfrmMain
           OnClick = btnUndoClick
         end
         object btnRedo: TSpeedButton
-          Left = 798
+          Left = 768
           Height = 28
           Hint = 'Redo (Ctrl+Shift+Z)'
           Top = 7
@@ -555,10 +562,10 @@ object frmMain: TfrmMain
         end
         object btnKindH1: TSpeedButton
           Tag = 1
-          Left = 858
+          Left = 8
           Height = 28
           Hint = 'Heading 1'
-          Top = 7
+          Top = 41
           Width = 32
           AllowAllUp = True
           Caption = 'H1'
@@ -569,10 +576,10 @@ object frmMain: TfrmMain
         end
         object btnKindH2: TSpeedButton
           Tag = 2
-          Left = 892
+          Left = 42
           Height = 28
           Hint = 'Heading 2'
-          Top = 7
+          Top = 41
           Width = 32
           AllowAllUp = True
           Caption = 'H2'
@@ -583,10 +590,10 @@ object frmMain: TfrmMain
         end
         object btnKindBullet: TSpeedButton
           Tag = 7
-          Left = 926
+          Left = 76
           Height = 28
           Hint = 'Bullet list'
-          Top = 7
+          Top = 41
           Width = 28
           AllowAllUp = True
           Caption = #8226
@@ -597,10 +604,10 @@ object frmMain: TfrmMain
         end
         object btnKindNumber: TSpeedButton
           Tag = 8
-          Left = 956
+          Left = 106
           Height = 28
           Hint = 'Numbered list'
-          Top = 7
+          Top = 41
           Width = 30
           AllowAllUp = True
           Caption = '1.'
@@ -611,10 +618,10 @@ object frmMain: TfrmMain
         end
         object btnKindQuote: TSpeedButton
           Tag = 9
-          Left = 988
+          Left = 138
           Height = 28
           Hint = 'Quote'
-          Top = 7
+          Top = 41
           Width = 28
           AllowAllUp = True
           Caption = #8221
@@ -625,10 +632,10 @@ object frmMain: TfrmMain
         end
         object btnKindCode: TSpeedButton
           Tag = 10
-          Left = 1018
+          Left = 168
           Height = 28
           Hint = 'Code line'
-          Top = 7
+          Top = 41
           Width = 30
           AllowAllUp = True
           Caption = '{}'
@@ -638,10 +645,10 @@ object frmMain: TfrmMain
           OnClick = btnKindClick
         end
         object btnTable: TSpeedButton
-          Left = 1054
+          Left = 200
           Height = 28
           Hint = 'Insert a 3×2 table - Tab hops cells, Enter adds a row'
-          Top = 7
+          Top = 41
           Width = 52
           Caption = 'Table'
           ShowHint = True
@@ -1000,6 +1007,15 @@ object frmMain: TfrmMain
         TabOrder = 1
         OnClick = rgCharModeClick
       end
+      object chkHideChars: TCheckBox
+        Left = 20
+        Height = 22
+        Top = 548
+        Width = 360
+        Caption = 'PasswordChar - bullets on screen, Copy refused'
+        OnChange = chkHideCharsChange
+        TabOrder = 2
+      end
       object lblSection3: TInkLabel
         Left = 620
         Height = 21
@@ -1115,6 +1131,36 @@ object frmMain: TfrmMain
         Anchors = [akTop, akLeft, akRight]
         ParentColor = False
       end
+      object lblSection5: TInkLabel
+        Left = 620
+        Height = 21
+        Top = 430
+        Width = 140
+        Caption = '<font size="13"><b>A box that grows</b></font>'
+        SuperSubScriptRatio = 0.7
+        AutoSize = True
+        ParentColor = False
+      end
+      object lblGrowHint: TInkLabel
+        Left = 620
+        Height = 36
+        Top = 458
+        Width = 470
+        Caption = '<b>TInkCodeMemo</b> with <font face="DejaVu Sans Mono">AutoHeight</font>: one line that opens up as you type, to <font face="DejaVu Sans Mono">MaxLines</font>, then scrolls.'
+        SuperSubScriptRatio = 0.7
+        WordWrap = True
+        ParentColor = False
+      end
+      object memQuestion: TInkCodeMemo
+        Left = 620
+        Height = 30
+        Top = 502
+        Width = 470
+        TextHint = 'Ask something - the box grows as you type'
+        AutoHeight = True
+        MaxLines = 4
+        TabOrder = 4
+      end
       object lblLabelCopy: TInkLabel
         Left = 620
         Height = 40
@@ -1149,10 +1195,10 @@ object frmMain: TfrmMain
         TabOrder = 0
         object lblMemoHelp: TInkLabel
           Left = 12
-          Height = 344
+          Height = 150
           Top = 12
           Width = 236
-          Caption = '<b>TInkMemo</b> is for text the <b>program</b> adds a line at a time - a log, a chat, a history of events. <font face="DejaVu Sans Mono">Append</font> adds a line and follows the end when you are there.<br><br><b>Not</b> a document: a whole help page or README belongs in <b>TInkPage</b> (Documents tab). <b>Not</b> an editor: text the user writes belongs in <b>TInkRichEdit</b>. <b>Not</b> a list: lines the user picks or renames belong in <b>TInkListBox</b>.<br><br>Select across lines, double-click a word, triple-click a line, Ctrl+A / Ctrl+C, right-click to copy.'
+          Caption = '<b>TInkMemo</b> is for text the <b>program</b> adds a line at a time - a log, a chat, a history of events. <font face="DejaVu Sans Mono">Append</font> adds a line and follows the end when you are there.<br><br>Select across lines, double-click a word, Ctrl+C, right-click to copy.'
           SuperSubScriptRatio = 0.7
           WordWrap = True
           LinkStyle.Color = clBlue
@@ -1166,7 +1212,7 @@ object frmMain: TfrmMain
         object chkMemoWrap: TCheckBox
           Left = 12
           Height = 22
-          Top = 364
+          Top = 180
           Width = 97
           Caption = 'WordWrap'
           Checked = True
@@ -1177,7 +1223,7 @@ object frmMain: TfrmMain
         object lblScale: TInkLabel
           Left = 12
           Height = 18
-          Top = 396
+          Top = 212
           Width = 79
           Caption = 'Scale: <b>100%</b>'
           SuperSubScriptRatio = 0.7
@@ -1193,7 +1239,7 @@ object frmMain: TfrmMain
         object tbScale: TTrackBar
           Left = 12
           Height = 40
-          Top = 418
+          Top = 234
           Width = 236
           Frequency = 25
           Max = 200
@@ -1205,7 +1251,7 @@ object frmMain: TfrmMain
         object lblAppendHdr: TInkLabel
           Left = 12
           Height = 18
-          Top = 480
+          Top = 292
           Width = 173
           Caption = '<b>Append</b> a line of markup:'
           SuperSubScriptRatio = 0.7
@@ -1222,7 +1268,7 @@ object frmMain: TfrmMain
           Cursor = crIBeam
           Left = 12
           Height = 30
-          Top = 504
+          Top = 316
           Width = 236
           Text = '<b>you</b>: hello, <font color="#2E86DE">memo</font>!'
           SelStart = 53
@@ -1238,16 +1284,54 @@ object frmMain: TfrmMain
         object btnAppend: TButton
           Left = 12
           Height = 28
-          Top = 542
+          Top = 354
           Width = 114
           Caption = 'Append'
           TabOrder = 3
           OnClick = btnAppendClick
         end
+        object lblChatHdr: TInkLabel
+          Left = 12
+          Height = 18
+          Top = 412
+          Width = 236
+          Caption = '<b>A chat, the memo way:</b>'
+          SuperSubScriptRatio = 0.7
+          AutoSize = True
+          ParentColor = False
+        end
+        object btnChatMsg: TButton
+          Left = 12
+          Height = 28
+          Top = 438
+          Width = 236
+          Caption = 'Append a message'
+          OnClick = btnChatMsgClick
+          TabOrder = 5
+        end
+        object btnChatStream: TButton
+          Left = 12
+          Height = 28
+          Top = 472
+          Width = 236
+          Caption = 'Stream an answer'
+          OnClick = btnChatStreamClick
+          TabOrder = 6
+        end
+        object lblChatHint: TInkLabel
+          Left = 12
+          Height = 54
+          Top = 508
+          Width = 236
+          Caption = '<font color="clGray">AppendBlock makes a whole Markdown message one entry with its own band; ReplaceLast grows it in place as an answer streams in.</font>'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          ParentColor = False
+        end
         object btnMemoClear: TButton
           Left = 134
           Height = 28
-          Top = 542
+          Top = 354
           Width = 114
           Caption = 'Clear'
           TabOrder = 4
@@ -1559,47 +1643,6 @@ object frmMain: TfrmMain
         ParentFont = False
         Style = lbOwnerDrawFixed
         TabOrder = 1
-      end
-    end
-    object tabCredits: TTabSheet
-      Caption = 'About'
-      ClientHeight = 698
-      ClientWidth = 1138
-      object memCredits: TInkMemo
-        Cursor = crIBeam
-        Left = 0
-        Height = 698
-        Top = 0
-        Width = 1138
-        Lines.Strings = (
-          '<font size="17"><b>About LazInk</b></font>'
-          'HTML and Markdown text controls for Lazarus, drawn with TCanvas.'
-          'The renderer is implemented by InkRender, InkBox and InkDraw.'
-          '<a href="https://github.com/TonyStone31/LazInk">Source and documentation on GitHub</a>'
-          '<font size="15"><b>License</b></font>'
-          '0BSD — the BSD Zero Clause License. Permission to use, copy, modify and distribute this software for any purpose with or without fee is granted. See LICENSE for the full terms.'
-          'Lazarus/LCL and Free Pascal dependencies retain their own licenses.'
-        )
-        SuperSubScriptRatio = 0.7
-        Borders.Left = 10
-        Borders.Top = 6
-        Borders.Right = 10
-        Borders.Bottom = 6
-        LinkStyle.Color = clBlue
-        LinkStyle.BackColor = clNone
-        LinkStyle.Underline = False
-        LinkHoverStyle.Color = clRed
-        LinkHoverStyle.BackColor = clNone
-        LinkHoverStyle.Underline = True
-        OnLinkClick = memLinkClick
-        WordWrap = True
-        Align = alClient
-        Color = clWindow
-        Font.Color = clWindowText
-        Font.Height = -14
-        ParentColor = False
-        ParentFont = False
-        TabOrder = 0
       end
     end
   end
