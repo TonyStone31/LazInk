@@ -1163,8 +1163,8 @@ function TInkCustomPage.ImageFitSheet: string;
 begin
   case FImageFit of
     iifWidth: Result := 'img { width: 100%; height: auto }';
-    iifWindow: Result := 'body { margin: 8px } img { display: block; margin: 0 auto; '+
-      'width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 16px) }';
+    { the picture's size is worked out to fit the window as it is measured }
+    iifWindow: Result := 'body { margin: 8px } img { display: block; margin: 0 auto }';
   else
     { never past its column }
     Result := 'img { max-width: 100% }';
@@ -2017,7 +2017,13 @@ begin
   TreeRender(ACanvas);
 end;
 procedure TInkCustomPage.Resize;
-begin inherited; InvalidateLayout(0); PlaceFindBar end;
+begin
+  inherited;
+  { a picture fitted to the window is measured again at the new size }
+  if (FImageFit=iifWindow) and (FPageSection<>nil) then Reread
+  else InvalidateLayout(0);
+  PlaceFindBar;
+end;
 procedure TInkCustomPage.FontChanged(Sender: TObject);
 begin inherited; InvalidateLayout(0) end;
 function TInkCustomPage.HitTestLink(X,Y: Integer; out ABlock: Integer; out AHit: THTMLHitInfo): Boolean;
