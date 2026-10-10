@@ -86,9 +86,20 @@ type
     FHintRules: TFPObjectHashTable;
     FOrder: Integer;
     FUAOrder: Integer;
+    { cascade layers: the one being read, every name in the order first
+      seen, and a count for the nameless ones }
+    FLayer: string;
+    FLayerNames: TStringList;
+    { custom properties registered with @property: name=initial value, and
+      in Objects whether they inherit }
+    FRegistered: TStringList;
+    FAnonLayers: Integer;
     FRoot: TInkNode;
     FRootFont: Double;
     FImportDepth: Integer;
+    procedure RegisterLayer(const AName: string);
+    function SubLayer(const AName: string): string;
+    procedure RankLayers;
     procedure AddRule(const ASelectors: string; const ADecls: string;
       AOrigin: TInkStyleOrigin; const AMedia: array of Integer; const ABase: string);
     procedure ParseSheet(const CSS: string; AOrigin: TInkStyleOrigin;
@@ -137,6 +148,8 @@ type
 function InkParseColor(const S: string; out C: TInkRGBA; ADark: Boolean = False): Boolean;
 { whether N matches a selector list - False for one that does not parse }
 function InkMatches(N: TInkNode; const ASelector: string): Boolean;
+{ whether a selector list parses - a rule with one that does not is dropped }
+function InkSelectorValid(const ASelector: string): Boolean;
 function InkQuerySelector(ARoot: TInkNode; const ASelector: string): TInkNode;
 function InkQuerySelectorAll(ARoot: TInkNode; const ASelector: string): TInkNodeArray;
 { a property's index in the computed style, -1 for one not known }
@@ -559,6 +572,56 @@ begin
   Result := True;
 end;
 
+{ lab() and lch(): CIE Lab under the D50 white, to XYZ, adapted to D65,
+  then to sRGB }
+function LabColor(APolar: Boolean; const AInner: string; out C: TInkRGBA): Boolean;
+const
+  Eps = 216 / 24389; Kappa = 24389 / 27;
+var Inner: string; Parts: TStringArray; L, A, B, H, Ch, Fx, Fy, Fz, X, Y, Z, X2, Y2, Z2,
+  R, G, Bl, Alpha: Double;
+  function Gamma(V: Double): Integer;
+  begin
+    V := EnsureRange(V, 0, 1);
+    if V <= 0.0031308 then V := 12.92 * V else V := 1.055 * Power(V, 1 / 2.4) - 0.055;
+    Result := EnsureRange(Round(V * 255), 0, 255);
+  end;
+  function Cube(T: Double): Double;
+  begin
+    if T * T * T > Eps then Result := T * T * T else Result := (116 * T - 16) / Kappa;
+  end;
+begin
+  Result := False; C := 0;
+  Inner := StringReplace(StringReplace(AInner, ',', ' ', [rfReplaceAll]), '/', ' ', [rfReplaceAll]);
+  Parts := Words(Inner);
+  if System.Length(Parts) < 3 then Exit;
+  L := Channel(Parts[0], 100);
+  Alpha := 1;
+  if System.Length(Parts) >= 4 then Alpha := Channel(Parts[3], 1);
+  if APolar then
+  begin
+    Ch := Channel(Parts[1], 150);
+    H := Channel(StringReplace(Parts[2], 'deg', '', []), 1) * Pi / 180;
+    A := Ch * Cos(H); B := Ch * Sin(H);
+  end
+  else
+  begin
+    A := Channel(Parts[1], 125); B := Channel(Parts[2], 125);
+  end;
+  Fy := (L + 16) / 116; Fx := Fy + A / 500; Fz := Fy - B / 200;
+  X := Cube(Fx) * 0.96422;
+  if L > Kappa * Eps then Y := Fy * Fy * Fy else Y := L / Kappa;
+  Z := Cube(Fz) * 0.82521;
+  X2 := 0.9554734527042182 * X - 0.023098536874261423 * Y + 0.0632593086610217 * Z;
+  Y2 := -0.028369706963208136 * X + 1.0099954580058226 * Y + 0.021041398966943008 * Z;
+  Z2 := 0.012314001688319899 * X - 0.020507696433477912 * Y + 1.3303659366080753 * Z;
+  R := 3.2409699419045226 * X2 - 1.537383177570094 * Y2 - 0.4986107602930034 * Z2;
+  G := -0.9692436362808796 * X2 + 1.8759675015077202 * Y2 + 0.04155505740717559 * Z2;
+  Bl := 0.05563007969699366 * X2 - 0.20397695888897652 * Y2 + 1.0569715142428786 * Z2;
+  C := Cardinal(Gamma(R)) or (Cardinal(Gamma(G)) shl 8) or (Cardinal(Gamma(Bl)) shl 16) or
+    (Cardinal(EnsureRange(Round(Alpha * 255), 0, 255)) shl 24);
+  Result := True;
+end;
+
 { color-mix(in srgb, red 30%, blue): mixed channel by channel }
 function MixColors(const AInner: string; out C: TInkRGBA; ADark: Boolean): Boolean;
 var Parts, W: TStringArray; Cols: array[0..1] of TInkRGBA; Pct: array[0..1] of Double;
@@ -637,6 +700,7 @@ begin
     end;
     if Fn = 'color-mix' then Exit(MixColors(Inner, C, ADark));
     if (Fn = 'oklch') or (Fn = 'oklab') then Exit(OKColor(Fn = 'oklch', Inner, C));
+    if (Fn = 'lch') or (Fn = 'lab') then Exit(LabColor(Fn = 'lch', Inner, C));
     Inner := StringReplace(Inner, ',', ' ', [rfReplaceAll]);
     Inner := StringReplace(Inner, '/', ' ', [rfReplaceAll]);
     Parts := Words(Inner);
@@ -1071,9 +1135,15 @@ begin
     begin
       Inc(P); ArgumentText(S, P);
     end;
+    { Chromium takes any -webkit- pseudo-element, so a list naming one
+      still applies }
     if not ((Name = 'before') or (Name = 'after') or (Name = 'marker') or
       (Name = 'first-line') or (Name = 'first-letter') or (Name = 'placeholder') or
-      (Name = 'selection') or (Name = 'backdrop') or (Name = 'file-selector-button')) then
+      (Name = 'selection') or (Name = 'backdrop') or (Name = 'file-selector-button') or
+      (Name = 'details-content') or (Name = 'part') or (Name = 'slotted') or
+      (Name = 'cue') or (Name = 'target-text') or (Name = 'spelling-error') or
+      (Name = 'grammar-error') or (Copy(Name, 1, 15) = 'view-transition') or
+      (Copy(Name, 1, 8) = '-webkit-')) then
       raise ESelector.Create('pseudo-element');
     ASel.PseudoElement := Name;
     Exit;
@@ -1114,11 +1184,14 @@ begin
         end;
       'lang':
         begin
-          Ps.Kind := pkLang; Ps.Arg := LowerCase(Trim(StringReplace(Arg, '"', '', [rfReplaceAll])));
+          { a list of languages, any of which will do }
+          Ps.Kind := pkLang;
+          Ps.Arg := ',' + LowerCase(StringReplace(StringReplace(StringReplace(Arg, '"', '', [rfReplaceAll]),
+            '''', '', [rfReplaceAll]), ' ', '', [rfReplaceAll])) + ',';
         end;
       'dir':
         if LowTrim(Arg) = 'ltr' then Ps.Kind := pkAlways else Ps.Kind := pkNever;
-      'host', 'host-context', 'state', 'highlight':
+      'host', 'host-context', 'state', 'highlight', 'active-view-transition-type':
         Ps.Kind := pkNever;
     else
       raise ESelector.Create('pseudo-class');
@@ -1166,6 +1239,7 @@ begin
       'placeholder-shown': Ps.Kind := pkPlaceholderShown;
       'open': Ps.Kind := pkOpen;
       'scope': Ps.Kind := pkScope;
+      'host': Ps.Kind := pkNever;
       'defined', 'valid', 'in-range': Ps.Kind := pkAlways;
       'out-of-range': Ps.Kind := pkNever;
     else
@@ -1610,7 +1684,13 @@ begin
           if S.HasAttribute('lang') then
           begin
             V := LowerCase(S.GetAttribute('lang'));
-            Exit((V = Ps.Arg) or (Copy(V, 1, System.Length(Ps.Arg) + 1) = Ps.Arg + '-'));
+            if Pos(',' + V + ',', Ps.Arg) > 0 then Exit(True);
+            while Pos('-', V) > 0 do
+            begin
+              V := Copy(V, 1, LastDelimiter('-', V) - 1);
+              if Pos(',' + V + ',', Ps.Arg) > 0 then Exit(True);
+            end;
+            Exit(False);
           end;
           S := S.Parent;
         end;
@@ -1751,6 +1831,18 @@ begin
   finally FreeList(L) end;
 end;
 
+function InkSelectorValid(const ASelector: string): Boolean;
+var L: TSelList;
+begin
+  try
+    L := ParseSelectorList(ASelector, False, False);
+    FreeList(L);
+    Result := True;
+  except
+    on ESelector do Result := False;
+  end;
+end;
+
 function InkQuerySelectorAll(ARoot: TInkNode; const ASelector: string): TInkNodeArray;
 var L: TSelList; M: TMatcher; N: TInkNode; Count: Integer;
 begin
@@ -1801,6 +1893,10 @@ type
   TRule = class
     Sels: TSelList;
     Text: string;
+    { its cascade layer's full name ('' outside every layer), and where
+      that layer stands - set by Compute }
+    Layer: string;
+    Rank: Integer;
     Decls: TDeclArray;
     Origin: TInkStyleOrigin;
     Order: Integer;
@@ -1979,6 +2075,18 @@ begin
     'margin-block', 'padding-block': Result := Of_([Copy(AName, 1, Pos('-', AName)) + 'top',
       Copy(AName, 1, Pos('-', AName)) + 'bottom']);
     'columns': Result := Of_(['column-width', 'column-count']);
+    'border-inline-width', 'border-inline-style', 'border-inline-color':
+      Result := Of_(['border-left' + Copy(AName, 14, MaxInt), 'border-right' + Copy(AName, 14, MaxInt)]);
+    'border-block-width', 'border-block-style', 'border-block-color':
+      Result := Of_(['border-top' + Copy(AName, 13, MaxInt), 'border-bottom' + Copy(AName, 13, MaxInt)]);
+    'border-inline-start-width', 'border-inline-start-style', 'border-inline-start-color':
+      Result := Of_(['border-left' + Copy(AName, 20, MaxInt)]);
+    'border-inline-end-width', 'border-inline-end-style', 'border-inline-end-color':
+      Result := Of_(['border-right' + Copy(AName, 18, MaxInt)]);
+    'border-block-start-width', 'border-block-start-style', 'border-block-start-color':
+      Result := Of_(['border-top' + Copy(AName, 19, MaxInt)]);
+    'border-block-end-width', 'border-block-end-style', 'border-block-end-color':
+      Result := Of_(['border-bottom' + Copy(AName, 17, MaxInt)]);
     'border-inline-start': Result := Three('left');
     'border-inline-end': Result := Three('right');
     'border-block-start': Result := Three('top');
@@ -2039,6 +2147,27 @@ begin
       begin BorderSide(D, 'left', V, AImp); BorderSide(D, 'right', V, AImp) end;
     'border-block':
       begin BorderSide(D, 'top', V, AImp); BorderSide(D, 'bottom', V, AImp) end;
+    'border-inline-width', 'border-inline-style', 'border-inline-color',
+    'border-block-width', 'border-block-style', 'border-block-color':
+      begin
+        { a pair of sides: one value for both, or start then end }
+        L := Copy(AName, System.Length(AName) - 5, 6);
+        if L[1] <> '-' then L := '-' + L;
+        if Pos('inline', AName) > 0 then begin Sides[0] := 'left'; Sides[1] := 'right' end
+        else begin Sides[0] := 'top'; Sides[1] := 'bottom' end;
+        if System.Length(W) = 0 then Exit;
+        Longhand(D, 'border-' + Sides[0] + L, W[0], AImp);
+        if System.Length(W) > 1 then Longhand(D, 'border-' + Sides[1] + L, W[1], AImp)
+        else Longhand(D, 'border-' + Sides[1] + L, W[0], AImp);
+      end;
+    'border-inline-start-width', 'border-inline-start-style', 'border-inline-start-color':
+      Longhand(D, 'border-left' + Copy(AName, 20, MaxInt), V, AImp);
+    'border-inline-end-width', 'border-inline-end-style', 'border-inline-end-color':
+      Longhand(D, 'border-right' + Copy(AName, 18, MaxInt), V, AImp);
+    'border-block-start-width', 'border-block-start-style', 'border-block-start-color':
+      Longhand(D, 'border-top' + Copy(AName, 19, MaxInt), V, AImp);
+    'border-block-end-width', 'border-block-end-style', 'border-block-end-color':
+      Longhand(D, 'border-bottom' + Copy(AName, 17, MaxInt), V, AImp);
     'border-inline-start': BorderSide(D, 'left', V, AImp);
     'border-inline-end': BorderSide(D, 'right', V, AImp);
     'border-block-start': BorderSide(D, 'top', V, AImp);
@@ -2493,6 +2622,8 @@ begin
   FShare := TFPObjectHashTable.Create(False);
   FInfos := TFPList.Create;
   FHintRules := TFPObjectHashTable.Create(True);
+  FLayerNames := TStringList.Create;
+  FRegistered := TStringList.Create;
   Media.Width := 1024; Media.Height := 768;
   CanvasColor := RGBA($FFFFFF, 255); CanvasTextColor := RGBA($000000, 255);
   LinkColor := RGBA($0000EE, 255); VisitedColor := RGBA($551A8B, 255);
@@ -2511,7 +2642,7 @@ begin
   FUniversal.Free; FPseudoRefs.Free;
   FRefs.Free; FRules.Free;
   FMediaTexts.Free;
-  FStyles.Free; FShare.Free; FInfos.Free; FHintRules.Free;
+  FStyles.Free; FShare.Free; FInfos.Free; FHintRules.Free; FLayerNames.Free; FRegistered.Free;
   inherited Destroy;
 end;
 
@@ -2531,6 +2662,7 @@ begin
     if TRule(FRules[I]).Origin = isoAuthor then FRules.Delete(I);
   for I := 0 to FRefs.Count - 1 do Index(FRefs[I]);
   FMediaTexts.Clear;
+  FLayerNames.Clear; FLayer := ''; FAnonLayers := 0; FRegistered.Clear;
   FOrder := FUAOrder;
 end;
 
@@ -2595,6 +2727,7 @@ begin
   if System.Length(R.Decls) = 0 then begin R.Free; Exit end;
   R.Origin := AOrigin;
   R.Text := ASelectors;
+  R.Layer := FLayer;
   R.Order := FOrder; Inc(FOrder);
   SetLength(R.Media, System.Length(AMedia));
   for I := 0 to High(AMedia) do R.Media[I] := AMedia[I];
@@ -2676,9 +2809,66 @@ begin
   Result := False;
 end;
 
+{ a layer's full name, parents first - a.b - registered with them }
+procedure TInkStyler.RegisterLayer(const AName: string);
+var P: Integer;
+begin
+  if AName = '' then Exit;
+  P := LastDelimiter('.', AName);
+  if P > 0 then RegisterLayer(Copy(AName, 1, P - 1));
+  if FLayerNames.IndexOf(AName) < 0 then FLayerNames.Add(AName);
+end;
+
+{ the full name of a layer named inside the one being read; '' names a
+  layer of its own that nothing else can name }
+function TInkStyler.SubLayer(const AName: string): string;
+var N: string;
+begin
+  N := Trim(AName);
+  if N = '' then
+  begin
+    Inc(FAnonLayers); N := '#' + IntToStr(FAnonLayers);
+  end;
+  if FLayer <> '' then Result := FLayer + '.' + N else Result := N;
+  RegisterLayer(Result);
+end;
+
+{ every layer's place: a layer's sublayers before its own rules, layers in
+  the order first named, and what is in no layer after them all - which is
+  how a later layer beats an earlier one, and plain CSS beats every layer }
+procedure TInkStyler.RankLayers;
+var Order: TStringList; I: Integer; R: TRule;
+
+  procedure Visit(const AParent: string);
+  var K, P: Integer; Name, Parent: string;
+  begin
+    for K := 0 to FLayerNames.Count - 1 do
+    begin
+      Name := FLayerNames[K];
+      P := LastDelimiter('.', Name);
+      if P > 0 then Parent := Copy(Name, 1, P - 1) else Parent := '';
+      if Parent <> AParent then Continue;
+      Visit(Name);
+      Order.Add(Name);
+    end;
+  end;
+
+begin
+  Order := TStringList.Create;
+  try
+    Visit('');
+    Order.Add('');
+    for I := 0 to FRules.Count - 1 do
+    begin
+      R := TRule(FRules[I]);
+      R.Rank := Order.IndexOf(R.Layer);
+    end;
+  finally Order.Free end;
+end;
+
 procedure TInkStyler.ParseSheet(const CSS: string; AOrigin: TInkStyleOrigin;
   const AMedia: array of Integer; const ABase: string; const AParentSel: string);
-var S, Prelude, Body, Kw, Url, Fetched, ImpBase, Sel, Decls, Item: string;
+var S, Prelude, Body, Kw, Url, Fetched, ImpBase, Sel, Decls, Item, SavedLayer, Lay: string;
   P, Q, Depth, I, K, Start, BodyStart: Integer; Qc: Char;
   Inner: array of Integer;
   Parts: TStringArray;
@@ -2780,6 +2970,14 @@ begin
     if S[P] = ';' then
     begin
       Inc(P);
+      if LowerCase(Copy(Prelude, 1, 7)) = '@layer ' then
+      begin
+        { @layer a, b; - the order the layers stand in, named before use }
+        Parts := SplitTop(Copy(Prelude, 8, MaxInt), ',');
+        for K := 0 to High(Parts) do
+          if Trim(Parts[K]) <> '' then SubLayer(Parts[K]);
+        Continue;
+      end;
       if LowerCase(Copy(Prelude, 1, 7)) = '@import' then
       begin
         Item := Trim(Copy(Prelude, 8, MaxInt));
@@ -2796,10 +2994,17 @@ begin
         end;
         if (Url <> '') and (Url[1] in ['"', '''']) then Url := Copy(Url, 2, System.Length(Url) - 2);
         if not ResolveRelativeURI(ABase, Url, ImpBase) then ImpBase := Url;
-        { a layer() or supports() on the import is read past }
-        if LowerCase(Copy(Item, 1, 5)) = 'layer' then
+        { layer or layer(name) puts the whole sheet in a layer }
+        Lay := #0;
+        if LowerCase(Copy(Item, 1, 6)) = 'layer(' then
         begin
-          Q := Pos(' ', Item); if Q = 0 then Item := '' else Item := Trim(Copy(Item, Q, MaxInt));
+          Q := 7; Lay := Trim(ArgumentText(Item, Q));
+          Item := Trim(Copy(Item, Q, MaxInt));
+        end
+        else if (LowerCase(Copy(Item, 1, 5)) = 'layer') and
+          ((System.Length(Item) = 5) or IsSpace(Item[6])) then
+        begin
+          Lay := ''; Item := Trim(Copy(Item, 6, MaxInt));
         end;
         if LowerCase(Copy(Item, 1, 9)) = 'supports(' then
         begin
@@ -2814,7 +3019,10 @@ begin
           begin
             if Item <> '' then WithMedia(Item) else SameMedia;
             Inc(FImportDepth);
-            try ParseSheet(Fetched, AOrigin, Inner, ImpBase) finally Dec(FImportDepth) end;
+            SavedLayer := FLayer;
+            if Lay <> #0 then FLayer := SubLayer(Lay);
+            try ParseSheet(Fetched, AOrigin, Inner, ImpBase)
+            finally Dec(FImportDepth); FLayer := SavedLayer end;
           end;
         end;
       end;
@@ -2840,10 +3048,39 @@ begin
             SameMedia;
             ParseSheet(Body, AOrigin, Inner, ABase, AParentSel);
           end;
-        'layer', 'scope', 'starting-style':
+        'layer':
           begin
             SameMedia;
-            if Kw <> 'starting-style' then ParseSheet(Body, AOrigin, Inner, ABase, AParentSel);
+            SavedLayer := FLayer;
+            FLayer := SubLayer(Item);
+            try ParseSheet(Body, AOrigin, Inner, ABase, AParentSel)
+            finally FLayer := SavedLayer end;
+          end;
+        'scope':
+          begin
+            SameMedia;
+            ParseSheet(Body, AOrigin, Inner, ABase, AParentSel);
+          end;
+        'property':
+          if Copy(Item, 1, 2) = '--' then
+          begin
+            { a registered custom property: its starting value, and
+              whether a child takes its parent's }
+            Kw := '';
+            Url := 'true';
+            Parts := SplitTop(Body, ';');
+            for K := 0 to High(Parts) do
+            begin
+              Q := Pos(':', Parts[K]);
+              if Q = 0 then Continue;
+              Decls := LowTrim(Copy(Parts[K], 1, Q - 1));
+              if Decls = 'initial-value' then Kw := Trim(Copy(Parts[K], Q + 1, MaxInt))
+              else if Decls = 'inherits' then Url := LowTrim(Copy(Parts[K], Q + 1, MaxInt));
+            end;
+            Q := FRegistered.IndexOfName(Item);
+            if Q < 0 then Q := FRegistered.Add(Item + '=' + Kw)
+            else FRegistered[Q] := Item + '=' + Kw;
+            FRegistered.Objects[Q] := TObject(PtrInt(Ord(Url <> 'false')));
           end;
       end;
       Continue;
@@ -3328,14 +3565,27 @@ begin
   end;
 end;
 
-{ in the cascade's order: specificity, then where written }
-procedure SortMatched(var A: TMatchedArray; ACount: Integer);
+{ whether A comes after B in the cascade - wins over it: its layer, then
+  specificity, then where written.  For !important the layers turn round. }
+function Later(const A, B: TMatched; AImportant: Boolean): Boolean; inline;
+begin
+  if A.Rule.Rank <> B.Rule.Rank then
+  begin
+    if AImportant then Exit(A.Rule.Rank < B.Rule.Rank);
+    Exit(A.Rule.Rank > B.Rule.Rank);
+  end;
+  if A.Spec <> B.Spec then Exit(A.Spec > B.Spec);
+  Result := A.Rule.Order > B.Rule.Order;
+end;
+
+{ weakest first, in the cascade's order }
+procedure SortMatched(var A: TMatchedArray; ACount: Integer; AImportant: Boolean = False);
 var I, J: Integer; T: TMatched;
 begin
   for I := 1 to ACount - 1 do
   begin
     T := A[I]; J := I - 1;
-    while (J >= 0) and ((A[J].Spec > T.Spec) or ((A[J].Spec = T.Spec) and (A[J].Rule.Order > T.Rule.Order))) do
+    while (J >= 0) and Later(A[J], T, AImportant) do
     begin
       A[J + 1] := A[J]; Dec(J);
     end;
@@ -3613,6 +3863,15 @@ begin
   if not SubstituteOK(V, ACustom, ADepth, Result) then Result := '';
 end;
 
+{ whether a value has a length or a percentage in it, or only numbers }
+function HasUnit(const S: string): Boolean;
+var I: Integer;
+begin
+  for I := 1 to System.Length(S) - 1 do
+    if (S[I] in ['0'..'9', '.']) and (S[I + 1] in ['a'..'z', 'A'..'Z', '%']) then Exit(True);
+  Result := False;
+end;
+
 function Blockify(const D: string): string;
 begin
   case D of
@@ -3642,7 +3901,7 @@ begin
   Result.FStyler := Self;
   SetLength(Result.FValues, PropCount);
   { custom properties first: everything else may use them }
-  if (ASpecCustom = nil) or (ASpecCustom.Count = 0) then
+  if ((ASpecCustom = nil) or (ASpecCustom.Count = 0)) and (FRegistered.Count = 0) then
   begin
     if AParent <> nil then Result.FCustom := AParent.FCustom;
   end
@@ -3651,6 +3910,14 @@ begin
     Result.FCustom := TStringList.Create;
     Result.FOwnsCustom := True;
     if (AParent <> nil) and (AParent.FCustom <> nil) then Result.FCustom.Assign(AParent.FCustom);
+    { a registered property that does not inherit starts afresh }
+    for I := 0 to FRegistered.Count - 1 do
+      if PtrInt(FRegistered.Objects[I]) = 0 then
+      begin
+        K := Result.FCustom.IndexOfName(FRegistered.Names[I]);
+        if K >= 0 then Result.FCustom.Delete(K);
+      end;
+    if ASpecCustom <> nil then
     for I := 0 to ASpecCustom.Count - 1 do
     begin
       Name := ASpecCustom.Names[I];
@@ -3670,6 +3937,10 @@ begin
       else if K >= 0 then Result.FCustom[K] := Name + '=' + V
       else Result.FCustom.Add(Name + '=' + V);
     end;
+    { and one that is set nowhere has its registered starting value }
+    for I := 0 to FRegistered.Count - 1 do
+      if (FRegistered.ValueFromIndex[I] <> '') and (Result.FCustom.IndexOfName(FRegistered.Names[I]) < 0) then
+        Result.FCustom.Add(FRegistered[I]);
     { and their own var()s }
     for I := Result.FCustom.Count - 1 downto 0 do
       if Pos('var(', LowerCase(Result.FCustom.ValueFromIndex[I])) > 0 then
@@ -3770,7 +4041,11 @@ begin
       if (L <> 'normal') and (Pos('%', L) + Pos('em', L) + Pos('calc', L) + Pos('ex', L) + Pos('ch', L) > 0) then
       begin
         Ctx.Percent := Result.FontSize;
-        if EvalLength(L, Ctx, F) then V := FormatPx(F);
+        if EvalLength(L, Ctx, F) then
+        begin
+          if HasUnit(L) then V := FormatPx(F)
+          else V := FloatToStrF(F, ffGeneral, 7, 0, CSSFormat);
+        end;
         Ctx.Percent := 0;
       end;
     end
@@ -3844,7 +4119,7 @@ begin
 end;
 
 function TInkStyler.ComputeOne(AInfo: Pointer): TInkStyle;
-var Info: PInfo; N: TInkNode; M: TMatcher; Matched: TMatchedArray; Count, I: Integer;
+var Info: PInfo; N: TInkNode; M: TMatcher; Matched, Imp: TMatchedArray; Count, I: Integer;
   Key, Inline_: string; Hints: THints; Spec: array of string; Custom: TStringList;
   Parent: TInkStyle; InlineDecls: TDeclArray; Shared: TObject; L: TFPList;
 begin
@@ -3886,11 +4161,13 @@ begin
     for I := 0 to Count - 1 do
       if Matched[I].Rule.Origin = isoAuthor then Apply(Spec, Custom, Matched[I].Rule.Decls, False);
     Apply(Spec, Custom, InlineDecls, False);
+    Imp := Copy(Matched, 0, Count);
+    SortMatched(Imp, Count, True);
     for I := 0 to Count - 1 do
-      if Matched[I].Rule.Origin = isoAuthor then Apply(Spec, Custom, Matched[I].Rule.Decls, True);
+      if Imp[I].Rule.Origin = isoAuthor then Apply(Spec, Custom, Imp[I].Rule.Decls, True);
     Apply(Spec, Custom, InlineDecls, True);
     for I := 0 to Count - 1 do
-      if Matched[I].Rule.Origin = isoUserAgent then Apply(Spec, Custom, Matched[I].Rule.Decls, True);
+      if Imp[I].Rule.Origin = isoUserAgent then Apply(Spec, Custom, Imp[I].Rule.Decls, True);
     Result := Resolve(Spec, Custom, Parent, Info^.Parent = nil);
   finally Custom.Free end;
   FStyles.Add(Result);
@@ -3905,6 +4182,7 @@ begin
   FRoot := ARoot;
   Media.Quirks := (ARoot is TInkDocument) and TInkDocument(ARoot).Quirks;
   EvaluateMedia;
+  RankLayers;
   BuildInfos(ARoot);
   for I := 0 to FInfos.Count - 1 do
     PInfo(FInfos[I])^.Style := ComputeOne(FInfos[I]);
@@ -3938,6 +4216,7 @@ begin
       if Matched[I].Rule.Decls[K].Important then S := S + ' !important';
       S := S + '; ';
     end;
+    if Matched[I].Rule.Layer <> '' then Org := Org + ' @layer ' + Matched[I].Rule.Layer;
     Result.Add(Format('%s %d,%d,%d  %s { %s}', [Org, Matched[I].Spec shr 16, (Matched[I].Spec shr 8) and $FF,
       Matched[I].Spec and $FF, Matched[I].Rule.Text, S]));
   end;
@@ -3979,6 +4258,7 @@ begin
       if Matched[I].Rule.Origin = isoUserAgent then Apply(Spec, Custom, Matched[I].Rule.Decls, False);
     for I := 0 to Count - 1 do
       if Matched[I].Rule.Origin = isoAuthor then Apply(Spec, Custom, Matched[I].Rule.Decls, False);
+    SortMatched(Matched, Count, True);
     for I := 0 to Count - 1 do
       if Matched[I].Rule.Origin = isoAuthor then Apply(Spec, Custom, Matched[I].Rule.Decls, True);
     Result := Resolve(Spec, Custom, StyleOf(N), False);

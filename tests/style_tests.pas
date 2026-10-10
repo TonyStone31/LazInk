@@ -240,6 +240,13 @@ begin
   Is_('#d', 'flex-grow', '0'); Is_('#d', 'flex-basis', 'auto');
   Is_('#d', 'outline-style', 'solid');
   Is_('#d', 'grid-column-start', '1'); Is_('#d', 'grid-column-end', '3');
+  Load('<style>:root { --s: dashed } p { border-inline-style: var(--s); border-inline-width: 1px 3px;' +
+    ' border-block-start-width: 4px; border-block-start-style: solid } @property --u { syntax: "*";' +
+    ' inherits: false; initial-value: 7px } div { --u: 2px } i { padding-top: var(--u) }</style>' +
+    '<p id=p>x</p><div><i id=i>y</i></div>');
+  Is_('#p', 'border-left-style', 'dashed'); Is_('#p', 'border-right-width', '3px');
+  Is_('#p', 'border-top-width', '4px');
+  Is_('#i', 'padding-top', '7px');
   { a later longhand wins over an earlier shorthand, and the other way }
   Load('<style>p { margin: 5px; margin-top: 1px } div { margin-top: 1px; margin: 5px }</style>' +
     '<p id=p></p><div id=d></div>');
@@ -294,6 +301,32 @@ begin
   ColorIs('#n', 'color', Opaque or $808000);
 end;
 
+{ cascade layers: a later layer wins, plain CSS beats every layer, and
+  !important turns the order round }
+procedure LayerChecks;
+begin
+  Load('<style>@layer base, utilities; @layer utilities { p { color: red } }' +
+    ' @layer base { #p { color: blue } }</style><p id=p>x</p>');
+  ColorIs('#p', 'color', Opaque or $0000FF);
+  Load('<style>@layer x { #p.a.b { color: red } } p { color: green }</style><p id=p class="a b">x</p>');
+  ColorIs('#p', 'color', Opaque or $008000);
+  Load('<style>@layer a { p { color: red !important } } @layer b { p { color: blue !important } }' +
+    ' p { color: green !important }</style><p id=p>x</p>');
+  ColorIs('#p', 'color', Opaque or $0000FF);
+  Load('<style>@layer a { @layer x { p { color: red } } p { color: blue } }</style><p id=p>x</p>');
+  ColorIs('#p', 'color', Opaque or $FF0000);
+  Load('<style>@layer a.x { p { color: red } } @layer a { p { color: navy } }' +
+    ' @layer a.y { p { color: blue } }</style><p id=p>x</p>');
+  ColorIs('#p', 'color', Opaque or $800000);
+  Load('<style>@layer { p { color: red } } @layer { p { color: blue } }</style><p id=p>x</p>');
+  ColorIs('#p', 'color', Opaque or $FF0000);
+  { the Tailwind shape: utilities over components over base }
+  Load('<style>@layer theme, base, components, utilities;' +
+    ' @layer utilities { .text-red { color: red } } @layer components { .btn.btn { color: blue } }' +
+    ' @layer base { button { color: black } }</style><button class="btn text-red" id=b>x</button>');
+  ColorIs('#b', 'color', Opaque or $0000FF);
+end;
+
 procedure HintChecks;
 begin
   Load('<body bgcolor=ffffcc text=#333><table border=1 cellpadding=5 cellspacing=0 width=80% align=center>' +
@@ -339,6 +372,10 @@ begin
   Check(InkParseColor('RebeccaPurple', C) and (C = Opaque or $993366), 'a name');
   Check(InkParseColor('transparent', C) and (C = 0), 'transparent');
   Check(not InkParseColor('notacolor', C), 'not a color');
+  Check(InkParseColor('lab(54.29% 80.8 69.89)', C) and (Abs(Integer(C and $FF) - 255) <= 2) and
+    ((C shr 8) and $FF <= 2), 'lab() red');
+  Check(InkParseColor('oklch(62.8% 0.2577 29.23)', C) and (Abs(Integer(C and $FF) - 255) <= 2), 'oklch() red');
+  Check(InkParseColor('lch(87.82 113.3 134.4)', C) and (((C shr 8) and $FF) >= 250), 'lch() lime');
   Load('<style>p { color: #f00; border: 1px solid currentcolor } p a { color: currentcolor }</style>' +
     '<p id=p><a id=a href=x>l</a></p><a id=b href=y>m</a>');
   ColorIs('#p', 'border-top-color', Opaque or $0000FF);
@@ -397,6 +434,7 @@ begin
   ShorthandChecks;
   LengthChecks;
   MediaChecks;
+  LayerChecks;
   HintChecks;
   ColorChecks;
   PseudoChecks;
