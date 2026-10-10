@@ -110,7 +110,6 @@ type
   protected
     procedure Parse; override;
     procedure LayoutColumn(out ALeft, AWidth: Integer); override;
-    function LayoutTop: Integer; override;
     procedure StyleBlock(B: TInkPageBlock); override;
     procedure StyleSection(S: TInkTreeSection); override;
     function Options: THTMLOptions; override;
@@ -568,11 +567,6 @@ procedure TInkMemo.LayoutColumn(out ALeft, AWidth: Integer);
 begin
   ALeft := FBorders.Left;
   AWidth := Max(20, ClientWidth - ScrollBar.Width - FBorders.Left - FBorders.Right);
-end;
-
-function TInkMemo.LayoutTop: Integer;
-begin
-  Result := 0;
 end;
 
 procedure TInkMemo.StyleBlock(B: TInkPageBlock);

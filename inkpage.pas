@@ -377,7 +377,7 @@ type
   protected
     { layout, worked out once per layout and shared by the blocks }
     FLayoutBase, FLayoutWidth, FLayoutFrom: Integer;
-    FBodyText, FPageBack, FCodeBack: TColor;
+    FBodyText, FCodeBack: TColor;
     FColumnWidth: Integer;
     procedure SetHighlightCode(AValue: Boolean);
     procedure SetCodeHeader(AValue: Boolean);
@@ -430,7 +430,6 @@ type
     procedure Parse; virtual;
     { the column the items are laid out in, in client coordinates }
     procedure LayoutColumn(out ALeft, AWidth: Integer); virtual;
-    function LayoutTop: Integer; virtual;
     { a line's font, colors, padding and gaps, before it is measured }
     procedure StyleBlock(B: TInkPageBlock); virtual;
     { a document's gaps, inset and band }
@@ -514,8 +513,6 @@ type
     function CodeButtons(ABlock: Integer): TInkCodeButtons;
     { shows only code block ABlock's first CodeFoldLines lines, or all }
     procedure FoldCode(ABlock: Integer; AFolded: Boolean);
-    { is this block showing, or is it folded away inside a shut <details> }
-    function BlockVisible(Index: Integer): Boolean;
     { Through the pages visited by links and LoadFromFile / LoadFromURL.
       The mouse's back and forward buttons, Alt+Left / Alt+Right and a
       keyboard's Back / Forward keys do the same. }
@@ -1085,11 +1082,6 @@ procedure TInkCustomPage.ToggleFold(Index: Integer);
 begin
   if (Index<0) or (Index>=FBlocks.Count) then Exit;
   TreeToggleFold(Index);
-end;
-function TInkCustomPage.BlockVisible(Index: Integer): Boolean;
-begin
-  { what a shut <details> holds has no boxes, and so no blocks }
-  Result := (Index>=0) and (Index<FBlocks.Count);
 end;
 procedure TInkCustomPage.AddBlock(B: TInkPageBlock);
 begin
@@ -1687,10 +1679,6 @@ begin
   ALeft := 0;
   AWidth := TreeViewWidth;
 end;
-function TInkCustomPage.LayoutTop: Integer;
-begin
-  Result := 0;
-end;
 procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
 var C: TColor;
 begin
@@ -1739,8 +1727,7 @@ begin
   StyleScrollBar;
   LayoutColumn(ColLeft,W);
   FLayoutBase := ControlFontPixels;
-  { the shades the code header and the find bar take from the page }
-  FPageBack := FCanvasBack;
+  { the shades a code block's header takes from the page }
   FBodyText := Font.Color;
   FCodeBack := HTMLShadeColor(FCanvasBack,7);
   { only the items from FLayoutFrom on, unless the column changed }
@@ -1750,7 +1737,7 @@ begin
   FLayoutFrom := MaxInt;
   FColumnLeft := ColLeft; FColumnWidth := W; FLayoutWidth := ClientWidth;
   Pending := 0;
-  Y := LayoutTop;
+  Y := 0;
   if Start>0 then
   begin
     It := TObject(FItems[Start-1]);
