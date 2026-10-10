@@ -36,6 +36,8 @@ type
     FName: string;
     FData: string;
     FNamespace: TInkNamespace;
+    { the parser's number for the tag, 0 for one it never asks about }
+    FTag: Byte;
     FParent, FFirstChild, FLastChild, FNext, FPrev: TInkNode;
     FAttrs: array of TInkAttribute;
     function AttrIndex(const AName: string): Integer;
@@ -43,6 +45,8 @@ type
     procedure SetTextContent(const AValue: string);
     function GetInnerHTML: string;
     procedure SetInnerHTML(const AValue: string);
+    { the parser's way in: it knows the tag's number already }
+    constructor CreateTagged(const AName: string; ANamespace: TInkNamespace; ATag: Byte);
   public
     constructor Create(AKind: TInkNodeKind; const AName: string = '';
       ANamespace: TInkNamespace = insHTML);
@@ -130,7 +134,71 @@ function InkIsVoidElement(const ATag: string): Boolean;
 
 implementation
 
-uses StrUtils, LConvEncoding;
+uses StrUtils, Contnrs, LConvEncoding;
+
+type
+  { every tag the parser asks about, as a number: a set test instead of a
+    string compared against a list }
+  TTag = (tgNone,
+    tgA, tgAddress, tgAnnotation_xml, tgApplet, tgArea, tgArticle, tgAside,
+    tgB, tgBase, tgBasefont, tgBgsound, tgBig, tgBlockquote, tgBody, tgBr,
+    tgButton, tgCaption, tgCenter, tgCode, tgCol, tgColgroup, tgDatalist,
+    tgDd, tgDesc, tgDetails, tgDialog, tgDir, tgDiv, tgDl, tgDt, tgEm,
+    tgEmbed, tgFieldset, tgFigcaption, tgFigure, tgFont, tgFooter,
+    tgForeignObject, tgForm, tgFrame, tgFrameset, tgH1, tgH2, tgH3, tgH4,
+    tgH5, tgH6, tgHead, tgHeader, tgHgroup, tgHr, tgHtml, tgI, tgIframe,
+    tgImage, tgImg, tgInput, tgKeygen, tgLabel, tgLi, tgLink, tgListing,
+    tgMain, tgMalignmark, tgMarquee, tgMath, tgMenu, tgMeta, tgMglyph, tgMi,
+    tgMn, tgMo, tgMs, tgMtext, tgNav, tgNobr, tgNoembed, tgNoframes,
+    tgNoscript, tgObject, tgOl, tgOptgroup, tgOption, tgP, tgParam,
+    tgPlaintext, tgPre, tgRb, tgRp, tgRt, tgRtc, tgRuby, tgS, tgScript,
+    tgSearch, tgSection, tgSelect, tgSmall, tgSource, tgSpan, tgStrike,
+    tgStrong, tgStyle, tgSub, tgSummary, tgSup, tgSvg, tgTable, tgTbody,
+    tgTd, tgTemplate, tgTextarea, tgTfoot, tgTh, tgThead, tgTitle, tgTr,
+    tgTrack, tgTt, tgU, tgUl, tgVar, tgWbr, tgXmp);
+  TTagSet = set of TTag;
+
+const
+  TagNames: array[TTag] of string = ('',
+    'a', 'address', 'annotation-xml', 'applet', 'area', 'article', 'aside',
+    'b', 'base', 'basefont', 'bgsound', 'big', 'blockquote', 'body', 'br',
+    'button', 'caption', 'center', 'code', 'col', 'colgroup', 'datalist',
+    'dd', 'desc', 'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'em',
+    'embed', 'fieldset', 'figcaption', 'figure', 'font', 'footer',
+    'foreignObject', 'form', 'frame', 'frameset', 'h1', 'h2', 'h3', 'h4',
+    'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe',
+    'image', 'img', 'input', 'keygen', 'label', 'li', 'link', 'listing',
+    'main', 'malignmark', 'marquee', 'math', 'menu', 'meta', 'mglyph', 'mi',
+    'mn', 'mo', 'ms', 'mtext', 'nav', 'nobr', 'noembed', 'noframes',
+    'noscript', 'object', 'ol', 'optgroup', 'option', 'p', 'param',
+    'plaintext', 'pre', 'rb', 'rp', 'rt', 'rtc', 'ruby', 's', 'script',
+    'search', 'section', 'select', 'small', 'source', 'span', 'strike',
+    'strong', 'style', 'sub', 'summary', 'sup', 'svg', 'table', 'tbody',
+    'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'title', 'tr',
+    'track', 'tt', 'u', 'ul', 'var', 'wbr', 'xmp');
+
+var
+  TagIndex: TFPHashList = nil;
+
+{ a tag name's number; tgNone for one the parser never asks about }
+function TagOf(const AName: string): TTag;
+var T: TTag; P: Pointer;
+begin
+  if TagIndex = nil then
+  begin
+    TagIndex := TFPHashList.Create;
+    for T := Succ(tgNone) to High(TTag) do TagIndex.Add(TagNames[T], Pointer(PtrInt(Ord(T))));
+  end;
+  if System.Length(AName) > 255 then Exit(tgNone);
+  P := TagIndex.Find(AName);
+  if P = nil then Result := tgNone else Result := TTag(PtrInt(P));
+end;
+
+function NodeTag(N: TInkNode): TTag; inline;
+begin
+  Result := TTag(N.FTag);
+end;
+
 
 { ---------------------------------------------------------------- text }
 
@@ -286,6 +354,16 @@ begin
   else
     FName := AName;
   end;
+  if AKind = inkElement then FTag := Ord(TagOf(FName));
+end;
+
+constructor TInkNode.CreateTagged(const AName: string; ANamespace: TInkNamespace; ATag: Byte);
+begin
+  inherited Create;
+  FKind := inkElement;
+  FNamespace := ANamespace;
+  FName := AName;
+  FTag := ATag;
 end;
 
 destructor TInkNode.Destroy;
@@ -610,42 +688,29 @@ begin
   Result := (Length(T) = 2) and (T[1] = 'h') and (T[2] in ['1'..'6']);
 end;
 
-function IsFormatting(const T: string): Boolean;
+function IsFormatting(T: TTag): Boolean;
 begin
-  Result := InList(T, ['a','b','big','code','em','font','i','nobr','s','small',
-    'strike','strong','tt','u']);
+  Result := (T in [tgA, tgB, tgBig, tgCode, tgEm, tgFont, tgI, tgNobr, tgS, tgSmall, tgStrike, tgStrong, tgTt, tgU]);
 end;
 
 function IsSpecial(N: TInkNode): Boolean;
 begin
   if N.Namespace = insSVG then
-    Exit(InList(N.Name, ['foreignObject','desc','title']));
+    Exit((NodeTag(N) in [tgForeignObject, tgDesc, tgTitle]));
   if N.Namespace = insMathML then
-    Exit(InList(N.Name, ['mi','mo','mn','ms','mtext','annotation-xml']));
-  Result := IsHeading(N.Name) or InList(N.Name, ['address','applet','area',
-    'article','aside','base','basefont','bgsound','blockquote','body','br',
-    'button','caption','center','col','colgroup','dd','details','dir','div',
-    'dl','dt','embed','fieldset','figcaption','figure','footer','form','frame',
-    'frameset','head','header','hgroup','hr','html','iframe','img','input',
-    'keygen','li','link','listing','main','marquee','menu','meta','nav',
-    'noembed','noframes','noscript','object','ol','p','param','plaintext',
-    'pre','script','search','section','select','source','style','summary',
-    'table','tbody','td','template','textarea','tfoot','th','thead','title',
-    'tr','track','ul','wbr','xmp']);
+    Exit((NodeTag(N) in [tgMi, tgMo, tgMn, tgMs, tgMtext, tgAnnotation_xml]));
+  Result := (NodeTag(N) in [tgH1, tgH2, tgH3, tgH4, tgH5, tgH6, tgAddress, tgApplet, tgArea, tgArticle, tgAside, tgBase, tgBasefont, tgBgsound, tgBlockquote, tgBody, tgBr, tgButton, tgCaption, tgCenter, tgCol, tgColgroup, tgDd, tgDetails, tgDir, tgDiv, tgDl, tgDt, tgEmbed, tgFieldset, tgFigcaption, tgFigure, tgFooter, tgForm, tgFrame, tgFrameset, tgHead, tgHeader, tgHgroup, tgHr, tgHtml, tgIframe, tgImg, tgInput, tgKeygen, tgLi, tgLink, tgListing, tgMain, tgMarquee, tgMenu, tgMeta, tgNav, tgNoembed, tgNoframes, tgNoscript, tgObject, tgOl, tgP, tgParam, tgPlaintext, tgPre, tgScript, tgSearch, tgSection, tgSelect, tgSource, tgStyle, tgSummary, tgTable, tgTbody, tgTd, tgTemplate, tgTextarea, tgTfoot, tgTh, tgThead, tgTitle, tgTr, tgTrack, tgUl, tgWbr, tgXmp]);
 end;
 
 { the block elements a start tag closes an open <p> for }
-function ClosesP(const T: string): Boolean;
+function ClosesP(T: TTag): Boolean;
 begin
-  Result := InList(T, ['address','article','aside','blockquote','center',
-    'details','dialog','dir','div','dl','fieldset','figcaption','figure',
-    'footer','header','hgroup','main','menu','nav','ol','p','search','section',
-    'summary','ul']);
+  Result := (T in [tgAddress, tgArticle, tgAside, tgBlockquote, tgCenter, tgDetails, tgDialog, tgDir, tgDiv, tgDl, tgFieldset, tgFigcaption, tgFigure, tgFooter, tgHeader, tgHgroup, tgMain, tgMenu, tgNav, tgOl, tgP, tgSearch, tgSection, tgSummary, tgUl]);
 end;
 
-function ImpliedEnd(const T: string): Boolean;
+function ImpliedEnd(T: TTag): Boolean;
 begin
-  Result := InList(T, ['dd','dt','li','optgroup','option','p','rb','rp','rt','rtc']);
+  Result := (T in [tgDd, tgDt, tgLi, tgOptgroup, tgOption, tgP, tgRb, tgRp, tgRt, tgRtc]);
 end;
 
 const
@@ -656,6 +721,8 @@ const
     'h6','head','hr','i','img','li','listing','menu','meta','nobr','ol','p',
     'pre','ruby','s','small','span','strong','strike','sub','sup','table',
     'tt','u','ul','var');
+
+  BreakoutSet: TTagSet = [tgB, tgBig, tgBlockquote, tgBody, tgBr, tgCenter, tgCode, tgDd, tgDiv, tgDl, tgDt, tgEm, tgEmbed, tgH1, tgH2, tgH3, tgH4, tgH5, tgH6, tgHead, tgHr, tgI, tgImg, tgLi, tgListing, tgMenu, tgMeta, tgNobr, tgOl, tgP, tgPre, tgRuby, tgS, tgSmall, tgSpan, tgStrong, tgStrike, tgSub, tgSup, tgTable, tgTt, tgU, tgUl, tgVar];
 
   { SVG keeps its camelCase; the tokenizer lowered it }
   SVGTags: array[0..36] of string = ('altGlyph','altGlyphDef','altGlyphItem',
@@ -703,6 +770,8 @@ type
     HasPublic, HasSystem: Boolean;
     SelfClosing: Boolean;
     Attrs: array of TInkAttribute;
+    { the name's number, set with it }
+    Tag: TTag;
   end;
 
   TMode = (imInitial, imBeforeHtml, imBeforeHead, imInHead, imAfterHead,
@@ -740,18 +809,17 @@ type
     function Current: TInkNode;
     function AdjustedCurrent: TInkNode;
     function StackIndex(N: TInkNode): Integer;
-    function InScope(const ATag: string; const AExtra: array of string;
-      ATableOnly: Boolean = False): Boolean;
-    function InButtonScope(const ATag: string): Boolean;
-    function InListScope(const ATag: string): Boolean;
-    function InTableScope(const ATag: string): Boolean;
+    function InScope(ATag: TTag; AExtra: TTagSet; ATableOnly: Boolean = False): Boolean;
+    function InButtonScope(ATag: TTag): Boolean;
+    function InListScope(ATag: TTag): Boolean;
+    function InTableScope(ATag: TTag): Boolean;
     function HeadingInScope: Boolean;
     function Pop: TInkNode;
-    procedure PopUntil(const ATag: string);
-    procedure PopUntilAny(const ATags: array of string);
-    procedure GenerateImpliedEnd(const AExcept: string = '');
+    procedure PopUntil(ATag: TTag);
+    procedure PopUntilAny(ATags: TTagSet);
+    procedure GenerateImpliedEnd(AExcept: TTag = tgNone);
     procedure CloseP;
-    procedure ClearToContext(const ATags: array of string);
+    procedure ClearToContext(ATags: TTagSet);
     procedure ResetMode;
     function CreateElement(const T: TToken; ANs: TInkNamespace): TInkNode;
     procedure InsertNode(N: TInkNode);
@@ -785,6 +853,15 @@ type
     destructor Destroy; override;
     procedure Run;
   end;
+
+{ the ASCII lowercase of a name, copied only when it has capitals }
+function LowerName(const S: string; AStart, ALen: Integer): string;
+var I: Integer;
+begin
+  for I := AStart to AStart + ALen - 1 do
+    if S[I] in ['A'..'Z'] then Exit(LowerCase(Copy(S, AStart, ALen)));
+  Result := Copy(S, AStart, ALen);
+end;
 
 function IsSpaceChar(C: Char): Boolean; inline;
 begin
@@ -869,7 +946,7 @@ const
 var Pub, Sys: string; I: Integer;
 begin
   Pub := LowerCase(T.PublicId); Sys := LowerCase(T.SystemId);
-  if (T.Name <> 'html') or (Pub = '-//w3o//dtd w3 html strict 3.0//en//') or
+  if (T.Tag <> tgHtml) or (Pub = '-//w3o//dtd w3 html strict 3.0//en//') or
     (Pub = '-/w3c/dtd html 4.0 transitional/en') or (Pub = 'html') or
     (Sys = 'http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd') then Exit(True);
   for I := 0 to High(Prefixes) do
@@ -943,6 +1020,7 @@ begin
   Q := 1;
   while (Q <= Length(Body)) and not IsSpaceChar(Body[Q]) do Inc(Q);
   T.Name := LowerCase(Copy(Body, 1, Q - 1));
+  T.Tag := TagOf(T.Name);
   Rest := Copy(Body, Q, MaxInt);
   Low := LowerCase(TrimLeft(Rest));
   if Copy(Low, 1, 6) = 'public' then
@@ -964,7 +1042,8 @@ begin
   { P is on the first letter of the name }
   Q := P;
   while (Q <= Length(S)) and not (IsSpaceChar(S[Q]) or (S[Q] in ['/', '>'])) do Inc(Q);
-  T.Name := LowerCase(Copy(S, P, Q - P));
+  T.Name := LowerName(S, P, Q - P);
+  T.Tag := TagOf(T.Name);
   P := Q;
   while P <= Length(S) do
   begin
@@ -984,7 +1063,7 @@ begin
       / or >, an = included }
     Q := P + 1;
     while (Q <= Length(S)) and not (IsSpaceChar(S[Q]) or (S[Q] in ['/', '>', '='])) do Inc(Q);
-    AName := LowerCase(Copy(S, P, Q - P));
+    AName := LowerName(S, P, Q - P);
     P := Q;
     while (P <= Length(S)) and IsSpaceChar(S[P]) do Inc(P);
     AValue := '';
@@ -1218,44 +1297,54 @@ begin
   Result := Stack.IndexOf(N);
 end;
 
-function TParser.InScope(const ATag: string; const AExtra: array of string;
-  ATableOnly: Boolean): Boolean;
-var I: Integer; N: TInkNode;
+function TParser.InScope(ATag: TTag; AExtra: TTagSet; ATableOnly: Boolean): Boolean;
+var I: Integer; N: TInkNode; T: TTag;
 begin
+  if ATag = tgNone then Exit(False);
   for I := Stack.Count - 1 downto 0 do
   begin
     N := TInkNode(Stack[I]);
-    if (N.Namespace = insHTML) and (N.Name = ATag) then Exit(True);
-    if ATableOnly then
-    begin
-      if (N.Namespace = insHTML) and InList(N.Name, ['html', 'table', 'template']) then
-        Exit(False);
-      Continue;
-    end;
+    T := NodeTag(N);
     if N.Namespace = insHTML then
     begin
-      if InList(N.Name, ['applet','caption','html','table','td','th','marquee',
-        'object','template']) then Exit(False);
-      if InList(N.Name, AExtra) then Exit(False);
+      if T = ATag then Exit(True);
+      if ATableOnly then
+      begin
+        if T in [tgHtml, tgTable, tgTemplate] then Exit(False);
+        Continue;
+      end;
+      if T in [tgApplet, tgCaption, tgHtml, tgTable, tgTd, tgTh, tgMarquee, tgObject, tgTemplate] then Exit(False);
+      if T in AExtra then Exit(False);
     end
-    else if IsSpecial(N) then Exit(False);
+    else if not ATableOnly and IsSpecial(N) then Exit(False);
   end;
   Result := False;
 end;
 
-function TParser.InButtonScope(const ATag: string): Boolean;
-begin Result := InScope(ATag, ['button']) end;
+function TParser.InButtonScope(ATag: TTag): Boolean;
+begin Result := InScope(ATag, [tgButton]) end;
 
-function TParser.InListScope(const ATag: string): Boolean;
-begin Result := InScope(ATag, ['ol', 'ul']) end;
+function TParser.InListScope(ATag: TTag): Boolean;
+begin Result := InScope(ATag, [tgOl, tgUl]) end;
 
-function TParser.InTableScope(const ATag: string): Boolean;
+function TParser.InTableScope(ATag: TTag): Boolean;
 begin Result := InScope(ATag, [], True) end;
 
 function TParser.HeadingInScope: Boolean;
+var I: Integer; N: TInkNode; T: TTag;
 begin
-  Result := InScope('h1', []) or InScope('h2', []) or InScope('h3', []) or
-    InScope('h4', []) or InScope('h5', []) or InScope('h6', []);
+  for I := Stack.Count - 1 downto 0 do
+  begin
+    N := TInkNode(Stack[I]);
+    T := NodeTag(N);
+    if N.Namespace = insHTML then
+    begin
+      if T in [tgH1, tgH2, tgH3, tgH4, tgH5, tgH6] then Exit(True);
+      if T in [tgApplet, tgCaption, tgHtml, tgTable, tgTd, tgTh, tgMarquee, tgObject, tgTemplate] then Exit(False);
+    end
+    else if IsSpecial(N) then Exit(False);
+  end;
+  Result := False;
 end;
 
 function TParser.Pop: TInkNode;
@@ -1264,44 +1353,43 @@ begin
   if Stack.Count > 0 then Stack.Delete(Stack.Count - 1);
 end;
 
-procedure TParser.PopUntil(const ATag: string);
+procedure TParser.PopUntil(ATag: TTag);
 var N: TInkNode;
 begin
   while Stack.Count > 0 do
   begin
     N := Pop;
-    if (N.Namespace = insHTML) and (N.Name = ATag) then Exit;
+    if (N.Namespace = insHTML) and (NodeTag(N) = ATag) then Exit;
   end;
 end;
 
-procedure TParser.PopUntilAny(const ATags: array of string);
+procedure TParser.PopUntilAny(ATags: TTagSet);
 var N: TInkNode;
 begin
   while Stack.Count > 0 do
   begin
     N := Pop;
-    if (N.Namespace = insHTML) and InList(N.Name, ATags) then Exit;
+    if (N.Namespace = insHTML) and (NodeTag(N) in ATags) then Exit;
   end;
 end;
 
-procedure TParser.GenerateImpliedEnd(const AExcept: string);
+procedure TParser.GenerateImpliedEnd(AExcept: TTag);
 begin
   while (Current <> nil) and (Current.Namespace = insHTML) and
-    ImpliedEnd(Current.Name) and (Current.Name <> AExcept) do Pop;
+    ImpliedEnd(NodeTag(Current)) and (NodeTag(Current) <> AExcept) do Pop;
 end;
 
 procedure TParser.CloseP;
 begin
-  if not InButtonScope('p') then Exit;
-  GenerateImpliedEnd('p');
-  PopUntil('p');
+  if not InButtonScope(tgP) then Exit;
+  GenerateImpliedEnd(tgP);
+  PopUntil(tgP);
 end;
 
-procedure TParser.ClearToContext(const ATags: array of string);
+procedure TParser.ClearToContext(ATags: TTagSet);
 begin
   while (Current <> nil) and not ((Current.Namespace = insHTML) and
-    (InList(Current.Name, ATags) or (Current.Name = 'html') or
-     (Current.Name = 'template'))) do Pop;
+    (NodeTag(Current) in ATags + [tgHtml, tgTemplate])) do Pop;
 end;
 
 procedure TParser.ResetMode;
@@ -1312,23 +1400,23 @@ begin
     N := TInkNode(Stack[I]);
     Last := I = 0;
     if Last and (FragmentContext <> nil) then N := FragmentContext;
-    if N.Name = 'select' then begin Mode := imInSelect; Exit end;
-    if ((N.Name = 'td') or (N.Name = 'th')) and not Last then begin Mode := imInCell; Exit end;
-    if N.Name = 'tr' then begin Mode := imInRow; Exit end;
-    if InList(N.Name, ['tbody', 'thead', 'tfoot']) then begin Mode := imInTableBody; Exit end;
-    if N.Name = 'caption' then begin Mode := imInCaption; Exit end;
-    if N.Name = 'colgroup' then begin Mode := imInColumnGroup; Exit end;
-    if N.Name = 'table' then begin Mode := imInTable; Exit end;
-    if (N.Name = 'body') or (N.Name = 'td') or (N.Name = 'th') then begin Mode := imInBody; Exit end;
-    if N.Name = 'frameset' then begin Mode := imInFrameset; Exit end;
-    if N.Name = 'template' then
+    if NodeTag(N) = tgSelect then begin Mode := imInSelect; Exit end;
+    if ((NodeTag(N) = tgTd) or (NodeTag(N) = tgTh)) and not Last then begin Mode := imInCell; Exit end;
+    if NodeTag(N) = tgTr then begin Mode := imInRow; Exit end;
+    if (NodeTag(N) in [tgTbody, tgThead, tgTfoot]) then begin Mode := imInTableBody; Exit end;
+    if NodeTag(N) = tgCaption then begin Mode := imInCaption; Exit end;
+    if NodeTag(N) = tgColgroup then begin Mode := imInColumnGroup; Exit end;
+    if NodeTag(N) = tgTable then begin Mode := imInTable; Exit end;
+    if (NodeTag(N) = tgBody) or (NodeTag(N) = tgTd) or (NodeTag(N) = tgTh) then begin Mode := imInBody; Exit end;
+    if NodeTag(N) = tgFrameset then begin Mode := imInFrameset; Exit end;
+    if NodeTag(N) = tgTemplate then
     begin
       if Length(TemplateModes) > 0 then Mode := TemplateModes[High(TemplateModes)]
       else Mode := imInBody;
       Exit;
     end;
-    if (N.Name = 'head') and not Last then begin Mode := imInHead; Exit end;
-    if N.Name = 'html' then
+    if (NodeTag(N) = tgHead) and not Last then begin Mode := imInHead; Exit end;
+    if NodeTag(N) = tgHtml then
     begin
       if HeadEl = nil then Mode := imBeforeHead else Mode := imAfterHead;
       Exit;
@@ -1343,7 +1431,8 @@ var I: Integer; AName: string;
 begin
   AName := T.Name;
   if ANs = insSVG then AName := SVGCase(AName, SVGTags);
-  Result := TInkNode.Create(inkElement, AName, ANs);
+  if AName = T.Name then Result := TInkNode.CreateTagged(AName, ANs, Ord(T.Tag))
+  else Result := TInkNode.Create(inkElement, AName, ANs);
   SetLength(Result.FAttrs, Length(T.Attrs));
   for I := 0 to High(T.Attrs) do
   begin
@@ -1363,11 +1452,11 @@ begin
   Target := Current;
   if Target = nil then begin Doc.AppendChild(N); Exit end;
   if FosterParenting and (Target.Namespace = insHTML) and
-    InList(Target.Name, ['table', 'tbody', 'tfoot', 'thead', 'tr']) then
+    (NodeTag(Target) in [tgTable, tgTbody, tgTfoot, tgThead, tgTr]) then
   begin
     Table := nil;
     for I := Stack.Count - 1 downto 0 do
-      if TInkNode(Stack[I]).IsElement('table') then begin Table := TInkNode(Stack[I]); Break end;
+      if (NodeTag(TInkNode(Stack[I])) = tgTable) then begin Table := TInkNode(Stack[I]); Break end;
     if Table = nil then begin TInkNode(Stack[0]).AppendChild(N); Exit end;
     Parent := Table.Parent;
     if Parent <> nil then
@@ -1406,7 +1495,7 @@ function TParser.InsertTag(const ATag: string): TInkNode;
 var T: TToken;
 begin
   T := Default(TToken);
-  T.Kind := tkStart; T.Name := ATag;
+  T.Kind := tkStart; T.Name := ATag; T.Tag := TagOf(ATag);
   Result := Insert(T);
 end;
 
@@ -1520,7 +1609,7 @@ begin
     if FE = nil then Exit(False);
     FEIndex := StackIndex(FE);
     if FEIndex < 0 then begin RemoveFormatting(FE); Exit end;
-    if not InScope(ATag, []) then Exit;
+    if not InScope(NodeTag(FE), []) then Exit;
     FurthestBlock := nil;
     for I := FEIndex + 1 to Stack.Count - 1 do
       if IsSpecial(TInkNode(Stack[I])) then begin FurthestBlock := TInkNode(Stack[I]); Break end;
@@ -1562,7 +1651,7 @@ begin
     { the last node goes where the common ancestor takes children }
     LastNode.Remove;
     if (Common.Namespace = insHTML) and
-      InList(Common.Name, ['table', 'tbody', 'tfoot', 'thead', 'tr']) then
+      (NodeTag(Common) in [tgTable, tgTbody, tgTfoot, tgThead, tgTr]) then
     begin
       Stack.Add(Common);
       FosterParenting := True;
@@ -1596,7 +1685,7 @@ begin
     N := TInkNode(Stack[I]);
     if (N.Namespace = insHTML) and (N.Name = ATag) then
     begin
-      GenerateImpliedEnd(ATag);
+      GenerateImpliedEnd(NodeTag(N));
       while Stack.Count > I do Pop;
       Exit;
     end;
@@ -1631,27 +1720,27 @@ begin
     tkDoctype: Exit;
     tkStart:
       begin
-        if InList(T.Name, ['base','basefont','bgsound','link','meta']) then
+        if (T.Tag in [tgBase, tgBasefont, tgBgsound, tgLink, tgMeta]) then
         begin
           Insert(T); Pop; Exit;
         end;
-        if T.Name = 'title' then begin StartRaw(T, tsRCData); Exit end;
-        if InList(T.Name, ['noframes', 'style']) then begin StartRaw(T, tsRawText); Exit end;
-        if T.Name = 'script' then begin StartRaw(T, tsRawText); Exit end;
-        if T.Name = 'head' then Exit;
+        if T.Tag = tgTitle then begin StartRaw(T, tsRCData); Exit end;
+        if (T.Tag in [tgNoframes, tgStyle]) then begin StartRaw(T, tsRawText); Exit end;
+        if T.Tag = tgScript then begin StartRaw(T, tsRawText); Exit end;
+        if T.Tag = tgHead then Exit;
         { never any script here, so what a page says to do without it goes
           in the head too: <noscript><link rel=stylesheet ...> }
-        if T.Name = 'noscript' then begin Insert(T); Mode := imInHeadNoscript; Exit end;
-        if T.Name = 'template' then begin StartTemplate(T); Exit end;
+        if T.Tag = tgNoscript then begin Insert(T); Mode := imInHeadNoscript; Exit end;
+        if T.Tag = tgTemplate then begin StartTemplate(T); Exit end;
       end;
     tkEnd:
       begin
-        if T.Name = 'template' then begin EndTemplate; Exit end;
-        if T.Name = 'head' then
+        if T.Tag = tgTemplate then begin EndTemplate; Exit end;
+        if T.Tag = tgHead then
         begin
           Pop; Mode := imAfterHead; Exit;
         end;
-        if not InList(T.Name, ['body', 'html', 'br']) then Exit;
+        if not (T.Tag in [tgBody, tgHtml, tgBr]) then Exit;
       end;
   end;
   { anything else ends the head }
@@ -1682,23 +1771,23 @@ end;
 procedure TParser.InBodyStart(var T: TToken);
 var N, B: TInkNode; I, K: Integer;
 begin
-  if T.Name = 'html' then
+  if T.Tag = tgHtml then
   begin
     N := TInkNode(Stack[0]);
     for I := 0 to High(T.Attrs) do
       if not N.HasAttribute(T.Attrs[I].Name) then N.SetAttribute(T.Attrs[I].Name, T.Attrs[I].Value);
     Exit;
   end;
-  if InList(T.Name, ['base','basefont','bgsound','link','meta']) then
+  if (T.Tag in [tgBase, tgBasefont, tgBgsound, tgLink, tgMeta]) then
   begin
     Insert(T); Pop; Exit;
   end;
-  if T.Name = 'title' then begin StartRaw(T, tsRCData); Exit end;
-  if InList(T.Name, ['noframes', 'style', 'script']) then begin StartRaw(T, tsRawText); Exit end;
-  if T.Name = 'template' then begin StartTemplate(T); Exit end;
-  if T.Name = 'body' then
+  if T.Tag = tgTitle then begin StartRaw(T, tsRCData); Exit end;
+  if (T.Tag in [tgNoframes, tgStyle, tgScript]) then begin StartRaw(T, tsRawText); Exit end;
+  if T.Tag = tgTemplate then begin StartTemplate(T); Exit end;
+  if T.Tag = tgBody then
   begin
-    if (Stack.Count > 1) and TInkNode(Stack[1]).IsElement('body') then
+    if (Stack.Count > 1) and (NodeTag(TInkNode(Stack[1])) = tgBody) then
     begin
       FramesetOK := False;
       B := TInkNode(Stack[1]);
@@ -1707,22 +1796,20 @@ begin
     end;
     Exit;
   end;
-  if T.Name = 'frameset' then
+  if T.Tag = tgFrameset then
   begin
-    if (Stack.Count < 2) or not TInkNode(Stack[1]).IsElement('body') or not FramesetOK then Exit;
+    if (Stack.Count < 2) or not (NodeTag(TInkNode(Stack[1])) = tgBody) or not FramesetOK then Exit;
     TInkNode(Stack[1]).Free;
     while Stack.Count > 1 do Pop;
     Insert(T);
     Mode := imInFrameset;
     Exit;
   end;
-  if T.Name = 'head' then Exit;
-  if InList(T.Name, ['pre','listing','li','dd','dt','button','applet','marquee',
-    'object','table','area','br','embed','img','keygen','wbr','hr','textarea',
-    'xmp','iframe','select']) or
-    ((T.Name = 'input') and not SameText(AttrOf(T, 'type'), 'hidden')) then
+  if T.Tag = tgHead then Exit;
+  if (T.Tag in [tgPre, tgListing, tgLi, tgDd, tgDt, tgButton, tgApplet, tgMarquee, tgObject, tgTable, tgArea, tgBr, tgEmbed, tgImg, tgKeygen, tgWbr, tgHr, tgTextarea, tgXmp, tgIframe, tgSelect]) or
+    ((T.Tag = tgInput) and not SameText(AttrOf(T, 'type'), 'hidden')) then
     FramesetOK := False;
-  if ClosesP(T.Name) then
+  if ClosesP(T.Tag) then
   begin
     CloseP; Insert(T); Exit;
   end;
@@ -1732,45 +1819,45 @@ begin
     if (Current <> nil) and IsHeading(Current.Name) then Pop;
     Insert(T); Exit;
   end;
-  if (T.Name = 'pre') or (T.Name = 'listing') then
+  if (T.Tag = tgPre) or (T.Tag = tgListing) then
   begin
     CloseP; Insert(T); SkipNewline := True; Exit;
   end;
-  if T.Name = 'form' then
+  if T.Tag = tgForm then
   begin
     if FormEl <> nil then Exit;
     CloseP; FormEl := Insert(T); Exit;
   end;
-  if (T.Name = 'li') or (T.Name = 'dd') or (T.Name = 'dt') then
+  if (T.Tag = tgLi) or (T.Tag = tgDd) or (T.Tag = tgDt) then
   begin
     for I := Stack.Count - 1 downto 0 do
     begin
       N := TInkNode(Stack[I]);
-      if (T.Name = 'li') and N.IsElement('li') then
+      if (T.Tag = tgLi) and (NodeTag(N) = tgLi) then
       begin
-        GenerateImpliedEnd('li'); PopUntil('li'); Break;
+        GenerateImpliedEnd(tgLi); PopUntil(tgLi); Break;
       end;
-      if (T.Name <> 'li') and (N.IsElement('dd') or N.IsElement('dt')) then
+      if (T.Tag <> tgLi) and ((NodeTag(N) = tgDd) or (NodeTag(N) = tgDt)) then
       begin
-        GenerateImpliedEnd(N.Name); PopUntil(N.Name); Break;
+        GenerateImpliedEnd(NodeTag(N)); PopUntil(NodeTag(N)); Break;
       end;
-      if IsSpecial(N) and not InList(N.Name, ['address', 'div', 'p']) then Break;
+      if IsSpecial(N) and not (NodeTag(N) in [tgAddress, tgDiv, tgP]) then Break;
     end;
     CloseP; Insert(T); Exit;
   end;
-  if T.Name = 'plaintext' then
+  if T.Tag = tgPlaintext then
   begin
     CloseP; Insert(T); State := tsPlainText; Exit;
   end;
-  if T.Name = 'button' then
+  if T.Tag = tgButton then
   begin
-    if InScope('button', []) then
+    if InScope(tgButton, []) then
     begin
-      GenerateImpliedEnd; PopUntil('button');
+      GenerateImpliedEnd; PopUntil(tgButton);
     end;
     ReconstructFormatting; Insert(T); Exit;
   end;
-  if T.Name = 'a' then
+  if T.Tag = tgA then
   begin
     for I := Formatting.Count - 1 downto 0 do
     begin
@@ -1790,10 +1877,10 @@ begin
     PushFormatting(Insert(T));
     Exit;
   end;
-  if T.Name = 'nobr' then
+  if T.Tag = tgNobr then
   begin
     ReconstructFormatting;
-    if InScope('nobr', []) then
+    if InScope(tgNobr, []) then
     begin
       AdoptionAgency('nobr');
       ReconstructFormatting;
@@ -1801,47 +1888,47 @@ begin
     PushFormatting(Insert(T));
     Exit;
   end;
-  if IsFormatting(T.Name) then
+  if IsFormatting(T.Tag) then
   begin
     ReconstructFormatting;
     PushFormatting(Insert(T));
     Exit;
   end;
-  if InList(T.Name, ['applet', 'marquee', 'object']) then
+  if (T.Tag in [tgApplet, tgMarquee, tgObject]) then
   begin
     ReconstructFormatting; Insert(T); Formatting.Add(nil); Exit;
   end;
-  if T.Name = 'table' then
+  if T.Tag = tgTable then
   begin
     if not Doc.Quirks then CloseP;
     Insert(T); Mode := imInTable; Exit;
   end;
-  if T.Name = 'image' then T.Name := 'img';
-  if InList(T.Name, ['area','br','embed','img','keygen','wbr','input']) then
+  if T.Tag = tgImage then begin T.Name := 'img'; T.Tag := tgImg end;
+  if (T.Tag in [tgArea, tgBr, tgEmbed, tgImg, tgKeygen, tgWbr, tgInput]) then
   begin
     ReconstructFormatting; Insert(T); Pop; Exit;
   end;
-  if InList(T.Name, ['param', 'source', 'track']) then
+  if (T.Tag in [tgParam, tgSource, tgTrack]) then
   begin
     Insert(T); Pop; Exit;
   end;
-  if T.Name = 'hr' then
+  if T.Tag = tgHr then
   begin
     CloseP; Insert(T); Pop; Exit;
   end;
-  if T.Name = 'textarea' then
+  if T.Tag = tgTextarea then
   begin
     StartRaw(T, tsRCData); SkipNewline := True; Exit;
   end;
-  if T.Name = 'xmp' then
+  if T.Tag = tgXmp then
   begin
     CloseP; ReconstructFormatting; StartRaw(T, tsRawText); Exit;
   end;
-  if (T.Name = 'iframe') or (T.Name = 'noembed') then
+  if (T.Tag = tgIframe) or (T.Tag = tgNoembed) then
   begin
     StartRaw(T, tsRawText); Exit;
   end;
-  if T.Name = 'select' then
+  if T.Tag = tgSelect then
   begin
     ReconstructFormatting; Insert(T);
     if Mode in [imInTable, imInCaption, imInTableBody, imInRow, imInCell] then
@@ -1849,35 +1936,34 @@ begin
     else Mode := imInSelect;
     Exit;
   end;
-  if (T.Name = 'optgroup') or (T.Name = 'option') then
+  if (T.Tag = tgOptgroup) or (T.Tag = tgOption) then
   begin
-    if (Current <> nil) and Current.IsElement('option') then Pop;
+    if (Current <> nil) and (NodeTag(Current) = tgOption) then Pop;
     ReconstructFormatting; Insert(T); Exit;
   end;
-  if (T.Name = 'rb') or (T.Name = 'rtc') then
+  if (T.Tag = tgRb) or (T.Tag = tgRtc) then
   begin
-    if InScope('ruby', []) then GenerateImpliedEnd;
+    if InScope(tgRuby, []) then GenerateImpliedEnd;
     Insert(T); Exit;
   end;
-  if (T.Name = 'rp') or (T.Name = 'rt') then
+  if (T.Tag = tgRp) or (T.Tag = tgRt) then
   begin
-    if InScope('ruby', []) then GenerateImpliedEnd('rtc');
+    if InScope(tgRuby, []) then GenerateImpliedEnd(tgRtc);
     Insert(T); Exit;
   end;
-  if T.Name = 'svg' then
+  if T.Tag = tgSvg then
   begin
     ReconstructFormatting; Insert(T, insSVG);
     if T.SelfClosing then Pop;
     Exit;
   end;
-  if T.Name = 'math' then
+  if T.Tag = tgMath then
   begin
     ReconstructFormatting; Insert(T, insMathML);
     if T.SelfClosing then Pop;
     Exit;
   end;
-  if InList(T.Name, ['caption','col','colgroup','frame','tbody','td','tfoot',
-    'th','thead','tr']) then Exit;
+  if (T.Tag in [tgCaption, tgCol, tgColgroup, tgFrame, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr]) then Exit;
   ReconstructFormatting;
   Insert(T);
 end;
@@ -1885,23 +1971,20 @@ end;
 procedure TParser.InBodyEnd(var T: TToken);
 var N: TInkNode;
 begin
-  if T.Name = 'template' then begin EndTemplate; Exit end;
-  if (T.Name = 'body') or (T.Name = 'html') then
+  if T.Tag = tgTemplate then begin EndTemplate; Exit end;
+  if (T.Tag = tgBody) or (T.Tag = tgHtml) then
   begin
-    if InScope('body', []) then Mode := imAfterBody;
+    if InScope(tgBody, []) then Mode := imAfterBody;
     Exit;
   end;
-  if InList(T.Name, ['address','article','aside','blockquote','button','center',
-    'details','dialog','dir','div','dl','fieldset','figcaption','figure',
-    'footer','header','hgroup','listing','main','menu','nav','ol','pre',
-    'search','section','summary','ul']) then
+  if (T.Tag in [tgAddress, tgArticle, tgAside, tgBlockquote, tgButton, tgCenter, tgDetails, tgDialog, tgDir, tgDiv, tgDl, tgFieldset, tgFigcaption, tgFigure, tgFooter, tgHeader, tgHgroup, tgListing, tgMain, tgMenu, tgNav, tgOl, tgPre, tgSearch, tgSection, tgSummary, tgUl]) then
   begin
-    if not InScope(T.Name, []) then Exit;
+    if not InScope(T.Tag, []) then Exit;
     GenerateImpliedEnd;
-    PopUntil(T.Name);
+    PopUntil(T.Tag);
     Exit;
   end;
-  if T.Name = 'form' then
+  if T.Tag = tgForm then
   begin
     N := FormEl; FormEl := nil;
     if (N = nil) or (StackIndex(N) < 0) then Exit;
@@ -1909,43 +1992,43 @@ begin
     Stack.Delete(StackIndex(N));
     Exit;
   end;
-  if T.Name = 'p' then
+  if T.Tag = tgP then
   begin
-    if not InButtonScope('p') then InsertTag('p');
+    if not InButtonScope(tgP) then InsertTag('p');
     CloseP;
     Exit;
   end;
-  if T.Name = 'li' then
+  if T.Tag = tgLi then
   begin
-    if not InListScope('li') then Exit;
-    GenerateImpliedEnd('li'); PopUntil('li');
+    if not InListScope(tgLi) then Exit;
+    GenerateImpliedEnd(tgLi); PopUntil(tgLi);
     Exit;
   end;
-  if (T.Name = 'dd') or (T.Name = 'dt') then
+  if (T.Tag = tgDd) or (T.Tag = tgDt) then
   begin
-    if not InScope(T.Name, []) then Exit;
-    GenerateImpliedEnd(T.Name); PopUntil(T.Name);
+    if not InScope(T.Tag, []) then Exit;
+    GenerateImpliedEnd(T.Tag); PopUntil(T.Tag);
     Exit;
   end;
   if IsHeading(T.Name) then
   begin
     if not HeadingInScope then Exit;
     GenerateImpliedEnd;
-    PopUntilAny(['h1','h2','h3','h4','h5','h6']);
+    PopUntilAny([tgH1, tgH2, tgH3, tgH4, tgH5, tgH6]);
     Exit;
   end;
-  if IsFormatting(T.Name) then
+  if IsFormatting(T.Tag) then
   begin
     if not AdoptionAgency(T.Name) then AnyOtherEnd(T.Name);
     Exit;
   end;
-  if InList(T.Name, ['applet', 'marquee', 'object']) then
+  if (T.Tag in [tgApplet, tgMarquee, tgObject]) then
   begin
-    if not InScope(T.Name, []) then Exit;
-    GenerateImpliedEnd; PopUntil(T.Name); ClearFormattingToMarker;
+    if not InScope(T.Tag, []) then Exit;
+    GenerateImpliedEnd; PopUntil(T.Tag); ClearFormattingToMarker;
     Exit;
   end;
-  if T.Name = 'br' then
+  if T.Tag = tgBr then
   begin
     T.Kind := tkStart; T.Attrs := nil;
     ReconstructFormatting; Insert(T); Pop;
@@ -1961,7 +2044,7 @@ begin
   case T.Kind of
     tkText:
       if AllSpace(T.Data) and (Current <> nil) and
-        InList(Current.Name, ['table','tbody','tfoot','thead','tr']) then
+        (NodeTag(Current) in [tgTable, tgTbody, tgTfoot, tgThead, tgTr]) then
       begin
         InsertText(T.Data); Exit;
       end;
@@ -1969,47 +2052,47 @@ begin
     tkDoctype: Exit;
     tkStart:
       begin
-        if T.Name = 'caption' then
+        if T.Tag = tgCaption then
         begin
-          ClearToContext(['table']); Formatting.Add(nil);
+          ClearToContext([tgTable]); Formatting.Add(nil);
           Insert(T); Mode := imInCaption; Exit;
         end;
-        if T.Name = 'colgroup' then
+        if T.Tag = tgColgroup then
         begin
-          ClearToContext(['table']); Insert(T); Mode := imInColumnGroup; Exit;
+          ClearToContext([tgTable]); Insert(T); Mode := imInColumnGroup; Exit;
         end;
-        if T.Name = 'col' then
+        if T.Tag = tgCol then
         begin
-          ClearToContext(['table']); InsertTag('colgroup'); Mode := imInColumnGroup;
+          ClearToContext([tgTable]); InsertTag('colgroup'); Mode := imInColumnGroup;
           Reprocess := True; Exit;
         end;
-        if InList(T.Name, ['tbody', 'tfoot', 'thead']) then
+        if (T.Tag in [tgTbody, tgTfoot, tgThead]) then
         begin
-          ClearToContext(['table']); Insert(T); Mode := imInTableBody; Exit;
+          ClearToContext([tgTable]); Insert(T); Mode := imInTableBody; Exit;
         end;
-        if InList(T.Name, ['td', 'th', 'tr']) then
+        if (T.Tag in [tgTd, tgTh, tgTr]) then
         begin
-          ClearToContext(['table']); InsertTag('tbody'); Mode := imInTableBody;
+          ClearToContext([tgTable]); InsertTag('tbody'); Mode := imInTableBody;
           Reprocess := True; Exit;
         end;
-        if T.Name = 'table' then
+        if T.Tag = tgTable then
         begin
-          if not InTableScope('table') then Exit;
-          PopUntil('table'); ResetMode; Reprocess := True; Exit;
+          if not InTableScope(tgTable) then Exit;
+          PopUntil(tgTable); ResetMode; Reprocess := True; Exit;
         end;
-        if InList(T.Name, ['style', 'script', 'template']) then
+        if (T.Tag in [tgStyle, tgScript, tgTemplate]) then
         begin
-          if T.Name = 'template' then StartTemplate(T) else StartRaw(T, tsRawText);
+          if T.Tag = tgTemplate then StartTemplate(T) else StartRaw(T, tsRawText);
           Exit;
         end;
-        if T.Name = 'input' then
+        if T.Tag = tgInput then
         begin
           Hidden := False;
           for I := 0 to High(T.Attrs) do
             if (T.Attrs[I].Name = 'type') and SameText(T.Attrs[I].Value, 'hidden') then Hidden := True;
           if Hidden then begin Insert(T); Pop; Exit end;
         end;
-        if T.Name = 'form' then
+        if T.Tag = tgForm then
         begin
           if FormEl = nil then begin FormEl := Insert(T); Pop end;
           Exit;
@@ -2017,14 +2100,13 @@ begin
       end;
     tkEnd:
       begin
-        if T.Name = 'table' then
+        if T.Tag = tgTable then
         begin
-          if not InTableScope('table') then Exit;
-          PopUntil('table'); ResetMode; Exit;
+          if not InTableScope(tgTable) then Exit;
+          PopUntil(tgTable); ResetMode; Exit;
         end;
-        if T.Name = 'template' then begin EndTemplate; Exit end;
-        if InList(T.Name, ['body','caption','col','colgroup','html','tbody','td',
-          'tfoot','th','thead','tr']) then Exit;
+        if T.Tag = tgTemplate then begin EndTemplate; Exit end;
+        if (T.Tag in [tgBody, tgCaption, tgCol, tgColgroup, tgHtml, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr]) then Exit;
       end;
   end;
   { anything else is body content, moved out in front of the table }
@@ -2039,7 +2121,7 @@ end;
 procedure TParser.CloseCell;
 begin
   GenerateImpliedEnd;
-  PopUntilAny(['td', 'th']);
+  PopUntilAny([tgTd, tgTh]);
   ClearFormattingToMarker;
   Mode := imInRow;
 end;
@@ -2048,7 +2130,7 @@ function TParser.TemplateOpen: Boolean;
 var I: Integer;
 begin
   for I := Stack.Count - 1 downto 0 do
-    if TInkNode(Stack[I]).IsElement('template') then Exit(True);
+    if (NodeTag(TInkNode(Stack[I])) = tgTemplate) then Exit(True);
   Result := False;
 end;
 
@@ -2066,9 +2148,8 @@ procedure TParser.EndTemplate;
 begin
   if not TemplateOpen then Exit;
   while (Current <> nil) and (Current.Namespace = insHTML) and
-    (ImpliedEnd(Current.Name) or InList(Current.Name, ['caption','colgroup',
-      'tbody','td','tfoot','th','thead','tr'])) do Pop;
-  PopUntil('template');
+    (ImpliedEnd(NodeTag(Current)) or (NodeTag(Current) in [tgCaption, tgColgroup, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr])) do Pop;
+  PopUntil(tgTemplate);
   ClearFormattingToMarker;
   if Length(TemplateModes) > 0 then SetLength(TemplateModes, Length(TemplateModes) - 1);
   ResetMode;
@@ -2081,17 +2162,17 @@ begin
   Result := False;
   if (N = nil) or (N.Namespace = insHTML) or (T.Kind = tkEOF) then Exit;
   { the places inside a drawing where HTML is read again }
-  if (N.Namespace = insSVG) and InList(N.Name, ['foreignObject', 'desc', 'title']) and
+  if (N.Namespace = insSVG) and (NodeTag(N) in [tgForeignObject, tgDesc, tgTitle]) and
     (T.Kind in [tkStart, tkText]) then Exit;
-  if (N.Namespace = insMathML) and InList(N.Name, ['mi','mo','mn','ms','mtext']) and
-    ((T.Kind = tkText) or ((T.Kind = tkStart) and (T.Name <> 'mglyph') and
-      (T.Name <> 'malignmark'))) then Exit;
-  if (N.Namespace = insMathML) and (N.Name = 'annotation-xml') and
+  if (N.Namespace = insMathML) and (NodeTag(N) in [tgMi, tgMo, tgMn, tgMs, tgMtext]) and
+    ((T.Kind = tkText) or ((T.Kind = tkStart) and (T.Tag <> tgMglyph) and
+      (T.Tag <> tgMalignmark))) then Exit;
+  if (N.Namespace = insMathML) and (NodeTag(N) = tgAnnotation_xml) and
     (T.Kind in [tkStart, tkText]) and
     (SameText(N.GetAttribute('encoding'), 'text/html') or
      SameText(N.GetAttribute('encoding'), 'application/xhtml+xml')) then Exit;
-  if (N.Namespace = insMathML) and (N.Name = 'annotation-xml') and
-    (T.Kind = tkStart) and (T.Name = 'svg') then Exit;
+  if (N.Namespace = insMathML) and (NodeTag(N) = tgAnnotation_xml) and
+    (T.Kind = tkStart) and (T.Tag = tgSvg) then Exit;
   Result := True;
 end;
 
@@ -2109,15 +2190,15 @@ begin
     tkStart:
       begin
         IsFontBreak := False;
-        if T.Name = 'font' then
+        if T.Tag = tgFont then
           for I := 0 to High(T.Attrs) do
             if InList(T.Attrs[I].Name, ['color', 'face', 'size']) then IsFontBreak := True;
-        if InList(T.Name, BreakoutTags) or IsFontBreak then
+        if (T.Tag in BreakoutSet) or IsFontBreak then
         begin
           { the drawing was never closed: back out to HTML }
           while (Current <> nil) and (Current.Namespace <> insHTML) and
             not ((Current.Namespace = insSVG) and
-              InList(Current.Name, ['foreignObject', 'desc', 'title'])) do Pop;
+              (NodeTag(Current) in [tgForeignObject, tgDesc, tgTitle])) do Pop;
           Reprocess := True;
           Exit;
         end;
@@ -2196,11 +2277,11 @@ begin
             if Rest = '' then Exit;
             T.Data := Rest;
           end;
-          if (T.Kind = tkStart) and (T.Name = 'html') then
+          if (T.Kind = tkStart) and (T.Tag = tgHtml) then
           begin
             Insert(T); Mode := imBeforeHead; Exit;
           end;
-          if (T.Kind = tkEnd) and not InList(T.Name, ['head','body','html','br']) then Exit;
+          if (T.Kind = tkEnd) and not (T.Tag in [tgHead, tgBody, tgHtml, tgBr]) then Exit;
           InsertTag('html'); Mode := imBeforeHead; Again := True;
         end;
       imBeforeHead:
@@ -2213,12 +2294,12 @@ begin
           end;
           if T.Kind = tkComment then begin InsertComment(T.Data); Exit end;
           if T.Kind = tkDoctype then Exit;
-          if (T.Kind = tkStart) and (T.Name = 'html') then begin InBodyStart(T); Exit end;
-          if (T.Kind = tkStart) and (T.Name = 'head') then
+          if (T.Kind = tkStart) and (T.Tag = tgHtml) then begin InBodyStart(T); Exit end;
+          if (T.Kind = tkStart) and (T.Tag = tgHead) then
           begin
             HeadEl := Insert(T); Mode := imInHead; Exit;
           end;
-          if (T.Kind = tkEnd) and not InList(T.Name, ['head','body','html','br']) then Exit;
+          if (T.Kind = tkEnd) and not (T.Tag in [tgHead, tgBody, tgHtml, tgBr]) then Exit;
           HeadEl := InsertTag('head'); Mode := imInHead; Again := True;
         end;
       imInHead:
@@ -2236,11 +2317,10 @@ begin
           if T.Kind = tkDoctype then Exit;
           if T.Kind = tkStart then
           begin
-            if T.Name = 'html' then begin InBodyStart(T); Exit end;
-            if T.Name = 'body' then begin Insert(T); FramesetOK := False; Mode := imInBody; Exit end;
-            if T.Name = 'frameset' then begin Insert(T); Mode := imInFrameset; Exit end;
-            if InList(T.Name, ['base','basefont','bgsound','link','meta','noframes',
-              'script','style','template','title']) then
+            if T.Tag = tgHtml then begin InBodyStart(T); Exit end;
+            if T.Tag = tgBody then begin Insert(T); FramesetOK := False; Mode := imInBody; Exit end;
+            if T.Tag = tgFrameset then begin Insert(T); Mode := imInFrameset; Exit end;
+            if (T.Tag in [tgBase, tgBasefont, tgBgsound, tgLink, tgMeta, tgNoframes, tgScript, tgStyle, tgTemplate, tgTitle]) then
             begin
               { late head content still belongs to the head }
               Stack.Add(HeadEl);
@@ -2248,9 +2328,9 @@ begin
               Stack.Remove(HeadEl);
               Exit;
             end;
-            if T.Name = 'head' then Exit;
+            if T.Tag = tgHead then Exit;
           end;
-          if (T.Kind = tkEnd) and not InList(T.Name, ['body','html','br']) then Exit;
+          if (T.Kind = tkEnd) and not (T.Tag in [tgBody, tgHtml, tgBr]) then Exit;
           InsertTag('body'); Mode := imInBody; Again := True;
         end;
       imInBody:
@@ -2277,19 +2357,17 @@ begin
         InTable(T, Again);
       imInCaption:
         begin
-          if ((T.Kind = tkEnd) and (T.Name = 'caption')) or
-            ((T.Kind = tkStart) and InList(T.Name, ['caption','col','colgroup',
-              'tbody','td','tfoot','th','thead','tr'])) or
-            ((T.Kind = tkEnd) and (T.Name = 'table')) then
+          if ((T.Kind = tkEnd) and (T.Tag = tgCaption)) or
+            ((T.Kind = tkStart) and (T.Tag in [tgCaption, tgCol, tgColgroup, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr])) or
+            ((T.Kind = tkEnd) and (T.Tag = tgTable)) then
           begin
-            if not InTableScope('caption') then Exit;
-            GenerateImpliedEnd; PopUntil('caption'); ClearFormattingToMarker;
+            if not InTableScope(tgCaption) then Exit;
+            GenerateImpliedEnd; PopUntil(tgCaption); ClearFormattingToMarker;
             Mode := imInTable;
-            Again := not ((T.Kind = tkEnd) and (T.Name = 'caption'));
+            Again := not ((T.Kind = tkEnd) and (T.Tag = tgCaption));
             Continue;
           end;
-          if (T.Kind = tkEnd) and InList(T.Name, ['body','col','colgroup','html',
-            'tbody','td','tfoot','th','thead','tr']) then Exit;
+          if (T.Kind = tkEnd) and (T.Tag in [tgBody, tgCol, tgColgroup, tgHtml, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr]) then Exit;
           InBody(T);
         end;
       imInColumnGroup:
@@ -2302,95 +2380,90 @@ begin
             T.Data := Rest;
           end
           else if T.Kind = tkComment then begin InsertComment(T.Data); Exit end
-          else if (T.Kind = tkStart) and (T.Name = 'col') then begin Insert(T); Pop; Exit end
-          else if (T.Kind = tkEnd) and (T.Name = 'colgroup') then
+          else if (T.Kind = tkStart) and (T.Tag = tgCol) then begin Insert(T); Pop; Exit end
+          else if (T.Kind = tkEnd) and (T.Tag = tgColgroup) then
           begin
-            if (Current <> nil) and Current.IsElement('colgroup') then
+            if (Current <> nil) and (NodeTag(Current) = tgColgroup) then
             begin
               Pop; Mode := imInTable;
             end;
             Exit;
           end
-          else if (T.Kind = tkEnd) and (T.Name = 'col') then Exit;
-          if (Current <> nil) and Current.IsElement('colgroup') then
+          else if (T.Kind = tkEnd) and (T.Tag = tgCol) then Exit;
+          if (Current <> nil) and (NodeTag(Current) = tgColgroup) then
           begin
             Pop; Mode := imInTable; Again := True;
           end;
         end;
       imInTableBody:
         begin
-          if (T.Kind = tkStart) and (T.Name = 'tr') then
+          if (T.Kind = tkStart) and (T.Tag = tgTr) then
           begin
-            ClearToContext(['tbody','tfoot','thead']); Insert(T); Mode := imInRow; Exit;
+            ClearToContext([tgTbody, tgTfoot, tgThead]); Insert(T); Mode := imInRow; Exit;
           end;
-          if (T.Kind = tkStart) and ((T.Name = 'th') or (T.Name = 'td')) then
+          if (T.Kind = tkStart) and ((T.Tag = tgTh) or (T.Tag = tgTd)) then
           begin
-            ClearToContext(['tbody','tfoot','thead']); InsertTag('tr');
+            ClearToContext([tgTbody, tgTfoot, tgThead]); InsertTag('tr');
             Mode := imInRow; Again := True; Continue;
           end;
-          if (T.Kind = tkEnd) and InList(T.Name, ['tbody','tfoot','thead']) then
+          if (T.Kind = tkEnd) and (T.Tag in [tgTbody, tgTfoot, tgThead]) then
           begin
-            if not InTableScope(T.Name) then Exit;
-            ClearToContext(['tbody','tfoot','thead']); Pop; Mode := imInTable; Exit;
+            if not InTableScope(T.Tag) then Exit;
+            ClearToContext([tgTbody, tgTfoot, tgThead]); Pop; Mode := imInTable; Exit;
           end;
-          if ((T.Kind = tkStart) and InList(T.Name, ['caption','col','colgroup',
-            'tbody','tfoot','thead'])) or ((T.Kind = tkEnd) and (T.Name = 'table')) then
+          if ((T.Kind = tkStart) and (T.Tag in [tgCaption, tgCol, tgColgroup, tgTbody, tgTfoot, tgThead])) or ((T.Kind = tkEnd) and (T.Tag = tgTable)) then
           begin
-            if not (InTableScope('tbody') or InTableScope('thead') or InTableScope('tfoot')) then Exit;
-            ClearToContext(['tbody','tfoot','thead']); Pop; Mode := imInTable;
+            if not (InTableScope(tgTbody) or InTableScope(tgThead) or InTableScope(tgTfoot)) then Exit;
+            ClearToContext([tgTbody, tgTfoot, tgThead]); Pop; Mode := imInTable;
             Again := True; Continue;
           end;
-          if (T.Kind = tkEnd) and InList(T.Name, ['body','caption','col','colgroup',
-            'html','td','th','tr']) then Exit;
+          if (T.Kind = tkEnd) and (T.Tag in [tgBody, tgCaption, tgCol, tgColgroup, tgHtml, tgTd, tgTh, tgTr]) then Exit;
           InTable(T, Again);
         end;
       imInRow:
         begin
-          if (T.Kind = tkStart) and ((T.Name = 'th') or (T.Name = 'td')) then
+          if (T.Kind = tkStart) and ((T.Tag = tgTh) or (T.Tag = tgTd)) then
           begin
-            ClearToContext(['tr']); Insert(T); Mode := imInCell; Formatting.Add(nil);
+            ClearToContext([tgTr]); Insert(T); Mode := imInCell; Formatting.Add(nil);
             Exit;
           end;
-          if (T.Kind = tkEnd) and (T.Name = 'tr') then
+          if (T.Kind = tkEnd) and (T.Tag = tgTr) then
           begin
-            if not InTableScope('tr') then Exit;
-            ClearToContext(['tr']); Pop; Mode := imInTableBody; Exit;
+            if not InTableScope(tgTr) then Exit;
+            ClearToContext([tgTr]); Pop; Mode := imInTableBody; Exit;
           end;
-          if ((T.Kind = tkStart) and InList(T.Name, ['caption','col','colgroup',
-            'tbody','tfoot','thead','tr'])) or ((T.Kind = tkEnd) and (T.Name = 'table')) then
+          if ((T.Kind = tkStart) and (T.Tag in [tgCaption, tgCol, tgColgroup, tgTbody, tgTfoot, tgThead, tgTr])) or ((T.Kind = tkEnd) and (T.Tag = tgTable)) then
           begin
-            if not InTableScope('tr') then Exit;
-            ClearToContext(['tr']); Pop; Mode := imInTableBody;
+            if not InTableScope(tgTr) then Exit;
+            ClearToContext([tgTr]); Pop; Mode := imInTableBody;
             Again := True; Continue;
           end;
-          if (T.Kind = tkEnd) and InList(T.Name, ['tbody','tfoot','thead']) then
+          if (T.Kind = tkEnd) and (T.Tag in [tgTbody, tgTfoot, tgThead]) then
           begin
-            if not InTableScope(T.Name) or not InTableScope('tr') then Exit;
-            ClearToContext(['tr']); Pop; Mode := imInTableBody;
+            if not InTableScope(T.Tag) or not InTableScope(tgTr) then Exit;
+            ClearToContext([tgTr]); Pop; Mode := imInTableBody;
             Again := True; Continue;
           end;
-          if (T.Kind = tkEnd) and InList(T.Name, ['body','caption','col','colgroup',
-            'html','td','th']) then Exit;
+          if (T.Kind = tkEnd) and (T.Tag in [tgBody, tgCaption, tgCol, tgColgroup, tgHtml, tgTd, tgTh]) then Exit;
           InTable(T, Again);
         end;
       imInCell:
         begin
-          if (T.Kind = tkEnd) and ((T.Name = 'td') or (T.Name = 'th')) then
+          if (T.Kind = tkEnd) and ((T.Tag = tgTd) or (T.Tag = tgTh)) then
           begin
-            if not InTableScope(T.Name) then Exit;
+            if not InTableScope(T.Tag) then Exit;
             CloseCell;
             Exit;
           end;
-          if (T.Kind = tkStart) and InList(T.Name, ['caption','col','colgroup',
-            'tbody','td','tfoot','th','thead','tr']) then
+          if (T.Kind = tkStart) and (T.Tag in [tgCaption, tgCol, tgColgroup, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr]) then
           begin
-            if not (InTableScope('td') or InTableScope('th')) then Exit;
+            if not (InTableScope(tgTd) or InTableScope(tgTh)) then Exit;
             CloseCell; Again := True; Continue;
           end;
-          if (T.Kind = tkEnd) and InList(T.Name, ['body','caption','col','colgroup','html']) then Exit;
-          if (T.Kind = tkEnd) and InList(T.Name, ['table','tbody','tfoot','thead','tr']) then
+          if (T.Kind = tkEnd) and (T.Tag in [tgBody, tgCaption, tgCol, tgColgroup, tgHtml]) then Exit;
+          if (T.Kind = tkEnd) and (T.Tag in [tgTable, tgTbody, tgTfoot, tgThead, tgTr]) then
           begin
-            if not InTableScope(T.Name) then Exit;
+            if not InTableScope(T.Tag) then Exit;
             CloseCell; Again := True; Continue;
           end;
           InBody(T);
@@ -2398,56 +2471,56 @@ begin
       imInSelect, imInSelectInTable:
         begin
           if (Mode = imInSelectInTable) and (((T.Kind = tkStart) or (T.Kind = tkEnd)) and
-            InList(T.Name, ['caption','table','tbody','tfoot','thead','tr','td','th'])) then
+            (T.Tag in [tgCaption, tgTable, tgTbody, tgTfoot, tgThead, tgTr, tgTd, tgTh])) then
           begin
-            if (T.Kind = tkEnd) and not InTableScope(T.Name) then Exit;
-            PopUntil('select'); ResetMode; Again := True; Continue;
+            if (T.Kind = tkEnd) and not InTableScope(T.Tag) then Exit;
+            PopUntil(tgSelect); ResetMode; Again := True; Continue;
           end;
           case T.Kind of
             tkText: InsertText(T.Data);
             tkComment: InsertComment(T.Data);
             tkStart:
-              if T.Name = 'option' then
+              if T.Tag = tgOption then
               begin
-                if (Current <> nil) and Current.IsElement('option') then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOption) then Pop;
                 Insert(T);
               end
-              else if T.Name = 'optgroup' then
+              else if T.Tag = tgOptgroup then
               begin
-                if (Current <> nil) and Current.IsElement('option') then Pop;
-                if (Current <> nil) and Current.IsElement('optgroup') then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOption) then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOptgroup) then Pop;
                 Insert(T);
               end
-              else if T.Name = 'hr' then
+              else if T.Tag = tgHr then
               begin
-                if (Current <> nil) and Current.IsElement('option') then Pop;
-                if (Current <> nil) and Current.IsElement('optgroup') then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOption) then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOptgroup) then Pop;
                 Insert(T); Pop;
               end
-              else if (T.Name = 'select') then
+              else if (T.Tag = tgSelect) then
               begin
-                if InScope('select', [], True) then begin PopUntil('select'); ResetMode end;
+                if InScope(tgSelect, [], True) then begin PopUntil(tgSelect); ResetMode end;
               end
-              else if InList(T.Name, ['input', 'keygen', 'textarea']) then
+              else if (T.Tag in [tgInput, tgKeygen, tgTextarea]) then
               begin
-                if not InScope('select', [], True) then Exit;
-                PopUntil('select'); ResetMode; Again := True; Continue;
+                if not InScope(tgSelect, [], True) then Exit;
+                PopUntil(tgSelect); ResetMode; Again := True; Continue;
               end
-              else if InList(T.Name, ['script', 'style']) then StartRaw(T, tsRawText);
+              else if (T.Tag in [tgScript, tgStyle]) then StartRaw(T, tsRawText);
             tkEnd:
-              if T.Name = 'optgroup' then
+              if T.Tag = tgOptgroup then
               begin
-                if (Current <> nil) and Current.IsElement('option') and (Stack.Count > 1) and
-                  TInkNode(Stack[Stack.Count - 2]).IsElement('optgroup') then Pop;
-                if (Current <> nil) and Current.IsElement('optgroup') then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOption) and (Stack.Count > 1) and
+                  (NodeTag(TInkNode(Stack[Stack.Count - 2])) = tgOptgroup) then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOptgroup) then Pop;
               end
-              else if T.Name = 'option' then
+              else if T.Tag = tgOption then
               begin
-                if (Current <> nil) and Current.IsElement('option') then Pop;
+                if (Current <> nil) and (NodeTag(Current) = tgOption) then Pop;
               end
-              else if T.Name = 'select' then
+              else if T.Tag = tgSelect then
               begin
-                if InScope('select', [], True) then begin PopUntil('select'); ResetMode end;
+                if InScope(tgSelect, [], True) then begin PopUntil(tgSelect); ResetMode end;
               end;
           end;
         end;
@@ -2456,24 +2529,23 @@ begin
           case T.Kind of
             tkText, tkComment, tkDoctype: InBody(T);
             tkStart:
-              if InList(T.Name, ['base','basefont','bgsound','link','meta',
-                'noframes','script','style','template','title']) then InHead(T, Again)
+              if (T.Tag in [tgBase, tgBasefont, tgBgsound, tgLink, tgMeta, tgNoframes, tgScript, tgStyle, tgTemplate, tgTitle]) then InHead(T, Again)
               else
               begin
-                if InList(T.Name, ['caption','colgroup','tbody','tfoot','thead']) then Mode := imInTable
-                else if T.Name = 'col' then Mode := imInColumnGroup
-                else if T.Name = 'tr' then Mode := imInTableBody
-                else if (T.Name = 'td') or (T.Name = 'th') then Mode := imInRow
+                if (T.Tag in [tgCaption, tgColgroup, tgTbody, tgTfoot, tgThead]) then Mode := imInTable
+                else if T.Tag = tgCol then Mode := imInColumnGroup
+                else if T.Tag = tgTr then Mode := imInTableBody
+                else if (T.Tag = tgTd) or (T.Tag = tgTh) then Mode := imInRow
                 else Mode := imInBody;
                 TemplateModes[High(TemplateModes)] := Mode;
                 Again := True;
               end;
             tkEnd:
-              if T.Name = 'template' then EndTemplate;
+              if T.Tag = tgTemplate then EndTemplate;
             tkEOF:
               if TemplateOpen then
               begin
-                PopUntil('template');
+                PopUntil(tgTemplate);
                 ClearFormattingToMarker;
                 SetLength(TemplateModes, Length(TemplateModes) - 1);
                 ResetMode;
@@ -2483,19 +2555,18 @@ begin
         end;
       imInHeadNoscript:
         begin
-          if (T.Kind = tkEnd) and (T.Name = 'noscript') then
+          if (T.Kind = tkEnd) and (T.Tag = tgNoscript) then
           begin
             Pop; Mode := imInHead; Exit;
           end;
           if (T.Kind = tkComment) or ((T.Kind = tkText) and AllSpace(T.Data)) or
-            ((T.Kind = tkStart) and InList(T.Name, ['basefont','bgsound','link',
-              'meta','noframes','style'])) then
+            ((T.Kind = tkStart) and (T.Tag in [tgBasefont, tgBgsound, tgLink, tgMeta, tgNoframes, tgStyle])) then
           begin
             InHead(T, Again);
             Exit;
           end;
-          if (T.Kind = tkDoctype) or ((T.Kind = tkStart) and InList(T.Name, ['head', 'noscript'])) or
-            ((T.Kind = tkEnd) and (T.Name <> 'br')) then Exit;
+          if (T.Kind = tkDoctype) or ((T.Kind = tkStart) and (T.Tag in [tgHead, tgNoscript])) or
+            ((T.Kind = tkEnd) and (T.Tag <> tgBr)) then Exit;
           { anything else ends the noscript, and then the head }
           Pop; Mode := imInHead; Again := True;
         end;
@@ -2516,21 +2587,21 @@ begin
               if Mode = imAfterAfterFrameset then InsertComment(T.Data, Doc)
               else InsertComment(T.Data);
             tkStart:
-              if T.Name = 'html' then InBodyStart(T)
-              else if T.Name = 'noframes' then StartRaw(T, tsRawText)
+              if T.Tag = tgHtml then InBodyStart(T)
+              else if T.Tag = tgNoframes then StartRaw(T, tsRawText)
               else if Mode = imInFrameset then
               begin
-                if T.Name = 'frameset' then Insert(T)
-                else if T.Name = 'frame' then begin Insert(T); Pop end;
+                if T.Tag = tgFrameset then Insert(T)
+                else if T.Tag = tgFrame then begin Insert(T); Pop end;
               end;
             tkEnd:
-              if (Mode = imInFrameset) and (T.Name = 'frameset') then
+              if (Mode = imInFrameset) and (T.Tag = tgFrameset) then
               begin
-                if (Current <> nil) and not Current.IsElement('html') then Pop;
-                if (FragmentContext = nil) and (Current <> nil) and not Current.IsElement('frameset') then
+                if (Current <> nil) and not (NodeTag(Current) = tgHtml) then Pop;
+                if (FragmentContext = nil) and (Current <> nil) and not (NodeTag(Current) = tgFrameset) then
                   Mode := imAfterFrameset;
               end
-              else if (Mode = imAfterFrameset) and (T.Name = 'html') then
+              else if (Mode = imAfterFrameset) and (T.Tag = tgHtml) then
                 Mode := imAfterAfterFrameset;
           end;
         end;
@@ -2544,7 +2615,7 @@ begin
           end;
           if T.Kind = tkDoctype then Exit;
           if (T.Kind = tkText) and AllSpace(T.Data) then begin InBody(T); Exit end;
-          if (T.Kind = tkEnd) and (T.Name = 'html') then
+          if (T.Kind = tkEnd) and (T.Tag = tgHtml) then
           begin
             Mode := imAfterAfterBody; Exit;
           end;
@@ -2681,8 +2752,7 @@ begin
     inkText:
       begin
         Raw := (N.Parent <> nil) and (N.Parent.Namespace = insHTML) and
-          InList(N.Parent.Name, ['style','script','xmp','iframe','noembed',
-            'noframes','plaintext']);
+          (NodeTag(N.Parent) in [tgStyle, tgScript, tgXmp, tgIframe, tgNoembed, tgNoframes, tgPlaintext]);
         if Raw then Out_ := Out_ + N.Data
         else Out_ := Out_ + EscapeText(N.Data, False);
       end;
@@ -2694,7 +2764,7 @@ begin
         Out_ := Out_ + '>';
         if (N.Namespace = insHTML) and InkIsVoidElement(N.Name) then Exit;
         { a newline that opens a <pre> would be eaten by the next parser }
-        if (N.Namespace = insHTML) and InList(N.Name, ['pre', 'textarea', 'listing']) and
+        if (N.Namespace = insHTML) and (NodeTag(N) in [tgPre, tgTextarea, tgListing]) and
           (N.FirstChild <> nil) and (N.FirstChild.Kind = inkText) and
           (N.FirstChild.Data <> '') and (N.FirstChild.Data[1] = #10) then
           Out_ := Out_ + #10;
