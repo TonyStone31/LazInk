@@ -15,7 +15,7 @@ LazInk reads a document in three layers.
 
 | Layer | Where | License | Job |
 |---|---|---|---|
-| Document | `inkpage.pas`, `inkmarkdown.pas`, `inkcss.pas`, `inkcode.pas` | 0BSD | **All the parsing**: HTML tags and attributes, Markdown, entities, stylesheets, media queries, code coloring - into **blocks**: a paragraph, a heading, a list item, a code block, a picture, a table, a card grid.  Each block is a short string of **LazInk markup**. |
+| Document | `inkdom.pas`, `inkstyle.pas`, `inklayout.pas`, `inkpage.pas`, `inkmarkdown.pas`, `inkcode.pas` | 0BSD | **All the parsing**: HTML into a tree, Markdown, stylesheets and the cascade, media queries, CSS boxes laid out, code coloring - and each run of words in a box into a **block**: a short string of **LazInk markup**. |
 | Controls | `inklabel.pas`, `inkmemo.pas`, `inklistbox.pas`, `inkpage.pas`, `inkrichedit.pas` | 0BSD | Where blocks go on screen, scrolling, selection, find, history, clipboard, touch. |
 | **Renderer** | `inkrender.pas`, `inkbox.pas`, `inkdraw.pas` | 0BSD | Given a canvas, a rectangle and one string of LazInk markup: **measure it, wrap it, paint it, and say what is under a point.** |
 
@@ -23,9 +23,10 @@ So the new renderer does **not** read HTML, does not read CSS, and does not
 know about documents, scrolling or selection.  It is a canvas text engine
 for one small markup language.  Everything else already belongs to us.
 
-`inkpage.pas` reads HTML, `inkmarkdown.pas` converts Markdown, `inkcss.pas`
-reads stylesheets and `inkcode.pas` colors code. The renderer scans the
-markup string produced by those document units for inline and table tags.
+`inkdom.pas` reads HTML, `inkmarkdown.pas` converts Markdown, `inkstyle.pas`
+computes styles, `inklayout.pas` lays out boxes and `inkcode.pas` colors
+code; `inkpage.pas` turns the words in each box into markup.  The renderer
+scans that markup for inline and table tags.
 
 That markup language is section 3, and it is the whole contract.
 
@@ -701,9 +702,9 @@ here as what would have to come after them.
 
 1. **A box tree, and layout that recurses** - **decided, section 2.1.**
 2. **Baselines** - **decided, section 2.2.**
-3. **A cascade over that tree.**  `inkcss.pas` resolves style at the document
-   layer, against a page's tags and classes, and hands the engine colors and
-   attributes.  A general renderer resolves **computed style per box**:
+3. **A cascade over that tree** - **done since, in `inkstyle.pas`.**  It
+   once resolved style at the document layer, against a page's tags and
+   classes.  A general renderer resolves **computed style per box**:
    inheritance, specificity, `em` / `rem` / `%` against the containing block,
    `currentColor`.  That belongs on the box tree, not in the parser - which
    is another reason the tree comes first.

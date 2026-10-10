@@ -28,7 +28,7 @@ uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, StdCtrls,
   ComCtrls, Buttons, ImgList, LCLIntf, LCLType,
   InkLabel, InkEdit, InkMemo, InkListBox, InkRichEdit, InkCodeMemo, InkDraw,
-  InkMarkdown, InkCSS, InkPage;
+  InkMarkdown, InkPage;
 
 type
 

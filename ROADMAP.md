@@ -123,7 +123,7 @@ page, not new controls.
 | `TInkLabel` | inline markup, HTML or Markdown, copy menu, character selection | links out of a finger's reach on GTK3 |
 | `TInkMemo` | page-engine lines, selection, copy menu, find, touch, `ScrollBars` | wrap measures a line without its images |
 | `TInkListBox` | markup items, in-place editor, copy menu, character selection in an item | - |
-| `TInkPage` | whole HTML/Markdown documents: headings, lists, tables, code, PNG/GIF/WebP, links, history, CSS reader, flex/grid cards, media queries, mouse and keyboard selection, find, touch and flick, `ScrollBars` | hardware check of touch |
+| `TInkPage` | whole HTML/Markdown documents laid out from the tree with computed CSS: blocks, floats, flex, grid, tables, positioning, PNG/GIF/WebP, links, history, media queries, mouse and keyboard selection, find, touch and flick, `ScrollBars` | hardware check of touch |
 | `TInkEdit` | single-line edit, per-character colors, `TextHint`, undo/redo, context menu | - |
 | `TInkRichEdit` | WYSIWYG editor: inline styles, headings, nested lists, quotes, code with fence languages, tables, Markdown in and out, undo, context menu | images |
 | `TInkCodeMemo` | plain multi-line editor: `Text`/`Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, per-character colors, undo, context menu | a `TInkScrollBar` of its own |
@@ -142,7 +142,8 @@ The direction in section 1, step by step:
 * [x] **2. Computed styles** - done 9 October 2026 (`inkstyle.pas`),
   measured against a real browser with `tools/style_compare.sh`.
 * [x] **3. Layout from the tree** - done 9 October 2026 (`inklayout.pas`,
-  `inkpagetree.inc`), behind `TreeLayout`.  Nested boxes from the computed
+  `inkpagetree.inc`), and on 10 October the only layout: the block reader
+  and its CSS reader (`inkcss.pas`) are gone.  Nested boxes from the computed
   styles: margin collapsing, floats, shrink-to-fit, flex, grid (named
   areas, `minmax()`, `repeat(auto-fill)`), tables (auto layout, spans,
   `<center>`), absolute, fixed and relative positioning, `::before` and
@@ -151,8 +152,12 @@ The direction in section 1, step by step:
   and code headers work as before.  The Heckers Sketch manual keeps every
   piece of its text and comes out within about 1% of Brave's height page
   by page (the rest is the font); Wikipedia, MDN, Hacker News and Tailwind
-  lay out in their browser columns.  Next: make it the only layout and
-  delete the block reader.  Still approximate: words do not flow line by
+  lay out in their browser columns.  `TInkMemo` lays a message added whole
+  (`AppendBlock`) out as a small document of its own, styled by one shared
+  styler, so an append or a growing answer lays out only that entry.  A
+  Markdown document gets GitHub's look (quote bars, shaded code, ruled
+  tables) from a sheet the control writes in its own colors; HTML gets a
+  browser's defaults.  Still approximate: words do not flow line by
   line round a float, an inline picture is a block of its own, `fixed`
   does not stay put when scrolling, background pictures and masks are not
   drawn (a gradient is its first color), no `box-shadow`.
@@ -176,8 +181,8 @@ Left over from steps 1 and 2, when they get in the way:
   Still: **`@container`** queries are skipped; **`@font-face`** is not read.
 * **A write after free in the GTK3 widgetset (Lazarus, not LazInk or the
   compiler).**  Found with heaptrc (`-gh`, `HEAPTRC=keepreleased`) running
-  `tests/run.sh` with the manual's page list; with `INK_TREE=1` the heap
-  falls so that it crashes.  `TGtk3Font` remembers only the last device
+  `tests/run.sh` with the manual's page list; with the tree layout the
+  heap falls so that it can crash.  `TGtk3Font` remembers only the last device
   context it was selected into.  `Font.Color` invalidates a canvas font
   without deselecting it, so a following size or name change lets LCL's
   font cache delete a font that two canvases still hold; the destructor

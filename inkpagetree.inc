@@ -1,5 +1,5 @@
-{ The page laid out from the document tree (TreeLayout): InkStyle's computed
-  styles, InkLayout's boxes, and the page's own blocks for the words in them.
+{ Documents laid out from their trees: InkStyle's computed styles,
+  InkLayout's boxes, and the page's own blocks for the words in them.
 
   Each run of inline content - a box InkLayout calls ibkText - becomes one
   of the page's blocks, its markup made from the styles of the elements the
@@ -62,27 +62,9 @@ begin
   end;
 end;
 
-{ a color from InkStyle, as a TColor - its opacity mixed into what is behind }
-{ a CSS number, which has a full stop whatever the locale says }
-function CSSFloat(const S: string; ADefault: Double): Double;
-var FS: TFormatSettings;
-begin
-  FS := DefaultFormatSettings; FS.DecimalSeparator := '.';
-  Result := StrToFloatDef(Trim(S), ADefault, FS);
-end;
-
-function InkToColor(C: TInkRGBA; ABehind: TColor): TColor;
-var A: Integer;
-begin
-  A := C shr 24;
-  Result := TColor(C and $FFFFFF);
-  if A < 255 then Result := MixColor(Result, ABehind, 1 - A / 255);
-end;
-
 { ---------------------------------------------------------- the words }
 
-{ how tall a block's words are at a width: wrapped as the classic layout
-  wraps them, with a code block's header }
+{ how tall a block's words are at a width, with a code block's header }
 function TInkCustomPage.TreeTextHeight(B: TInkPageBlock; AWidth: Integer): Integer;
 var O: THTMLOptions; Sz: TSize; TextW: Integer;
 begin
@@ -503,17 +485,15 @@ begin
   BackCol := BackOf(ABox);
   B.Tree := True;
   B.TreeBox := ABox;
-  B.FoldGroup := -1; B.FoldHead := -1;
+  B.FoldHead := -1;
   if OwnerEl <> nil then begin B.Tag := OwnerEl.Name; B.CSSClass := OwnerEl.GetAttribute('class') end
   else B.Tag := 'p';
   B.PointSize := -Max(1, Round(Base.FontSize));
   B.TextColor := InkToColor(Base.Color('color'), BackCol);
   B.FaceName := FontFamilyFace(Base.Value('font-family'));
   B.Bold := False;
-  B.BackColor := clNone; B.BorderColor := clNone;
-  for I := 0 to 3 do begin B.EdgeColor[I] := clNone; B.EdgeWidth[I] := 0 end;
-  SetLength(B.Bars, 0);
-  B.Indent := 0; B.Padding := 0; B.GapBefore := 0; B.GapAfter := 0; B.MarginLeft := 0; B.MarginRight := 0;
+  B.BackColor := clNone;
+  B.Indent := 0; B.Padding := 0; B.GapBefore := 0; B.GapAfter := 0;
   B.LineHeight := Max(0, LinePixels(Base));
   V := Base.Keyword('white-space');
   B.NoWrap := (V = 'pre') or (V = 'nowrap');
@@ -598,18 +578,11 @@ end;
 
 procedure TInkCustomPage.TreeStyle(AWidth: Integer);
 begin
-  if FStyler = nil then
-  begin
-    FStyler := TInkStyler.Create;
-    FStyler.OnFetch := @FetchSheet;
-  end;
-  FStyler.Clear;
+  ResetStyler;
   FStyler.Media.Width := AWidth;
-  if ClientHeight > 0 then FStyler.Media.Height := ClientHeight else FStyler.Media.Height := 768;
-  FStyler.Media.Dark := GetActiveColorScheme = icsDark;
-  FStyler.CanvasColor := Cardinal(ColorToRGB(Color)) or $FF000000;
-  FStyler.CanvasTextColor := Cardinal(ColorToRGB(Font.Color)) or $FF000000;
-  FStyler.MediumFont := ControlFontPixels;
+  { the control's own say first; the host's sheet and the page's win }
+  FStyler.AddSheet(ImageFitSheet);
+  if FTextFormat = itfMarkdown then FStyler.AddSheet(MarkdownSheet);
   if FStyleSheet.Count > 0 then FStyler.AddSheet(FStyleSheet.Text, FLocation);
   FStyler.AddDocumentSheets(FDocument, FLocation);
   FStyler.Compute(FDocument);
@@ -617,10 +590,10 @@ begin
   FTreeKey := FStyler.MediaKey(AWidth);
 end;
 
-{ the boxes for the document, and a block for each run of words and each
-  picture in them }
-procedure TInkCustomPage.TreeBuild;
-var PendingIds: string;
+{ a document's boxes, and a block for each run of words and each picture in
+  them, put among the page's blocks at S.BlockFrom }
+procedure TInkCustomPage.BuildSection(S: TInkTreeSection);
+var PendingIds: string; Made: TList; I: Integer;
 
   procedure Ids(N: TInkNode);
   begin
@@ -642,22 +615,21 @@ var PendingIds: string;
         (Box.Node.Parent.Name = 'details') then
       begin
         Det := Box.Node.Parent;
-        B.FoldHead := Length(FTreeFolds);
-        SetLength(FTreeFolds, Length(FTreeFolds) + 1);
-        FTreeFolds[High(FTreeFolds)] := Det;
+        B.FoldHead := Length(S.Folds);
+        SetLength(S.Folds, Length(S.Folds) + 1);
+        S.Folds[High(S.Folds)] := Det;
       end;
       Box.Data := B;
-      FBlocks.Add(B);
+      Made.Add(B);
     end
     else if Box.Kind = ibkImage then
     begin
       B := TInkPageBlock.Create;
       B.Tree := True; B.TreeBox := Box;
-      B.FoldGroup := -1; B.FoldHead := -1;
+      B.FoldHead := -1;
       B.Tag := Box.Node.Name;
       B.Anchor := PendingIds; PendingIds := '';
-      B.BackColor := clNone; B.BorderColor := clNone;
-      for I := 0 to 3 do B.EdgeColor[I] := clNone;
+      B.BackColor := clNone;
       if Box.Node.Name = 'img' then
       begin
         B.ImageSrc := ResolveURL(Box.Node.GetAttribute('src'));
@@ -685,7 +657,7 @@ var PendingIds: string;
         end;
       end;
       Box.Data := B;
-      FBlocks.Add(B);
+      Made.Add(B);
     end;
     for I := 0 to Box.Count - 1 do Walk(Box[I]);
   end;
@@ -696,24 +668,117 @@ begin
     FTreeMeasure := TPageMeasure.Create;
     TPageMeasure(FTreeMeasure).Page := Self;
   end;
-  { nothing is painted from the boxes and styles that are about to go }
-  SetLength(FTreePaint, 0);
-  TreeStyle(TreeViewWidth);
-  FreeAndNil(FTreeLayout);
-  FTreeLayout := TInkLayout.Create(FStyler, TPageMeasure(FTreeMeasure));
-  FTreeLayout.BuildFrom(FDocument);
-  SetLength(FTreeFolds, 0);
-  FCanvasBack := TreeCanvasBack;
+  FreeAndNil(S.Layout);
+  S.Layout := TInkLayout.Create(FStyler, TPageMeasure(FTreeMeasure));
+  S.Layout.BuildFrom(S.Doc);
+  SetLength(S.Folds, 0);
   FLayoutBase := ControlFontPixels;
   PendingIds := '';
-  if FTreeLayout.Root <> nil then Walk(FTreeLayout.Root);
-  if PendingIds <> '' then
+  Made := TList.Create;
+  try
+    if S.Layout.Root <> nil then Walk(S.Layout.Root);
+    if PendingIds <> '' then
+    begin
+      { ids at the very end still lead somewhere }
+      Made.Add(TInkPageBlock.Create);
+      TInkPageBlock(Made[Made.Count - 1]).Anchor := PendingIds;
+      TInkPageBlock(Made[Made.Count - 1]).Tree := True;
+    end;
+    for I := 0 to Made.Count - 1 do
+    begin
+      TInkPageBlock(Made[I]).Section := S;
+      TInkPageBlock(Made[I]).Entry := S.Item;
+      FBlocks.Insert(S.BlockFrom + I, Made[I]);
+    end;
+    S.BlockCount := Made.Count;
+  finally Made.Free end;
+end;
+
+{ a document's blocks taken out of the page's and freed }
+procedure TInkCustomPage.ClearSectionBlocks(S: TInkTreeSection);
+var I: Integer;
+begin
+  for I := S.BlockFrom + S.BlockCount - 1 downto S.BlockFrom do
   begin
-    { ids at the very end still lead somewhere }
-    FBlocks.Add(TInkPageBlock.Create);
-    TInkPageBlock(FBlocks[FBlocks.Count - 1]).Anchor := PendingIds;
-    TInkPageBlock(FBlocks[FBlocks.Count - 1]).Tree := True;
+    FAnimated.Remove(FBlocks[I]);
+    TObject(FBlocks[I]).Free;
+    FBlocks.Delete(I);
   end;
+  S.BlockCount := 0;
+  if FRenderCache <> nil then FRenderCache.Clear;
+  SetLength(FTreePaint, 0);
+  FHoverBlock := -1; FRunBlock := nil;
+end;
+
+{ where each item's blocks start, and each block's place, from AFromItem on }
+procedure TInkCustomPage.Renumber(AFromItem: Integer);
+var I, K, N: Integer; It: TObject;
+begin
+  N := 0;
+  if AFromItem > 0 then
+  begin
+    It := TObject(FItems[AFromItem - 1]);
+    if It is TInkTreeSection then N := TInkTreeSection(It).BlockFrom + TInkTreeSection(It).BlockCount
+    else N := TInkPageBlock(It).Index + 1;
+  end;
+  for I := AFromItem to FItems.Count - 1 do
+  begin
+    It := TObject(FItems[I]);
+    if It is TInkTreeSection then
+    begin
+      TInkTreeSection(It).Item := I;
+      TInkTreeSection(It).BlockFrom := N;
+      for K := 0 to TInkTreeSection(It).BlockCount - 1 do
+      begin
+        TInkPageBlock(FBlocks[N + K]).Index := N + K;
+        TInkPageBlock(FBlocks[N + K]).Entry := I;
+      end;
+      Inc(N, TInkTreeSection(It).BlockCount);
+    end
+    else
+    begin
+      TInkPageBlock(It).Entry := I;
+      TInkPageBlock(It).Index := N;
+      Inc(N);
+    end;
+  end;
+end;
+
+function TInkCustomPage.AddSection(ADoc: TInkDocument; AOwns: Boolean): TInkTreeSection;
+begin
+  Result := TInkTreeSection.Create;
+  Result.Doc := ADoc; Result.OwnsDoc := AOwns;
+  Result.Item := FItems.Count;
+  Result.BlockFrom := FBlocks.Count;
+  Result.Back := clNone;
+  FItems.Add(Result);
+  if FStyler = nil then ResetStyler;
+  { the page's own document was styled with its sheets; anything else is
+    styled now, with what the styler has }
+  if ADoc <> FDocument then
+  begin
+    Result.StyleMark := FStyler.Mark;
+    FStyler.Include(ADoc);
+  end;
+  BuildSection(Result);
+  Renumber(Result.Item);
+end;
+
+procedure TInkCustomPage.ResetStyler;
+begin
+  if FStyler = nil then
+  begin
+    FStyler := TInkStyler.Create;
+    FStyler.OnFetch := @FetchSheet;
+  end;
+  FStyler.Clear;
+  FStyler.Media.Width := TreeViewWidth;
+  if ClientHeight > 0 then FStyler.Media.Height := ClientHeight else FStyler.Media.Height := 768;
+  FStyler.Media.Dark := GetActiveColorScheme = icsDark;
+  FStyler.CanvasColor := Cardinal(ColorToRGB(Color)) or $FF000000;
+  FStyler.CanvasTextColor := Cardinal(ColorToRGB(Font.Color)) or $FF000000;
+  FStyler.MediumFont := ControlFontPixels;
+  FCanvasBack := Color;
 end;
 
 { the window's width less the scrollbar: what the page is laid out in }
@@ -750,8 +815,27 @@ end;
 
 { ---------------------------------------------------------- laying out }
 
-procedure TInkCustomPage.TreeLayoutRun;
-var W: Integer;
+function TInkCustomPage.PageStyle(ABody: Boolean): TInkStyle;
+begin
+  Result := nil;
+  if (FDocument = nil) or (FStyler = nil) or not FStyled then Exit;
+  if ABody then Result := FStyler.StyleOf(FDocument.Body)
+  else Result := FStyler.StyleOf(FDocument.DocumentElement);
+end;
+
+function TInkCustomPage.PageValue(const AProp: string): string;
+begin
+  Result := 'auto';
+  if PageStyle(False) <> nil then Result := PageStyle(False).Value(AProp);
+  if ((Result = 'auto') or (Result = '')) and (PageStyle(True) <> nil) then
+    Result := PageStyle(True).Value(AProp);
+  if Result = '' then Result := 'auto';
+end;
+
+{ a document at Y: its boxes laid out at the column's width and moved
+  there, and its blocks put where their boxes are }
+procedure TInkCustomPage.LaySection(S: TInkTreeSection; ALeft, AWidth: Integer;
+  var Y, Pending: Integer);
 
   procedure Place(Box: TInkBox);
   var I: Integer; B: TInkPageBlock;
@@ -778,32 +862,19 @@ var W: Integer;
   end;
 
 begin
-  W := TreeViewWidth;
-  { a width across one of the page's @media queries styles it again }
-  if (FStyler <> nil) and (FStyler.MediaKey(W) <> FTreeKey) and (FDocument <> nil) then
+  StyleSection(S);
+  Inc(Y, Max(Pending, S.GapBefore)); Pending := 0;
+  S.Left := ALeft + S.Indent; S.Top := Y;
+  S.Width := Max(20, AWidth - S.Indent);
+  S.Height := 0;
+  if (S.Layout <> nil) and (S.Layout.Root <> nil) then
   begin
-    Parse;
-    FLayoutDirty := False;
+    S.Layout.Run(S.Width, Max(1, ClientHeight));
+    S.Layout.Root.Shift(S.Left, S.Top);
+    Place(S.Layout.Root);
+    S.Height := S.Layout.Height;
   end;
-  StyleScrollBar;
-  FLayoutBase := ControlFontPixels;
-  { the shades the code header and the find bar take from the page }
-  FPageBack := FCanvasBack;
-  FBodyText := Font.Color;
-  FCodeBack := HTMLShadeColor(FCanvasBack, 7);
-  FColumnLeft := 0; FColumnWidth := W; FLayoutWidth := ClientWidth;
-  FLayoutFrom := MaxInt;
-  if FTreeLayout = nil then
-  begin
-    FContentHeight := 0;
-    Exit;
-  end;
-  FTreeLayout.Run(W, Max(1, ClientHeight));
-  if FTreeLayout.Root <> nil then Place(FTreeLayout.Root);
-  FContentHeight := FTreeLayout.Height;
-  FScroll.SetParams(Min(FScroll.Position, Max(0, FContentHeight - ClientHeight)), 0,
-    Max(ClientHeight, FContentHeight), Max(1, ClientHeight));
-  TreePaintOrder;
+  Inc(Y, S.Height); Pending := S.GapAfter;
 end;
 
 { ----------------------------------------------------------- painting }
@@ -830,6 +901,7 @@ var N: Integer;
     if N = Length(FTreePaint) then SetLength(FTreePaint, N * 2 + 64);
     FTreePaint[N].Box := ABox; FTreePaint[N].Block := ABlock;
     FTreePaint[N].Clip := AClip; FTreePaint[N].Clipped := AClipped;
+    FTreePaint[N].Section := nil;
     Inc(N);
   end;
 
@@ -892,7 +964,7 @@ var N: Integer;
       for I := 0 to Texts.Count - 1 do
       begin
         X := TInkBox(Texts[I]);
-        Push(nil, FBlocks.IndexOf(X.Data), Clips[X.Tag], Clipped[X.Tag]);
+        Push(nil, TInkPageBlock(X.Data).Index, Clips[X.Tag], Clipped[X.Tag]);
       end;
       { positioned boxes by z-index, in the order written within one }
       for I := 1 to Later.Count - 1 do
@@ -913,10 +985,25 @@ var N: Integer;
     finally Decos.Free; Texts.Free; Floats.Free; Later.Free end;
   end;
 
+var I: Integer; It: TObject; S: TInkTreeSection;
 begin
   N := 0;
-  if (FTreeLayout <> nil) and (FTreeLayout.Root <> nil) then
-    Atomic(FTreeLayout.Root, Rect(0, 0, 0, 0), False);
+  for I := 0 to FItems.Count - 1 do
+  begin
+    It := TObject(FItems[I]);
+    if It is TInkTreeSection then
+    begin
+      S := TInkTreeSection(It);
+      if S.Back <> clNone then
+      begin
+        Push(nil, -1, Rect(0, 0, 0, 0), False);
+        FTreePaint[N - 1].Section := S;
+      end;
+      if (S.Layout <> nil) and (S.Layout.Root <> nil) then
+        Atomic(S.Layout.Root, Rect(0, 0, 0, 0), False);
+    end
+    else Push(nil, TInkPageBlock(It).Index, Rect(0, 0, 0, 0), False);
+  end;
   SetLength(FTreePaint, N);
 end;
 
@@ -1105,6 +1192,16 @@ begin
   for I := 0 to High(FTreePaint) do
   begin
     It := FTreePaint[I];
+    if It.Section <> nil then
+    begin
+      { a memo entry's band, behind the document it shows }
+      with TInkTreeSection(It.Section) do R := Rect(Left, Top, Left + Width, Top + Height);
+      if (R.Bottom < ViewTop) or (R.Top > ViewBottom) then Continue;
+      ACanvas.Brush.Style := bsSolid;
+      ACanvas.Brush.Color := TInkTreeSection(It.Section).Back;
+      ACanvas.FillRect(Rect(R.Left, R.Top - ViewTop, R.Right, R.Bottom - ViewTop));
+      Continue;
+    end;
     if It.Box <> nil then R := TInkBox(It.Box).BorderRect
     else
     begin
@@ -1130,7 +1227,7 @@ begin
         if It.Clipped then ACanvas.Clipping := False;
       end;
     end
-    else if not BlockHidden(TInkPageBlock(FBlocks[It.Block])) then
+    else
     begin
       { PaintBlock clips to it, in the one save it makes }
       FPaintClipped := It.Clipped;
@@ -1170,13 +1267,20 @@ begin
 end;
 
 procedure TInkCustomPage.TreeToggleFold(Index: Integer);
-var B: TInkPageBlock; D: TInkNode; Keep: Integer;
+var B: TInkPageBlock; S: TInkTreeSection; D: TInkNode;
 begin
   B := TInkPageBlock(FBlocks[Index]);
-  if (B.FoldHead < 0) or (B.FoldHead > High(FTreeFolds)) then Exit;
-  D := FTreeFolds[B.FoldHead];
+  S := TInkTreeSection(B.Section);
+  if (S = nil) or (B.FoldHead < 0) or (B.FoldHead > High(S.Folds)) then Exit;
+  D := S.Folds[B.FoldHead];
   if D.HasAttribute('open') then D.RemoveAttribute('open') else D.SetAttribute('open', '');
-  Keep := ScrollY;
-  DocumentChanged;
-  ScrollTo(Keep);
+  { only this document is styled and laid out again; the selection's
+    blocks may be gone }
+  ClearSelection;
+  FStyler.Restyle(S.Doc);
+  ClearSectionBlocks(S);
+  BuildSection(S);
+  Renumber(S.Item);
+  FindAnimations;
+  InvalidateLayout(S.Item);
 end;

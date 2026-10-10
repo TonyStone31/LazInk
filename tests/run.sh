@@ -26,8 +26,7 @@ cd "$(dirname "$0")/.."
   -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/render_tests.pas
 "$BUILD_DIR/render_tests" "$@"
 # Given a page list and a results folder, also check that every piece of
-# visible text in the pages survived into what was rendered.  INK_TREE=1
-# lays the pages out from the document tree instead.
+# visible text in the pages survived into what was rendered.
 if [ "$#" -ge 2 ]; then
   "$FPC" -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/check_help_text.pas >"$BUILD_DIR/check.log" 2>&1 ||
     { tail -20 "$BUILD_DIR/check.log"; exit 1; }

@@ -249,6 +249,21 @@ begin
     [BoxOf('#b').W, BoxOf('#c').W]));
 end;
 
+procedure TableFixChecks;
+begin
+  { table-layout: fixed shares the width out evenly, whatever the cells hold }
+  Load('<!DOCTYPE html><style>body{margin:0} table{width:300px;table-layout:fixed;border-spacing:0}' +
+    'td{padding:0}</style><table><tr><td id=a>a</td><td id=b>a much longer cell</td>' +
+    '<td id=c></td></tr></table>', 400);
+  Check((BoxOf('#a').W = 100) and (BoxOf('#b').W = 100) and (BoxOf('#c').W = 100),
+    Format('a fixed table''s columns are equal (%d, %d, %d)', [BoxOf('#a').W, BoxOf('#b').W, BoxOf('#c').W]));
+  { cells made blocks go into one cell made for them, and stack }
+  Load('<!DOCTYPE html><style>body{margin:0} td{display:block;padding:0}</style>' +
+    '<table><tr><td id=a>a</td><td id=b>b</td></tr></table>', 400);
+  Check((BoxOf('#a').X = BoxOf('#b').X) and (BoxOf('#b').Y = BoxOf('#a').Y + BoxOf('#a').H),
+    Format('cells made blocks stack (%d,%d and %d,%d)', [BoxOf('#a').X, BoxOf('#a').Y, BoxOf('#b').X, BoxOf('#b').Y]));
+end;
+
 procedure CenterChecks;
 begin
   { <center> centres a table or a block narrower than it }
@@ -401,6 +416,7 @@ begin
   PseudoChecks;
   CenterChecks;
   FixedColumnChecks;
+  TableFixChecks;
   TableChecks;
   PositionChecks;
   ListAndImageChecks;
