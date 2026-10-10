@@ -259,6 +259,7 @@ type
     FChatTurn: Integer;
     FStreamText: string;
     FStreamPos: Integer;
+    function ChatBand(AAnswer: Boolean): TColor;
     procedure MdRecolor;
     procedure UpdateSource;
     function TagMask(const S: string): TBytes;
@@ -1141,6 +1142,26 @@ const
       '| Control | Does |' + LineEnding + '| --- | --- |' + LineEnding +
       '| TInkMemo | this chat |' + LineEnding + '| TInkPage | documents |');
 
+function TfrmMain.ChatBand(AAnswer: Boolean): TColor;
+var
+  Base, Tint: TColor;
+begin
+  { a band is the memo's own background leaning a seventh of the way
+    toward a hue - pale strips on a light theme, deep ones on a dark }
+  if memCheat.Color = clDefault then
+    Base := ColorToRGB(clWindow)
+  else
+    Base := ColorToRGB(memCheat.Color);
+  if AAnswer then
+    Tint := RGBToColor(60, 165, 90)
+  else
+    Tint := RGBToColor(60, 130, 215);
+  Result := RGBToColor(
+    (Red(Base) * 86 + Red(Tint) * 14) div 100,
+    (Green(Base) * 86 + Green(Tint) * 14) div 100,
+    (Blue(Base) * 86 + Blue(Tint) * 14) div 100);
+end;
+
 procedure TfrmMain.btnChatMsgClick(Sender: TObject);
 var
   N: Integer;
@@ -1149,9 +1170,8 @@ begin
   { the question, then the answer: each one whole Markdown message, one
     entry, with its own band color - the answer set in a little }
   memCheat.AppendBlock('**You:** ' + cChatQuestions[N], itfMarkdown,
-    RGBToColor(232, 240, 250));
-  memCheat.AppendBlock(cChatAnswers[N], itfMarkdown,
-    RGBToColor(237, 245, 237), 14);
+    ChatBand(False));
+  memCheat.AppendBlock(cChatAnswers[N], itfMarkdown, ChatBand(True), 14);
   Inc(FChatTurn);
 end;
 
@@ -1159,13 +1179,13 @@ procedure TfrmMain.btnChatStreamClick(Sender: TObject);
 begin
   if tmrChat.Enabled then Exit;
   memCheat.AppendBlock('**You:** And an answer can arrive a word at a time?',
-    itfMarkdown, RGBToColor(232, 240, 250));
+    itfMarkdown, ChatBand(False));
   FStreamText := 'It can. `ReplaceLast` lays out only the last entry, so ' +
     'a long conversation never re-layouts above it - and the view follows ' +
     'only while you are already at the end. Scroll up while this types ' +
     'and you will not be pulled back down.';
   FStreamPos := 0;
-  memCheat.AppendBlock('...', itfMarkdown, RGBToColor(237, 245, 237), 14);
+  memCheat.AppendBlock('...', itfMarkdown, ChatBand(True), 14);
   btnChatStream.Enabled := False;
   tmrChat.Enabled := True;
 end;
