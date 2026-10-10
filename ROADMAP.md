@@ -134,6 +134,43 @@ Linux** has been run.
 
 ## 3. Open - in rough order of value
 
+### 0. The tree work - in progress, first in line
+
+The direction in section 1, step by step:
+
+* [x] **1. The document tree** - done 9 October 2026 (`inkdom.pas`).
+* [x] **2. Computed styles** - done 9 October 2026 (`inkstyle.pas`),
+  measured against a real browser with `tools/style_compare.sh`.
+* [ ] **3. Layout from the tree - next.**  Real nested boxes - margins,
+  padding, borders, backgrounds - built from the computed styles; block and
+  inline formatting, margin collapsing, then tables, floats, positioning,
+  flex and grid.  The plan: build it beside the block reader and switch
+  pages over once it matches the Heckers Sketch manual and the comparison
+  pages, so nothing goes backwards on the way.  It is also where page
+  loading is slow now: the long comparison page takes 48 ms to read and
+  64 ms to lay out, where Chromium does both in 25.  Fixes 3 G's "nested
+  block boxes flatten" for good.
+* [ ] **4. Paint and hit-testing from the boxes**, laying out and painting
+  only what is on screen.
+* [ ] **5. Resources through the host** - partly there (`OnResource`);
+  SVG still to come.
+* [ ] **6. The Pascal DOM API** - started: `Document`, `DocumentChanged`,
+  `ComputedStyle`, `ExplainStyle`, `InkQuerySelector(All)`.  Still to
+  come: element events (click, hover, change) carrying the element.
+* [ ] **7. Forms** drawn by LazInk.
+
+Left over from steps 1 and 2, when they get in the way:
+
+* **Shadow DOM**: `<template shadowrootmode>` is kept as an ordinary
+  element and its sheets are skipped; `:host` and `::part` are not read.
+  The one disagreement left on the MDN comparison page.
+* **`@layer` order** - layers are read in source order; **`@container`**
+  queries are skipped; **`@font-face`** is not read.
+* **Parser corners**: the 2025 `<select>` content rules, NUL bytes, some
+  `<template>` edge cases (78 of html5lib's 1784 cases).
+* **Parser speed**: about half Chromium's (1.7 MB in 73 ms against 36);
+  interning tag names would close most of it.
+
 ### A. What real programs asked for
 
 Everything asked so far is done - the send-window wishlist, light and
@@ -235,7 +272,17 @@ best after the widgetset runs in D, so the listing's claims are true.
 
 The 76-section comparison page (~1800 blocks, ~29000px) scrolls, but a
 fast wheel can feel it.  Tony wants this improved in the near future.
-Measured nothing yet; in the order worth trying:
+
+Found and fixed 9 October 2026: most of what a fast wheel felt was not
+painting.  The GTK3 backend rounds every smooth scroll event up to a
+whole notch, so a free-spinning or high-resolution wheel raced eight times
+too far; `InkWheelNotches` reads the real delta, and the page asks for a
+frame every 33 ms while a wheel streams events (GTK draws only when input
+stops).  Pictures used more than once are now decoded once.  Measured: a
+frame of the long page takes 2-3 ms to render off screen; on screen in
+Xephyr (where `tools/compare.sh` runs) it is 20-40 ms, most of it the
+nested X server - not yet measured on a real display.  Left, in the order
+worth trying:
 
 * ~~Find the first visible block by binary search~~ - done 9 October
   2026: a paint starts at the first block that can show (and the one before
