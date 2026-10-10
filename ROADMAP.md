@@ -174,15 +174,19 @@ Left over from steps 1 and 2, when they get in the way:
   `lch()` and the logical border properties: a saved Tailwind 4 page went
   from 86.6% to all but two values (the headless browser's `pointer`).
   Still: **`@container`** queries are skipped; **`@font-face`** is not read.
-* **A write after free in LCL's font cache under GTK3.**  Found with
-  heaptrc (`-gh`, `HEAPTRC=keepreleased`) running `tests/run.sh` with the
-  manual's page list: a `TFontHandleCacheDescriptor` freed when
-  `BlockFont` changes the canvas font gets its `Next` set to nil later.
-  Classic layout does it too; with `INK_TREE=1` the heap falls so that it
-  crashes in `TResourceCacheDescriptor.Destroy`.  The likely cause is in
-  LCL: the cache finds fonts by handle, a GTK3 handle is an object's
-  address, and a freed one can come back for a different font.  Not
-  reproduced outside the full test run yet.
+* **A write after free in the GTK3 widgetset (Lazarus, not LazInk or the
+  compiler).**  Found with heaptrc (`-gh`, `HEAPTRC=keepreleased`) running
+  `tests/run.sh` with the manual's page list; with `INK_TREE=1` the heap
+  falls so that it crashes.  `TGtk3Font` remembers only the last device
+  context it was selected into.  `Font.Color` invalidates a canvas font
+  without deselecting it, so a following size or name change lets LCL's
+  font cache delete a font that two canvases still hold; the destructor
+  clears one of them and `TGtk3Font.Select` later writes `fContext := nil`
+  into the freed object through the other.  The same with LCL and LazInk
+  rebuilt at `-O-`, so it is not trunk's `-O3` miscompile.  A fix that
+  clears every context in `TGtk3Font.Destroy` makes heaptrc clean in both
+  layouts; the reproduction, patch and report text are in
+  `GIT/gtk3-bug-report`; filed as Lazarus issue #42641 (10 October 2026).
 * **Parser corners**: the 2025 `<select>` content rules, NUL bytes, some
   `<template>` edge cases (78 of html5lib's 1784 cases).
 * **Parser speed** - tag names are numbers now (9 October 2026): 1.7 MB
