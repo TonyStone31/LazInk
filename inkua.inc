@@ -51,7 +51,7 @@ const
     ':any-link { color: linktext; text-decoration-line: underline; cursor: pointer }' +
     'mark { background-color: mark; color: marktext }' +
     'abbr[title], acronym[title] { text-decoration-line: underline; text-decoration-style: dotted }' +
-    'center { text-align: center }' +
+    'center { text-align: -webkit-center }' +
     'hr { color: gray; border-style: inset; border-width: 1px; margin-top: 0.5em;' +
     ' margin-bottom: 0.5em; margin-left: auto; margin-right: auto; overflow: hidden }' +
     'q::before { content: open-quote } q::after { content: close-quote }' +

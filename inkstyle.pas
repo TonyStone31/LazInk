@@ -49,6 +49,11 @@ type
     FCustom: TStringList;
     FOwnsCustom: Boolean;
     FStyler: TInkStyler;
+    { what a child inherits: this one's custom properties with the
+      registered ones that do not inherit back at their starting values }
+    FKids: TStringList;
+    FKidsDone, FOwnsKids: Boolean;
+    function KidsCustom: TStringList;
   public
     { the element's font size and the root's, in pixels }
     FontSize, RootFontSize: Double;
@@ -120,6 +125,12 @@ type
     Hover, Focus: TInkNode;
     { what the system colors are: the page's background and text, links }
     CanvasColor, CanvasTextColor, LinkColor, VisitedColor: TInkRGBA;
+    { the size "medium" stands for, in pixels - a browser's default font
+      size, which a host sets to its control's font; 16 unless told }
+    MediumFont: Double;
+    { which of the sheets' @media queries hold at a width, as a string that
+      changes when any of them does: worth styling again only then }
+    function MediaKey(AWidth: Integer): string;
     constructor Create;
     destructor Destroy; override;
     { the page's sheets go; the browser's own stays }
@@ -171,7 +182,7 @@ type
   end;
 
 const
-  PropDefs: array[0..131] of TPropDef = (
+  PropDefs: array[0..132] of TPropDef = (
     (N:'accent-color';Inh:True;Init:'auto'),
     (N:'align-content';Inh:False;Init:'normal'),
     (N:'align-items';Inh:False;Init:'normal'),
@@ -259,6 +270,7 @@ const
     (N:'margin-left';Inh:False;Init:'0'),
     (N:'margin-right';Inh:False;Init:'0'),
     (N:'margin-top';Inh:False;Init:'0'),
+    (N:'mask-image';Inh:False;Init:'none'),
     (N:'max-height';Inh:False;Init:'none'),
     (N:'max-width';Inh:False;Init:'none'),
     (N:'min-height';Inh:False;Init:'auto'),
@@ -2052,6 +2064,7 @@ begin
     'border-block': Result := Join(Three('top'), Three('bottom'));
     'border-radius': Result := Of_(['border-top-left-radius', 'border-top-right-radius',
       'border-bottom-right-radius', 'border-bottom-left-radius']);
+    'mask', '-webkit-mask', '-webkit-mask-image': Result := Of_(['mask-image']);
     'background': Result := Of_(['background-color', 'background-image', 'background-repeat',
       'background-position', 'background-size']);
     'font': Result := Of_(['font-style', 'font-variant', 'font-weight', 'font-stretch',
@@ -2131,6 +2144,16 @@ begin
   W := Words(V);
   case AName of
     'margin': FourSides(D, 'margin-', '', V, AImp);
+    '-webkit-mask-image': Longhand(D, 'mask-image', V, AImp);
+    'mask', '-webkit-mask':
+      begin
+        { only whether there is a mask: the picture or gradient in it }
+        L := 'none';
+        for I := 0 to High(W) do
+          if (Pos('url(', LowerCase(W[I])) = 1) or (Pos('gradient(', LowerCase(W[I])) > 0) or
+            (Pos('image(', LowerCase(W[I])) > 0) then L := W[I];
+        Longhand(D, 'mask-image', L, AImp);
+      end;
     'padding': FourSides(D, 'padding-', '', V, AImp);
     'inset': FourSides(D, '', '', V, AImp);
     'border-width': FourSides(D, 'border-', '-width', V, AImp);
@@ -2530,7 +2553,39 @@ end;
 destructor TInkStyle.Destroy;
 begin
   if FOwnsCustom then FCustom.Free;
+  if FOwnsKids then FKids.Free;
   inherited Destroy;
+end;
+
+{ custom property names are case-sensitive, and comparing them through the
+  locale cost seconds on a page that defines hundreds }
+function NewCustomList: TStringList;
+begin
+  Result := TStringList.Create;
+  Result.CaseSensitive := True;
+  Result.UseLocale := False;
+end;
+
+function TInkStyle.KidsCustom: TStringList;
+var I, K: Integer; R: TStringList;
+begin
+  if FKidsDone then Exit(FKids);
+  FKidsDone := True;
+  FKids := FCustom;
+  R := FStyler.FRegistered;
+  if FCustom <> nil then
+    for I := 0 to R.Count - 1 do
+      if PtrInt(R.Objects[I]) = 0 then
+      begin
+        K := FKids.IndexOfName(R.Names[I]);
+        if (K < 0) or (FKids[K] = R[I]) then Continue;
+        if not FOwnsKids then
+        begin
+          FKids := NewCustomList; FKids.Assign(FCustom); FOwnsKids := True;
+        end;
+        if R.ValueFromIndex[I] <> '' then FKids[K] := R[I] else FKids.Delete(K);
+      end;
+  Result := FKids;
 end;
 
 function TInkStyle.Value(const AProp: string): string;
@@ -2623,8 +2678,9 @@ begin
   FInfos := TFPList.Create;
   FHintRules := TFPObjectHashTable.Create(True);
   FLayerNames := TStringList.Create;
-  FRegistered := TStringList.Create;
+  FRegistered := NewCustomList;
   Media.Width := 1024; Media.Height := 768;
+  MediumFont := 16;
   CanvasColor := RGBA($FFFFFF, 255); CanvasTextColor := RGBA($000000, 255);
   LinkColor := RGBA($0000EE, 255); VisitedColor := RGBA($551A8B, 255);
   ParseSheet(InkUserAgentCSS, isoUserAgent, [], '');
@@ -2661,7 +2717,7 @@ begin
   for I := FRules.Count - 1 downto 0 do
     if TRule(FRules[I]).Origin = isoAuthor then FRules.Delete(I);
   for I := 0 to FRefs.Count - 1 do Index(FRefs[I]);
-  FMediaTexts.Clear;
+  { the media conditions stay: the browser's own rules point into them }
   FLayerNames.Clear; FLayer := ''; FAnonLayers := 0; FRegistered.Clear;
   FOrder := FUAOrder;
 end;
@@ -3431,6 +3487,15 @@ begin
   Result := False;
 end;
 
+function TInkStyler.MediaKey(AWidth: Integer): string;
+var I: Integer; M: TInkMedia;
+begin
+  M := Media; M.Width := AWidth;
+  Result := '';
+  for I := 0 to FMediaTexts.Count - 1 do
+    if MediaList(FMediaTexts[I], M) then Result := Result + '1' else Result := Result + '0';
+end;
+
 procedure TInkStyler.EvaluateMedia;
 var I: Integer;
 begin
@@ -3677,8 +3742,10 @@ begin
       (T = 'h5') or (T = 'h6') or (T = 'caption') or (T = 'legend') or (T = 'td') or
       (T = 'th') or (T = 'tr') or (T = 'thead') or (T = 'tbody') or (T = 'tfoot') then
     begin
-      if (A = 'center') or (A = 'middle') then Add('text-align:center')
-      else if (A = 'left') or (A = 'right') or (A = 'justify') then Add('text-align:' + A);
+      { WebKit's own values, which also line up the blocks inside }
+      if (A = 'center') or (A = 'middle') then Add('text-align:-webkit-center')
+      else if (A = 'left') or (A = 'right') then Add('text-align:-webkit-' + A)
+      else if A = 'justify' then Add('text-align:justify');
     end
     else if (T = 'table') or (T = 'hr') then
     begin
@@ -3889,7 +3956,7 @@ end;
 function TInkStyler.Resolve(const ASpec: array of string; ASpecCustom: TStringList;
   AParent: TInkStyle; AIsRoot: Boolean): TInkStyle;
 var I, K: Integer; V, L, Name: string; ParentFont, F: Double; Ctx: TLengthContext;
-  Parts: TDeclArray; Inh: Boolean;
+  Parts: TDeclArray; Inh: Boolean; Kids: TStringList;
 
   function InheritOf(AIndex: Integer): string;
   begin
@@ -3901,54 +3968,55 @@ begin
   Result.FStyler := Self;
   SetLength(Result.FValues, PropCount);
   { custom properties first: everything else may use them }
-  if ((ASpecCustom = nil) or (ASpecCustom.Count = 0)) and (FRegistered.Count = 0) then
-  begin
-    if AParent <> nil then Result.FCustom := AParent.FCustom;
-  end
+  Kids := nil;
+  if AParent <> nil then Kids := AParent.KidsCustom;
+  if ((ASpecCustom = nil) or (ASpecCustom.Count = 0)) and ((AParent <> nil) or (FRegistered.Count = 0)) then
+    Result.FCustom := Kids
   else
   begin
-    Result.FCustom := TStringList.Create;
+    Result.FCustom := NewCustomList;
     Result.FOwnsCustom := True;
-    if (AParent <> nil) and (AParent.FCustom <> nil) then Result.FCustom.Assign(AParent.FCustom);
-    { a registered property that does not inherit starts afresh }
-    for I := 0 to FRegistered.Count - 1 do
-      if PtrInt(FRegistered.Objects[I]) = 0 then
-      begin
-        K := Result.FCustom.IndexOfName(FRegistered.Names[I]);
-        if K >= 0 then Result.FCustom.Delete(K);
-      end;
+    if Kids <> nil then Result.FCustom.Assign(Kids)
+    else
+      { the root: every registered property at its starting value }
+      for I := 0 to FRegistered.Count - 1 do
+        if FRegistered.ValueFromIndex[I] <> '' then Result.FCustom.Add(FRegistered[I]);
     if ASpecCustom <> nil then
-    for I := 0 to ASpecCustom.Count - 1 do
     begin
-      Name := ASpecCustom.Names[I];
-      V := ASpecCustom.ValueFromIndex[I];
-      Inh := True;
-      if IsCSSWide(V) then
+      for I := 0 to ASpecCustom.Count - 1 do
       begin
-        { inherit keeps the parent's, which is there already; the rest unset it }
-        Inh := LowTrim(V) = 'inherit';
-        if Inh then Continue;
+        Name := ASpecCustom.Names[I];
+        V := ASpecCustom.ValueFromIndex[I];
+        Inh := True;
+        if IsCSSWide(V) then
+        begin
+          { inherit keeps the parent's, which is there already; the rest unset it }
+          Inh := LowTrim(V) = 'inherit';
+          if Inh then Continue;
+        end;
+        K := Result.FCustom.IndexOfName(Name);
+        if not Inh then
+        begin
+          if K >= 0 then Result.FCustom.Delete(K);
+          { a registered one goes back to its starting value }
+          K := FRegistered.IndexOfName(Name);
+          if (K >= 0) and (FRegistered.ValueFromIndex[K] <> '') then Result.FCustom.Add(FRegistered[K]);
+        end
+        else if K >= 0 then Result.FCustom[K] := Name + '=' + V
+        else Result.FCustom.Add(Name + '=' + V);
       end;
-      K := Result.FCustom.IndexOfName(Name);
-      if not Inh then
+      { the var()s in what this element set; inherited ones were done above }
+      for I := 0 to ASpecCustom.Count - 1 do
       begin
-        if K >= 0 then Result.FCustom.Delete(K);
-      end
-      else if K >= 0 then Result.FCustom[K] := Name + '=' + V
-      else Result.FCustom.Add(Name + '=' + V);
+        K := Result.FCustom.IndexOfName(ASpecCustom.Names[I]);
+        if (K >= 0) and (Pos('var(', LowerCase(Result.FCustom.ValueFromIndex[K])) > 0) then
+        begin
+          if SubstituteOK(Result.FCustom.ValueFromIndex[K], Result.FCustom, 0, V) then
+            Result.FCustom[K] := Result.FCustom.Names[K] + '=' + V
+          else Result.FCustom[K] := Result.FCustom.Names[K] + '=initial';
+        end;
+      end;
     end;
-    { and one that is set nowhere has its registered starting value }
-    for I := 0 to FRegistered.Count - 1 do
-      if (FRegistered.ValueFromIndex[I] <> '') and (Result.FCustom.IndexOfName(FRegistered.Names[I]) < 0) then
-        Result.FCustom.Add(FRegistered[I]);
-    { and their own var()s }
-    for I := Result.FCustom.Count - 1 downto 0 do
-      if Pos('var(', LowerCase(Result.FCustom.ValueFromIndex[I])) > 0 then
-      begin
-        if SubstituteOK(Result.FCustom.ValueFromIndex[I], Result.FCustom, 0, V) then
-          Result.FCustom[I] := Result.FCustom.Names[I] + '=' + V
-        else Result.FCustom[I] := Result.FCustom.Names[I] + '=initial';
-      end;
   end;
   { the specified values, var() done and shorthands that waited taken apart }
   Parts := nil;
@@ -3980,12 +4048,12 @@ begin
     Result.FValues[I] := V;
   end;
   { font size first: ems everywhere else are of it }
-  if AParent <> nil then ParentFont := AParent.FontSize else ParentFont := 16;
-  if AParent <> nil then Result.RootFontSize := AParent.RootFontSize else Result.RootFontSize := 16;
+  if AParent <> nil then ParentFont := AParent.FontSize else ParentFont := MediumFont;
+  if AParent <> nil then Result.RootFontSize := AParent.RootFontSize else Result.RootFontSize := MediumFont;
   V := LowTrim(Result.FValues[PFontSize]);
   F := ParentFont;
   if (V = '') or (V = 'inherit') or (V = 'unset') or (V = 'revert') then F := ParentFont
-  else if V = 'initial' then F := 16
+  else if V = 'initial' then F := MediumFont
   else if V = 'smaller' then F := ParentFont / 1.2
   else if V = 'larger' then F := ParentFont * 1.2
   else
@@ -3993,7 +4061,7 @@ begin
     K := -1;
     for I := 0 to High(FontSizeKeywords) do
       if FontSizeKeywords[I].N = V then K := I;
-    if K >= 0 then F := FontSizeKeywords[K].Px
+    if K >= 0 then F := FontSizeKeywords[K].Px * MediumFont / 16
     else
     begin
       Ctx.Font := ParentFont; Ctx.Root := Result.RootFontSize; Ctx.Percent := ParentFont;
@@ -4149,7 +4217,7 @@ begin
   Shared := FShare.Items[Key];
   if Shared <> nil then Exit(TInkStyle(Shared));
   SetLength(Spec, PropCount);
-  Custom := TStringList.Create;
+  Custom := NewCustomList;
   try
     InlineDecls := nil;
     if Inline_ <> '' then InlineDecls := ParseDecls(Inline_, '');
@@ -4232,7 +4300,7 @@ end;
 
 function TInkStyler.PseudoStyleOf(N: TInkNode; const APseudo: string): TInkStyle;
 var M: TMatcher; I, K, Count: Integer; Ref: TRef; Matched: TMatchedArray; Ok: Boolean;
-  Spec: array of string; Custom: TStringList;
+  Spec: array of string; Custom: TStringList; Key: string; Shared: TObject;
 begin
   Result := nil;
   if (N = nil) or (N.Info = nil) then Exit;
@@ -4251,8 +4319,13 @@ begin
   end;
   if Count = 0 then Exit;
   SortMatched(Matched, Count);
+  { the same rules under the same element style compute the same }
+  Key := APseudo + '|' + HexStr(PtrUInt(StyleOf(N)), 16) + '|';
+  for I := 0 to Count - 1 do Key := Key + IntToStr(Matched[I].Rule.Order) + ',';
+  Shared := FShare.Items[Key];
+  if Shared <> nil then Exit(TInkStyle(Shared));
   SetLength(Spec, PropCount);
-  Custom := TStringList.Create;
+  Custom := NewCustomList;
   try
     for I := 0 to Count - 1 do
       if Matched[I].Rule.Origin = isoUserAgent then Apply(Spec, Custom, Matched[I].Rule.Decls, False);
@@ -4264,6 +4337,7 @@ begin
     Result := Resolve(Spec, Custom, StyleOf(N), False);
   finally Custom.Free end;
   FStyles.Add(Result);
+  FShare.Add(Key, Result);
 end;
 
 initialization

@@ -63,6 +63,9 @@ type
       not wrap: a badge is one thing. }
     PillPadH, PillPadV, PillRadius: Integer;
     PillBorder: TColor;
+    { the run's own line height in pixels: nought takes the options' one,
+      -1 is the font's own (CSS's normal) }
+    LineHeight: Integer;
   end;
 
   TInkRenderRun = record
@@ -76,7 +79,8 @@ type
     Part: Integer;
     IsImage: Boolean;
     ImageIndex: Integer;
-    { 0 none, 1 an empty checkbox, 2 a checked one - drawn, not a glyph }
+    { 0 none, 1 an empty checkbox, 2 a checked one - drawn, not a glyph -
+      3 an empty space ImageIndex pixels wide }
     Check: Byte;
     Control: Byte; { 0=text, 1=table, 2=row, 3=cell, 4/5/6=closes, 7=rule, 8=cell box, 9=vertical gap }
     Meta: string; { serialized attributes on structural runs }
@@ -116,6 +120,8 @@ type
     Borders: TRect;
     LinkColor, LinkBackColor: TColor;
     LinkUnderline: Boolean;
+    LinkKeepsColor: Boolean;
+    CSSLines: Boolean;
     HoverIndex: Integer;
     HoverColor, HoverBackColor: TColor;
     HoverUnderline: Boolean;
@@ -651,12 +657,15 @@ begin
   inherited Destroy;
 end;
 
+{ FNV-1a, which wraps round on purpose }
+{$push}{$R-}{$Q-}
 function TInkRenderer.HashSource(const S: string): Cardinal;
 var I: Integer;
 begin
   Result := 2166136261;
   for I := 1 to Length(S) do Result := (Result xor Ord(S[I])) * 16777619;
 end;
+{$pop}
 
 function TInkRenderer.IsKnownTag(const N: string): Boolean;
 begin
@@ -665,7 +674,7 @@ begin
     (N = 'br') or (N = 'hr') or (N = 'p') or (N = 'center') or
     (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'img') or
     (N = 'table') or (N = 'tr') or (N = 'td') or (N = 'th') or
-    (N = 'vgap') or (N = 'checkbox');
+    (N = 'vgap') or (N = 'checkbox') or (N = 'sp');
 end;
 
 function TInkRenderer.IsStyleTag(const N: string): Boolean;
@@ -784,7 +793,7 @@ begin
   Result.LinkIndex := 0; Result.LinkName := '';
   Result.Align := naLeft; Result.Indent := 0;
   Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
-  Result.PillBorder := clNone;
+  Result.PillBorder := clNone; Result.LineHeight := 0;
 end;
 
 function TInkRenderer.StyleFor(const Stack: array of TInkRenderStyle): TInkRenderStyle;
@@ -800,7 +809,7 @@ begin
   Result.Styles := []; Result.Script := nsNormal; Result.LinkIndex := 0;
   Result.LinkName := ''; Result.Indent := 0;
   Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
-  Result.PillBorder := clNone;
+  Result.PillBorder := clNone; Result.LineHeight := 0;
   for I := 0 to High(Stack) do
   begin
     if Stack[I].Face <> '' then Result.Face := Stack[I].Face;
@@ -812,6 +821,7 @@ begin
     if Stack[I].LinkIndex > 0 then begin Result.LinkIndex := Stack[I].LinkIndex; Result.LinkName := Stack[I].LinkName end;
     if Stack[I].Align <> naLeft then Result.Align := Stack[I].Align;
     if Stack[I].Indent <> 0 then Result.Indent := Stack[I].Indent;
+    if Stack[I].LineHeight <> 0 then Result.LineHeight := Stack[I].LineHeight;
     { a pill is one unit: the innermost pill replaces any outer one }
     if (Stack[I].PillPadH<>0) or (Stack[I].PillPadV<>0) or
       (Stack[I].PillRadius<>0) or (Stack[I].PillBorder<>clNone) then
@@ -916,10 +926,22 @@ begin
             N := StrToIntDef(InkRenderAttr(T.Attributes,'radius'),0);
             if N>0 then S.PillRadius := InkRenderScalePx(N,Options.Scale);
             S.PillBorder := InkRenderColor(InkRenderAttr(T.Attributes,'pillborder'),S.PillBorder);
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'lineheight'),0);
+            if N<>0 then S.LineHeight := N;
           end
           else if T.Name='a' then begin Inc(FNextLink); S.LinkIndex := FNextLink; S.LinkName := InkRenderAttr(T.Attributes,'href') end
           else if T.Name='img' then begin AddStyledText(#1,S,Part); N := Length(FStyled)-1; FStyled[N].IsImage := True; FStyled[N].ImageIndex := StrToIntDef(InkRenderAttr(T.Attributes,'src'),-1) end
           else if T.Name='checkbox' then begin AddStyledText(#1,S,Part); N := Length(FStyled)-1; if InkRenderAttr(T.Attributes,'checked')<>'' then FStyled[N].Check := 2 else FStyled[N].Check := 1 end
+          else if T.Name='sp' then
+          begin
+            { room of a given width and nothing in it: an inline box's margin }
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'w'),0);
+            if N>0 then
+            begin
+              AddStyledText(#1,S,Part); N := InkRenderScalePx(N,Options.Scale);
+              FStyled[High(FStyled)].Check := 3; FStyled[High(FStyled)].ImageIndex := N;
+            end;
+          end
           else if T.Name='table' then AddControl(1,T.Attributes.Text)
           else if T.Name='tr' then AddControl(2,T.Attributes.Text)
           else if (T.Name='td') or (T.Name='th') then
@@ -1016,28 +1038,30 @@ end;
 
 function TInkRenderer.Metrics(const Canvas: TCanvas; const Run: TInkRenderRun;
   out AAscent, ADescent: Integer): Integer;
-var Key: string; N, Big, Asc10, Desc10: Integer; Old: TFont; TM: TTextMetric;
+var Key: string; N, Big, Asc10, Desc10, LH: Integer; Old: TFont; TM: TTextMetric;
   { what this call worked out, for the next run to answer from }
   procedure Remember;
   begin
     FMetFace := Run.Style.Face; FMetSize := Run.Style.Size;
     FMetBits := InkRenderStyleBits(Run.Style.Styles);
-    FMetScript := Integer(Run.Style.Script); FMetLine := FOpt.LineHeight;
+    FMetScript := Integer(Run.Style.Script); FMetLine := LH;
     FMetHeight := Result; FMetAscent := AAscent;
   end;
 begin
+  LH := Run.Style.LineHeight;
+  if LH=0 then LH := FOpt.LineHeight else if LH<0 then LH := 0;
   { the run before this one nearly always wore the same style: answering
     from that costs a few comparisons instead of a key and a search }
   if (Run.Style.Size=FMetSize) and (Run.Style.Face=FMetFace) and
     (InkRenderStyleBits(Run.Style.Styles)=FMetBits) and
-    (Integer(Run.Style.Script)=FMetScript) and (FOpt.LineHeight=FMetLine) and
+    (Integer(Run.Style.Script)=FMetScript) and (LH=FMetLine) and
     (FMetHeight>0) then
   begin
     Result := FMetHeight; AAscent := FMetAscent;
     ADescent := Max(0,Result-AAscent);
     Exit;
   end;
-  Key := StyleKey(Run.Style)+IntToStr(FOpt.LineHeight);
+  Key := StyleKey(Run.Style)+IntToStr(LH);
   { the height and the ascent packed into the key's own pointer: both fit
     in sixteen bits many times over, and a hit then costs no parsing }
   if FMetricKeys.Find(Key,N) then
@@ -1087,10 +1111,10 @@ begin
   end;
   { line-height: the page asked for a line of its own height, so the room
     it added goes half above the text and half below it }
-  if FOpt.LineHeight>0 then
+  if LH>0 then
   begin
-    AAscent := Max(1,AAscent+(FOpt.LineHeight-Result) div 2);
-    Result := Max(1,FOpt.LineHeight);
+    AAscent := Max(1,AAscent+(LH-Result) div 2);
+    Result := Max(1,LH);
     ADescent := Max(0,Result-AAscent);
   end;
   FMetricKeys.AddObject(Key,
@@ -1849,7 +1873,7 @@ end;
 
 function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
-var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
+var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc,StrutAsc,StrutDesc: Integer;
   R: TInkRenderRun; Sz, ImgSz: TSize; Text,Atom: string; Start,Bytes: Integer;
   CanBreak, Pill, CutLine: Boolean;
   EllRun: TInkRenderRun; EllSz: TSize; EllText: string; Limit, EK: Integer;
@@ -1859,13 +1883,19 @@ var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
     descent, which is what makes a heading and small text sit together. }
   procedure AlignBaselines(First, Count: Integer; var ALineH: Integer;
     out ABaseline: Integer);
-  var K, Asc, Desc, Shift, H: Integer;
+  var K, Asc, Desc, Shift, H, Pad: Integer;
   begin
     Asc := 0; Desc := 0;
+    { the block's own font is on every line, whatever the line holds }
+    if FOpt.CSSLines then begin Asc := StrutAsc; Desc := StrutDesc end;
     for K := First to First+Count-1 do
     begin
-      Asc := Max(Asc,FLayout.FRuns[K].Ascent);
-      Desc := Max(Desc,FLayout.FRuns[K].Descent);
+      { a pill's padding reaches past the line rather than growing it, as
+        an inline box's does in CSS }
+      Pad := 0;
+      if FOpt.CSSLines then Pad := FLayout.FRuns[K].Style.PillPadV;
+      Asc := Max(Asc,FLayout.FRuns[K].Ascent-Pad);
+      Desc := Max(Desc,FLayout.FRuns[K].Descent-Pad);
     end;
     if Asc+Desc>ALineH then ALineH := Asc+Desc;
     ABaseline := Y+Asc;
@@ -1895,6 +1925,16 @@ var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc: Integer;
           InkRenderScalePx(FOpt.LineSpacing,FOpt.Scale));
       Exit;
     end;
+    { spaces that end a line hang past it: they take no room, so they are
+      neither underlined nor counted when the line is centered }
+    if FOpt.CSSLines then
+      for K:=First+Count-1 downto First do
+      begin
+        if (FLayout.FRuns[K].Text='') or (Trim(FLayout.FRuns[K].Text)<>'') or
+          FLayout.FRuns[K].IsImage or (FLayout.FRuns[K].Check>0) then Break;
+        Dec(X,FLayout.FRuns[K].Bounds.Right-FLayout.FRuns[K].Bounds.Left);
+        FLayout.FRuns[K].Bounds.Right:=FLayout.FRuns[K].Bounds.Left;
+      end;
     AlignBaselines(First,Count,MaxLineH,Base); L.Baseline := Base; L.Bounds:=Rect(0,Y,Avail,Y+MaxLineH); L.FirstRun:=First; L.RunCount:=Count; L.Align:=FLayout.FRuns[First].Style.Align; L.Part:=FLayout.FRuns[First].Part;
     if L.Align=naCenter then Shift:=(Avail-(X-FOpt.Borders.Left)) div 2 else if L.Align=naRight then Shift:=Avail-(X-FOpt.Borders.Left) else Shift:=0;
     for K:=First to First+Count-1 do begin Inc(FLayout.FRuns[K].Bounds.Left,Shift); Inc(FLayout.FRuns[K].Bounds.Right,Shift); FLayout.FRuns[K].Line:=Line end;
@@ -1911,13 +1951,24 @@ begin
     canvas font's TextHeight put a floor under every line that the platform
     had already rounded up, which is a pixel a line a browser does not spend }
   Line:=Length(FLayout.FLines); MaxLineH:=0;
+  StrutAsc:=0; StrutDesc:=0;
+  if FOpt.CSSLines then
+  begin
+    R.Style:=BaseStyle(FOpt); R.Text:='';
+    Metrics(Canvas,R,StrutAsc,StrutDesc);
+  end;
   I := ABox.Tag;
   while (I<=ABox.TagEnd) and (I<=High(FStyled)) do
   begin
     R:=FStyled[I];
     if R.Control<>0 then begin Inc(I); Continue end;
     ImgSz:=Types.Size(0,0);
-    if R.Check>0 then
+    if R.Check=3 then
+    begin
+      ImgSz:=Types.Size(R.ImageIndex,0);
+      Text:=#1;
+    end
+    else if R.Check>0 then
     begin
       { a checkbox is Chromium's: a fixed 13px square whatever the font }
       ImgSz:=Types.Size(InkRenderScalePx(13,FOpt.Scale),InkRenderScalePx(13,FOpt.Scale));
@@ -2005,6 +2056,7 @@ begin
         { a picture sits on the baseline, as one does in a browser }
         RunAsc:=Max(1,Sz.cy); RunDesc:=0;
       end
+      else if R.Check=3 then begin RunAsc:=0; RunDesc:=0 end
       else if R.Check>0 then
       begin
         { a checkbox hangs a little below it, as Chromium's does }
@@ -2017,10 +2069,12 @@ begin
       { a provisional place; AlignBaselines settles it when the line ends }
       if Pill then R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy+2*R.Style.PillPadV)
       else R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
-      SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W); MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
+      SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W);
+      if Pill and FOpt.CSSLines then MaxLineH:=Max(MaxLineH,RunAsc+RunDesc-2*R.Style.PillPadV)
+      else MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
       { where the next break may fall: after whitespace, or after a CJK
         character, which needs no space to break beside }
-      CanBreak := (Atom[1]=' ') or (Atom[1]=#9) or R.IsImage or (R.Check>0);
+      CanBreak := (Atom[1]=' ') or (Atom[1]=#9) or R.IsImage or (R.Check in [1,2]);
       if not CanBreak then
       begin
         Bytes := 1; Start := Length(Atom);
@@ -2173,7 +2227,7 @@ var I,J,DX,DY,Pass,TextY,CheckRad,CheckW: Integer; L: TInkRenderLine; R: TInkRen
     AColor:=ARun.Style.Color; ABack:=ARun.Style.BackColor;
     if ARun.Style.LinkIndex>0 then
     begin
-      AColor:=Options.LinkColor;
+      if not Options.LinkKeepsColor then AColor:=Options.LinkColor;
       if ARun.Style.LinkIndex=Options.HoverIndex then
       begin AColor:=Options.HoverColor; ABack:=Options.HoverBackColor end;
     end;
@@ -2266,6 +2320,8 @@ begin
           if (R.Style.PillPadH>0) or (R.Style.PillPadV>0) or
             (R.Style.PillRadius>0) or (R.Style.PillBorder<>clNone) then
           begin
+            { padding alone is room, with nothing to paint }
+            if (BG=clNone) and (R.Style.PillBorder=clNone) then Continue;
             if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG end
             else Canvas.Brush.Style:=bsClear;
             if R.Style.PillBorder<>clNone then Canvas.Pen.Color:=R.Style.PillBorder
@@ -2315,6 +2371,7 @@ begin
           - the font's whole cell - whenever the brush is solid }
         Canvas.Brush.Style:=bsClear;
         if R.Control=7 then begin Canvas.Pen.Color:=C; Canvas.Line(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Top); Continue end;
+        if R.Check=3 then Continue;
         if R.Check>0 then
         begin
           { Chromium's checkbox: a 13px rounded square, its blue behind a
@@ -2352,7 +2409,7 @@ begin
         end;
         if R.IsImage and (Options.Images<>nil) and (R.ImageIndex>=0) and (R.ImageIndex<Options.Images.Count) then
           Options.Images.Draw(Canvas,DrawRect.Left,DrawRect.Top,R.ImageIndex)
-        else if not R.IsImage then
+        else if not R.IsImage and ((R.Bounds.Right>R.Bounds.Left) or (Trim(R.Text)<>'')) then
         begin
           { on its baseline, not by the top of its cell.  The ascent a run
             was laid out with leaves out the font's internal leading; TextOut

@@ -343,7 +343,7 @@ begin
   Is_('#td', 'padding-top', '5px');
   Is_('#td', 'border-left-style', 'inset');
   ColorIs('#td', 'background-color', Opaque or $0000FF);
-  Is_('#td', 'text-align', 'right');
+  Is_('#td', 'text-align', '-webkit-right');
   Is_('#td', 'vertical-align', 'top');
   Is_('#td', 'white-space', 'nowrap');
   Is_('#td', 'width', '40px');
@@ -351,7 +351,7 @@ begin
   Is_('#f', 'font-size', '24px');
   Is_('#g', 'font-size', '18px');
   Is_('#f', 'font-family', 'Arial');
-  Is_('#p', 'text-align', 'center');
+  Is_('#p', 'text-align', '-webkit-center');
   Is_('#i', 'width', '100px'); Is_('#i', 'height', '50px');
   Is_('#i', 'float', 'left'); Is_('#i', 'display', 'block');
   Is_('#h', 'height', '4px');
@@ -402,6 +402,23 @@ begin
   ColorIs('#t', 'color', Opaque or $FF0000);
 end;
 
+{ a styler used again after Clear: the browser's own @media rules still
+  work - once they pointed at conditions Clear had thrown away }
+procedure ClearChecks;
+var D: TInkDocument; S: TInkStyler;
+begin
+  D := InkParseHTML('<p id=p>x');
+  S := TInkStyler.Create;
+  try
+    S.AddSheet('p { color: red } @media (min-width: 1px) { p { color: blue } }');
+    S.Compute(D);
+    S.Clear;
+    S.AddSheet('p { color: green }');
+    S.Compute(D);
+    Check(S.StyleOf(InkQuerySelector(D, '#p')).Color('color') = Opaque or $008000, 'styled again after Clear');
+  finally S.Free; D.Free end;
+end;
+
 procedure SharingAndSpeedChecks;
 var S: string; I: Integer; T: TDateTime; Ms: Int64; N: TInkNodeArray;
 begin
@@ -438,6 +455,7 @@ begin
   HintChecks;
   ColorChecks;
   PseudoChecks;
+  ClearChecks;
   SharingAndSpeedChecks;
   FreeAndNil(Styler); FreeAndNil(Doc);
   WriteLn(Checks, ' style checks, ', Failures, ' failed.');

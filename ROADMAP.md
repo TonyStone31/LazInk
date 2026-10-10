@@ -141,15 +141,21 @@ The direction in section 1, step by step:
 * [x] **1. The document tree** - done 9 October 2026 (`inkdom.pas`).
 * [x] **2. Computed styles** - done 9 October 2026 (`inkstyle.pas`),
   measured against a real browser with `tools/style_compare.sh`.
-* [ ] **3. Layout from the tree - next.**  Real nested boxes - margins,
-  padding, borders, backgrounds - built from the computed styles; block and
-  inline formatting, margin collapsing, then tables, floats, positioning,
-  flex and grid.  The plan: build it beside the block reader and switch
-  pages over once it matches the Heckers Sketch manual and the comparison
-  pages, so nothing goes backwards on the way.  It is also where page
-  loading is slow now: the long comparison page takes 48 ms to read and
-  64 ms to lay out, where Chromium does both in 25.  Fixes 3 G's "nested
-  block boxes flatten" for good.
+* [x] **3. Layout from the tree** - done 9 October 2026 (`inklayout.pas`,
+  `inkpagetree.inc`), behind `TreeLayout`.  Nested boxes from the computed
+  styles: margin collapsing, floats, shrink-to-fit, flex, grid (named
+  areas, `minmax()`, `repeat(auto-fill)`), tables (auto layout, spans,
+  `<center>`), absolute, fixed and relative positioning, `::before` and
+  `::after` as boxes, `visibility` and `opacity: 0`.  The words in each box
+  still go through the inline renderer, so selection, find, copy, links
+  and code headers work as before.  The Heckers Sketch manual keeps every
+  piece of its text and comes out within about 1% of Brave's height page
+  by page (the rest is the font); Wikipedia, MDN, Hacker News and Tailwind
+  lay out in their browser columns.  Next: make it the only layout and
+  delete the block reader.  Still approximate: words do not flow line by
+  line round a float, an inline picture is a block of its own, `fixed`
+  does not stay put when scrolling, background pictures and masks are not
+  drawn (a gradient is its first color), no `box-shadow`.
 * [ ] **4. Paint and hit-testing from the boxes**, laying out and painting
   only what is on screen.
 * [ ] **5. Resources through the host** - partly there (`OnResource`);
@@ -168,6 +174,15 @@ Left over from steps 1 and 2, when they get in the way:
   `lch()` and the logical border properties: a saved Tailwind 4 page went
   from 86.6% to all but two values (the headless browser's `pointer`).
   Still: **`@container`** queries are skipped; **`@font-face`** is not read.
+* **A write after free in LCL's font cache under GTK3.**  Found with
+  heaptrc (`-gh`, `HEAPTRC=keepreleased`) running `tests/run.sh` with the
+  manual's page list: a `TFontHandleCacheDescriptor` freed when
+  `BlockFont` changes the canvas font gets its `Next` set to nil later.
+  Classic layout does it too; with `INK_TREE=1` the heap falls so that it
+  crashes in `TResourceCacheDescriptor.Destroy`.  The likely cause is in
+  LCL: the cache finds fonts by handle, a GTK3 handle is an object's
+  address, and a freed one can come back for a different font.  Not
+  reproduced outside the full test run yet.
 * **Parser corners**: the 2025 `<select>` content rules, NUL bytes, some
   `<template>` edge cases (78 of html5lib's 1784 cases).
 * **Parser speed** - tag names are numbers now (9 October 2026): 1.7 MB

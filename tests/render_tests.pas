@@ -4027,6 +4027,67 @@ begin
   Check(Pos('⅞ ↩ ≂̸',Probe.PlainText)>0,'every character the standard names');
 end;
 
+{ the page laid out from the document tree: boxes from CSS, and the same
+  links, find, selection and folds as the classic reader }
+procedure TreeLayoutChecks;
+var I, A, B, Current: Integer; R: TRect; Doc: string;
+begin
+  Probe.TreeLayout := True;
+  try
+    Doc := '<style>body{margin:0;font:15px/1.6 sans-serif} .row{display:flex;gap:10px}' +
+      '.card{flex:1;padding:8px;border:1px solid #ccc} .note::before{content:"Note: "}' +
+      '.menu{visibility:hidden} .gone{opacity:0}</style>' +
+      '<div class=row><div class=card id=a>first card</div><div class=card id=b>second card ' +
+      '<a href="https://example.com/x">a link</a></div></div>' +
+      '<p class=note>this is the needle</p><p class=menu>hidden needle</p><p class=gone>faded needle</p>' +
+      '<details><summary>More</summary><p>folded needle</p></details>' +
+      '<pre><code class="language-pascal">begin end;</code></pre>';
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(0);
+    Check(Probe.TreeLayout, 'the tree layout is on');
+    A := -1; B := -1;
+    for I := 0 to Probe.BlockCount - 1 do
+    begin
+      if Pos('first card', Probe.Block(I).Source) > 0 then A := I;
+      if Pos('second card', Probe.Block(I).Source) > 0 then B := I;
+    end;
+    Check((A >= 0) and (B >= 0), 'both cards have their words');
+    if (A >= 0) and (B >= 0) then
+    begin
+      Check((Probe.Block(A).Bounds.Top = Probe.Block(B).Bounds.Top) and
+        (Probe.Block(B).Bounds.Left > Probe.Block(A).Bounds.Right),
+        'flex items side by side');
+      R := Probe.Block(B).TextBounds;
+      Probe.ScrollTo(0);
+      Current := 0;
+      for I := R.Left to R.Right do
+        if Probe.LinkAt(I, (R.Top + R.Bottom) div 2) <> '' then begin Current := I; Break end;
+      Check((Current > 0) and (Probe.LinkAt(Current + 2, (R.Top + R.Bottom) div 2) = 'https://example.com/x'),
+        'a link in a flex item is hit where it is drawn');
+    end;
+    Check(Pos('Note: this is the needle', Probe.PlainText) > 0, 'a ::before is in the words');
+    Check((Pos('hidden needle', Probe.PlainText) = 0) and (Pos('faded needle', Probe.PlainText) = 0),
+      'hidden and see-through words are left out');
+    Check(Probe.FindCount('needle', [], Current) = 1, 'find sees only what is shown');
+    Check(Probe.Find('needle') and (Probe.SelectedText = 'needle'), 'and selects it');
+    for I := 0 to Probe.BlockCount - 1 do
+      if Pos('More', Probe.Block(I).Source) > 0 then A := I;
+    Check(not Probe.FoldOpen(A) and (Pos('folded needle', Probe.PlainText) = 0), 'a shut <details> shows its summary');
+    Probe.ToggleFold(A);
+    Check(Pos('folded needle', Probe.PlainText) > 0, 'and opens');
+    B := -1;
+    for I := 0 to Probe.BlockCount - 1 do
+      if Probe.Block(I).Code <> '' then B := I;
+    Check((B >= 0) and (Probe.Block(B).CodeHead > 0) and (Probe.Block(B).CodeLanguage = 'pascal'),
+      'a code block keeps its header and language');
+    { <center> lines up the table inside it }
+    Probe.LoadHTML('<style>body{margin:0}</style><center><table width="50%"><tr><td>centred</td></tr></table></center>');
+    Check(Probe.Block(0).Bounds.Left > 50, Format('a table in <center> is centred (%d)', [Probe.Block(0).Bounds.Left]));
+  finally
+    Probe.TreeLayout := False;
+  end;
+end;
+
 procedure OldSchoolChecks;
 var BM: TBitmap; O: THTMLOptions; Five, One, Plus, Twelve, Plain: TSize;
   X, Y, MinX, MaxX, MinY, MaxY: Integer;
@@ -4322,6 +4383,7 @@ begin
     SelectionBChecks;
     OldSchoolChecks;
     DocumentTreeChecks;
+    TreeLayoutChecks;
 
     { --- CSS for the scrollbar, and the var() it may be written with --- }
     CSS := TInkStyleSheet.Create;
@@ -4433,6 +4495,8 @@ begin
       Files := TStringList.Create; Images := 0; Wanted := 0;
       try
         Files.LoadFromFile(ParamStr(1));
+        { INK_TREE=1 lays the pages out from the document tree }
+        Page.TreeLayout := GetEnvironmentVariable('INK_TREE') = '1';
         for I := 0 to Files.Count-1 do
         begin
           Page.LoadFromFile(Files[I]); Page.Repaint;
