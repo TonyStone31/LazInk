@@ -413,7 +413,7 @@ table editing tools.  Very long unbroken words can overflow a cell, and very
 narrow controls may not fit the minimum cell padding.  Use `TInkPage` for a
 full document with headings, lists and code blocks.
 
-The demo's **Markdown editor** tab shows a live preview of what you type.
+The demo's **Markdown source** tab shows a live preview of what you type.
 Renderer tests run on Linux x86-64 with a display available:
 
 ```sh
@@ -438,14 +438,14 @@ answers the page's `@media (prefers-color-scheme)` queries through
 
 ![The Documents tab](../images/demo-documents.png)
 
-**Markdown editor** is the source and its live preview side by side, and opens
+**Markdown source** is the source and its live preview side by side, and opens
 this guide when the demo starts. It opens and saves files; the other tabs
 only show what the controls can do.  The source pane is a `TInkCodeMemo`
 colored by the demo itself through `OnGetCharAttrs` - headings, markers,
 code spans, quotes and table pipes each in their own color, LazInk's own
 machinery and no SynEdit anywhere.
 
-![The Markdown editor tab](../images/demo-markdown.png)
+![The Markdown source tab](../images/demo-markdown.png)
 
 **WYSIWYG editor** opens on a document **loaded from Markdown** and edited
 as the thing itself - a heading, a table (Tab hops cells, Enter adds rows),

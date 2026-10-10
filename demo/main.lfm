@@ -198,7 +198,7 @@ object frmMain: TfrmMain
       end
     end
     object tabMarkdown: TTabSheet
-      Caption = 'Markdown editor'
+      Caption = 'Markdown source'
       ClientHeight = 698
       ClientWidth = 1138
       object pnlMdTools: TPanel
@@ -260,6 +260,16 @@ object frmMain: TfrmMain
           LinkHoverStyle.Color = clBlue
           LinkHoverStyle.BackColor = clNone
           LinkHoverStyle.Underline = True
+          AutoSize = True
+          ParentColor = False
+        end
+        object lblMdWho: TInkLabel
+          Left = 660
+          Height = 18
+          Top = 12
+          Width = 420
+          Caption = '<font color="#7F8C8D">You edit the <b>source</b>; the preview follows. The WYSIWYG tab edits the page.</font>'
+          SuperSubScriptRatio = 0.7
           AutoSize = True
           ParentColor = False
         end
@@ -783,6 +793,8 @@ object frmMain: TfrmMain
               Caption = 'Markdown'
               TabOrder = 1
               OnChange = chkSrcMarkdownChange
+            Checked = True
+            State = cbChecked
             end
           end
           object memSource: TMemo

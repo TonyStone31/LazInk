@@ -155,6 +155,7 @@ type
     cbDocScheme: TComboBox;
     chkMdRawHTML: TCheckBox;
     lblMdFile: TInkLabel;
+    lblMdWho: TInkLabel;
     memMarkdown: TInkCodeMemo;
     splMarkdown: TSplitter;
     pageMdPreview: TInkPage;
@@ -383,9 +384,11 @@ begin
   MdRecolor;
   { the WYSIWYG editor opens on Markdown, edited as the thing itself }
   reMain.LoadMarkdown(
-    '# A Markdown editor' + LineEnding + LineEnding +
-    'This document was **loaded from Markdown** and is edited as what it ' +
-    'is - not as source. The toolbar''s *H1 H2* ' + #$E2#$80#$A2 + ' *1.* ' + #$E2#$80#$9D +
+    '# The WYSIWYG editor' + LineEnding + LineEnding +
+    'Here you edit the **page itself** - click into this text and type. ' +
+    'The *Markdown source* tab next door is the other way round: there ' +
+    'you type source and watch a preview. The toolbar''s *H1 H2* ' +
+    #$E2#$80#$A2 + ' *1.* ' + #$E2#$80#$9D +
     ' *{}* buttons change what a paragraph is, and **Table** inserts one:' + LineEnding + LineEnding +
     '| Control | Does |' + LineEnding +
     '| --- | --- |' + LineEnding +
@@ -393,8 +396,9 @@ begin
     '| **Enter** | another row; on an empty one, out |' + LineEnding + LineEnding +
     '- a bullet item - Enter continues the list' + LineEnding +
     '- an empty item ends it' + LineEnding + LineEnding +
-    '> The pane on the right shows the document as markup, or - tick ' +
-    '*Markdown* - as the Markdown it would be saved as.' + LineEnding + LineEnding +
+    '> The pane on the right is the **output**: the Markdown this document ' +
+    'would be saved as, kept up to date as you edit - and **Apply** reads ' +
+    'your edits to it back. Untick *Markdown* to see raw markup instead.' + LineEnding + LineEnding +
     '```' + LineEnding +
     'code lines keep their spacing' + LineEnding +
     '```');
@@ -403,6 +407,9 @@ begin
   chkStripesChange(chkStripes);
   cbSize.ItemIndex := 0;
   cbFace.ItemIndex := 0;
+  { the checkbox is set in the designer, but loading does not fire its
+    OnChange - say Markdown in the header from the start }
+  chkSrcMarkdownChange(nil);
   UpdateSource;
   UpdateToolbar;
   edtMarkupChange(edtMarkup);
@@ -801,7 +808,7 @@ end;
 procedure TfrmMain.chkSrcMarkdownChange(Sender: TObject);
 begin
   if chkSrcMarkdown.Checked then
-    lblSourceHdr.Caption := '<b>Markdown</b> <font color="#7F8C8D">— AsMarkdown, and Apply reads it back</font>'
+    lblSourceHdr.Caption := '<b>Markdown</b> <font color="#7F8C8D">— Apply reads it back</font>'
   else
     lblSourceHdr.Caption := '<b>Markup</b> <font color="#7F8C8D">— one paragraph per line</font>';
   UpdateSource;
