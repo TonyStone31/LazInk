@@ -120,7 +120,7 @@ page, not new controls.
 
 | Control | What it does now | Missing |
 |---|---|---|
-| `TInkLabel` | inline markup, HTML or Markdown, copy menu, character selection | links out of a finger's reach on GTK3 |
+| `TInkLabel` | inline markup, HTML or Markdown, copy menu, opt-in character selection | links out of a finger's reach on GTK3 |
 | `TInkMemo` | page-engine lines, selection, copy menu, find, touch, `ScrollBars` | wrap measures a line without its images |
 | `TInkListBox` | markup items, in-place editor, copy menu, character selection in an item | - |
 | `TInkPage` | whole HTML/Markdown documents laid out from the tree with computed CSS: blocks, floats, flex, grid, tables, positioning, PNG/GIF/WebP, links, history, media queries, mouse and keyboard selection, find, touch and flick, `ScrollBars` | hardware check of touch |
@@ -222,7 +222,10 @@ Sketch's next window finds.
 
 Done, 8 October 2026.  A `TInkLabel` selects like a page: a drag takes
 characters, a double click a word, a triple click everything, and the copy
-menu grew Copy and Select all; a click still follows a link.  A
+menu grew Copy and Select all; a click still follows a link.  (10 October:
+behind a published `Selectable`, off by default - Tony found a caption
+that highlights on a double click surprising, and he is right; a label
+should act like a label until asked.)  A
 `TInkListBox` selects characters with a drag that stays inside the pressed
 item's row - the moment it leaves the row it is an ordinary item drag
 again, so the held-button highlight and `emOnSelect` behave as they always

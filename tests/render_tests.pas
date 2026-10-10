@@ -586,6 +586,14 @@ begin
   ALabel.TextFormat := itfMarkdown;
   ALabel.Caption := '**hello** [there](http://x.org)';
   Check(ALabel.PlainText = 'hello there', 'label: a Markdown caption''s plain text: ' + ALabel.PlainText);
+  { out of the box the label does not select: its menu starts at Copy all }
+  Check(not ALabel.Selectable, 'label: not selectable by default');
+  Menu := ALabel.BuildCopyMenu(0, 0);
+  Check(Menu.Items[0].Caption = SInkCopyAll,
+    'label menu: Copy all leads while the label does not select');
+  Check(Menu.Items[Menu.Items.Count - 1].Caption <> SInkSelectAll,
+    'label menu: and Select all is not offered');
+  ALabel.Selectable := True;
   Menu := ALabel.BuildCopyMenu(0, 0);
   Check((Menu.Items[0].Caption = SInkCopy) and not Menu.Items[0].Enabled,
     'label menu: Copy leads, gray with nothing selected');
@@ -3819,9 +3827,18 @@ begin
   LB := TInkListBox.Create(F); LB.Parent := F; LB.SetBounds(0, 30, 400, 120);
   MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 160, 400, 150);
   try
-    { the label: a drag selects characters, styled text and all }
+    { the label: a drag selects characters, styled text and all - but only
+      once Selectable is on; a plain label ignores the mouse like any other }
     L.Caption := 'brave <b>new</b> world of <i>selectable</i> labels';
     Application.ProcessMessages;
+    TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 2, 8);
+    TLabelAccess(L).MouseMove([ssLeft], 90, 8);
+    TLabelAccess(L).MouseUp(mbLeft, [], 90, 8);
+    Check(not L.HasSelection, 'label: a drag selects nothing by default');
+    TLabelAccess(L).MouseDown(mbLeft, [ssLeft, ssDouble], 12, 8);
+    TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
+    Check(not L.HasSelection, 'label: nor does a double click');
+    L.Selectable := True;
     TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 2, 8);
     TLabelAccess(L).MouseMove([ssLeft], 90, 8);
     TLabelAccess(L).MouseUp(mbLeft, [], 90, 8);
@@ -3846,6 +3863,9 @@ begin
     Check(Found, 'label menu: and Select all is offered');
     L.ClearSelection;
     Check(not L.HasSelection, 'label: cleared');
+    L.SelectAll;
+    L.Selectable := False;
+    Check(not L.HasSelection, 'label: turning Selectable off lets go of the selection');
 
     { the list box: a drag inside one item selects its characters and stays
       clamped to that item; the item selection is untouched by the clamp }
