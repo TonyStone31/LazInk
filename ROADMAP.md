@@ -73,6 +73,21 @@ What that takes, roughly in order:
    sibling, attribute, `:first-child`, `:not`, `:hover`...), specificity,
    inheritance, `<link>`, `<style>`, `@import`, `@media`, CSS variables,
    and a computed style on every element.
+   **Done 9 October 2026** (`inkstyle.pas`, `inkua.inc`): selectors with
+   every combinator, `:nth-*` with `of`, `:is`/`:where`/`:not`/`:has`, the
+   cascade's origins and `!important`, presentational attributes, quirks
+   mode's rules, inheritance and the CSS-wide keywords, `var()` (empty
+   values and fallbacks as browsers do), shorthands and logical
+   properties, `calc()`/`min()`/`max()`/`clamp()`, `light-dark()`,
+   `color-mix()`, `oklch()`, `@media` levels 3 and 4, `@supports`,
+   `@import`, `@layer` and nesting.  Identical elements share one style:
+   a 15,000-cell table styles in 37 ms.  `tools/style_compare.sh` holds it
+   against a real browser's `getComputedStyle`; Wikipedia, MDN, Hacker
+   News and the manual agree in every value but one (shadow DOM).  The page
+   offers `ComputedStyle` and `ExplainStyle`; what it draws still comes
+   from the old reader until step 3.
+   Not yet: shadow DOM (`<template shadowrootmode>` and `:host`), `@layer`
+   ordering (layers are read in source order), `@container`, `@font-face`.
 3. **Layout from the tree**: block and inline formatting, margin
    collapsing, floats, inline-block, positioned elements, tables with
    automatic column widths, flex and grid, `overflow` that scrolls inside

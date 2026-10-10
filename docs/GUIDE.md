@@ -180,7 +180,20 @@ InkPage1.DocumentChanged;   // shown, scroll kept, N still valid
 ```
 
 `GetElementsByTagName`, `InnerHTML`, `OuterHTML`, `AppendChild`,
-`InsertBefore`, `Remove` and `Clone` are there too.  The parser needs no
+`InsertBefore`, `Remove` and `Clone` are there too, and `InkQuerySelector`
+/ `InkQuerySelectorAll` (unit `InkStyle`) take any CSS selector.
+
+**Computed styles:** `ComputedStyle(Node)` runs the cascade a browser runs
+(unit `InkStyle`) - the browser's own defaults, the page's old attributes
+(`bgcolor`, `<font>`, `cellpadding`), its `<style>` and `<link>` sheets with
+`@import`, `@media`, `@supports` and nesting, the host's `StyleSheet`, the
+`style` attribute and `!important`; inheritance, `var()`, shorthands,
+`calc()`, `light-dark()`, `color-mix()` and `oklch()`.  It answers in
+computed values: `Value('display')`, `Px('margin-top')`, `Color('color')`.
+`ExplainStyle(Node)` lists the rules that apply, weakest first, as a
+browser's inspector does.  Styles are worked out the first time one is
+asked for, so a program that never asks pays nothing.  What a page draws
+does not come from these yet - that is the layout step on the roadmap.  The parser needs no
 widgetset, so `InkParseHTML` works in a console program as well.  It never
 runs script: `<noscript>` is ordinary content.
 
@@ -534,7 +547,20 @@ tests/html5lib_check html5lib-tests/tree-construction      # add 20 to see failu
 ```
 
 1706 of their 1784 cases build the same tree (9 October 2026); most of the
-rest are the 2025 `<select>` rules and stray NUL bytes.  Given a file listing HTML pages and an
+rest are the 2025 `<select>` rules and stray NUL bytes.
+
+Computed styles are measured against a real browser's `getComputedStyle`,
+element by element, for 27 properties:
+
+```sh
+LAZARUS_DIR=... FPC=... tools/style_compare.sh page.html [more.html ...]
+SHOW=20 LAZARUS_DIR=... FPC=... tools/style_compare.sh page.html   # and the first 20 differences
+```
+
+On 9 October 2026, saved copies of a Wikipedia article (157,950 values), an
+MDN reference page (157,113), Hacker News, the FPC reference and every page
+of the Heckers Sketch manual agreed in every value but one - an element
+styled from inside its own shadow root, which LazInk does not do yet.  Given a file listing HTML pages and an
 output folder, it also loads and renders every page at several widths and
 checks every image decodes:
 

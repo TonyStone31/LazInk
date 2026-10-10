@@ -3,7 +3,7 @@ program RenderTests;
 uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
   InkRichEdit, InkCodeMemo,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
-  InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkDOM, InkCode, InkGIF,
+  InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkCSS, InkDOM, InkStyle, InkCode, InkGIF,
   InkWebP, WebP_Checks, Layout_Cache_Checks,
   LResources, LazInkReg,
   InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
@@ -3973,8 +3973,23 @@ end;
 { --- old-school HTML: the font size ladder and a table's width attribute --- }
 { every page is read through the tree a browser would build from it }
 procedure DocumentTreeChecks;
-var FileName: string; Bytes: TFileStream; Raw: RawByteString; N: TInkNode;
+var FileName: string; Bytes: TFileStream; Raw: RawByteString; N: TInkNode; Rules: TStringList;
 begin
+  { an element's computed style, from the page's own sheet }
+  Probe.LoadHTML('<style>p.x { color: #102030; margin-top: 2em }</style><p class=x id=s>styled</p>');
+  N := Probe.Document.GetElementById('s');
+  Check((Probe.ComputedStyle(N)<>nil) and (Probe.ComputedStyle(N).Color('color')=$FF302010),
+    'ComputedStyle reads the page''s sheet');
+  Check(Abs(Probe.ComputedStyle(N).Px('margin-top')-2*Probe.ComputedStyle(N).FontSize)<0.01,
+    'and works out its ems');
+  Rules := Probe.ExplainStyle(N);
+  try Check(Pos('p.x',Rules.Text)>0,'ExplainStyle lists the rule') finally Rules.Free end;
+  N.SetAttribute('class','');
+  Probe.DocumentChanged;
+  Check(Probe.ComputedStyle(N).Color('color')<>$FF302010,'a changed document is styled again');
+  N.Remove; N.Free;
+  Probe.DocumentChanged;
+  Check(Probe.ComputedStyle(Probe.Document.Body)<>nil,'and one that lost an element too');
   Probe.LoadHTML('<p><b>one<p>two');
   Check((Probe.BlockCount=2) and (Pos('<b>',Probe.Block(1).Source)>0),
     'bold left open when a paragraph closes is still bold in the next');

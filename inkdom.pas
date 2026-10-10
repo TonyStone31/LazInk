@@ -76,6 +76,10 @@ type
     { the next node in document order, staying inside ARoot when given }
     function NextInTree(ARoot: TInkNode = nil): TInkNode;
     function OuterHTML: string;
+  public
+    { Whatever a styler or a layout hangs on the node - InkStyle keeps an
+      element's computed style here.  The tree never reads or frees it. }
+    Info: Pointer;
     property Kind: TInkNodeKind read FKind;
     { an element's tag, lowercase for HTML; '#text', '#comment', the
       doctype's name, '#document' }
