@@ -3,8 +3,9 @@
   Documents opens on tour.md, a Markdown page about LazInk shown by
   TInkPage, which links on to the guide.  Markdown editor is the source
   and its live preview side by side, and opens the guide too.  Then the
-  WYSIWYG editor, the labels and edit boxes, the memo, the list box the
-  package grew out of, and the About tab.
+  WYSIWYG editor, the labels and edit boxes, the memo - with a small chat
+  made of AppendBlock and ReplaceLast - and the list box the package grew
+  out of.
 
   Everything here is built at design time. Open main.lfm in the Lazarus form
   designer and every control, panel and event handler is there to be pushed
@@ -115,6 +116,10 @@ type
     lblSection4: TInkLabel;
     lblMdDemo: TInkLabel;
     lblLabelCopy: TInkLabel;
+    chkHideChars: TCheckBox;
+    lblSection5: TInkLabel;
+    lblGrowHint: TInkLabel;
+    memQuestion: TInkCodeMemo;
 
     { ---- tab: memo ---- }
     tabMemo: TTabSheet;
@@ -127,6 +132,9 @@ type
     lblAppendHdr: TInkLabel;
     edtAppend: TInkEdit;
     btnAppend, btnMemoClear: TButton;
+    lblChatHdr, lblChatHint: TInkLabel;
+    btnChatMsg, btnChatStream: TButton;
+    tmrChat: TTimer;
 
     { ---- tab: documents ---- }
     tabDocuments: TTabSheet;
@@ -153,10 +161,6 @@ type
     tmrMarkdown: TTimer;
     dlgMdOpen: TOpenDialog;
     dlgMdSave: TSaveDialog;
-
-    { ---- tab: credits ---- }
-    tabCredits: TTabSheet;
-    memCredits: TInkMemo;
 
     dlgColor: TColorDialog;
     { status icons for <img src="n"> in the log listbox }
@@ -228,6 +232,10 @@ type
     { memo }
     procedure chkMemoWrapChange(Sender: TObject);
     procedure tbScaleChange(Sender: TObject);
+    procedure btnChatMsgClick(Sender: TObject);
+    procedure btnChatStreamClick(Sender: TObject);
+    procedure tmrChatTimer(Sender: TObject);
+    procedure chkHideCharsChange(Sender: TObject);
     procedure memLinkClick(Sender: TObject; LineIndex: Integer;
       const LinkName: string);
     procedure edtAppendChange(Sender: TObject);
@@ -246,6 +254,10 @@ type
       classifies whole lines once and the event just reads the map }
     FMdColor: array of TColor;
     FMdStyle: array of TFontStyles;
+    { the little chat: whose turn it is, and the answer still streaming in }
+    FChatTurn: Integer;
+    FStreamText: string;
+    FStreamPos: Integer;
     procedure MdRecolor;
     procedure UpdateSource;
     function TagMask(const S: string): TBytes;
@@ -285,6 +297,16 @@ var
   DC: HDC;
 begin
   ForceDirectories(ADir);
+  { the memo's picture shows the chat the buttons make: a question and
+    answer appended whole, and a streamed answer run to its end }
+  btnChatMsgClick(nil);
+  btnChatStreamClick(nil);
+  while tmrChat.Enabled do
+  begin
+    tmrChatTimer(nil);
+    Application.ProcessMessages;
+  end;
+  memCheat.ScrollTo(MaxInt);
   Shot := TBitmap.Create;
   Png := TPortableNetworkGraphic.Create;
   try
@@ -1079,11 +1101,92 @@ end;
 procedure TfrmMain.chkStripesChange(Sender: TObject);
 begin
   if chkStripes.Checked then
+  begin
     // derived from the listbox's own color rather than hard-coded, so the
-    // stripe stays readable whether the theme is light or dark
-    lstLog.AlternateColor := HTMLShadeColor(lstLog.Color, 5)
+    // stripe stays readable whether the theme is light or dark; clDefault
+    // resolves to black in ColorToRGB, which painted the stripes black
+    if lstLog.Color = clDefault then
+      lstLog.AlternateColor := HTMLShadeColor(ColorToRGB(clWindow), 5)
+    else
+      lstLog.AlternateColor := HTMLShadeColor(ColorToRGB(lstLog.Color), 5);
+  end
   else
     lstLog.AlternateColor := clNone;
+end;
+
+{ --- the little chat: whole messages, and an answer that streams --- }
+
+const
+  cChatQuestions: array[0..2] of string = (
+    'How do I show a **whole help page**?',
+    'Can a memo hold `code`?',
+    'What about a *table*?');
+  cChatAnswers: array[0..2] of string = (
+    'Load it into a **TInkPage**:' + LineEnding + LineEnding +
+      '```pascal' + LineEnding +
+      'InkPage1.LoadFromFile(''help/index.html'');' + LineEnding +
+      '```' + LineEnding + LineEnding +
+      'Headings, pictures, links - the whole document.',
+    'It can - a fenced block keeps its spacing and is colored:' + LineEnding +
+      LineEnding + '```pascal' + LineEnding + 'begin' + LineEnding +
+      '  WriteLn(''hello'');' + LineEnding + 'end.' + LineEnding + '```',
+    'Pipes make one:' + LineEnding + LineEnding +
+      '| Control | Does |' + LineEnding + '| --- | --- |' + LineEnding +
+      '| TInkMemo | this chat |' + LineEnding + '| TInkPage | documents |');
+
+procedure TfrmMain.btnChatMsgClick(Sender: TObject);
+var
+  N: Integer;
+begin
+  N := FChatTurn mod Length(cChatQuestions);
+  { the question, then the answer: each one whole Markdown message, one
+    entry, with its own band color - the answer set in a little }
+  memCheat.AppendBlock('**You:** ' + cChatQuestions[N], itfMarkdown,
+    RGBToColor(232, 240, 250));
+  memCheat.AppendBlock(cChatAnswers[N], itfMarkdown,
+    RGBToColor(237, 245, 237), 14);
+  Inc(FChatTurn);
+end;
+
+procedure TfrmMain.btnChatStreamClick(Sender: TObject);
+begin
+  if tmrChat.Enabled then Exit;
+  memCheat.AppendBlock('**You:** And an answer can arrive a word at a time?',
+    itfMarkdown, RGBToColor(232, 240, 250));
+  FStreamText := 'It can. `ReplaceLast` lays out only the last entry, so ' +
+    'a long conversation never re-layouts above it - and the view follows ' +
+    'only while you are already at the end. Scroll up while this types ' +
+    'and you will not be pulled back down.';
+  FStreamPos := 0;
+  memCheat.AppendBlock('...', itfMarkdown, RGBToColor(237, 245, 237), 14);
+  btnChatStream.Enabled := False;
+  tmrChat.Enabled := True;
+end;
+
+procedure TfrmMain.tmrChatTimer(Sender: TObject);
+var
+  Upto: Integer;
+begin
+  { a few more words each tick }
+  Upto := FStreamPos;
+  while (Upto < Length(FStreamText)) and
+    ((Upto - FStreamPos < 12) or (FStreamText[Upto] <> ' ')) do
+    Inc(Upto);
+  FStreamPos := Upto;
+  memCheat.ReplaceLast(Copy(FStreamText, 1, FStreamPos));
+  if FStreamPos >= Length(FStreamText) then
+  begin
+    tmrChat.Enabled := False;
+    btnChatStream.Enabled := True;
+  end;
+end;
+
+procedure TfrmMain.chkHideCharsChange(Sender: TObject);
+begin
+  if chkHideChars.Checked then
+    edtPassword.PasswordChar := '*'
+  else
+    edtPassword.PasswordChar := #0;
 end;
 
 { the list box's EditMode, in the order the combo box lists them }
