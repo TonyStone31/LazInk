@@ -25,7 +25,7 @@ RichMemo, no widgetset-specific backends, no browser engine.
 | ![](../images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; paragraph kinds - headings, bullet and numbered lists (nested: Tab and Shift+Tab change the depth), quotes, code lines with their fence language, **tables** (`ApplyParaKind`, `InsertTable`; Tab hops cells, Enter adds a row); **Markdown in and out** (`LoadMarkdown`, `AsMarkdown`); word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
 | | `TInkCodeMemo` | A **plain multi-line editor** — the notes field on a form. `Text` and `Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, word wrap, undo, the right-click menu, pasting that brings in plain text only, and `AutoHeight` between `MinLines` and `MaxLines` - a question box that starts as one line and opens up as it is written. Its one decoration is yours: `OnGetCharAttrs` colors every character as it is drawn — how the demo will color Markdown source, without the control knowing any language. |
 | ![](../images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. For a chat, `AppendBlock` makes a whole message - paragraphs, lists, tables, highlighted code - one entry with its own band color and indent, `ReplaceLast` grows the last entry in place for an answer arriving a word at a time, `AppendPlain` shows a stranger's text exactly as written, and `EntryAt` says which message is under the mouse. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
-| | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG, animated GIF and WebP images, relative links, anchors, Back and Forward, text selection, find in page, touch scrolling, and a small stylesheet reader. See [Complete help pages](#complete-help-pages). |
+| | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG, animated GIF and WebP images, relative links, anchors, Back and Forward, text selection, find in page, touch scrolling, laid out from the page's CSS the way a browser does it. See [Complete help pages](#complete-help-pages). |
 | ![](../images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. A drag inside one item selects its characters for copying. |
 
 **Editing list items in place:** `TInkListBox.EditMode` says when the
@@ -143,10 +143,11 @@ carries, so a toolbar can show the right buttons pressed.
 `TInkPage` is the native scrolling page viewer for complete HTML help files.
 It renders the Heckers Sketch manual with headings, lists, tables, code/key
 labels, screenshots, animated GIFs and WebP, relative links, and
-Back/Forward.  Its small stylesheet reader picks up the site's palette and
-typography; CSS grid and flex containers lay out as rows of cards, as many
-to a row as fit, and stack them when the page says to below a width.  No
-browser engine is added.
+Back/Forward.  It builds the document tree a browser builds, works out
+every element's style with the full cascade, and lays out CSS boxes from
+it: margins, padding, borders and backgrounds, floats, flex, grid, tables
+and positioning, with `@media` queries judged at the control's width.  No
+browser engine is added, and no script is ever run.
 
 ```pascal
 InkPage1.LoadFromFile('/path/to/help/index.html');
@@ -211,9 +212,11 @@ InkPage1.LoadMarkdown(ReleaseNotes);
 
 Lists hang their bullets and numbers to the left of the text, so wrapped lines
 line up under the first word; nested lists step in, and a task list shows its
-boxes where the bullets would be. Code blocks keep their spacing in the fixed
-face, on a shaded background, and a long line is cut off at the block's edge
-rather than wrapped. Quotes get a bar down their left side.
+boxes where the bullets would be. A Markdown document is dressed the way
+GitHub dresses it, in the control's own colors: code on a shaded background,
+in the fixed face, with a long line cut off at the block's edge rather than
+wrapped; quotes with a bar down their left side; tables ruled.  An HTML page
+gets a browser's defaults instead, and its own CSS.
 
 **Its scrollbar** is drawn by LazInk (`TInkScrollBar`), so it can wear the
 page's colors instead of the platform's gray.  It reads the same CSS a
@@ -489,18 +492,15 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 * Pictures: PNG, JPEG and the rest of what FPC decodes, animated GIF, and
   **WebP** - still and animated, lossy and lossless, with alpha - decoded in
   Pascal, with no library to install.
-* CSS is a small reader, not CSS conformance - no positioning, no
-  pseudo-classes and no `#id` selectors; descendant selectors only inside
-  tables and flex/grid containers; flex and grid lay out as rows of cards,
-  not the full specification; `@media` understands only `min-width`,
-  `max-width` and `prefers-color-scheme` (answered by the control's
-  `ColorScheme` property - auto follows the program's say or the control's
-  own background).  A `style` attribute is read for color, background, size,
-  weight, slant, decoration and alignment, on a word or on a whole block.
-  No floats, and no text flowing around a picture.
-* Tables take widths, columns, spacing, padding, cell colors, borders and
-  rounded corners from CSS, and read `colspan`, `rowspan` and a table inside
-  a cell.  They have no `<col>`/`<colgroup>` widths.
+* CSS is read the way a browser reads it - selectors, the cascade, layers,
+  custom properties, `@media` (`prefers-color-scheme` answered by the
+  control's `ColorScheme` property - auto follows the program's say or the
+  control's own background) - and laid out as boxes: floats, flex, grid,
+  tables, positioning.  What is still approximate: words do not flow line by
+  line round a float, `position: fixed` scrolls with the page, background
+  pictures, masks and `box-shadow` are not drawn, and a gradient is its
+  first color.
+* Tables have no `<col>`/`<colgroup>` widths.
 * The Markdown is GitHub's, as documents use it, not CommonMark-complete:
   emphasis follows simpler rules than the specification, a link reference
   definition has to fit on one line, and footnotes are not read.

@@ -2,8 +2,10 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit, InkDOM, InkStyle, InkLayout;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit, InkDOM, InkStyle, InkLayout;
 type
+  { how a control answers @media (prefers-color-scheme) }
+  TInkColorScheme = (icsAuto, icsLight, icsDark);
   { one thing the tree layout paints: a box's background and borders, or a
     block's words, and the rectangle overflow cuts it to }
   TInkTreePaint = record
@@ -11,6 +13,8 @@ type
     Block: Integer;
     Clip: TRect;
     Clipped: Boolean;
+    { a memo entry's band, behind the document it shows }
+    Section: TObject;
   end;
 
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
@@ -99,9 +103,6 @@ type
     { a list item's bullet, number or task box, drawn hanging to the left of
       the text }
     Marker: string;
-    { what the block sits inside, outermost first: 'l' a list, 'q' a quote,
-      'd' a definition }
-    Nest: string;
     Picture: TPicture;
     Animation: TInkGIF;
     WebP: TInkWebP;
@@ -109,10 +110,6 @@ type
       it, if any (href as in markup) }
     ImageSrc, LinkHref, LinkTarget: string;
     ImageRect: TRect;
-    { how big the page asked for the picture: pixels in ImageWant, or a
-      percentage of the column in ImagePercent, and zero for "say nothing,
-      draw it at its own size".  A width alone keeps the aspect ratio. }
-    ImageWantW, ImageWantH, ImagePercent, ImageMaxW: Integer;
     { a line's height in pixels when the page asked for one, zero when it
       left every line the height of the font in it }
     LineHeight: Integer;
@@ -120,55 +117,22 @@ type
     LinkTargets: array of string;
     { the title of each text link, in the same order: its tooltip }
     LinkTitles: array of string;
-    { what a style attribute on the block's own element asked for }
-    StyleAttr: string;
-    { A <details>: the fold the block is inside (-1 outside every fold), and
-      for a <summary>, the fold it opens and closes (-1 for anything else).
-      A summary sits in its details' parent fold, so it stays visible. }
-    FoldGroup, FoldHead: Integer;
-    { how links in this block look, when CSS says so for where it is }
-    LinkColor: TColor;
-    NoLinkUnderline: Boolean;
-    { a table's own margins, which may be negative: cards spaced apart line
-      up with the text when the table reaches out by the spacing }
-    MarginLeft, MarginRight: Integer;
-    { A flex or grid container: its items as table cells, laid out in rows
-      of however many fit each time the width changes. }
-    Flex, FlexWrap: Boolean;
-    FlexCells: array of string;
-    FlexBasis, FlexGap, FlexMaxCols, FlexCols: Integer;
-    FlexAttrs: string;
+    { a <summary>: the fold it opens and shuts, -1 for anything else }
+    FoldHead: Integer;
     { the block, and the part of it the words are drawn in; page coordinates }
     Bounds, TextBounds: TRect;
     Indent, PointSize, Padding, GapBefore, GapAfter, MarkerWidth: Integer;
-    { which of a memo's entries this block belongs to; a page leaves it 0 }
+    { the item it belongs to: a memo's entry; on a page, 0 }
     Entry: Integer;
-    { the background continues through the gap to the next block - a
-      memo's entry band is one band, not one stripe per paragraph }
-    BandWithNext: Boolean;
     { code: whitespace kept, the fixed face, never wrapped - a long line is
       cut off at the block's edge }
     Pre: Boolean;
-    { a rule's thickness in pixels (0 means a hairline), and whether its
-      border-top said dotted or dashed }
-    RuleHeight: Integer;
-    RuleDashed: Boolean;
-    { an unstyled rule draws as a browser draws one: two rows, the top
-      darker - the inset border pair every browser ships for <hr> }
-    RuleInset: Boolean;
     { laid out as written, and cut off at the edge - code, or a memo with
       WordWrap off }
     NoWrap: Boolean;
     Bold: Boolean;
     FaceName: string;
-    { where the bars of the quotes it is in are drawn, from the column's left }
-    Bars: array of Integer;
-    BorderColor: TColor;
-    { a border on one side only, the way a callout box is drawn: the color
-      of each edge, clNone where there is none, and how thick it is }
-    EdgeColor: array[0..3] of TColor;   { left, top, right, bottom }
-    EdgeWidth: array[0..3] of Integer;
-    TextColor, BackColor, BarColor: TColor;
+    TextColor, BackColor: TColor;
     { where each run of its text was drawn, and its words as they are
       copied - filled in when first needed, after each layout }
     Runs: array of TInkPageRun;
@@ -182,22 +146,50 @@ type
     TreeBox: TObject;
     TextMinW, TextMaxW, WrapWidth, TreeTextH: Integer;
     WidthsKnown, MarkerHangs: Boolean;
+    { where it is in the page's blocks, and the document it was made from
+      (nil for a line of markup of its own) }
+    Index: Integer;
+    Section: TObject;
     constructor Create;
     destructor Destroy; override;
   end;
-  { The engine behind TInkPage and TInkMemo: blocks of markup laid out down
-    a scrolling column, with selection, the copy menu, find, touch and
-    history.  Descendants decide where the blocks come from (Parse), how
-    they look (StyleBlock) and how wide the column is (LayoutColumn). }
+
+  { A document laid out from its tree: the page shows one, a memo one for
+    each message it lays out whole.  Its blocks are the page's blocks
+    BlockFrom to BlockFrom+BlockCount-1. }
+  TInkTreeSection = class
+  public
+    Doc: TInkDocument;
+    OwnsDoc: Boolean;
+    Layout: TInkLayout;
+    { the <details> each summary in it opens and shuts }
+    Folds: array of TInkNode;
+    { how many elements the styler had before this one's }
+    StyleMark: Integer;
+    Item, BlockFrom, BlockCount: Integer;
+    { where it was laid out, page pixels }
+    Left, Top, Width, Height: Integer;
+    { set by StyleSection: room above and below, an inset, and a band }
+    GapBefore, GapAfter, Indent: Integer;
+    Back: TColor;
+    destructor Destroy; override;
+  end;
+  { The engine behind TInkPage and TInkMemo: items laid out down a
+    scrolling column - documents laid out from their trees, and a memo's
+    lines of markup - with selection, the copy menu, find, touch and
+    history.  Descendants decide where the items come from (Parse), how a
+    line looks (StyleBlock) and how wide the column is (LayoutColumn). }
   TInkCustomPage = class(TCustomControl)
   private
     FBlocks: TList;
+    { what is laid out down the column, in order: a TInkPageBlock for a
+      line of markup, a TInkTreeSection for a document }
+    FItems: TList;
     { the blocks with a moving picture in them, so the twenty-millisecond
       tick has a short list to walk instead of the whole document - and so
       it can be switched off altogether when there is nothing to move }
     FAnimated: TList;
     FRenderCache: THTMLLayoutCache;
-    FStyles: TInkStyleSheet;
     { the page as a tree, and whether it was changed through Document and
       must be shown as it stands rather than parsed again }
     FDocument: TInkDocument;
@@ -206,18 +198,15 @@ type
       asked for }
     FStyler: TInkStyler;
     FStyled: Boolean;
-    { the tree layout: whether it is on, the boxes, what measures their
-      words, which @media queries held, the paint order, the <details> each
-      summary works, and the canvas's color }
-    FTree: Boolean;
-    FTreeLayout: TInkLayout;
+    { the page's own document laid out, what measures words, which @media
+      queries held, the paint order, and the canvas's color }
+    FPageSection: TInkTreeSection;
     FTreeMeasure: TObject;
     FTreeKey: string;
     FTreePaint: array of TInkTreePaint;
     { the clip a block being painted is inside, in window pixels }
     FPaintClip: TRect;
     FPaintClipped: Boolean;
-    FTreeFolds: array of TInkNode;
     FCanvasBack: TColor;
     { the wheel's part of a pixel not yet scrolled, and when the page last
       reached the screen }
@@ -233,16 +222,22 @@ type
     FSchemeApplied: TInkColorScheme;
     FTimer: TTimer;
     function FetchSheet(const URL: string): string;
-    procedure SetTreeLayout(AValue: Boolean);
     function TreeTextHeight(B: TInkPageBlock; AWidth: Integer): Integer;
     procedure TreeTextWidths(B: TInkPageBlock; out AMin, AMax: Integer);
     procedure TreeText(ABox: TInkBox; B: TInkPageBlock);
     procedure TreeStyle(AWidth: Integer);
-    procedure TreeBuild;
+    procedure BuildSection(S: TInkTreeSection);
+    procedure ClearSectionBlocks(S: TInkTreeSection);
+    procedure Renumber(AFromItem: Integer);
     function TreeViewWidth: Integer;
-    function ControlFontPixels: Integer;
     function TreeCanvasBack: TColor;
-    procedure TreeLayoutRun;
+    { the page's root element's style, or its body's; nil without a page }
+    function PageStyle(ABody: Boolean): TInkStyle;
+    { a property the root sets, or else the body }
+    function PageValue(const AProp: string): string;
+    procedure LayLine(B: TInkPageBlock; ALeft, AWidth: Integer; var Y, Pending: Integer;
+      var O: THTMLOptions);
+    procedure LaySection(S: TInkTreeSection; ALeft, AWidth: Integer; var Y, Pending: Integer);
     procedure TreePaintOrder;
     procedure TreePaintBox(ACanvas: TCanvas; ABox: TInkBox);
     procedure TreeRender(ACanvas: TCanvas);
@@ -265,8 +260,6 @@ type
     FClickedLink: TInkLinkInfo;
     FOnLinkActivate: TInkLinkActivateEvent;
     FImageFit: TInkImageFit;
-    { which of the page's @media width queries held when it was read }
-    FMediaState: string;
     FHistory: TStringList;
     FHistoryIndex: Integer;
     FTextFormat: TInkTextFormat;
@@ -383,13 +376,9 @@ type
     procedure GoHistory(Index: Integer);
   protected
     { layout, worked out once per layout and shared by the blocks }
-    FListWidth, FQuoteWidth, FLayoutBase, FLayoutWidth, FLayoutFrom: Integer;
-    FBodyText, FPageBack, FQuoteText, FBarDefault, FCodeBack: TColor;
+    FLayoutBase, FLayoutWidth, FLayoutFrom: Integer;
+    FBodyText, FPageBack, FCodeBack: TColor;
     FColumnWidth: Integer;
-    { <details>: whether each fold is open, and the fold each one sits in
-      (-1 for an outermost one), by fold number }
-    FFoldOpen: array of Boolean;
-    FFoldParent: array of Integer;
     procedure SetHighlightCode(AValue: Boolean);
     procedure SetCodeHeader(AValue: Boolean);
     procedure SetCodeFoldLines(AValue: Integer);
@@ -403,36 +392,50 @@ type
     procedure PaintBlock(ACanvas: TCanvas; I: Integer; ASelected: Boolean;
       const SelFrom, SelTo: TInkPagePosition);
     procedure PressCodeButton(ABlock, AButton: Integer);
-    function FirstShownBlock(ATop: Integer): Integer;
     { a code block's markup: the host's coloring, or the page's own }
     function CodeMarkup(const ACode, ALanguage: string): string;
-    procedure ClearBlocks;
-    { another <details>: its number, given the fold it is inside }
-    function AddFold(AParent: Integer; AOpen: Boolean): Integer;
-    { a block inside a fold that is shut, or inside one that is }
-    function BlockHidden(B: TInkPageBlock): Boolean;
-    { no blocks, no styles, no selection: what Parse starts from }
+    procedure ClearItems;
+    { no items, no styles, no selection: what Parse starts from }
     procedure BeginDocument;
+    { a line of markup, laid out as StyleBlock says }
     procedure AddBlock(B: TInkPageBlock);
-    { every block handed over to AList, none kept and none freed - how a
-      memo borrows a scratch page's parser for one entry }
-    procedure ExtractBlocks(AList: TList);
-    { blocks from AFrom on freed and forgotten - how a memo replaces its
+    { a document, styled with the styler as it stands and laid out from its
+      tree; AOwns frees it with the section }
+    function AddSection(ADoc: TInkDocument; AOwns: Boolean): TInkTreeSection;
+    { the styler the documents are styled with, set to the control's colors
+      and font, with no sheets of any page in it }
+    procedure ResetStyler;
+    property Styler: TInkStyler read FStyler;
+    { the look a Markdown document gets, as GitHub gives it: quotes with a
+      bar, code on a shade, tables ruled - in the control's colors }
+    function MarkdownSheet: string;
+    { what ImageFit asks of every picture }
+    function ImageFitSheet: string;
+    { what goes between block I-1 and block I when they are copied: a tab
+      between two cells of a row, else a line end }
+    function BlockJoint(I: Integer): string;
+    { the control's font in pixels: what medium means, and a memo's lines }
+    function ControlFontPixels: Integer;
+    function ItemCount: Integer;
+    function PageItem(Index: Integer): TObject;
+    { items from AFrom on freed and forgotten - how a memo replaces its
       growing last entry without touching the rest }
-    procedure TruncateBlocks(AFrom: Integer);
-    { blocks from Index on are laid out again when next needed; 0 for all }
-    procedure InvalidateLayout(FromIndex: Integer = 0);
+    procedure TruncateItems(AFrom: Integer);
+    { items from Index on are laid out again when next needed; 0 for all }
+    procedure InvalidateLayout(FromItem: Integer = 0);
+    { the item block ABlock belongs to, and everything after it }
+    procedure InvalidateBlock(ABlock: Integer);
     procedure Layout;
-    { where the blocks come from: the page reads Source; a memo, its Lines }
+    { where the items come from: the page reads Source; a memo, its Lines }
     procedure Parse; virtual;
-    { the column the blocks are laid out in, in client coordinates }
+    { the column the items are laid out in, in client coordinates }
     procedure LayoutColumn(out ALeft, AWidth: Integer); virtual;
     function LayoutTop: Integer; virtual;
-    { a block's font, colors, padding and gaps, before it is measured }
+    { a line's font, colors, padding and gaps, before it is measured }
     procedure StyleBlock(B: TInkPageBlock); virtual;
+    { a document's gaps, inset and band }
+    procedure StyleSection(S: TInkTreeSection); virtual;
     function Options: THTMLOptions; virtual;
-    { the options a block is drawn with - a hovered link, say }
-    function BaseFontPixels: Integer;
     procedure FindAnimations;
     function BlockOptions(Index: Integer): THTMLOptions; virtual;
     function HitLink(X,Y: Integer): string;
@@ -495,11 +498,6 @@ type
     { the rules that apply to an element, weakest first, as an inspector
       shows them; the caller frees the list }
     function ExplainStyle(ANode: TInkNode): TStringList;
-    { Lays the page out from its document tree - CSS boxes as a browser
-      makes them: real margins, padding, borders and backgrounds, floats,
-      positioning, flex, grid and tables - rather than from the classic
-      reader's run of blocks.  Off by default while it is new. }
-    property TreeLayout: Boolean read FTree write SetTreeLayout;
     procedure RenderTo(ACanvas: TCanvas);
     function PlainText: string;
     function ImageCount: Integer;
@@ -721,6 +719,12 @@ type
     property OnMouseDown; property OnMouseEnter; property OnMouseLeave; property OnMouseMove;
     property OnMouseUp; property OnMouseWheel; property OnResize;
   end;
+var
+  { The application's say on light or dark, for every control whose
+    ColorScheme is icsAuto: a program with its own themes sets it once
+    (and calls InkColorSchemeChanged when windows are open).  On icsAuto a
+    control falls back to its own background's luminance. }
+  InkAppColorScheme: TInkColorScheme = icsAuto;
 { a hit link's href as written: entities read, and the renderer's stand-in
   for an ampersand turned back into one }
 function LinkHref(const AHit: THTMLHitInfo): string;
@@ -730,6 +734,8 @@ function LinkHref(const AHit: THTMLHitInfo): string;
   and reads its document again only if its answer moved.  Nothing keeps a
   list of instances. }
 procedure InkColorSchemeChanged;
+{ a computed color as a TColor, its opacity mixed into what is behind it }
+function InkToColor(C: TInkRGBA; ABehind: TColor): TColor;
 
 implementation
 uses Math, StrUtils, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
@@ -750,60 +756,10 @@ begin
   for I := 0 to Screen.FormCount-1 do SchemeWalk(Screen.Forms[I]);
 end;
 
-type
-  { a list, a quote or a definition the parser is inside }
-  TPageContainer = record
-    Kind: Char;
-    Counter: Integer;
-    Style: string;
-  end;
-
 function LinkHref(const AHit: THTMLHitInfo): string;
 begin
   Result := StringReplace(HTMLUnescape(AHit.LinkName),#1,'&',[rfReplaceAll]);
 end;
-function Attribute(const Tag, Name: string): string;
-var P,Q: Integer; Key: string; Quote: Char;
-begin
-  Result := ''; P := 1;
-  while (P<=Length(Tag)) and not (Tag[P] in [' ',#9,#10,#13]) do Inc(P);
-  while P<=Length(Tag) do
-  begin
-    while (P<=Length(Tag)) and (Tag[P] in [' ',#9,#10,#13,'>','/']) do Inc(P);
-    Q := P;
-    while (P<=Length(Tag)) and not (Tag[P] in ['=', ' ',#9,#10,#13,'>']) do Inc(P);
-    Key := LowerCase(Copy(Tag,Q,P-Q));
-    while (P<=Length(Tag)) and (Tag[P] in [' ',#9,#10,#13]) do Inc(P);
-    if (P>Length(Tag)) or (Tag[P]<>'=') then Continue;
-    Inc(P); while (P<=Length(Tag)) and (Tag[P] in [' ',#9,#10,#13]) do Inc(P);
-    Quote := #0;
-    if (P<=Length(Tag)) and (Tag[P] in ['"', '''']) then begin Quote := Tag[P]; Inc(P) end;
-    Q := P;
-    if Quote<>#0 then while (P<=Length(Tag)) and (Tag[P]<>Quote) do Inc(P)
-    else while (P<=Length(Tag)) and not (Tag[P] in [' ',#9,#10,#13,'>']) do Inc(P);
-    if Key=Name then Exit(HTMLUnescape(Copy(Tag,Q,P-Q)));
-    if Quote<>#0 then Inc(P);
-  end;
-end;
-{ whether a tag has the attribute at all - checked, with or without a value }
-function HasAttribute(const Tag, Name: string): Boolean;
-var P,Q: Integer; Lower: string;
-begin
-  Result := False;
-  Lower := LowerCase(Tag);
-  P := Pos(Name,Lower);
-  while P>0 do
-  begin
-    Q := P+Length(Name);
-    if (P>1) and (Lower[P-1] in [' ',#9,#10,#13]) and
-      ((Q>Length(Lower)) or (Lower[Q] in [' ',#9,#10,#13,'=','>','/'])) then Exit(True);
-    P := Pos(Name,Lower,P+1);
-  end;
-end;
-{ How big a page asked for a picture: <img width=300 height=200>, or
-  width="50%", or the same three written in a style attribute, where a width
-  may also be a max-width.  A width on its own keeps the aspect ratio, which
-  is what a help page writing <img src="shot.png" width="520"> wants. }
 { A CSS font stack, resolved to one face this machine actually has.
   "Helvetica Neue", Arial, sans-serif tries each in turn and falls back to
   what the generic name means here; '' means "whatever the control is set
@@ -861,55 +817,6 @@ begin
     end;
   finally Names.Free end;
 end;
-{ CSS line-height, which a page may write four ways: a bare number that
-  multiplies the font's own size, a length in px or em, a percentage of the
-  size, or "normal" - which is no line-height at all. }
-function LineHeightOf(const AValue: string; AFontPixels: Integer): Integer;
-var V: string; F: Double;
-begin
-  Result := 0;
-  V := LowerCase(Trim(AValue));
-  if (V='') or (V='normal') or (V='inherit') then Exit;
-  if V[Length(V)]='%' then
-  begin
-    Result := Max(1,Round(AFontPixels*StrToIntDef(Trim(Copy(V,1,Length(V)-1)),100)/100));
-    Exit;
-  end;
-  { a bare number is a multiplier - "line-height: 1.5" is the usual way a
-    page asks for airier text }
-  if TryStrToFloat(StringReplace(V,'.',DefaultFormatSettings.DecimalSeparator,[]),F) then
-  begin
-    if F<=0 then Exit;
-    Exit(Max(1,Round(AFontPixels*F)));
-  end;
-  Result := Max(0,CSSPixels(V,0));
-end;
-procedure ImageSize(B: TInkPageBlock; const Raw: string);
-  function Want(const V: string; out APercent: Integer): Integer;
-  var T: string;
-  begin
-    APercent := 0; Result := 0;
-    T := Trim(V);
-    if T='' then Exit;
-    if T[Length(T)]='%' then
-      APercent := Max(1,Min(100,StrToIntDef(Trim(Copy(T,1,Length(T)-1)),0)))
-    else Result := Max(0,CSSPixels(T,0));
-  end;
-var Style: string; Pct: Integer;
-begin
-  B.ImageWantW := Want(Attribute(Raw,'width'),B.ImagePercent);
-  B.ImageWantH := Want(Attribute(Raw,'height'),Pct);
-  Style := Attribute(Raw,'style');
-  if Style='' then Exit;
-  if StyleValue(Style,'width')<>'' then
-    B.ImageWantW := Want(StyleValue(Style,'width'),B.ImagePercent);
-  if StyleValue(Style,'height')<>'' then
-    B.ImageWantH := Want(StyleValue(Style,'height'),Pct);
-  { a max-width is a ceiling, not a size: the picture keeps its own size
-    until it is wider than that }
-  if StyleValue(Style,'max-width')<>'' then
-    B.ImageMaxW := Want(StyleValue(Style,'max-width'),Pct);
-end;
 { CSS text-transform, over markup: the words change case, the tags and the
   entities between them do not. }
 function Transformed(const AMarkup, AKind: string): string;
@@ -957,215 +864,30 @@ begin
     end;
   end;
 end;
-const
-  { the four sides, in the order TRect keeps them for an edge }
-  EdgeProp: array[0..3] of string =
-    ('border-left','border-top','border-right','border-bottom');
-
-{ "4px solid #176bbd", in any order: the width, the color, and a style that
-  says none takes the edge away again }
-procedure EdgeOf(const ASpec: string; out AColor: TColor; out AWidth: Integer);
-var Parts: TStringList; I: Integer; T: string; C: TColor; N: Integer;
-begin
-  AColor := clNone; AWidth := 0;
-  Parts := TStringList.Create;
-  try
-    Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
-    Parts.DelimitedText := Trim(ASpec);
-    for I := 0 to Parts.Count-1 do
-    begin
-      T := LowerCase(Trim(Parts[I]));
-      if T='' then Continue;
-      if (T='none') or (T='hidden') then begin AColor := clNone; AWidth := 0; Exit end;
-      if (T='solid') or (T='dashed') or (T='dotted') or (T='double') or
-        (T='groove') or (T='ridge') or (T='inset') or (T='outset') then Continue;
-      N := CSSPixels(T,-1);
-      if N>=0 then begin AWidth := N; Continue end;
-      C := CSSColor(T,clNone);
-      if C<>clNone then AColor := C;
-    end;
-  finally Parts.Free end;
-  if AColor=clNone then AWidth := 0
-  else if AWidth<=0 then AWidth := 1;
-end;
-function TagName(const Tag: string): string;
-var P,Q: Integer;
-begin
-  P := 2; if (P<=Length(Tag)) and (Tag[P]='/') then Inc(P);
-  Q := P; while (P<=Length(Tag)) and (Tag[P] in ['a'..'z','A'..'Z','0'..'9']) do Inc(P);
-  Result := LowerCase(Copy(Tag,Q,P-Q));
-end;
 function IsHeadingTag(const Tag: string): Boolean;
 begin
   Result := (Length(Tag)=2) and (Tag[1]='h') and (Tag[2] in ['1'..'6']);
-end;
-{ elements with no closing tag }
-function IsVoidElement(const E: string): Boolean;
-begin
-  Result := (E='br') or (E='img') or (E='hr') or (E='input') or (E='meta') or
-    (E='link') or (E='wbr') or (E='col') or (E='source') or (E='area') or
-    (E='base') or (E='embed') or (E='param') or (E='track');
-end;
-{ the items of a flex container as a table, Cols to a row }
-function FlexTable(B: TInkPageBlock; Cols: Integer): string;
-var I, N: Integer;
-begin
-  N := Length(B.FlexCells);
-  Cols := Max(1,Cols);
-  { gaponly: a grid's gap goes between its items, never around its edges }
-  if B.FlexWrap or (B.FlexMaxCols>0) then
-    Result := '<table width="100%" layout="fixed" gaponly="1" cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>'
-  else
-    { a row that does not wrap: items as wide as their content }
-    Result := '<table gaponly="1" cellspacing="'+IntToStr(B.FlexGap)+'"'+B.FlexAttrs+'>';
-  for I := 0 to N-1 do
-  begin
-    if I mod Cols=0 then Result := Result+'<tr>';
-    Result := Result+B.FlexCells[I];
-    if I mod Cols=Cols-1 then Result := Result+'</tr>';
-  end;
-  if N mod Cols<>0 then
-  begin
-    { the last row keeps the columns of the others }
-    for I := N mod Cols to Cols-1 do Result := Result+'<td border="none" bgcolor="none"></td>';
-    Result := Result+'</tr>';
-  end;
-  Result := Result+'</table>';
-end;
-{ the elements that start a block of their own; everything else is inline }
-function IsBlockElement(const E: string): Boolean;
-begin
-  Result := IsHeadingTag(E) or (E='p') or (E='div') or (E='header') or
-    (E='footer') or (E='nav') or (E='figure') or (E='figcaption') or (E='li') or
-    (E='section') or (E='article') or (E='main') or (E='aside') or
-    (E='address') or (E='details') or (E='summary') or (E='dt') or (E='dd') or
-    (E='dl') or (E='ul') or (E='ol') or (E='menu') or (E='blockquote') or
-    (E='pre') or (E='table') or (E='hr') or (E='img');
-end;
-{ Text between tags as renderer markup.  Collapse: white space is one space,
-  as in running HTML; otherwise it is kept, tabs become spaces and line
-  breaks become <br>, as in <pre>. }
-function TextMarkup(const S: string; Collapse: Boolean; out APlain: string): string;
-var P,Q,N,Column: Integer; E,T: string; Space: Boolean;
-begin
-  T := ''; P := 1; Space := False; Column := 0;
-  while P<=Length(S) do
-  begin
-    if S[P]='&' then
-    begin
-      Q := P+1; while (Q<=Length(S)) and (Q-P<16) and (S[Q]<>';') do Inc(Q);
-      if (Q<=Length(S)) and (S[Q]=';') then
-      begin
-        E := Copy(S,P+1,Q-P-1); N := -1;
-        if Copy(E,1,2)='#x' then N := StrToIntDef('$'+Copy(E,3,MaxInt),-1)
-        else if Copy(E,1,1)='#' then N := StrToIntDef(Copy(E,2,MaxInt),-1);
-        if (N>=0) and (N<=$10FFFF) and not ((N>=$D800) and (N<=$DFFF)) then E := UnicodeToUTF8(N)
-        else if E='rsaquo' then E := '›'
-        else if E='lsaquo' then E := '‹'
-        else if E='uarr' then E := '↑'
-        else if E='darr' then E := '↓'
-        else if E='larr' then E := '←'
-        else if E='rarr' then E := '→'
-        else if E='ndash' then E := '–'
-        else if E='mdash' then E := '—'
-        else if E='hellip' then E := '…'
-        else if E='lsquo' then E := '‘'
-        else if E='rsquo' then E := '’'
-        else if E='ldquo' then E := '“'
-        else if E='rdquo' then E := '”'
-        else if E='laquo' then E := '«'
-        else if E='raquo' then E := '»'
-        else if E='times' then E := '×'
-        else if E='middot' then E := '·'
-        else if E='bull' then E := '•'
-        else if E='deg' then E := '°'
-        else if E='check' then E := '✓'
-        else E := HTMLUnescape('&'+E+';');
-        T := T + E; P := Q+1; Space := False; Inc(Column); Continue;
-      end;
-    end;
-    if not Collapse then
-    begin
-      case S[P] of
-        #13: ;
-        #10: begin T := T+#10; Column := 0 end;
-        #9: repeat T := T+' '; Inc(Column) until Column mod 4 = 0;
-      else
-        T := T+S[P];
-        { a column is a character, not a byte }
-        if (Ord(S[P]) and $C0)<>$80 then Inc(Column);
-      end;
-    end
-    else if S[P] in [' ',#9,#10,#13] then
-    begin if not Space then T := T+' '; Space := True end
-    else begin T := T+S[P]; Space := False end;
-    Inc(P);
-  end;
-  APlain := T;
-  Result := HTMLEscape(T);
-  if not Collapse then Result := StringReplace(Result,#10,'<br>',[rfReplaceAll]);
-end;
-function TextMarkup(const S: string; Collapse: Boolean = True): string;
-var Plain: string;
-begin
-  Result := TextMarkup(S,Collapse,Plain);
-end;
-function RomanNumeral(N: Integer): string;
-const
-  Values: array[0..12] of Integer = (1000,900,500,400,100,90,50,40,10,9,5,4,1);
-  Digits: array[0..12] of string = ('m','cm','d','cd','c','xc','l','xl','x','ix','v','iv','i');
-var I: Integer;
-begin
-  Result := '';
-  if (N<=0) or (N>3999) then Exit(IntToStr(N));
-  for I := 0 to High(Values) do
-    while N>=Values[I] do begin Result := Result+Digits[I]; Dec(N,Values[I]) end;
-end;
-function AlphaNumeral(N: Integer): string;
-begin
-  Result := '';
-  if N<=0 then Exit(IntToStr(N));
-  while N>0 do
-  begin
-    Dec(N);
-    Result := Chr(Ord('a')+N mod 26)+Result;
-    N := N div 26;
-  end;
-end;
-{ A list item's marker, for a list-style-type (or an <ol type>) and the
-  item's number.  Depth picks the bullet of an unstyled nested list, as a
-  browser does. }
-function ListMarker(const Style: string; Ordered: Boolean; Number, Depth: Integer): string;
-var S: string;
-begin
-  S := LowerCase(Trim(Style));
-  if S='1' then S := 'decimal'
-  else if Style='a' then S := 'lower-alpha'
-  else if Style='A' then S := 'upper-alpha'
-  else if Style='i' then S := 'lower-roman'
-  else if Style='I' then S := 'upper-roman';
-  if S='none' then Exit('');
-  if (S='lower-alpha') or (S='lower-latin') then Exit(AlphaNumeral(Number)+'.');
-  if (S='upper-alpha') or (S='upper-latin') then Exit(UpperCase(AlphaNumeral(Number))+'.');
-  if S='lower-roman' then Exit(RomanNumeral(Number)+'.');
-  if S='upper-roman' then Exit(UpperCase(RomanNumeral(Number))+'.');
-  if S='decimal' then Exit(IntToStr(Number)+'.');
-  if S='disc' then Exit('•');
-  if S='circle' then Exit('◦');
-  if S='square' then Exit('▪');
-  if Ordered then Exit(IntToStr(Number)+'.');
-  case Depth mod 3 of
-    0: Result := '•';
-    1: Result := '◦';
-  else
-    Result := '▪';
-  end;
 end;
 function MixColor(A, B: TColor; Amount: Double): TColor;
 begin
   A := ColorToRGB(A); B := ColorToRGB(B);
   Result := RGBToColor(Round(Red(A)+(Red(B)-Red(A))*Amount),
     Round(Green(A)+(Green(B)-Green(A))*Amount),Round(Blue(A)+(Blue(B)-Blue(A))*Amount));
+end;
+{ a CSS number, which has a full stop whatever the locale says }
+function CSSFloat(const S: string; ADefault: Double): Double;
+var FS: TFormatSettings;
+begin
+  FS := DefaultFormatSettings; FS.DecimalSeparator := '.';
+  Result := StrToFloatDef(Trim(S), ADefault, FS);
+end;
+{ a color from InkStyle, as a TColor - its opacity mixed into what is behind }
+function InkToColor(C: TInkRGBA; ABehind: TColor): TColor;
+var A: Integer;
+begin
+  A := C shr 24;
+  Result := TColor(C and $FFFFFF);
+  if A < 255 then Result := MixColor(Result, ABehind, 1 - A / 255);
 end;
 
 { how many lines a block of code is }
@@ -1205,23 +927,26 @@ begin
   Result := Format('#%.2x%.2x%.2x',[Red(C),Green(C),Blue(C)]);
 end;
 constructor TInkPageBlock.Create;
-var K: Integer;
 begin
-  inherited; Picture := TPicture.Create; LinkColor := clNone;
-  FoldGroup := -1; FoldHead := -1;
+  inherited; Picture := TPicture.Create;
+  FoldHead := -1;
   { a fresh block carries no color anywhere: zeroed fields would read as
     clBlack, and a descendant's StyleBlock may not touch every one of them }
-  BorderColor := clNone; BackColor := clNone;
-  for K := 0 to 3 do EdgeColor[K] := clNone;
+  BackColor := clNone;
 end;
 destructor TInkPageBlock.Destroy;
 begin WebP.Free; Animation.Free; Picture.Free; inherited end;
+destructor TInkTreeSection.Destroy;
+begin
+  Layout.Free;
+  if OwnsDoc then Doc.Free;
+  inherited;
+end;
 constructor TInkCustomPage.Create(AOwner: TComponent);
 begin
   inherited; Width := 640; Height := 480; TabStop := True;
   FHoverBlock := -1; FHighlightCode := True;
-  FBlocks := TList.Create; FAnimated := TList.Create;
-  FStyles := TInkStyleSheet.Create;
+  FBlocks := TList.Create; FItems := TList.Create; FAnimated := TList.Create;
   FImageCache := TStringList.Create; FImageCache.OwnsObjects := True;
   FImageCache.CaseSensitive := True; FImageCache.Sorted := True;
   FRenderCache := THTMLLayoutCache.Create;
@@ -1247,11 +972,11 @@ begin
 end;
 destructor TInkCustomPage.Destroy;
 begin
-  FTimer.Enabled := False; FFlickTimer.Enabled := False; FAutoScroll.Enabled := False; ClearBlocks; FBlocks.Free; FAnimated.Free; FStyles.Free; FHistory.Free;
+  FTimer.Enabled := False; FFlickTimer.Enabled := False; FAutoScroll.Enabled := False;
+  ClearItems; FItems.Free; FBlocks.Free; FAnimated.Free; FHistory.Free;
   FCodeTimer.Enabled := False; FCodeActions.OnChange := nil; FCodeActions.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   FreeAndNil(FRenderCache);
-  FreeAndNil(FTreeLayout);
   FreeAndNil(FTreeMeasure);
   FreeAndNil(FStyler);
   FreeAndNil(FDocument);
@@ -1260,9 +985,8 @@ begin
 end;
 procedure TInkCustomPage.BeginDocument;
 begin
-  ClearBlocks; FStyles.Clear; FTitle := ''; FHoverLink := ''; FHoverBlock := -1;
+  ClearItems; FTitle := ''; FHoverLink := ''; FHoverBlock := -1;
   FSchemeApplied := GetActiveColorScheme;
-  FStyles.ColorScheme := FSchemeApplied;
   FSelecting := False;
   if HasSelection then
   begin
@@ -1273,19 +997,19 @@ end;
 function TInkCustomPage.CodeMarkup(const ACode, ALanguage: string): string;
 var Colors: TInkCodeColors;
   function Named(const AVar: string; ADefault: TColor): TColor;
-  var V: string;
+  var V: string; C: TInkRGBA;
   begin
     Result := ADefault;
-    V := FStyles.Value('html','',AVar,'');
-    if V<>'' then Result := CSSColor(FStyles.Resolve(V),ADefault);
+    if PageStyle(False)=nil then Exit;
+    V := Trim(PageStyle(False).Custom(AVar));
+    if (V<>'') and InkParseColor(V,C,GetActiveColorScheme=icsDark) then Result := InkToColor(C,FCanvasBack);
   end;
 begin
   Result := '';
   { a host with a real highlighter answers first }
   if Assigned(FOnHighlightCode) then FOnHighlightCode(Self,ACode,ALanguage,Result);
   if (Result<>'') or not FHighlightCode then Exit;
-  Colors := InkCodeColors(FStyles.Color('body','','background',
-    FStyles.Color('body','','background-color',Color)));
+  Colors := InkCodeColors(FCanvasBack);
   Colors.Comment := Named('--ink-code-comment',Colors.Comment);
   Colors.Quoted := Named('--ink-code-string',Colors.Quoted);
   Colors.Number := Named('--ink-code-number',Colors.Number);
@@ -1299,27 +1023,46 @@ begin
   { the coloring is in the blocks' markup, so they have to be read again }
   Parse;
 end;
-procedure TInkCustomPage.ExtractBlocks(AList: TList);
+procedure TInkCustomPage.ClearItems;
 var I: Integer;
 begin
   if FRenderCache<>nil then FRenderCache.Clear;
   if FAnimated<>nil then FAnimated.Clear;
   FTimer.Enabled := False;
-  for I := 0 to FBlocks.Count-1 do AList.Add(FBlocks[I]);
-  FBlocks.Clear;
-  SetLength(FFoldOpen,0); SetLength(FFoldParent,0);
-  FLayoutDirty := True;
+  { the documents' elements are forgotten, not touched: some are about to go }
+  if FStyler<>nil then FStyler.Release(False);
+  FStyled := False;
+  for I := 0 to FItems.Count-1 do
+    if TObject(FItems[I]) is TInkTreeSection then TObject(FItems[I]).Free;
+  for I := 0 to FBlocks.Count-1 do TObject(FBlocks[I]).Free;
+  FItems.Clear; FBlocks.Clear;
+  FPageSection := nil;
+  SetLength(FTreePaint,0);
 end;
-
-procedure TInkCustomPage.TruncateBlocks(AFrom: Integer);
-var I: Integer;
+procedure TInkCustomPage.TruncateItems(AFrom: Integer);
+var I,K: Integer; It: TObject;
 begin
-  if AFrom>=FBlocks.Count then Exit;
+  if AFrom>=FItems.Count then Exit;
   if FRenderCache<>nil then FRenderCache.Clear;
+  SetLength(FTreePaint,0);
+  It := TObject(FItems[AFrom]);
+  if It is TInkTreeSection then K := TInkTreeSection(It).BlockFrom else K := TInkPageBlock(It).Index;
   if FAnimated<>nil then
     for I := FAnimated.Count-1 downto 0 do
-      if FBlocks.IndexOf(FAnimated[I])>=AFrom then FAnimated.Delete(I);
-  for I := FBlocks.Count-1 downto AFrom do
+      if TInkPageBlock(FAnimated[I]).Index>=K then FAnimated.Delete(I);
+  { the styles of the documents going, while their elements are still there }
+  for I := AFrom to FItems.Count-1 do
+    if (FStyler<>nil) and (TObject(FItems[I]) is TInkTreeSection) then
+    begin
+      FStyler.ReleaseTo(TInkTreeSection(FItems[I]).StyleMark);
+      Break;
+    end;
+  for I := FItems.Count-1 downto AFrom do
+  begin
+    if TObject(FItems[I]) is TInkTreeSection then TObject(FItems[I]).Free;
+    FItems.Delete(I);
+  end;
+  for I := FBlocks.Count-1 downto K do
   begin
     TObject(FBlocks[I]).Free;
     FBlocks.Delete(I);
@@ -1328,65 +1071,49 @@ begin
   if FHoverBlock>=FBlocks.Count then FHoverBlock := -1;
   if FRunBlock<>nil then FRunBlock := nil;
   FSelAnchor := Clamp(FSelAnchor); FSelCaret := Clamp(FSelCaret);
-end;
-
-procedure TInkCustomPage.ClearBlocks;
-var I: Integer;
-begin
-  if FRenderCache<>nil then FRenderCache.Clear;
-  if FAnimated<>nil then FAnimated.Clear;
-  FTimer.Enabled := False;
-  for I := 0 to FBlocks.Count-1 do TObject(FBlocks[I]).Free;
-  FBlocks.Clear;
-  SetLength(FFoldOpen,0); SetLength(FFoldParent,0);
-end;
-function TInkCustomPage.AddFold(AParent: Integer; AOpen: Boolean): Integer;
-begin
-  Result := Length(FFoldOpen);
-  SetLength(FFoldOpen,Result+1); SetLength(FFoldParent,Result+1);
-  FFoldOpen[Result] := AOpen; FFoldParent[Result] := AParent;
-end;
-function TInkCustomPage.BlockHidden(B: TInkPageBlock): Boolean;
-var G: Integer;
-begin
-  Result := False;
-  G := B.FoldGroup;
-  { shut anywhere up the chain of details and the block is away }
-  while (G>=0) and (G<Length(FFoldOpen)) do
-  begin
-    if not FFoldOpen[G] then Exit(True);
-    G := FFoldParent[G];
-  end;
+  InvalidateLayout(AFrom);
 end;
 function TInkCustomPage.FoldOpen(Index: Integer): Boolean;
-var B: TInkPageBlock;
+var B: TInkPageBlock; S: TInkTreeSection;
 begin
   B := TInkPageBlock(FBlocks[Index]);
-  Result := (B.FoldHead>=0) and (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead];
+  S := TInkTreeSection(B.Section);
+  Result := (S<>nil) and (B.FoldHead>=0) and (B.FoldHead<Length(S.Folds)) and
+    S.Folds[B.FoldHead].HasAttribute('open');
 end;
 procedure TInkCustomPage.ToggleFold(Index: Integer);
-var B: TInkPageBlock;
 begin
   if (Index<0) or (Index>=FBlocks.Count) then Exit;
-  if FTree then begin TreeToggleFold(Index); Exit end;
-  B := TInkPageBlock(FBlocks[Index]);
-  if (B.FoldHead<0) or (B.FoldHead>=Length(FFoldOpen)) then Exit;
-  FFoldOpen[B.FoldHead] := not FFoldOpen[B.FoldHead];
-  { everything from the summary down moves }
-  InvalidateLayout(Index);
+  TreeToggleFold(Index);
 end;
 function TInkCustomPage.BlockVisible(Index: Integer): Boolean;
 begin
-  Result := not BlockHidden(TInkPageBlock(FBlocks[Index]));
+  { what a shut <details> holds has no boxes, and so no blocks }
+  Result := (Index>=0) and (Index<FBlocks.Count);
 end;
 procedure TInkCustomPage.AddBlock(B: TInkPageBlock);
-begin FBlocks.Add(B) end;
-procedure TInkCustomPage.InvalidateLayout(FromIndex: Integer);
+begin
+  B.Index := FBlocks.Count; B.Entry := FItems.Count; B.Section := nil;
+  FBlocks.Add(B); FItems.Add(B);
+end;
+function TInkCustomPage.ItemCount: Integer;
+begin Result := FItems.Count end;
+function TInkCustomPage.PageItem(Index: Integer): TObject;
+begin Result := TObject(FItems[Index]) end;
+procedure TInkCustomPage.InvalidateLayout(FromItem: Integer);
 begin
   if FRenderCache<>nil then FRenderCache.Clear;
-  if not FLayoutDirty or (FromIndex<FLayoutFrom) then FLayoutFrom := Max(0,FromIndex);
+  if not FLayoutDirty or (FromItem<FLayoutFrom) then FLayoutFrom := Max(0,FromItem);
   FLayoutDirty := True;
   Invalidate;
+end;
+procedure TInkCustomPage.InvalidateBlock(ABlock: Integer);
+var B: TInkPageBlock;
+begin
+  if (ABlock<0) or (ABlock>=FBlocks.Count) then begin InvalidateLayout(0); Exit end;
+  B := TInkPageBlock(FBlocks[ABlock]);
+  if B.Section<>nil then InvalidateLayout(TInkTreeSection(B.Section).Item)
+  else InvalidateLayout(B.Entry);
 end;
 function TInkCustomPage.BlockOptions(Index: Integer): THTMLOptions;
 var B: TInkPageBlock;
@@ -1400,8 +1127,6 @@ begin
   begin
     Result.LinkKeepsColor := True; Result.LinkUnderline := False; Result.CSSLines := True;
   end;
-  if B.NoLinkUnderline then Result.LinkUnderline := False;
-  if B.LinkColor<>clNone then Result.LinkColor := B.LinkColor;
 end;
 procedure TInkCustomPage.LinkClicked(const Link: TInkLinkInfo);
 var Handled: Boolean;
@@ -1416,7 +1141,54 @@ procedure TInkCustomPage.SetImageFit(AValue: TInkImageFit);
 begin
   if FImageFit=AValue then Exit;
   FImageFit := AValue;
-  InvalidateLayout(0);
+  if FStyler<>nil then Reread;
+end;
+function TInkCustomPage.MarkdownSheet: string;
+var Paper, Ink: TColor;
+begin
+  Paper := Color; if Paper=clDefault then Paper := clWindow;
+  Ink := Font.Color; if Ink=clDefault then Ink := clWindowText;
+  Result :=
+    'blockquote { margin: 0 0 1em; padding: 0 1em; border-left: 0.25em solid '+
+      ColorToHTMLHex(MixColor(Ink,Paper,0.6))+'; color: '+ColorToHTMLHex(MixColor(Ink,Paper,0.3))+' } '+
+    'pre { background: '+ColorToHTMLHex(HTMLShadeColor(Paper,7))+'; padding: 1em; border-radius: 6px } '+
+    'code { background: '+ColorToHTMLHex(HTMLShadeColor(Paper,7))+'; padding: 0.2em 0.4em; border-radius: 6px } '+
+    'pre code { background: transparent; padding: 0 } '+
+    'table { border-collapse: collapse } '+
+    'th, td { border: 1px solid '+ColorToHTMLHex(MixColor(Ink,Paper,0.75))+'; padding: 6px 13px } '+
+    'hr { height: 0.25em; padding: 0; margin: 24px 0; border: 0; background: currentcolor; color: '+
+      ColorToHTMLHex(MixColor(Ink,Paper,0.85))+' } ';
+end;
+function TInkCustomPage.ImageFitSheet: string;
+begin
+  case FImageFit of
+    iifWidth: Result := 'img { width: 100%; height: auto }';
+    iifWindow: Result := 'body { margin: 8px } img { display: block; margin: 0 auto; '+
+      'width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 16px) }';
+  else
+    { never past its column }
+    Result := 'img { max-width: 100% }';
+  end;
+end;
+function CellOf(B: TInkPageBlock): TInkBox;
+var X: TInkBox;
+begin
+  Result := nil;
+  if not B.Tree or (B.TreeBox=nil) then Exit;
+  X := TInkBox(B.TreeBox);
+  while X<>nil do
+  begin
+    if not X.Anon and (X.Style.Keyword('display')='table-cell') then Exit(X);
+    X := X.Parent;
+  end;
+end;
+function TInkCustomPage.BlockJoint(I: Integer): string;
+var A, C: TInkBox;
+begin
+  Result := LineEnding;
+  if (I<=0) or (I>=FBlocks.Count) then Exit;
+  A := CellOf(TInkPageBlock(FBlocks[I-1])); C := CellOf(TInkPageBlock(FBlocks[I]));
+  if (A<>nil) and (C<>nil) and (A<>C) and (A.Parent=C.Parent) then Result := #9;
 end;
 procedure TInkCustomPage.HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo);
 begin
@@ -1607,9 +1379,11 @@ begin
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]);
+    if I>0 then Result := Result + BlockJoint(I);
     if B.Marker<>'' then Result := Result + B.Marker + ' ';
-    Result := Result + TidyCopy(HTMLPlainText(B.Source)) + LineEnding;
+    Result := Result + TidyCopy(HTMLPlainText(B.Source));
   end;
+  if FBlocks.Count>0 then Result := Result + LineEnding;
 end;
 function TInkCustomPage.ImageCount: Integer;
 var I: Integer;
@@ -1711,717 +1485,8 @@ begin
   end;
 end;
 procedure TInkCustomPage.Parse;
-var
-  S, Raw, Element, Cls, Buffer, BlockTag, BlockClass, PendingAnchor, PendingMarker,
-    Prefix, URL, Nest, Box, Kind, PendingAlign: string;
-  P,Q,I,K,Level,TableDepth,SkipDepth,PreDepth,Depth: Integer;
-  Closing: Boolean;
-  B: TInkPageBlock;
-  ImageData: TMemoryStream;
-  ImageHeader: RawByteString;
-  Containers: array of TPageContainer;
-  Cached: TPicture;
-  CodeBack, PageBack: TColor;
-  { the link open where the parser is, so a picture inside it is clickable,
-    and the targets of the links in the buffer, in order }
-  OpenHref, OpenTarget: string;
-  Targets: TStringList;
-  { the tooltip of each of those links, in the same order }
-  Titles: TStringList;
-  { The style attributes of the inline elements open here, innermost last,
-    each "element=the markup that closes it"; and the one on the block
-    element being read, which the block keeps. }
-  StyleStack: TStringList;
-  PendingStyle: string;
-  { <center>, and <div align=center> around several blocks }
-  CenterDepth, RightDepth: Integer;
-  { where the text of the cell being read starts in Buffer, and what case
-    its stylesheet asks for, one per level of nested table }
-  CellFrom: array[0..15] of Integer;
-  CellCase: array[0..15] of string;
-  { the <details> the parser is inside, innermost last, and the fold each
-    block being made belongs to }
-  Folds: array of Integer;
-  FoldSeen: array of Boolean;
-  CurFold, PendingHead: Integer;
-  { a table's <caption>: its words, kept out of the table's own markup }
-  CaptionDepth: Integer;
-  CaptionText: string;
-  { the code block being read: its text, the language it named, whether the
-    page had already colored it itself, and each piece as it arrives }
-  CodeRaw, CodeLang, Piece, Marked: string;
-  CodeMarked, CodeTagged: Boolean;
-  { the table being read: its classes as a CSS context, and the contexts of
-    the tables it is nested in, one per level }
-  TableCtx: string;
-  TableCtxs: array[0..15] of string;
-  { a flex/grid item that is itself a table, so the table's close ends it }
-  ItemIsTable: Boolean;
-  Margins: TRect;
-  { a table whose cells are display: block - one to a row }
-  CellsAsBlocks: Boolean;
-  { the block elements open inside the cell being read, innermost last,
-    each entry the markup that closes it with its case and bottom margin;
-    and the same for the flex/grid item being read }
-  CellBlocks: TStringList;
-  ItemBlocks: TStringList;
-  TableSpacing: Integer;
-  { an element hidden by display: none, and how deep inside it we are }
-  HideDepth: Integer;
-  { a flex or grid container being read, its items so far, and how deep
-    inside the current item we are }
-  FlexDepth, ItemDepth: Integer;
-  FlexEl, FlexCls, FlexCtx, ItemCtx, ItemTag, Display, FlexText: string;
-  FlexItems: TStringList;
-  { where the item's own words start in Buffer, past its <td> markup }
-  ItemFrom: Integer;
-  FlexBasis, FlexGap, FlexMaxCols: Integer;
-  FlexWrap, ItemIsLink: Boolean;
-  FirstItemTag, FirstItemCls: string;
-  FlexPad: TRect;
-  function DotClasses(const AClasses: string): string;
-  begin
-    Result := Trim(AClasses);
-    if Result<>'' then Result := '.'+StringReplace(Result,' ','.',[rfReplaceAll]);
-  end;
-  { where the text being read sits, for CSS }
-  function Context: string;
-  begin
-    if FlexDepth>0 then
-    begin
-      if ItemCtx<>'' then Result := ItemCtx else Result := FlexCtx;
-    end
-    else if TableDepth>0 then
-    begin
-      if ItemCtx<>'' then Result := ItemCtx else Result := TableCtx+' td';
-    end
-    else Result := BlockTag+DotClasses(BlockClass);
-  end;
-  { center or right, from the block's style attribute, its align attribute,
-    the stylesheet, or a <center> it sits in }
-  function BlockAlign: string;
-  begin
-    Result := LowerCase(StyleValue(PendingStyle,'text-align'));
-    if Result='' then Result := LowerCase(PendingAlign);
-    if Result='' then
-      Result := LowerCase(FStyles.Value(BlockTag,BlockClass,'text-align','',Context));
-    if Result='' then
-    begin
-      if CenterDepth>0 then Result := 'center'
-      else if RightDepth>0 then Result := 'right';
-    end;
-  end;
-  procedure Flush;
-  var Text, Align: string; K: Integer;
-  begin
-    Text := Buffer;
-    if BlockTag='pre' then
-    begin
-      { the line break that ends the last line of code is not another line }
-      Text := TrimRight(Text);
-      while Copy(Text,Length(Text)-3,4)='<br>' do Text := TrimRight(Copy(Text,1,Length(Text)-4));
-    end
-    else Text := Trim(Text);
-    { an id with nothing yet to show waits for the block that has; so does
-      a buffer of tags alone, like the <a> before a picture }
-    if (Text='') or ((BlockTag<>'table') and (Trim(HTMLPlainText(Text))='')) then
-    begin
-      Buffer := ''; Targets.Clear; Titles.Clear;
-      Exit;
-    end;
-    { a block the page says is centered or right-aligned says so in its
-      markup, from where the words start }
-    if BlockTag<>'table' then
-    begin
-      Align := BlockAlign;
-      if Align='center' then Text := '<center>'+Text
-      else if Align='right' then Text := '<right>'+Text;
-    end;
-    B := TInkPageBlock.Create;
-    B.LinkTargets := nil;
-    SetLength(B.LinkTargets,Targets.Count);
-    for K := 0 to Targets.Count-1 do B.LinkTargets[K] := Targets[K];
-    SetLength(B.LinkTitles,Titles.Count);
-    for K := 0 to Titles.Count-1 do B.LinkTitles[K] := Titles[K];
-    Targets.Clear; Titles.Clear;
-    B.StyleAttr := PendingStyle; B.FoldGroup := CurFold;
-    if PendingHead>=0 then
-    begin
-      B.FoldHead := PendingHead; B.FoldGroup := FFoldParent[PendingHead];
-      PendingHead := -1;
-    end;
-    B.Source := Text; B.Tag := BlockTag; B.CSSClass := BlockClass;
-    if (BlockTag='pre') and (Trim(CodeRaw)<>'') then
-    begin
-      B.Code := TrimRight(CodeRaw); B.CodeLanguage := CodeLang;
-      { a <pre> that never said <code> is preformatted prose, not a
-        program: it keeps its spaces and stays uncolored }
-      if not CodeMarked and CodeTagged then
-      begin
-        Marked := CodeMarkup(B.Code,CodeLang);
-        if Marked<>'' then B.Source := Marked;
-      end;
-    end;
-    B.Anchor := PendingAnchor; B.Nest := Nest; B.Pre := BlockTag='pre';
-    { links take their look from where they are: table.cards a }
-    B.NoLinkUnderline := LowerCase(FStyles.Value('a','','text-decoration','',Context))='none';
-    B.LinkColor := FStyles.Color('a','','color',clNone,Context);
-    if BlockTag='table' then
-    begin
-      Margins := FStyles.Box('table',BlockClass,'margin',Rect(0,0,0,0));
-      B.MarginLeft := Margins.Left; B.MarginRight := Margins.Right;
-
-    end;
-    { an item's marker goes on its first words, not on an anchor before them }
-    if Text<>'' then begin B.Marker := PendingMarker; PendingMarker := '' end;
-    FBlocks.Add(B); Buffer := ''; PendingAnchor := '';
-  end;
-  procedure OpenContainer(AKind: Char; const AStyle: string; AStart: Integer);
-  begin
-    Level := Length(Containers); SetLength(Containers,Level+1);
-    Containers[Level].Kind := AKind; Containers[Level].Style := AStyle;
-    Containers[Level].Counter := AStart;
-    if AKind in ['o','u'] then Nest := Nest+'l' else Nest := Nest+AKind;
-  end;
-  procedure CloseContainer(AKinds: TSysCharSet);
-  begin
-    Level := High(Containers);
-    if (Level<0) or not (Containers[Level].Kind in AKinds) then Exit;
-    SetLength(Containers,Level); Delete(Nest,Length(Nest),1);
-  end;
-  { the text directly inside a container, when no block element says what
-    it is }
-  function ContainerTag: string;
-  begin
-    Result := 'p';
-    if Length(Containers)=0 then Exit;
-    case Containers[High(Containers)].Kind of
-      'q': Result := 'blockquote';
-      'd': Result := 'dd';
-    end;
-  end;
-  function ColorText(C: TColor): string;
-  begin
-    if C=clNone then Result := 'none' else Result := ColorAttr(C);
-  end;
-  { a cell's look from CSS - the table's rules for td, and the cell's own }
-  function CellStyleAttrs(const El, AClasses, Ctx: string): string;
-  var V: string; C: TColor; Sides: string; K: Integer;
-  begin
-    Result := '';
-    V := FStyles.Value(El,AClasses,'background','',Ctx);
-    if V='' then V := FStyles.Value(El,AClasses,'background-color','',Ctx);
-    if V<>'' then Result := Result+' bgcolor="'+ColorText(CSSColor(V,clNone))+'"';
-    if FStyles.Border(El,AClasses,C,Sides,Ctx) then
-    begin
-      if Sides='' then Result := Result+' border="none"'
-      else
-      begin
-        Result := Result+' sides="'+Sides+'"';
-        if (C<>clNone) and (C<>clDefault) then Result := Result+' bordercolor="'+ColorAttr(C)+'"';
-      end;
-    end;
-    V := FStyles.Value(El,AClasses,'color','',Ctx);
-    if V<>'' then
-    begin
-      C := CSSColor(V,clNone);
-      if C<>clNone then Result := Result+' color="'+ColorAttr(C)+'"';
-    end;
-    K := FStyles.Pixels(El,AClasses,'border-radius',-1,Ctx);
-    if K>=0 then Result := Result+' radius="'+IntToStr(K)+'"';
-    { text styling that reaches into the cell: a smaller face for one
-      column is the ordinary way to make long file names fit.  Sizes in
-      pixels, negative, the way TFont.Height spells one. }
-    K := FStyles.Pixels(El,AClasses,'font-size',-1,Ctx);
-    if K>0 then Result := Result+' size="'+IntToStr(-K)+'"';
-    V := LowerCase(FStyles.Value(El,AClasses,'font-weight','',Ctx));
-    if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
-      Result := Result+' bold="1"';
-    V := FStyles.Value(El,AClasses,'font-family','',Ctx);
-    if V<>'' then
-    begin
-      V := InkResolveFace(V);
-      if V<>'' then Result := Result+' face="'+V+'"';
-    end;
-    K := FStyles.Pixels(El,AClasses,'line-height',-1,Ctx);
-    if K>0 then Result := Result+' lineheight="'+IntToStr(K)+'"';
-    { white-space: nowrap on a cell keeps its column at least as wide as
-      the whole text, so "85 KB" never folds to give a neighbor room }
-    V := LowerCase(Trim(FStyles.Value(El,AClasses,'white-space','',Ctx)));
-    if (V='nowrap') or (V='pre') then Result := Result+' nowrap="1"';
-  end;
-  function TableAttrs(ANested: Boolean = False): string;
-  var Pad: TRect; K: Integer; V: string;
-  begin
-    Result := '';
-    if not ANested then
-    begin
-      CellsAsBlocks := LowerCase(FStyles.Value('td','','display','',TableCtx))='block';
-      TableSpacing := 0;
-    end;
-    if CellsAsBlocks and not ANested then
-    begin
-      { cells that are blocks: one to a row, the whole width, apart by
-        their bottom margin }
-      Result := Result+' width="100%" layout="fixed" gaponly="1"';
-      TableSpacing := Max(0,FStyles.Box('td','','margin',Rect(0,0,0,0),TableCtx).Bottom);
-      if TableSpacing>0 then Result := Result+' cellspacing="'+IntToStr(TableSpacing)+'"';
-    end
-    else
-    begin
-      { the tag's own width attribute, then the stylesheet's; a percent is
-        what the engine spreads a table by }
-      V := Trim(Attribute(Raw,'width'));
-      if V='' then V := Trim(FStyles.Value('table',Cls,'width',''));
-      if (V<>'') and (V[Length(V)]='%') then Result := Result+' width="'+V+'"';
-      V := FStyles.Value('td','','width','',TableCtx);
-      if (LowerCase(FStyles.Value('table',Cls,'table-layout',''))='fixed') or
-        ((V<>'') and (V[Length(V)]='%')) then Result := Result+' layout="fixed"';
-      if LowerCase(FStyles.Value('table',Cls,'border-collapse',''))<>'collapse' then
-      begin
-        K := FStyles.Pixels('table',Cls,'border-spacing',0);
-        if K>0 then Result := Result+' cellspacing="'+IntToStr(K)+'"';
-      end;
-    end;
-    Pad := FStyles.Box('td','','padding',Rect(-1,-1,-1,-1),TableCtx);
-    if (Pad.Left>=0) or (Pad.Top>=0) or (Pad.Right>=0) or (Pad.Bottom>=0) then
-      Result := Result+Format(' cellpadding="%d %d %d %d"',[Max(0,Pad.Top),Max(0,Pad.Right),
-        Max(0,Pad.Bottom),Max(0,Pad.Left)]);
-    V := CellStyleAttrs('td','',TableCtx);
-    { the table's default cell look goes on the table }
-    V := StringReplace(V,' bgcolor=',' cellbg=',[]);
-    Result := Result+V;
-  end;
-  { a cell that reaches across columns says so in the markup the renderer
-    reads, the way it says everything else }
-  function Spans(const ATag: string): string;
-  var N: Integer;
-  begin
-    Result := '';
-    N := StrToIntDef(Attribute(ATag,'colspan'),1);
-    if N>1 then Result := Result+' colspan="'+IntToStr(N)+'"';
-    N := StrToIntDef(Attribute(ATag,'rowspan'),1);
-    if N>1 then Result := Result+' rowspan="'+IntToStr(N)+'"';
-  end;
-  function CellAlign: string;
-  var A: string;
-  begin
-    A := LowerCase(Attribute(Raw,'align'));
-    if A='' then
-    begin
-      A := LowerCase(StringReplace(Attribute(Raw,'style'),' ','',[rfReplaceAll]));
-      if Pos('text-align:center',A)>0 then A := 'center'
-      else if Pos('text-align:right',A)>0 then A := 'right'
-      else A := LowerCase(FStyles.Value(Element,Cls,'text-align','',TableCtx));
-    end;
-    { a heading cell is centered unless the page says otherwise, which is
-      what a browser does with <th> }
-    if (A='') and (Element='th') then A := 'center';
-    if A='center' then Result := '<center>'
-    else if A='right' then Result := '<right>'
-    else Result := '';
-  end;
-  { What a style attribute asks for, as markup, and in AClose the markup
-    that puts it back.  Colors, size, weight, slant and decoration: the
-    things people write a style attribute for. }
-  function StyleMarkup(const AStyle: string; out AClose: string): string;
-  var V, FG, BG, Sz, Pill: string; C: TColor; K, PV, PH, BW: Integer;
-    Parts: TStringList;
-  begin
-    Result := ''; AClose := '';
-    if Pos(':',AStyle)=0 then Exit;
-    FG := ''; BG := ''; Sz := ''; Pill := '';
-    V := StyleValue(AStyle,'color');
-    if V<>'' then
-    begin
-      C := CSSColor(FStyles.Resolve(V),clNone);
-      if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
-    end;
-    V := StyleValue(AStyle,'background-color');
-    if V='' then V := StyleValue(AStyle,'background');
-    if V<>'' then
-    begin
-      C := CSSColor(FStyles.Resolve(V),clNone);
-      if C<>clNone then BG := ' bgcolor="'+ColorAttr(C)+'"';
-    end;
-    { a size in pixels, negative, the way TFont.Height spells one }
-    K := CSSPixels(StyleValue(AStyle,'font-size'),-1);
-    if K>0 then Sz := ' size="'+IntToStr(-K)+'"';
-    { a pill: padding, round corners and a border make an inline box - a
-      status badge.  Padding the CSS way: one value for every side, two for
-      vertical and horizontal; a pill only cares about those two. }
-    PV := 0; PH := 0;
-    V := Trim(FStyles.Resolve(StyleValue(AStyle,'padding')));
-    if V<>'' then
-    begin
-      Parts := TStringList.Create;
-      try
-        Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
-        Parts.DelimitedText := V;
-        if Parts.Count>=1 then PV := Max(0,CSSPixels(Parts[0],0));
-        if Parts.Count>=2 then PH := Max(0,CSSPixels(Parts[1],0)) else PH := PV;
-      finally Parts.Free end;
-    end;
-    K := CSSPixels(FStyles.Resolve(StyleValue(AStyle,'border-radius')),0);
-    EdgeOf(FStyles.Resolve(StyleValue(AStyle,'border')),C,BW);
-    if (PV>0) or (PH>0) or (K>0) or (C<>clNone) then
-    begin
-      Pill := Format(' pad="%d %d"',[PV,PH]);
-      if K>0 then Pill := Pill+' radius="'+IntToStr(K)+'"';
-      if C<>clNone then Pill := Pill+' pillborder="'+ColorAttr(C)+'"';
-    end;
-    if (FG<>'') or (BG<>'') or (Sz<>'') or (Pill<>'') then
-    begin
-      Result := '<font'+Sz+FG+BG+Pill+'>'; AClose := '</font>';
-    end;
-    V := LowerCase(StyleValue(AStyle,'font-weight'));
-    if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
-    begin
-      Result := Result+'<b>'; AClose := '</b>'+AClose;
-    end;
-    V := LowerCase(StyleValue(AStyle,'font-style'));
-    if (V='italic') or (V='oblique') then
-    begin
-      Result := Result+'<i>'; AClose := '</i>'+AClose;
-    end;
-    V := LowerCase(StyleValue(AStyle,'text-decoration'));
-    if Pos('underline',V)>0 then
-    begin
-      Result := Result+'<u>'; AClose := '</u>'+AClose;
-    end;
-    if Pos('line-through',V)>0 then
-    begin
-      Result := Result+'<s>'; AClose := '</s>'+AClose;
-    end;
-  end;
-  { A block element inside a table cell or a flex/grid card opens as a line
-    of its own, in its own size, weight, color and case, and with the
-    margins its stylesheet asks for (as <vgap> markup the renderer reads).
-    Returns the opening markup; what closes it goes on AStack, with the
-    text-transform and the bottom margin riding along for PopCellBlock. }
-  function CellBlockOpen(const ACtx: string; AStack: TStringList): string;
-  var K, Base, MT, MB: Integer; V, CV, SM, SMClose, AClose, Kind: string;
-    C: TColor; Margins: TRect;
-  begin
-    Result := ''; AClose := '';
-    Base := BaseFontPixels; K := Base;
-    if Element='h1' then K := Round(Base*2.0)
-    else if Element='h2' then K := Round(Base*1.5)
-    else if Element='h3' then K := Round(Base*1.17)
-    else if Element='h5' then K := Max(1,Round(Base*0.83))
-    else if Element='h6' then K := Max(1,Round(Base*0.67));
-    K := FStyles.Pixels(Element,Cls,'font-size',K,ACtx);
-    CV := '';
-    C := FStyles.Color(Element,Cls,'color',clNone,ACtx);
-    if C<>clNone then CV := ' color="'+ColorAttr(C)+'"';
-    if (K<>Base) or (CV<>'') then
-    begin
-      Result := '<font size="'+IntToStr(-K)+'"'+CV+'>'; AClose := '</font>';
-    end;
-    V := LowerCase(FStyles.Value(Element,Cls,'font-weight','',ACtx));
-    if (Element[1]='h') or (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then
-    begin
-      Result := Result+'<b>'; AClose := '</b>'+AClose;
-    end;
-    SM := StyleMarkup(Attribute(Raw,'style'),SMClose);
-    Result := Result+SM; AClose := SMClose+AClose;
-    { the margins above and below - the shorthand, the longhands over it,
-      and the style attribute over both: the gap a title asks for under
-      itself }
-    Margins := FStyles.Box(Element,Cls,'margin',Rect(0,0,0,0),ACtx);
-    MT := Max(0,FStyles.Pixels(Element,Cls,'margin-top',Margins.Top,ACtx));
-    MB := Max(0,FStyles.Pixels(Element,Cls,'margin-bottom',Margins.Bottom,ACtx));
-    V := StyleValue(Attribute(Raw,'style'),'margin-top');
-    if V<>'' then MT := Max(0,CSSPixels(FStyles.Resolve(V),MT));
-    V := StyleValue(Attribute(Raw,'style'),'margin-bottom');
-    if V<>'' then MB := Max(0,CSSPixels(FStyles.Resolve(V),MB));
-    if MT>0 then Result := '<vgap='+IntToStr(MT)+'>'+Result;
-    { and the case its stylesheet asks for, applied when it closes }
-    Kind := LowerCase(Trim(FStyles.Value(Element,Cls,'text-transform','',ACtx)));
-    if (Kind<>'uppercase') and (Kind<>'lowercase') and (Kind<>'capitalize') then
-      Kind := '';
-    AStack.Add(AClose+#1+Kind+#1+'0'+#1+IntToStr(MB));
-  end;
-  { the block is open and its markup appended: remember where its words
-    start, so its text-transform knows what to work on }
-  procedure MarkCellBlock(AStack: TStringList);
-  var E: string; P1, P2: Integer;
-  begin
-    if AStack.Count=0 then Exit;
-    E := AStack[AStack.Count-1];
-    P1 := Pos(#1,E); P2 := PosEx(#1,E,P1+1);
-    AStack[AStack.Count-1] := Copy(E,1,P2)+IntToStr(Length(Buffer))+
-      Copy(E,PosEx(#1,E,P2+1),MaxInt);
-  end;
-  { the block closes: its case applied to its words, its closing markup,
-    and the gap its margin-bottom asks for after the break }
-  function PopCellBlock(AStack: TStringList): Integer;
-  var E, CloseM, Kind: string; P1, P2, P3, StartAt: Integer;
-  begin
-    Result := 0;
-    if AStack.Count=0 then Exit;
-    E := AStack[AStack.Count-1]; AStack.Delete(AStack.Count-1);
-    P1 := Pos(#1,E); P2 := PosEx(#1,E,P1+1); P3 := PosEx(#1,E,P2+1);
-    CloseM := Copy(E,1,P1-1);
-    Kind := Copy(E,P1+1,P2-P1-1);
-    StartAt := StrToIntDef(Copy(E,P2+1,P3-P2-1),Length(Buffer));
-    Result := StrToIntDef(Copy(E,P3+1,MaxInt),0);
-    if (Kind<>'') and (StartAt<Length(Buffer)) then
-      Buffer := Copy(Buffer,1,StartAt)+Transformed(Copy(Buffer,StartAt+1,MaxInt),Kind);
-    Buffer := Buffer+CloseM;
-  end;
-  { whitespace at a block's edge is a browser's to drop, and so it is ours:
-    the source's indentation between block tags is not words }
-  procedure TrimLineEdge;
-  begin
-    while (Buffer<>'') and (Buffer[Length(Buffer)]=' ') do
-      SetLength(Buffer,Length(Buffer)-1);
-  end;
-  { blocks left open inside a cell close with the cell, and a cell does not
-    end on a blank line of its own }
-  procedure FlushCellBlocks(AStack: TStringList);
-  begin
-    while AStack.Count>0 do PopCellBlock(AStack);
-    TrimLineEdge;
-    if Copy(Buffer,Length(Buffer)-3,4)='<br>' then
-      Delete(Buffer,Length(Buffer)-3,4);
-  end;
-  function InlineMarkup: string;
-  var BG, FG: string; C: TColor; K: Integer;
-  begin
-    Result := '';
-    if Closing then Prefix := '/' else Prefix := '';
-    if (Element='b') or (Element='strong') then Exit('<'+Prefix+'b>');
-    if (Element='i') or (Element='em') or (Element='cite') or (Element='dfn') then Exit('<'+Prefix+'i>');
-    if (Element='u') or (Element='s') or (Element='sup') or (Element='sub') then Exit('<'+Prefix+Element+'>');
-    if (Element='del') or (Element='strike') then Exit('<'+Prefix+'s>');
-    if Element='ins' then Exit('<'+Prefix+'u>');
-    if Element='br' then Exit('<br>');
-    if Element='a' then
-    begin
-      if Closing then
-      begin
-        OpenHref := ''; OpenTarget := '';
-        Exit('</a>');
-      end;
-      if Attribute(Raw,'href')='' then Exit;
-      Result := StringReplace(HTMLEscape(Attribute(Raw,'href')),'"','&quot;',[rfReplaceAll]);
-      OpenHref := Result; OpenTarget := Attribute(Raw,'target');
-      Targets.Add(OpenTarget); Titles.Add(Attribute(Raw,'title'));
-      Exit('<a href="'+Result+'">');
-    end;
-    if (Element='code') or (Element='kbd') or (Element='tt') or (Element='samp') then
-    begin
-      { inside <pre> the whole block is already code }
-      if PreDepth>0 then Exit;
-      if Closing then Exit('</font>');
-      BG := ''; FG := '';
-      C := FStyles.Color(Element,Cls,'background',
-        FStyles.Color(Element,Cls,'background-color',CodeBack));
-      if C<>clNone then BG := ' bgcolor="'+ColorAttr(C)+'"';
-      C := FStyles.Color(Element,Cls,'color',clNone);
-      if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
-      Exit('<font face="'+InkMonoFace+'"'+BG+FG+'>');
-    end;
-    if Element='small' then
-    begin
-      if Closing then Exit('</font>');
-      K := FStyles.Pixels('small',Cls,'font-size',-1,Context);
-      if K>0 then K := -K
-      else K := -Max(1,Round(BaseFontPixels*0.83));
-      C := FStyles.Color('small',Cls,'color',clNone,Context);
-      FG := '';
-      if C<>clNone then FG := ' color="'+ColorAttr(C)+'"';
-      Exit('<font size="'+IntToStr(K)+'"'+FG+'>');
-    end;
-    if Element='mark' then
-    begin
-      if Closing then Exit('</font>');
-      Exit('<font bgcolor="'+ColorAttr(FStyles.Color('mark',Cls,'background',RGBToColor($FF,$F3,$A0)))+'">');
-    end;
-    if Element='q' then
-    begin
-      { a quotation inside a sentence wears its quotation marks }
-      if Closing then Exit('”') else Exit('“');
-    end;
-    if Element='font' then Exit(Raw);
-  end;
-  { an inline element, with whatever its own style attribute asks for
-    wrapped round it }
-  { what the stylesheet says about a span, as the style text it would have
-    written on itself: span.ok { background; padding; border-radius } is how
-    a page writes a status pill }
-  function SpanCSS: string;
-  var Gathered: string;
-    procedure Take(const AProp: string);
-    var V: string;
-    begin
-      V := FStyles.Value(Element,Cls,AProp,'',Context);
-      if V<>'' then Gathered := Gathered+AProp+':'+V+';';
-    end;
-  begin
-    Gathered := '';
-    Take('color'); Take('background'); Take('background-color');
-    Take('font-size'); Take('font-weight'); Take('font-style');
-    Take('text-decoration'); Take('padding'); Take('border-radius');
-    Take('border');
-    Result := Gathered;
-  end;
-  function InlineTag: string;
-  var Open, Close, CSSText: string; K: Integer;
-  begin
-    Result := InlineMarkup;
-    if IsVoidElement(Element) or (Element='') then Exit;
-    if Closing then
-    begin
-      { the style of the element this closes, innermost first }
-      for K := StyleStack.Count-1 downto 0 do
-        if StyleStack.Names[K]=Element then
-        begin
-          Result := StyleStack.ValueFromIndex[K]+Result;
-          StyleStack.Delete(K);
-          Break;
-        end;
-      Exit;
-    end;
-    CSSText := '';
-    { the stylesheet's rules for a span, under its own style attribute,
-      which wins because the last declaration written wins }
-    if Element='span' then CSSText := SpanCSS;
-    Open := StyleMarkup(CSSText+Attribute(Raw,'style'),Close);
-    StyleStack.Add(Element+'='+Close);
-    Result := Result+Open;
-  end;
-  { a length from a list of them, like gap: 10px 12px, or flex: 1 1 220px }
-  function FirstPixels(const V: string; Last: Boolean): Integer;
-  var Parts: TStringList; K: Integer;
-  begin
-    Result := -1;
-    Parts := TStringList.Create;
-    try
-      Parts.Delimiter := ' '; Parts.StrictDelimiter := False;
-      Parts.DelimitedText := V;
-      for K := 0 to Parts.Count-1 do
-        if (Pos('px',LowerCase(Parts[K]))>0) or (Pos('em',LowerCase(Parts[K]))>0) or
-          ((Parts.Count=1) and (CSSPixels(Parts[K],-1)>0)) then
-        begin
-          Result := CSSPixels(Parts[K],-1);
-          if not Last then Exit;
-        end;
-    finally Parts.Free end;
-  end;
-  procedure StartFlex(const ADisplay: string);
-  var V: string; K: Integer;
-  begin
-    Flush;
-    FlexEl := Element; FlexCls := Cls;
-    FlexCtx := Trim(Context+' '+Element+DotClasses(Cls));
-    if TableDepth=0 then FlexCtx := Element+DotClasses(Cls);
-    FlexItems.Clear; FlexText := '';
-    FlexDepth := 1; ItemDepth := 0; ItemCtx := '';
-    FlexBasis := -1; FlexMaxCols := 0; FlexPad := Rect(-1,-1,-1,-1);
-    V := FStyles.Value(Element,Cls,'column-gap','');
-    if V='' then V := FStyles.Value(Element,Cls,'gap','');
-    FlexGap := Max(0,FirstPixels(V,False));
-    if Pos('grid',ADisplay)>0 then
-    begin
-      V := LowerCase(FStyles.Value(Element,Cls,'grid-template-columns',''));
-      FlexWrap := (Pos('auto-fill',V)>0) or (Pos('auto-fit',V)>0);
-      K := Pos('minmax(',V);
-      if K>0 then FlexBasis := FirstPixels(StringReplace(Copy(V,K+7,MaxInt),',',' ',[rfReplaceAll]),False);
-      K := Pos('repeat(',V);
-      if (K>0) and not FlexWrap then
-        FlexMaxCols := StrToIntDef(Trim(Copy(V,K+7,Pos(',',Copy(V,K+7,MaxInt))-1)),0)
-      else if (K=0) and (V<>'') then
-      begin
-        { "1fr 1fr 1fr": as many columns as it names }
-        V := Trim(V); FlexMaxCols := 1;
-        for K := 1 to Length(V) do if (V[K]=' ') and (V[K-1]<>' ') then Inc(FlexMaxCols);
-      end;
-      if FlexMaxCols=0 then FlexWrap := True;
-    end
-    else
-      FlexWrap := Pos('wrap',LowerCase(FStyles.Value(Element,Cls,'flex-wrap',
-        FStyles.Value(Element,Cls,'flex-flow',''))))>0;
-  end;
-  procedure StartItem;
-  var V: string;
-  begin
-    ItemTag := Element;
-    ItemCtx := FlexCtx+' '+Element+DotClasses(Cls);
-    { the first item says how wide the items want to be, and their padding }
-    if FlexBasis<0 then
-    begin
-      V := FStyles.Value(Element,Cls,'flex-basis','',FlexCtx);
-      if V='' then V := FStyles.Value(Element,Cls,'flex','',FlexCtx);
-      FlexBasis := FirstPixels(V,True);
-      if FlexBasis<=0 then FlexBasis := FStyles.Pixels(Element,Cls,'min-width',-1,FlexCtx);
-      if FlexBasis<=0 then FlexBasis := FStyles.Pixels(Element,Cls,'width',-1,FlexCtx);
-    end;
-    if FlexPad.Top<0 then
-    begin
-      FlexPad := FStyles.Box(Element,Cls,'padding',Rect(0,0,0,0),FlexCtx);
-      FirstItemTag := Element; FirstItemCls := Cls;
-    end;
-    ItemBlocks.Clear;
-    Buffer := '<td'+CellStyleAttrs(Element,Cls,FlexCtx)+'>';
-    ItemIsLink := (Element='a') and (Attribute(Raw,'href')<>'');
-    if ItemIsLink then Buffer := Buffer+InlineTag;
-    ItemFrom := Length(Buffer);
-  end;
-  procedure EndItem;
-  begin
-    FlushCellBlocks(ItemBlocks);
-    if ItemIsLink then Buffer := Buffer+'</a>';
-    ItemIsLink := False;
-    Buffer := TrimRight(Buffer);
-    while Copy(Buffer,Length(Buffer)-3,4)='<br>' do SetLength(Buffer,Length(Buffer)-4);
-    FlexItems.Add(Buffer+'</td>');
-    Buffer := ''; ItemCtx := '';
-  end;
-  procedure EndFlex;
-  var K: Integer;
-  begin
-    FlexDepth := 0;
-    if FlexItems.Count=0 then Exit;
-    B := TInkPageBlock.Create;
-    B.Tag := 'table'; B.CSSClass := FlexCls; B.Nest := Nest;
-    B.Anchor := PendingAnchor; PendingAnchor := '';
-    B.Flex := True; B.FlexWrap := FlexWrap; B.FlexGap := FlexGap;
-    if FlexBasis<=0 then FlexBasis := Scale96ToFont(200);
-    B.FlexBasis := FlexBasis; B.FlexMaxCols := FlexMaxCols;
-    B.FlexAttrs := Format(' cellpadding="%d %d %d %d" border="none"',
-      [Max(0,FlexPad.Top),Max(0,FlexPad.Right),Max(0,FlexPad.Bottom),Max(0,FlexPad.Left)]);
-    SetLength(B.FlexCells,FlexItems.Count);
-    for K := 0 to FlexItems.Count-1 do B.FlexCells[K] := FlexItems[K];
-    B.FlexCols := FlexItems.Count;
-    B.Source := FlexTable(B,B.FlexCols);
-    SetLength(B.LinkTargets,Targets.Count);
-    for K := 0 to Targets.Count-1 do B.LinkTargets[K] := Targets[K];
-    Targets.Clear;
-    { links take their look from the item when it is the link (a.card),
-      or from rules for links inside the items }
-    if FirstItemTag='a' then
-    begin
-      B.NoLinkUnderline := LowerCase(FStyles.Value('a',FirstItemCls,'text-decoration','',FlexCtx))='none';
-      B.LinkColor := FStyles.Color('a',FirstItemCls,'color',clNone,FlexCtx);
-    end
-    else
-    begin
-      B.NoLinkUnderline := LowerCase(FStyles.Value('a','','text-decoration','',
-        FlexCtx+' '+FirstItemTag+DotClasses(FirstItemCls)))='none';
-      B.LinkColor := FStyles.Color('a','','color',clNone,FlexCtx+' '+FirstItemTag+DotClasses(FirstItemCls));
-    end;
-    Margins := FStyles.Box(FlexEl,FlexCls,'margin',Rect(0,0,0,0));
-    { the gap stays between the items now, so the container's own margins
-      are the whole story }
-    B.MarginLeft := Margins.Left; B.MarginRight := Margins.Right;
-    FBlocks.Add(B);
-    BlockTag := ContainerTag; BlockClass := '';
-    FirstItemTag := ''; FirstItemCls := '';
-  end;
+var S: string; I: Integer;
 begin
-  if FBlocks=nil then Exit;
   BeginDocument;
   if FImageCacheFor<>FLocation then
   begin
@@ -2439,11 +1504,10 @@ begin
     S := '<html><body>'+StringReplace(StringReplace(HTMLEscape(FSource),
       #13,'',[rfReplaceAll]),#10,'<br>',[rfReplaceAll])+'</body></html>'
   else S := FSource;
-  { the tree a browser would build, and the page read from it - which is
-    where implied ends, misnested tags and stray table text get mended }
-  { the styles go with the tree they were worked out for; a tree its
-    program changed may have lost nodes, which are not touched again }
-  FreeAndNil(FTreeLayout); SetLength(FTreePaint,0);
+  { the tree a browser would build - which is where implied ends,
+    misnested tags and stray table text get mended.  The styles go with the
+    tree they were worked out for; a tree its program changed may have lost
+    nodes, which are not touched again }
   if FStyler<>nil then FStyler.Release(not FKeepDocument);
   FStyled := False;
   if FKeepDocument and (FDocument<>nil) then FKeepDocument := False
@@ -2452,592 +1516,13 @@ begin
     FreeAndNil(FDocument);
     FDocument := InkParseHTML(S);
   end;
-  S := InkSerializeHTML(FDocument);
-  { @media width queries are judged against the page's own width }
-  if ClientWidth>0 then FStyles.MediaWidth := ClientWidth else FStyles.MediaWidth := 1024;
-  { the host's styles first, so the page's own come after them and win }
-  if FStyleSheet.Count>0 then FStyles.Add(FStyleSheet.Text);
-  { Collect external styles before layout; scripts and page metadata never paint. }
-  P := 1;
-  while P<=Length(S) do
-  begin
-    if S[P]<>'<' then begin Inc(P); Continue end;
-    Q := P; while (Q<=Length(S)) and (S[Q]<>'>') do Inc(Q);
-    Raw := Copy(S,P,Q-P+1); Element := TagName(Raw);
-    if (Element='link') and (LowerCase(Attribute(Raw,'rel'))='stylesheet') then
-    begin
-      URL := ResolveURL(Attribute(Raw,'href'));
-      try FStyles.Add(ReadText(URL)) except on E: EReadError do { fallback to control theme } ; end;
-    end;
-    if (Element='style') and (Copy(Raw,1,2)<>'</') then
-    begin
-      I := Pos('</style',LowerCase(Copy(S,Q+1,MaxInt)));
-      if I>0 then FStyles.Add(Copy(S,Q+1,I-1));
-    end;
-    if (Element='title') and (Copy(Raw,1,2)<>'</') then
-    begin
-      I := Pos('</title',LowerCase(Copy(S,Q+1,MaxInt)));
-      if I>0 then FTitle := HTMLPlainText(TextMarkup(Copy(S,Q+1,I-1)));
-    end;
-    P := Q+1;
-  end;
-  FMediaState := FStyles.MediaState(FStyles.MediaWidth);
-  if FTree then
-  begin
-    TreeBuild;
-    if FTitle='' then FTitle := FDocument.Title;
-    if FTitle='' then
-      for I := 0 to FBlocks.Count-1 do
-        if IsHeadingTag(TInkPageBlock(FBlocks[I]).Tag) and (TInkPageBlock(FBlocks[I]).Source<>'') then
-        begin
-          FTitle := Trim(HTMLPlainText(TInkPageBlock(FBlocks[I]).Source));
-          Break;
-        end;
-    FindAnimations;
-    FScroll.Position := 0; InvalidateLayout(0);
-    Exit;
-  end;
-  { code with no background of its own gets a shade of the page's, so it
-    still reads as code }
-  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
-  CodeBack := HTMLShadeColor(PageBack,7);
-  Targets := TStringList.Create; Titles := TStringList.Create;
-  StyleStack := TStringList.Create; CellBlocks := TStringList.Create;
-  ItemBlocks := TStringList.Create;
-  try
-  OpenHref := ''; OpenTarget := '';
-  HideDepth := 0; FlexDepth := 0; ItemDepth := 0; ItemCtx := ''; ItemIsLink := False;
-  ItemIsTable := False;
-  CellsAsBlocks := False; TableSpacing := 0;
-  FlexItems := TStringList.Create;
-  P := 1; Buffer := ''; BlockTag := 'p'; BlockClass := ''; Nest := '';
-  PendingAnchor := ''; PendingMarker := ''; TableDepth := 0; SkipDepth := 0; PreDepth := 0;
-  for I := 0 to High(CellCase) do begin CellCase[I] := ''; CellFrom[I] := 0 end;
-  PendingStyle := ''; PendingAlign := ''; CenterDepth := 0; RightDepth := 0;
-  CaptionDepth := 0; CaptionText := ''; CurFold := -1; PendingHead := -1;
-  CodeRaw := ''; CodeLang := ''; CodeMarked := False; CodeTagged := False;
-  SetLength(Folds,0); SetLength(FoldSeen,0);
-  SetLength(Containers,0);
-  while P<=Length(S) do
-  begin
-    if S[P]<>'<' then
-    begin
-      Q := P; while (P<=Length(S)) and (S[P]<>'<') do Inc(P);
-      if (SkipDepth>0) or (HideDepth>0) then Continue;
-      if CaptionDepth>0 then
-      begin
-        CaptionText := CaptionText+TextMarkup(Copy(S,Q,P-Q));
-        Continue;
-      end;
-      if (FlexDepth>0) and (ItemDepth=0) then
-      begin
-        { words straight inside a flex container are an item of their own }
-        if Trim(Copy(S,Q,P-Q))<>'' then
-          FlexItems.Add('<td>'+TextMarkup(Copy(S,Q,P-Q))+'</td>');
-        Continue;
-      end;
-      if PreDepth>0 then
-      begin
-        { code is kept as text as well, for the highlighter to read }
-        Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q),False,Piece);
-        CodeRaw := CodeRaw+Piece;
-        Continue;
-      end;
-      Buffer := Buffer+TextMarkup(Copy(S,Q,P-Q));
-      Continue;
-    end;
-    if Copy(S,P,4)='<!--' then
-    begin
-      Q := Pos('-->',Copy(S,P+4,MaxInt));
-      if Q=0 then Break;
-      Inc(P,Q+6); Continue;
-    end;
-    Q := P; while (Q<=Length(S)) and (S[Q]<>'>') do Inc(Q);
-    Raw := Copy(S,P,Q-P+1); P := Q+1; Element := TagName(Raw);
-    Closing := Copy(Raw,1,2)='</'; Cls := Attribute(Raw,'class');
-    if (Element='head') or (Element='script') or (Element='style') or
-      (Element='template') or (Element='svg') then
-    begin
-      { a drawing or a template holds nothing the page should read out - an
-        <svg> keeps its <title> inside it.  One written <svg ... /> holds
-        nothing at all. }
-      if Copy(Raw,Length(Raw)-1,2)<>'/>' then
-        if Closing then SkipDepth := Max(0,SkipDepth-1) else Inc(SkipDepth);
-      Continue;
-    end;
-    if SkipDepth>0 then Continue;
-    { display: none - the element and everything in it }
-    if HideDepth>0 then
-    begin
-      if not IsVoidElement(Element) then
-        if Closing then Dec(HideDepth) else Inc(HideDepth);
-      Continue;
-    end;
-    if not Closing and not IsVoidElement(Element) and (PreDepth=0) then
-    begin
-      Display := LowerCase(FStyles.Value(Element,Cls,'display','',Context));
-      if (Display='none') or HasAttribute(Raw,'hidden') then
-      begin
-        HideDepth := 1;
-        Continue;
-      end;
-      if (FlexDepth=0) and (TableDepth=0) and
-        ((Display='flex') or (Display='inline-flex') or (Display='grid') or (Display='inline-grid')) then
-      begin
-        StartFlex(Display);
-        Continue;
-      end;
-    end;
-    if (FlexDepth>0) and (TableDepth=0) and (Element='table') and not Closing then
-    begin
-      { a table in a card is the card's content, laid out by the engine as
-        a table nested in the item's cell.  A table that is itself the grid
-        child gets an item of its own round it, ended by the table's close. }
-      if ItemDepth=0 then begin Inc(ItemDepth); StartItem; ItemIsTable := True end;
-      { fall through to the table machinery below }
-    end
-    else if (FlexDepth>0) and (TableDepth=0) then
-    begin
-      { inside a flex container: each child is an item, its insides one
-        cell's worth of words }
-      if IsVoidElement(Element) then
-      begin
-        if ItemDepth=0 then
-        begin
-          if Element='img' then FlexItems.Add('<td>'+HTMLEscape(Attribute(Raw,'alt'))+'</td>');
-        end
-        else if Element='br' then Buffer := Buffer+'<br>'
-        else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
-        else if Element='input' then Buffer := Buffer+InlineTag;
-        Continue;
-      end;
-      if not Closing then
-      begin
-        Inc(ItemDepth);
-        if ItemDepth=1 then StartItem
-        else if IsHeadingTag(Element) or (Element='div') or (Element='p') then
-        begin
-          { a heading or a div in a card is a line of its own, in the size,
-            weight, color and case its stylesheet asks for - as in a cell.
-            Words already on the line stay a line of their own; the item's
-            own <td> markup is not words. }
-          TrimLineEdge;
-          if (Length(Buffer)>ItemFrom) and
-            (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then
-            Buffer := Buffer+'<br>';
-          Buffer := Buffer+CellBlockOpen(ItemCtx,ItemBlocks);
-          MarkCellBlock(ItemBlocks);
-        end
-        else if Element='li' then Buffer := Buffer+'• '
-        else if not IsBlockElement(Element) then Buffer := Buffer+InlineTag;
-        Continue;
-      end;
-      if ItemDepth=0 then
-      begin
-        EndFlex;
-        Continue;
-      end;
-      if ItemDepth=1 then EndItem
-      else if IsHeadingTag(Element) or (Element='div') or (Element='p') then
-      begin
-        TrimLineEdge;
-        K := PopCellBlock(ItemBlocks);
-        if Copy(Buffer,Length(Buffer)-3,4)<>'<br>' then Buffer := Buffer+'<br>';
-        if K>0 then Buffer := Buffer+'<vgap='+IntToStr(K)+'>';
-      end
-      else if IsBlockElement(Element) then
-      begin
-        if (Buffer<>'') and (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then Buffer := Buffer+'<br>';
-      end
-      else Buffer := Buffer+InlineTag;
-      Dec(ItemDepth);
-      Continue;
-    end;
-    if not Closing then
-    begin
-      URL := Attribute(Raw,'id');
-      if (URL='') and (Element='a') then URL := Attribute(Raw,'name');
-      if URL<>'' then
-      begin
-        { a block's id belongs to the block, so what came before is
-          finished first; an inline id marks the block it is in }
-        if IsBlockElement(Element) and (TableDepth=0) and (PreDepth=0) and
-          (FlexDepth=0) then Flush;
-        PendingAnchor := Trim(PendingAnchor+' '+URL);
-      end;
-    end;
-    if Element='table' then
-    begin
-      if Closing then
-      begin
-        Buffer := Buffer+'</table>'; Dec(TableDepth);
-        { back out to the table this one sat in }
-        if (TableDepth>=0) and (TableDepth<=High(TableCtxs)) then
-          TableCtx := TableCtxs[TableDepth];
-        if TableDepth=0 then
-        begin
-          if FlexDepth>0 then
-          begin
-            { the card's table is done; the card may be done with it }
-            if ItemIsTable then
-            begin
-              EndItem; Dec(ItemDepth); ItemIsTable := False;
-            end;
-          end
-          else begin Flush; BlockTag := ContainerTag; BlockClass := '' end;
-        end;
-      end
-      else
-      begin
-        if TableDepth<=High(TableCtxs) then TableCtxs[TableDepth] := TableCtx;
-        if (TableDepth=0) and (FlexDepth=0) then
-        begin
-          { a table of its own starts a block }
-          Flush; BlockTag := 'table'; BlockClass := Cls;
-          TableCtx := 'table'+DotClasses(Cls);
-          Buffer := '<table'+TableAttrs+'>';
-        end
-        else
-        begin
-          { a table inside a cell or a card is part of the block it is in -
-            flushing here would cut the outer table in half - but it keeps
-            its dress: its own context for its cells, and its CSS on itself.
-            It is a block: the source's whitespace before it is not a line. }
-          if TableDepth=0 then CellsAsBlocks := False;
-          TrimLineEdge;
-          TableCtx := 'table'+DotClasses(Cls);
-          Buffer := Buffer+'<table'+TableAttrs(True)+'>';
-        end;
-        Inc(TableDepth);
-      end;
-      Continue;
-    end;
-    { a table's caption is a line of its own above the table }
-    if Element='caption' then
-    begin
-      if Closing then
-      begin
-        CaptionDepth := Max(0,CaptionDepth-1);
-        if Trim(HTMLPlainText(CaptionText))<>'' then
-        begin
-          B := TInkPageBlock.Create;
-          B.Tag := 'caption'; B.Source := '<center>'+Trim(CaptionText);
-          B.Nest := Nest; B.FoldGroup := CurFold;
-          FBlocks.Add(B);
-        end;
-        CaptionText := '';
-      end
-      else Inc(CaptionDepth);
-      Continue;
-    end;
-    if CaptionDepth>0 then
-    begin
-      { markup inside a caption decorates the caption's own line }
-      CaptionText := CaptionText+InlineTag;
-      Continue;
-    end;
-    if TableDepth>0 then
-    begin
-      if (Element='tr') or (Element='td') or (Element='th') then
-      begin
-        if CellsAsBlocks and (TableDepth=1) then
-        begin
-          { every cell a row of its own }
-          if Element='tr' then
-          else if Closing then
-          begin
-            FlushCellBlocks(CellBlocks);
-            Buffer := Buffer+'</'+Element+'></tr>';
-          end
-          else
-          begin
-            CellBlocks.Clear;
-            Buffer := Buffer+'<tr><'+Element+CellStyleAttrs(Element,Cls,TableCtx)+'>'+CellAlign;
-            if TableDepth<=High(CellFrom) then CellFrom[TableDepth] := Length(Buffer);
-          end;
-        end
-        else if Closing then
-        begin
-          { a cell's own text-transform, applied to what was buffered
-            between its tags: a table is one block, so the transform on a
-            th cannot be done to the block as a whole }
-          if (Element<>'tr') and (TableDepth<=High(CellCase)) and
-            (CellCase[TableDepth]<>'') and (CellFrom[TableDepth]<Length(Buffer)) then
-          begin
-            Buffer := Copy(Buffer,1,CellFrom[TableDepth])+
-              Transformed(Copy(Buffer,CellFrom[TableDepth]+1,MaxInt),
-                CellCase[TableDepth]);
-            CellCase[TableDepth] := '';
-          end;
-          if Element<>'tr' then FlushCellBlocks(CellBlocks);
-          Buffer := Buffer+'</'+Element+'>';
-        end
-        else if Element='tr' then Buffer := Buffer+'<tr>'
-        else
-        begin
-          CellBlocks.Clear;
-          Buffer := Buffer+'<'+Element+CellStyleAttrs(Element,Cls,TableCtx)+
-            Spans(Raw)+'>'+CellAlign;
-          if TableDepth<=High(CellCase) then
-          begin
-            CellFrom[TableDepth] := Length(Buffer);
-            CellCase[TableDepth] := LowerCase(Trim(
-              FStyles.Value(Element,Cls,'text-transform','',TableCtx)));
-            if (CellCase[TableDepth]<>'uppercase') and
-              (CellCase[TableDepth]<>'lowercase') and
-              (CellCase[TableDepth]<>'capitalize') then
-              CellCase[TableDepth] := '';
-          end;
-        end;
-        if (Element<>'tr') then
-        begin
-          if Closing then ItemCtx := ''
-          else ItemCtx := TableCtx+' '+Element+DotClasses(Cls);
-        end;
-      end
-      else if (Element='div') or (Element='p') or (Element='h1') or
-        (Element='h2') or (Element='h3') or (Element='h4') or
-        (Element='h5') or (Element='h6') then
-      begin
-        { a block child of a cell is a line of its own, in its own size and
-          weight - not words run into the line before it }
-        if Closing then
-        begin
-          TrimLineEdge;
-          K := PopCellBlock(CellBlocks);
-          if Copy(Buffer,Length(Buffer)-3,4)<>'<br>' then Buffer := Buffer+'<br>';
-          if K>0 then Buffer := Buffer+'<vgap='+IntToStr(K)+'>';
-        end
-        else
-        begin
-          { words already on the line stay a line of their own }
-          TrimLineEdge;
-          if (TableDepth<=High(CellFrom)) and (Length(Buffer)>CellFrom[TableDepth]) and
-            (Copy(Buffer,Length(Buffer)-3,4)<>'<br>') then Buffer := Buffer+'<br>';
-          Buffer := Buffer+CellBlockOpen(TableCtx,CellBlocks);
-          MarkCellBlock(CellBlocks);
-        end;
-      end
-      else if Element='img' then Buffer := Buffer+HTMLEscape(Attribute(Raw,'alt'))
-      else Buffer := Buffer+InlineTag;
-      Continue;
-    end;
-    if Element='pre' then
-    begin
-      Flush;
-      if Closing then begin PreDepth := Max(0,PreDepth-1); BlockTag := ContainerTag; BlockClass := '' end
-      else
-      begin
-        Inc(PreDepth); BlockTag := 'pre'; BlockClass := Cls;
-        CodeRaw := ''; CodeMarked := False;
-        { a fence's language on the <pre> itself is as good as a <code> }
-        CodeTagged := InkCodeLanguage(Cls)<>'';
-        CodeLang := InkCodeLanguage(Cls);
-        { a line break straight after <pre> is not part of the code }
-        if (P<=Length(S)) and (S[P]=#13) then Inc(P);
-        if (P<=Length(S)) and (S[P]=#10) then Inc(P);
-      end;
-      Continue;
-    end;
-    if (Element='code') and not Closing and (PreDepth>0) and (Trim(Buffer)='') then
-    begin
-      { <pre><code> - the newline GitHub-style HTML puts after <code> is
-        not code either }
-      CodeTagged := True;
-      if CodeLang='' then CodeLang := InkCodeLanguage(Cls);
-      if (P<=Length(S)) and (S[P]=#10) then Inc(P);
-      Continue;
-    end;
-    if PreDepth>0 then
-    begin
-      Piece := InlineTag;
-      { a page that colored its own code keeps its colors: ours would be
-        drawn over the top of them }
-      if Piece<>'' then CodeMarked := True;
-      Buffer := Buffer+Piece;
-      Continue;
-    end;
-    if (Element='ul') or (Element='ol') or (Element='menu') then
-    begin
-      Flush;
-      if Closing then CloseContainer(['o','u'])
-      else
-      begin
-        { the style from the tag's type, then the stylesheet }
-        Kind := Attribute(Raw,'type');
-        if Kind='' then Kind := FStyles.Value(Element,Cls,'list-style-type',
-          FStyles.Value(Element,Cls,'list-style',''));
-        if Element='ol' then OpenContainer('o',Kind,StrToIntDef(Attribute(Raw,'start'),1))
-        else OpenContainer('u',Kind,0);
-      end;
-      BlockTag := ContainerTag; BlockClass := '';
-      Continue;
-    end;
-    if Element='blockquote' then
-    begin
-      Flush;
-      if Closing then CloseContainer(['q']) else OpenContainer('q','',0);
-      BlockTag := ContainerTag; BlockClass := Cls;
-      Continue;
-    end;
-    if (Element='dd') or (Element='dl') then
-    begin
-      Flush;
-      if Element='dd' then
-      begin
-        if Closing then CloseContainer(['d']) else OpenContainer('d','',0);
-      end;
-      BlockTag := ContainerTag; BlockClass := '';
-      Continue;
-    end;
-    if Element='hr' then
-    begin
-      Flush; B := TInkPageBlock.Create; B.Tag := 'hr'; B.CSSClass := Cls; B.Nest := Nest;
-      B.Anchor := PendingAnchor; PendingAnchor := '';
-      FBlocks.Add(B); Continue;
-    end;
-    if Element='input' then
-    begin
-      if LowerCase(Attribute(Raw,'type'))='checkbox' then
-      begin
-        Box := InkCheckboxMarkup(HasAttribute(Raw,'checked'));
-        { drawn inline after the bullet, as a browser without GitHub's
-          stylesheet draws a task list }
-        Buffer := Buffer+Box+' ';
-      end;
-      Continue;
-    end;
-    if Element='img' then
-    begin
-      Flush; B := TInkPageBlock.Create; B.Tag := 'img'; B.Source := Attribute(Raw,'alt');
-      B.Nest := Nest;
-      B.ImageSrc := ResolveURL(Attribute(Raw,'src'));
-      ImageSize(B,Raw);
-      B.LinkHref := OpenHref; B.LinkTarget := OpenTarget;
-      B.Anchor := PendingAnchor; PendingAnchor := '';
-      { a picture used again is decoded once: the same file twenty times on a
-        page, or the page read again after DocumentChanged }
-      LoadPicture(B);
-      if B.Picture.Graphic=nil then
-      begin
-        { a picture that did not load is its alt text - still a link }
-        B.Source := '[Image: '+HTMLEscape(B.Source)+']';
-        if B.LinkHref<>'' then
-        begin
-          B.Source := '<a href="'+B.LinkHref+'">'+B.Source+'</a>';
-          SetLength(B.LinkTargets,1); B.LinkTargets[0] := B.LinkTarget;
-          B.LinkHref := '';
-        end;
-      end;
-      FBlocks.Add(B);
-      { the words after the picture are still inside the link }
-      if OpenHref<>'' then
-      begin
-        Buffer := '<a href="'+OpenHref+'">';
-        Targets.Add(OpenTarget);
-      end;
-      Continue;
-    end;
-    if Element='center' then
-    begin
-      Flush;
-      if Closing then CenterDepth := Max(0,CenterDepth-1) else Inc(CenterDepth);
-      BlockTag := ContainerTag; BlockClass := ''; PendingStyle := ''; PendingAlign := '';
-      Continue;
-    end;
-    { <details>: everything in it belongs to a fold that its <summary>
-      opens and shuts }
-    if Element='details' then
-    begin
-      Flush;
-      if Closing then
-      begin
-        if Length(Folds)>0 then
-        begin
-          { a fold with no summary has nothing to open it: leave it open }
-          if not FoldSeen[High(Folds)] then FFoldOpen[Folds[High(Folds)]] := True;
-          SetLength(Folds,Length(Folds)-1); SetLength(FoldSeen,Length(Folds));
-        end;
-        if Length(Folds)>0 then CurFold := Folds[High(Folds)] else CurFold := -1;
-      end
-      else
-      begin
-        CurFold := AddFold(CurFold,HasAttribute(Raw,'open'));
-        SetLength(Folds,Length(Folds)+1); Folds[High(Folds)] := CurFold;
-        SetLength(FoldSeen,Length(Folds)); FoldSeen[High(FoldSeen)] := False;
-      end;
-      BlockTag := ContainerTag; BlockClass := ''; PendingStyle := ''; PendingAlign := '';
-      Continue;
-    end;
-    if Element='summary' then
-    begin
-      Flush;
-      if Closing then begin BlockTag := ContainerTag; BlockClass := ''; PendingHead := -1 end
-      else
-      begin
-        BlockTag := 'summary'; BlockClass := Cls;
-        PendingStyle := Attribute(Raw,'style'); PendingAlign := '';
-        { the first summary is the one that works the fold, as in a browser }
-        if (Length(Folds)>0) and not FoldSeen[High(FoldSeen)] then
-        begin
-          PendingHead := CurFold; FoldSeen[High(FoldSeen)] := True;
-        end;
-      end;
-      Continue;
-    end;
-    if (Element='p') or (Element='div') or (Element='header') or (Element='footer') or
-      (Element='nav') or (Element='figure') or (Element='figcaption') or (Element='li') or
-      (Element='section') or (Element='article') or (Element='main') or (Element='aside') or
-      (Element='address') or (Element='dt') or
-      IsHeadingTag(Element) then
-    begin
-      Flush;
-      if Closing then
-      begin
-        BlockTag := ContainerTag; BlockClass := '';
-        PendingStyle := ''; PendingAlign := '';
-      end
-      else
-      begin
-        BlockTag := Element; BlockClass := Cls;
-        PendingStyle := Attribute(Raw,'style'); PendingAlign := Attribute(Raw,'align');
-        if Element='li' then
-        begin
-          Level := High(Containers);
-          if (Level>=0) and (Containers[Level].Kind in ['o','u']) then
-          begin
-            { how many unordered lists deep, for the bullet's shape }
-            Depth := 0;
-            for I := 0 to Level-1 do if Containers[I].Kind='u' then Inc(Depth);
-            PendingMarker := ListMarker(Containers[Level].Style,
-              Containers[Level].Kind='o',Containers[Level].Counter,Depth);
-            Inc(Containers[Level].Counter);
-          end
-          else PendingMarker := '•';
-        end;
-      end;
-      Continue;
-    end;
-    Buffer := Buffer+InlineTag;
-  end;
-  if FlexDepth>0 then
-  begin
-    if ItemDepth>0 then EndItem;
-    EndFlex;
-  end;
-  Flush;
-  finally Targets.Free; Titles.Free; StyleStack.Free; FlexItems.Free; CellBlocks.Free; ItemBlocks.Free end;
-  if PendingAnchor<>'' then
-  begin
-    { ids at the very end still lead somewhere: the end }
-    B := TInkPageBlock.Create; B.Tag := 'p'; B.Anchor := PendingAnchor;
-    FBlocks.Add(B);
-  end;
-  { a Markdown document has no <title>: its first heading names it }
+  TreeStyle(TreeViewWidth);
+  FCanvasBack := TreeCanvasBack;
+  FPageSection := AddSection(FDocument,False);
+  FTitle := FDocument.Title;
   if FTitle='' then
     for I := 0 to FBlocks.Count-1 do
-      if IsHeadingTag(TInkPageBlock(FBlocks[I]).Tag) and
-        (TInkPageBlock(FBlocks[I]).Source<>'') then
+      if IsHeadingTag(TInkPageBlock(FBlocks[I]).Tag) and (TInkPageBlock(FBlocks[I]).Source<>'') then
       begin
         FTitle := Trim(HTMLPlainText(TInkPageBlock(FBlocks[I]).Source));
         Break;
@@ -3063,14 +1548,13 @@ function TInkCustomPage.Options: THTMLOptions;
 var Link: TColor;
 begin
   Result := DefaultHTMLOptions;
-  { without a color from the page, a link is a blue that reads on its
-    background: dark blue on a light page, light blue on a dark one }
-  if HTMLContrastColor(FStyles.Color('body','','background',
-    FStyles.Color('body','','background-color',Color)))=clWhite then
+  { a link is a blue that reads on its background: dark blue on a light
+    page, light blue on a dark one.  A document's links wear their CSS. }
+  if HTMLContrastColor(FCanvasBack)=clWhite then
     Link := RGBToColor($58,$A6,$FF)
   else
     Link := RGBToColor($09,$69,$DA);
-  Result.LinkColor := FStyles.Color('a','','color',Link);
+  Result.LinkColor := Link;
   Result.LinkUnderline := True;
 end;
 procedure TInkCustomPage.BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
@@ -3114,14 +1598,14 @@ var Track,Thumb,TextColor,C1,C2: TColor; Colors,SizeValue: string;
     Result := HTMLStringToColor(V,clNone);
   end;
 begin
-  Track := ColorToRGB(FStyles.Color('body','','background',Color));
-  TextColor := ColorToRGB(FStyles.Color('body','','color',Font.Color));
+  Track := ColorToRGB(FCanvasBack);
+  TextColor := ColorToRGB(Font.Color);
+  if PageStyle(True)<>nil then TextColor := ColorToRGB(InkToColor(PageStyle(True).Color('color'),Track));
   Thumb := RGBToColor((Red(Track)+Red(TextColor)) div 2,
     (Green(Track)+Green(TextColor)) div 2,(Blue(Track)+Blue(TextColor)) div 2);
   { Root declarations take priority. Body is a native-viewer convenience
     fallback, not browser viewport propagation. }
-  Colors := FStyles.Value('html','','scrollbar-color',
-    FStyles.Value('body','','scrollbar-color','auto'));
+  Colors := PageValue('scrollbar-color');
   Tokens := TStringList.Create;
   try
     P := 1;
@@ -3144,8 +1628,7 @@ begin
     end;
   finally Tokens.Free end;
   FScroll.SetColors(Thumb,Track);
-  SizeValue := LowerCase(FStyles.Value('html','','scrollbar-width',
-    FStyles.Value('body','','scrollbar-width','auto')));
+  SizeValue := LowerCase(PageValue('scrollbar-width'));
   NewWidth := Scale96ToFont(18);
   if SizeValue='thin' then NewWidth := Scale96ToFont(10)
   else if SizeValue='none' then NewWidth := 0;
@@ -3195,418 +1678,105 @@ end;
 procedure TInkCustomPage.CMColorChanged(var Message: TLMessage);
 begin
   inherited;
-  { on icsAuto the scheme follows the background, so a theme change that
-    flips the answer reads the page again }
-  if FColorScheme=icsAuto then RecheckColorScheme;
+  { the background is the canvas the documents are styled against, and on
+    icsAuto it decides the scheme too: they are read again }
+  if FStyler<>nil then Reread;
 end;
 procedure TInkCustomPage.LayoutColumn(out ALeft, AWidth: Integer);
-var MaxWidth: Integer;
 begin
-  if FImageFit=iifWindow then
-  begin
-    { a window for pictures uses all of itself }
-    ALeft := 8;
-    AWidth := Max(40,ClientWidth-FScroll.Width-16);
-    Exit;
-  end;
-  MaxWidth := FStyles.Pixels('div','wrap','max-width',820);
-  AWidth := Max(40,Min(ClientWidth-FScroll.Width-40,MaxWidth));
-  ALeft := Max(20,(ClientWidth-FScroll.Width-AWidth) div 2);
+  ALeft := 0;
+  AWidth := TreeViewWidth;
 end;
 function TInkCustomPage.LayoutTop: Integer;
 begin
-  { where the first block starts: the page's own top padding, and the eight
-    pixels a browser gives a body that says nothing.  A page that sets its
-    padding gets what it asked for and no more. }
-  if FImageFit=iifWindow then Exit(8);
-  Result := FStyles.Pixels('body','','padding-top',-1);
-  if Result<0 then Result := FStyles.Box('body','','padding',Rect(-1,-1,-1,-1)).Top;
-  if Result<0 then Result := 8;
-end;
-{ The size everything on the page is a multiple of, in pixels.  Wanted
-  while parsing as well as while laying out - <small> has to name a size in
-  the markup it emits - so it cannot live in the layout pass. }
-function TInkCustomPage.BaseFontPixels: Integer;
-begin
-  { the control's font, in pixels: a point size rounds to whole points and
-    lands up to half a point from what the page asked for }
-  if Font.Height<>0 then Result := Abs(Font.Height)
-  else if Font.Size>0 then Result := Round(Font.Size*4/3)
-  else if Screen.SystemFont.Height<>0 then Result := Abs(Screen.SystemFont.Height)
-  else if Screen.SystemFont.Size>0 then Result := Round(Screen.SystemFont.Size*4/3)
-  else Result := 15;
-  { and the page's own word on it wins, as it does in a browser: the
-    control's font is what a document that says nothing is drawn in, not a
-    ceiling on one that asks for a size }
-  Result := Max(1,FStyles.Pixels('body','','font-size',Result));
+  Result := 0;
 end;
 procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
-var J,X,K,Em: Integer; BorderSpec,V: string; Base: Integer; C: TColor;
-  Margins: TRect;
-  function Defaulted(const Prop: string; Fallback: Integer): Integer;
-  begin
-    Result := Max(0,FStyles.Pixels(B.Tag,B.CSSClass,Prop,Fallback));
-  end;
+var C: TColor;
 begin
-  Base := FLayoutBase;
-  X := 0; SetLength(B.Bars,0);
-  for J := 1 to Length(B.Nest) do
-    if B.Nest[J]='q' then
-    begin
-      SetLength(B.Bars,Length(B.Bars)+1); B.Bars[High(B.Bars)] := X; Inc(X,FQuoteWidth);
-    end
-    else Inc(X,FListWidth);
-  B.Indent := X;
-  { sizes are pixels, written negative the way TFont.Height spells them, so
-    a page that says "font-size: 15px" gets fifteen pixels of text and not
-    the eleven points it nearly rounds to.  The multipliers are a browser's
-    own defaults for the heading levels. }
-  K := Base;
-  if B.Tag='h1' then K := Round(Base*2.0)
-  else if B.Tag='h2' then K := Round(Base*1.5)
-  else if B.Tag='h3' then K := Round(Base*1.17)
-  else if B.Tag='h5' then K := Max(1,Round(Base*0.83))
-  else if B.Tag='h6' then K := Max(1,Round(Base*0.67))
-  { a table's caption is a smaller line above it }
-  else if B.Tag='caption' then K := Max(1,Round(Base*0.92));
-  B.PointSize := -Max(1,FStyles.Pixels(B.Tag,B.CSSClass,'font-size',K));
-  { a line-height is inherited, and a page sets it on the body far more
-    often than on every element }
-  V := FStyles.Value(B.Tag,B.CSSClass,'line-height','');
-  if V='' then V := FStyles.Value('body','','line-height','');
-  B.LineHeight := LineHeightOf(V,Abs(B.PointSize));
-  { a browser leaves a summary in the page's own weight; only the triangle
-    marks it out }
-  B.Bold := IsHeadingTag(B.Tag);
-  { a <summary> wears the triangle that says which way it goes }
-  if B.FoldHead>=0 then
-    { the same triangles a browser draws, at the size it draws them }
-    if (B.FoldHead<Length(FFoldOpen)) and FFoldOpen[B.FoldHead] then B.Marker := '▼'
-    else B.Marker := '▶';
-  { the face the page asked for, if it asked for one and this machine has
-    something that answers to it.  A family is inherited, and a page nearly
-    always sets it once on the body rather than on every element, so the
-    body's is what a block wears when it names none of its own.  A code
-    block keeps the fixed face unless the page names one for it. }
-  V := FStyles.Value(B.Tag,B.CSSClass,'font-family','');
-  if (V='') and not B.Pre then V := FStyles.Value('body','','font-family','');
-  B.FaceName := InkResolveFace(V);
-  if B.Pre and (B.FaceName='') then B.FaceName := InkMonoFace;
-  B.NoWrap := B.Pre;
-  { white-space: a block told not to wrap keeps its line and is cut off at
-    the column's edge, the way a code block is }
-  V := LowerCase(Trim(FStyles.Value(B.Tag,B.CSSClass,'white-space','')));
-  if (V='nowrap') or (V='pre') then B.NoWrap := True
-  else if (V='normal') or (V='pre-wrap') or (V='pre-line') then B.NoWrap := B.Pre;
-  { text-transform, which a page most often puts on a heading or a table's
-    headers }
-  V := LowerCase(Trim(FStyles.Value(B.Tag,B.CSSClass,'text-transform','')));
-  if (V='uppercase') or (V='lowercase') or (V='capitalize') then
-    B.Source := Transformed(B.Source,V);
-  if Length(B.Bars)>0 then
-    B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FQuoteText)
-  else
-    B.TextColor := FStyles.Color(B.Tag,B.CSSClass,'color',FBodyText);
-  { a browser gives a block no padding of its own unless its stylesheet
-    says so - only code blocks, which sit on a shade, are inset by default }
-  if B.Pre then K := 6 else K := 0;
-  B.Padding := Max(0,FStyles.Box(B.Tag,B.CSSClass,'padding',Rect(K,K,K,K)).Left);
-  { what a browser gives a block when its stylesheet says nothing: an em of
-    its own size above and below a paragraph, less for a heading, none for a
-    list item.  Ems, not pixels, so a bigger heading pushes further. }
-  Em := Max(1,Abs(B.PointSize));
-  if IsHeadingTag(B.Tag) then
-  begin
-    { a browser's own margins, which are ems of the heading's own size and
-      grow as the heading shrinks: an h6 stands further from its
-      neighbors than an h1 does, in proportion to itself }
-    case B.Tag[2] of
-      '1': K := Round(Em*0.67);
-      '2': K := Round(Em*0.83);
-      '4': K := Round(Em*1.33);
-      '5': K := Round(Em*1.67);
-      '6': K := Round(Em*2.33);
-    else K := Em;          { h3 }
-    end;
-  end
-  else if B.Tag='li' then K := 0
-  else if (B.Tag='dd') or (B.Tag='dt') then K := 0
-  else if B.Tag='table' then K := 0
-  else if (B.Tag='summary') or (B.Tag='details') then K := 0
-  else K := Em;
-  { the shorthand first - a page writes "margin: 0" or "margin: 1em 0" far
-    more often than it writes margin-top - then the longhands over it }
-  Margins := FStyles.Box(B.Tag,B.CSSClass,'margin',Rect(K,K,K,K));
-  B.GapBefore := Max(0,Margins.Top);
-  B.GapAfter := Max(0,Margins.Bottom);
-  B.BorderColor := clNone;
-  { border-left and its three companions, which is how a documentation page
-    draws a callout: a stripe down one edge and nothing on the others }
-  for K := 0 to 3 do
-  begin
-    B.EdgeColor[K] := clNone; B.EdgeWidth[K] := 0;
-    V := FStyles.Value(B.Tag,B.CSSClass,EdgeProp[K],'');
-    if V<>'' then EdgeOf(V,B.EdgeColor[K],B.EdgeWidth[K]);
-  end;
-  BorderSpec := FStyles.Value(B.Tag,B.CSSClass,'border','');
-  K := Pos('var(',BorderSpec);
-  if K>0 then BorderSpec := Copy(BorderSpec,K,MaxInt)
-  else begin K := LastDelimiter(' ',BorderSpec); if K>0 then Delete(BorderSpec,1,K) end;
-  if BorderSpec<>'' then
-    B.BorderColor := HTMLStringToColor(FStyles.Resolve(BorderSpec),clNone);
-  B.BackColor := FStyles.Color(B.Tag,B.CSSClass,'background',
-    FStyles.Color(B.Tag,B.CSSClass,'background-color',clNone));
-  if B.Pre and (B.BackColor=clNone) then B.BackColor := FCodeBack;
-  B.BarColor := FBarDefault;
-  if B.StyleAttr<>'' then
-  begin
-    { what the element's own style attribute says wins: it is the page's
-      last word on that one block }
-    V := StyleValue(B.StyleAttr,'color');
-    if V<>'' then
-    begin
-      C := CSSColor(FStyles.Resolve(V),clNone);
-      if C<>clNone then B.TextColor := C;
-    end;
-    V := StyleValue(B.StyleAttr,'background-color');
-    if V='' then V := StyleValue(B.StyleAttr,'background');
-    if V<>'' then B.BackColor := CSSColor(FStyles.Resolve(V),B.BackColor);
-    K := CSSPixels(StyleValue(B.StyleAttr,'font-size'),-1);
-    if K>0 then B.PointSize := -K;
-    V := LowerCase(StyleValue(B.StyleAttr,'font-weight'));
-    if (V='bold') or (V='bolder') or (StrToIntDef(V,0)>=600) then B.Bold := True
-    else if (V='normal') or (V='400') then B.Bold := False;
-    K := CSSPixels(StyleValue(B.StyleAttr,'margin-top'),-1);
-    if K>=0 then B.GapBefore := K;
-    K := CSSPixels(StyleValue(B.StyleAttr,'margin-bottom'),-1);
-    if K>=0 then B.GapAfter := K;
-    K := CSSPixels(StyleValue(B.StyleAttr,'padding'),-1);
-    if K>=0 then B.Padding := K;
-  end;
-  if B.Tag='hr' then
-  begin
-    { a rule: a border-top wins, then background, then color; height or
-      the border's width sets its thickness, and a dotted or dashed
-      border draws in pieces }
-    V := FStyles.Resolve(FStyles.Value('hr',B.CSSClass,'border-top',''));
-    EdgeOf(V,C,K);
-    B.RuleDashed := (Pos('dotted',LowerCase(V))>0) or (Pos('dashed',LowerCase(V))>0);
-    X := FStyles.Pixels('hr',B.CSSClass,'height',0);
-    if X<=0 then X := K;
-    { nothing asked for: a browser's default <hr> is a 1px inset border
-      pair, which reads as two rows with a darker top - a flat hairline
-      beside it looks thinner and lighter than every real page's rule }
-    B.RuleInset := (X<=0) and
-      (FStyles.Value('hr',B.CSSClass,'background','')='') and
-      (FStyles.Value('hr',B.CSSClass,'background-color','')='');
-    if B.RuleInset then X := 2;
-    B.RuleHeight := X;
-    if C<>clNone then B.BarColor := C
-    else B.BarColor := FStyles.Color('hr',B.CSSClass,'background',
-      FStyles.Color('hr',B.CSSClass,'background-color',
-      FStyles.Color('hr',B.CSSClass,'color',
-      FStyles.Color('hr',B.CSSClass,'border-color',MixColor(FBodyText,FPageBack,0.7)))));
-  end;
+  B.PointSize := -Max(1,FLayoutBase);
+  C := Font.Color;
+  if C=clDefault then C := clWindowText;
+  B.TextColor := C;
 end;
-{ a block that is an item of a list or a definition list: the list itself
-  has the margins, and they belong to the first and last of these }
-function ItemTag(const ATag: string): Boolean;
+procedure TInkCustomPage.StyleSection(S: TInkTreeSection);
 begin
-  Result := (ATag='li') or (ATag='dt') or (ATag='dd');
 end;
-
-{ how many lists deep a block sits }
-function LevelOf(const ANest: string): Integer;
-var I: Integer;
+{ a line of markup at Y, wrapped to the column }
+procedure TInkCustomPage.LayLine(B: TInkPageBlock; ALeft, AWidth: Integer;
+  var Y, Pending: Integer; var O: THTMLOptions);
+var TextW: Integer; Sz: TSize;
 begin
-  Result := 0;
-  for I := 1 to Length(ANest) do if ANest[I]='l' then Inc(Result);
+  B.RunsReady := False;
+  StyleBlock(B);
+  { margins collapse: the larger of the two, not both }
+  Inc(Y,Max(Pending,B.GapBefore)); Pending := 0;
+  BlockFont(Canvas,B);
+  O.LineHeight := B.LineHeight;
+  O.NoWrap := B.NoWrap;
+  B.MarkerWidth := 0; B.CodeHead := 0;
+  TextW := Max(20,AWidth-B.Indent-B.Padding*2);
+  if B.NoWrap then B.Wrapped := B.Source
+  else B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,O.SuperSubScriptRatio,O.Scale);
+  Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
+  B.Bounds := Rect(ALeft+B.Indent,Y,ALeft+AWidth,Y+Sz.cy+B.Padding*2);
+  B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.Padding,
+    B.Bounds.Right-B.Padding,B.Bounds.Bottom-B.Padding);
+  B.ImageRect := B.Bounds;
+  Inc(Y,Sz.cy+B.Padding*2); Pending := B.GapAfter;
 end;
-
 procedure TInkCustomPage.Layout;
-var I,Y,W,BlockLeft,ImageW,ImageH,ImageX,TextW,Thick,Start,KeepY,Cols,Pending,
-  Em: Integer;
-  B,Prev: TInkPageBlock; Sz: TSize; O: THTMLOptions;
+var I,Y,W,ColLeft,Start,Pending: Integer; O: THTMLOptions; It: TObject;
 begin
   if not FLayoutDirty then Exit;
-  if FTree then
+  W := TreeViewWidth;
+  { a width across one of the page's @media queries styles it again }
+  if (FPageSection<>nil) and (FStyler<>nil) and (FStyler.MediaKey(W)<>FTreeKey) then
   begin
-    FLayoutDirty := False;
-    TreeLayoutRun;
-    Exit;
-  end;
-  { a width that crosses one of the page's @media queries reads it again }
-  if (ClientWidth>0) and (FStyles.MediaState(ClientWidth)<>FMediaState) then
-  begin
-    KeepY := FScroll.Position;
     Parse;
-    FScroll.Position := KeepY;
   end;
   FLayoutDirty := False;
   StyleScrollBar;
-  LayoutColumn(BlockLeft,W);
-  { only the blocks from FLayoutFrom on, unless the column changed }
+  LayoutColumn(ColLeft,W);
+  FLayoutBase := ControlFontPixels;
+  { the shades the code header and the find bar take from the page }
+  FPageBack := FCanvasBack;
+  FBodyText := Font.Color;
+  FCodeBack := HTMLShadeColor(FCanvasBack,7);
+  { only the items from FLayoutFrom on, unless the column changed }
   Start := FLayoutFrom;
-  if (W<>FColumnWidth) or (BlockLeft<>FColumnLeft) or (FLayoutWidth<>ClientWidth) then Start := 0;
-  if Start>=FBlocks.Count then Start := FBlocks.Count;
+  if (W<>FColumnWidth) or (ColLeft<>FColumnLeft) or (FLayoutWidth<>ClientWidth) then Start := 0;
+  Start := Min(Start,FItems.Count);
   FLayoutFrom := MaxInt;
-  FColumnLeft := BlockLeft; FColumnWidth := W; FLayoutWidth := ClientWidth;
+  FColumnLeft := ColLeft; FColumnWidth := W; FLayoutWidth := ClientWidth;
   Pending := 0;
-  if Start=0 then Y := LayoutTop
-  else
+  Y := LayoutTop;
+  if Start>0 then
   begin
-    Prev := TInkPageBlock(FBlocks[Start-1]);
-    Y := Prev.Bounds.Bottom; Pending := Prev.GapAfter;
-  end;
-  O := Options;
-  FLayoutBase := BaseFontPixels;
-  { a list's indent is room for its markers; a quote's, room for its bar }
-  Canvas.Font.Assign(Font); Canvas.Font.Height := -FLayoutBase;
-  FListWidth := Max(Scale96ToFont(24),Canvas.TextWidth('00. '));
-  FQuoteWidth := Scale96ToFont(18);
-  FBodyText := FStyles.Color('body','','color',Font.Color);
-  FPageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
-  FQuoteText := FStyles.Color('blockquote','','color',MixColor(FBodyText,FPageBack,0.3));
-  FBarDefault := FStyles.Color('blockquote','','border-color',MixColor(FBodyText,FPageBack,0.6));
-  FCodeBack := FStyles.Color('code','','background',
-    FStyles.Color('code','','background-color',HTMLShadeColor(FPageBack,7)));
-  for I := Start to FBlocks.Count-1 do
-  begin
-    B := TInkPageBlock(FBlocks[I]);
-    B.RunsReady := False;
-    StyleBlock(B);
-    { folded away inside a shut <details>: no room, nothing drawn }
-    if BlockHidden(B) then
+    It := TObject(FItems[Start-1]);
+    if It is TInkTreeSection then
     begin
-      B.Bounds := Rect(BlockLeft,Y,BlockLeft,Y); B.TextBounds := B.Bounds;
-      B.ImageRect := B.Bounds; B.Wrapped := ''; B.MarkerWidth := 0;
-      Continue;
-    end;
-    { a list has margins of its own, above its first item and below its
-      last, which a browser gives the <ul> the items sit in }
-    if ItemTag(B.Tag) then
-    begin
-      Em := Max(1,Abs(B.PointSize));
-      if (I=0) or not ItemTag(TInkPageBlock(FBlocks[I-1]).Tag) or
-        (LevelOf(TInkPageBlock(FBlocks[I-1]).Nest)<LevelOf(B.Nest)) then
-        B.GapBefore := Max(B.GapBefore,Em);
-      if (I=FBlocks.Count-1) or not ItemTag(TInkPageBlock(FBlocks[I+1]).Tag) or
-        (LevelOf(TInkPageBlock(FBlocks[I+1]).Nest)<LevelOf(B.Nest)) then
-        B.GapAfter := Max(B.GapAfter,Em);
-    end;
-    { the space between two blocks is the larger of what the one above
-      wanted below it and what this one wants above it, not the two added
-      together: margins collapse, which is most of why a page used to come
-      out a third longer than a browser draws it }
-    Inc(Y,Max(Pending,B.GapBefore)); Pending := 0;
-    BlockFont(Canvas,B);
-    { the line-height this block asked for, if it asked for one, and
-      whether its words may wrap at all }
-    O.LineHeight := B.LineHeight;
-    O.NoWrap := B.NoWrap;
-    B.MarkerWidth := 0;
-    B.CodeHead := 0;
-    if B.Tag='hr' then
-    begin
-      { a rule is a hairline, as a browser draws it, unless the page gave
-        it a height or a border of its own }
-      Thick := Max(1,B.RuleHeight);
-      Sz.cx := W-B.Indent; Sz.cy := Thick;
-      B.Wrapped := '';
-    end
-    else if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) and (B.Picture.Height>0) then
-    begin
-      TextW := W-B.Indent;
-      ImageH := 0;
-      if B.ImagePercent>0 then ImageW := Max(1,TextW*B.ImagePercent div 100)
-      else if B.ImageWantW>0 then ImageW := B.ImageWantW
-      else if B.ImageWantH>0 then
-      begin
-        { a height alone still keeps the picture's shape }
-        ImageH := B.ImageWantH;
-        ImageW := Max(1,Round(B.Picture.Width*ImageH/B.Picture.Height));
-      end
-      else
-        case FImageFit of
-          iifWidth: ImageW := TextW;
-          iifWindow:
-            ImageW := Min(TextW,Round(B.Picture.Width*
-              (Max(1,ClientHeight-2*LayoutTop-B.GapBefore-B.GapAfter-2*B.Padding)/B.Picture.Height)));
-        else
-          ImageW := B.Picture.Width;
-        end;
-      if (B.ImageMaxW>0) and (ImageW>B.ImageMaxW) then begin ImageW := B.ImageMaxW; ImageH := 0 end;
-      { whatever was asked for, a picture never runs past its column }
-      if ImageW>TextW then begin ImageW := TextW; ImageH := 0 end;
-      ImageW := Max(1,ImageW);
-      { a width and a height together are both honored, however the picture
-        is shaped; a width on its own keeps the shape }
-      if (B.ImageWantW>0) and (B.ImageWantH>0) and (ImageW=B.ImageWantW) then
-        ImageH := B.ImageWantH;
-      if ImageH<=0 then ImageH := Round(B.Picture.Height*ImageW/B.Picture.Width);
-      ImageH := Max(1,ImageH);
-      Sz.cx := ImageW; Sz.cy := ImageH;
-      B.Wrapped := '';
+      Y := TInkTreeSection(It).Top+TInkTreeSection(It).Height;
+      Pending := TInkTreeSection(It).GapAfter;
     end
     else
     begin
-      if B.Marker<>'' then
-        B.MarkerWidth := Canvas.TextWidth(B.Marker+' ');
-      { a summary's triangle sits in front of its words, not out in the margin }
-      if B.FoldHead>=0 then Inc(B.Indent,B.MarkerWidth);
-      TextW := Max(20,W-B.Indent-B.Padding*2-B.MarginLeft-B.MarginRight);
-      if B.Flex then
-      begin
-        { as many items to a row as fit at their width, with the gaps }
-        Cols := Length(B.FlexCells);
-        if B.FlexWrap then
-          Cols := Max(1,Min(Cols,(TextW-B.FlexGap) div Max(1,B.FlexBasis+B.FlexGap)));
-        if B.FlexMaxCols>0 then Cols := Min(Cols,B.FlexMaxCols);
-        if (Cols<>B.FlexCols) or (B.Source='') then
-        begin
-          B.FlexCols := Cols;
-          B.Source := FlexTable(B,Cols);
-        end;
-      end;
-      if B.NoWrap then B.Wrapped := B.Source
-      else B.Wrapped := HTMLWordWrap(Canvas,B.Source,TextW,O.SuperSubScriptRatio,O.Scale);
-      { a code block gets its header row, and a long one may show only its
-        first lines until asked for the rest }
-      if FCodeHeader and (B.Code<>'') then
-      begin
-        B.CodeHead := Max(16,Round(FLayoutBase*1.9));
-        B.CodeLines := CodeLineCount(B.Code);
-        if not B.CodeFoldSet then
-        begin
-          B.CodeFolded := (FCodeFoldLines>0) and (B.CodeLines>FCodeFoldLines);
-          B.CodeFoldSet := True;
-        end;
-        if B.CodeFolded and (FCodeFoldLines>0) and (B.CodeLines>FCodeFoldLines) then
-          B.Wrapped := FirstCodeLines(B.Wrapped,FCodeFoldLines)+'<br><font color="'+
-            ColorToHTMLHex(MixColor(B.TextColor,B.BackColor,0.5))+'">...</font>';
-      end;
-      Sz := HTMLTextExtentOpt(Canvas,Rect(0,0,TextW,0),[],B.Wrapped,O);
+      Y := TInkPageBlock(It).Bounds.Bottom;
+      Pending := TInkPageBlock(It).GapAfter;
     end;
-    B.Bounds := Rect(BlockLeft+B.Indent+B.MarginLeft,Y,BlockLeft+W-B.MarginRight,
-      Y+B.CodeHead+Sz.cy+B.Padding*2);
-    B.TextBounds := Rect(B.Bounds.Left+B.Padding,B.Bounds.Top+B.CodeHead+B.Padding,
-      B.Bounds.Right-B.Padding,B.Bounds.Bottom-B.Padding);
-    { a picture sits at the block's top; one fitted to the window, centered }
-    ImageX := B.Bounds.Left;
-    if FImageFit=iifWindow then ImageX := B.Bounds.Left+Max(0,(W-B.Indent-Sz.cx) div 2);
-    B.ImageRect := Rect(ImageX,Y,ImageX+Sz.cx,Y+Sz.cy);
-    Inc(Y,B.CodeHead+Sz.cy+B.Padding*2); Pending := B.GapAfter;
   end;
-  if (Start>0) and (Start>=FBlocks.Count) and (FBlocks.Count>0) then
+  O := Options;
+  for I := Start to FItems.Count-1 do
   begin
-    Prev := TInkPageBlock(FBlocks[FBlocks.Count-1]);
-    Y := Prev.Bounds.Bottom; Pending := Prev.GapAfter;
+    It := TObject(FItems[I]);
+    if It is TInkTreeSection then LaySection(TInkTreeSection(It),ColLeft,W,Y,Pending)
+    else LayLine(TInkPageBlock(It),ColLeft,W,Y,Pending,O);
   end;
-  { the last block's own bottom margin still ends the page }
+  { the last item's own bottom margin still ends the page }
   Inc(Y,Pending);
-  if FBlocks.Count=0 then Y := LayoutTop;
   FContentHeight := Y;
   FScroll.SetParams(Min(FScroll.Position,Max(0,Y-ClientHeight)),0,Max(ClientHeight,Y),Max(1,ClientHeight));
+  TreePaintOrder;
 end;
 { ---------------------------------------------------------- code blocks }
 
@@ -3699,7 +1869,7 @@ begin
   B := TInkPageBlock(FBlocks[ABlock]);
   if B.Code='' then Exit;
   B.CodeFolded := AFolded; B.CodeFoldSet := True;
-  InvalidateLayout(ABlock); Invalidate;
+  InvalidateBlock(ABlock); Invalidate;
 end;
 
 function TInkCustomPage.CodeButtonAt(X,Y: Integer; out ABlock, AButton: Integer): Boolean;
@@ -3786,111 +1956,20 @@ end;
 { the first block that can show with the page scrolled to ATop: blocks are
   laid out top to bottom, so a binary search finds it - and one before it,
   whose band or quote bar may reach down into view }
-function TInkCustomPage.FirstShownBlock(ATop: Integer): Integer;
-var Lo, Hi, Mid: Integer;
-begin
-  Lo := 0; Hi := FBlocks.Count;
-  while Lo<Hi do
-  begin
-    Mid := (Lo+Hi) div 2;
-    if TInkPageBlock(FBlocks[Mid]).Bounds.Bottom<ATop then Lo := Mid+1 else Hi := Mid;
-  end;
-  Result := Max(0,Lo-1);
-end;
-
 procedure TInkCustomPage.Paint;
 begin RenderTo(Canvas); FLastPaint := GetTickCount64 end;
-{ one block: its bars, background and borders, then its words, marker,
-  picture, selection and code header }
+{ one block: its band, then its words, marker, picture, selection and
+  code header }
 procedure TInkCustomPage.PaintBlock(ACanvas: TCanvas; I: Integer; ASelected: Boolean;
   const SelFrom, SelTo: TInkPagePosition);
-var J,BarTop,BarBottom,RX: Integer; B,Next: TInkPageBlock; R,TR,Clip: TRect; O: THTMLOptions;
-  RuleC: TColor;
+var B: TInkPageBlock; R,TR,Clip: TRect; O: THTMLOptions;
 begin
   B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
-  O := Options;
-  if BlockHidden(B) then Exit;
-  { a quote's bar runs on through the gap to the next block in the same
-    quote, so a quote of several paragraphs has one bar }
-  if Length(B.Bars)>0 then
-  begin
-    Next := nil;
-    if I+1<FBlocks.Count then Next := TInkPageBlock(FBlocks[I+1]);
-    ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
-    for J := 0 to High(B.Bars) do
-    begin
-      BarTop := R.Top; BarBottom := R.Bottom;
-      if (Next<>nil) and (Length(Next.Bars)>J) then Inc(BarBottom,B.GapAfter+Next.GapBefore);
-      ACanvas.FillRect(Rect(FColumnLeft+B.Bars[J]+Scale96ToFont(4),BarTop,
-        FColumnLeft+B.Bars[J]+Scale96ToFont(4)+Max(2,Scale96ToFont(3)),BarBottom));
-    end;
-  end;
   BlockFont(ACanvas,B);
-  if B.Tag='hr' then
-  begin
-    ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
-    TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
-    if B.RuleDashed then
-    begin
-      RX := TR.Left;
-      while RX<TR.Right do
-      begin
-        ACanvas.FillRect(Rect(RX,TR.Top,Min(RX+3,TR.Right),TR.Bottom));
-        Inc(RX,6);
-      end;
-    end
-    else if B.RuleInset and (TR.Bottom-TR.Top>=2) then
-    begin
-      { the top row at two thirds of the color, which is how Chromium
-        darkens an inset border - shading toward white barely moves a
-        light gray at all }
-      RuleC := ColorToRGB(B.BarColor);
-      ACanvas.Brush.Color := RGBToColor(Red(RuleC)*2 div 3,
-        Green(RuleC)*2 div 3,Blue(RuleC)*2 div 3);
-      ACanvas.FillRect(Rect(TR.Left,TR.Top,TR.Right,TR.Top+1));
-      ACanvas.Brush.Color := B.BarColor;
-      ACanvas.FillRect(Rect(TR.Left,TR.Top+1,TR.Right,TR.Bottom));
-    end
-    else
-      ACanvas.FillRect(TR);
-    { and put the brush back: a rule's color has no business being the
-      canvas's color for the rest of the page }
-    ACanvas.Brush.Color := FPageBack; ACanvas.Brush.Style := bsClear;
-    Exit;
-  end;
   if B.BackColor<>clNone then
   begin
     ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid;
     ACanvas.FillRect(R);
-    if B.BandWithNext and (I+1<FBlocks.Count) then
-      ACanvas.FillRect(Rect(R.Left,R.Bottom,R.Right,
-        TInkPageBlock(FBlocks[I+1]).Bounds.Top-FScroll.Position));
-  end;
-  ACanvas.Brush.Style := bsClear;
-  if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
-  { a stripe down one edge, drawn over the background and inside the block.
-    A zero-width edge is no edge: GTK3 paints an empty FillRect as a
-    one-pixel line, which framed every line of a TInkMemo }
-  ACanvas.Brush.Style := bsSolid;
-  if (B.EdgeColor[0]<>clNone) and (B.EdgeWidth[0]>0) then
-  begin
-    ACanvas.Brush.Color := B.EdgeColor[0];
-    ACanvas.FillRect(Rect(R.Left,R.Top,R.Left+B.EdgeWidth[0],R.Bottom));
-  end;
-  if (B.EdgeColor[1]<>clNone) and (B.EdgeWidth[1]>0) then
-  begin
-    ACanvas.Brush.Color := B.EdgeColor[1];
-    ACanvas.FillRect(Rect(R.Left,R.Top,R.Right,R.Top+B.EdgeWidth[1]));
-  end;
-  if (B.EdgeColor[2]<>clNone) and (B.EdgeWidth[2]>0) then
-  begin
-    ACanvas.Brush.Color := B.EdgeColor[2];
-    ACanvas.FillRect(Rect(R.Right-B.EdgeWidth[2],R.Top,R.Right,R.Bottom));
-  end;
-  if (B.EdgeColor[3]<>clNone) and (B.EdgeWidth[3]>0) then
-  begin
-    ACanvas.Brush.Color := B.EdgeColor[3];
-    ACanvas.FillRect(Rect(R.Left,R.Bottom-B.EdgeWidth[3],R.Right,R.Bottom));
   end;
   ACanvas.Brush.Style := bsClear;
   if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
@@ -3934,28 +2013,8 @@ begin
   if B.CodeHead>0 then PaintCodeHead(ACanvas,I,B,R);
 end;
 procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
-var I: Integer; B: TInkPageBlock; R: TRect;
-  SelFrom, SelTo: TInkPagePosition; Selected: Boolean;
 begin
-  if FTree then begin TreeRender(ACanvas); Exit end;
-  Layout;
-  Selected := HasSelection;
-  SelFrom := SelectionStart; SelTo := SelectionEnd;
-  ACanvas.Brush.Color := FStyles.Color('body','','background',
-    FStyles.Color('body','','background-color',Color));
-  ACanvas.Brush.Style := bsSolid;
-  ACanvas.FillRect(ClientRect);
-  for I := FirstShownBlock(FScroll.Position) to FBlocks.Count-1 do
-  begin
-    B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
-    { blocks are laid out top to bottom: past the window's bottom, done }
-    if R.Top-B.GapBefore>ClientHeight then Break;
-    if R.Bottom+B.GapAfter<0 then Continue;
-    PaintBlock(ACanvas,I,Selected,SelFrom,SelTo);
-  end;
-  if FScroll.Visible then
-    FScroll.RenderTo(ACanvas,Rect(ClientWidth-FScroll.Width,0,ClientWidth,ClientHeight));
-  if FindBarVisible then PaintFindBar(ACanvas);
+  TreeRender(ACanvas);
 end;
 procedure TInkCustomPage.Resize;
 begin inherited; InvalidateLayout(0); PlaceFindBar end;
@@ -4380,7 +2439,8 @@ begin
   B.RunsReady := True; B.RunCount := 0; SetLength(B.Runs,0); B.Words := '';
   if B.Wrapped='' then Exit;
   BlockFont(Canvas,B);
-  O := Options; O.LineHeight := B.LineHeight; O.NoWrap := B.NoWrap;
+  { the options it is drawn with, so the runs are where the words are }
+  O := BlockOptions(B.Index);
   O.OnRun := @CollectRun; O.RunPart := 0;
   FRunBlock := B;
   try
@@ -4436,17 +2496,9 @@ begin
 end;
 
 function TInkCustomPage.BlockAt(X,Y: Integer): Integer;
-var I,DocY: Integer; B: TInkPageBlock;
 begin
   Layout;
-  Result := -1;
-  DocY := Y+FScroll.Position;
-  if FTree then Exit(TreeBlockAt(X,DocY,False));
-  for I := 0 to FBlocks.Count-1 do
-  begin
-    B := TInkPageBlock(FBlocks[I]);
-    if (DocY>=B.Bounds.Top) and (DocY<B.Bounds.Bottom) then Exit(I);
-  end;
+  Result := TreeBlockAt(X,Y+FScroll.Position,False);
 end;
 
 function TInkCustomPage.PositionAt(X,Y: Integer): TInkPagePosition;
@@ -4457,11 +2509,7 @@ begin
   if FBlocks.Count=0 then Exit;
   DocY := Y+FScroll.Position;
   { the block, or the one after the gap the point is in }
-  I := 0;
-  if FTree then I := Max(0,TreeBlockAt(X,DocY,True))
-  else
-    while (I<FBlocks.Count-1) and
-      (DocY>=TInkPageBlock(FBlocks[I]).Bounds.Bottom+TInkPageBlock(FBlocks[I]).GapAfter) do Inc(I);
+  I := Max(0,TreeBlockAt(X,DocY,True));
   B := TInkPageBlock(FBlocks[I]);
   Result.Block := I;
   PrepareRuns(B);
@@ -4771,12 +2819,12 @@ begin
     Z := Min(Z,Length(B.Words));
     if A>=Z then
     begin
-      if I>SelFrom.Block then Result := Result+LineEnding;
+      if I>SelFrom.Block then Result := Result+BlockJoint(I);
       Continue;
     end;
     Part := TidyCopy(Copy(B.Words,A+1,Z-A));
     if (A=0) and (B.Marker<>'') then Part := B.Marker+' '+Part;
-    if I>SelFrom.Block then Result := Result+LineEnding;
+    if I>SelFrom.Block then Result := Result+BlockJoint(I);
     Result := Result+Part;
   end;
 end;
@@ -4813,13 +2861,19 @@ begin
 end;
 
 function TInkCustomPage.SelectionBackground: TColor;
-var PageBack: TColor;
+var PageBack: TColor; PS: TInkStyle;
 begin
-  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
+  PageBack := FCanvasBack;
   if FSelectionColor<>clDefault then Result := FSelectionColor
   else Result := MixColor(PageBack,clHighlight,0.45);
-  Result := HTMLStringToColor(FStyles.RuleValue('::selection','background',
-    FStyles.RuleValue('::selection','background-color','')),Result);
+  { a page's ::selection rule }
+  if (FStyler<>nil) and (FDocument<>nil) and (FDocument.Body<>nil) and
+    (FStyler.StyleOf(FDocument.Body)<>nil) then
+  begin
+    PS := FStyler.PseudoStyleOf(FDocument.Body,'selection');
+    if (PS<>nil) and ((PS.Color('background-color') shr 24)>0) then
+      Result := InkToColor(PS.Color('background-color'),PageBack);
+  end;
 end;
 
 procedure TInkCustomPage.SetSelectionColor(AValue: TColor);
@@ -5212,8 +3266,9 @@ const
 var Bar, R: TRect; PageBack, Fore: TColor; Total, Current, K: Integer; Count: string;
 begin
   Bar := FindBarRect;
-  PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
-  Fore := FStyles.Color('body','','color',Font.Color);
+  PageBack := FCanvasBack;
+  Fore := Font.Color;
+  if PageStyle(True)<>nil then Fore := InkToColor(PageStyle(True).Color('color'),PageBack);
   ACanvas.Brush.Style := bsSolid;
   ACanvas.Brush.Color := HTMLShadeColor(PageBack,10);
   ACanvas.Pen.Color := MixColor(PageBack,Fore,0.4);
@@ -5234,13 +3289,6 @@ begin
     ACanvas.TextOut((R.Left+R.Right-ACanvas.TextWidth(Glyphs[K])) div 2,
       (R.Top+R.Bottom-ACanvas.TextHeight(Glyphs[K])) div 2,Glyphs[K]);
   end;
-end;
-
-procedure TInkCustomPage.SetTreeLayout(AValue: Boolean);
-begin
-  if FTree=AValue then Exit;
-  FTree := AValue;
-  if FSource<>'' then Reread;
 end;
 
 {$I inkpagetree.inc}

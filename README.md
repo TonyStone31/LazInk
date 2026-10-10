@@ -14,7 +14,8 @@ licensed**, so you can use it anywhere with no strings at all.
   renders a whole help site: headings, lists, tables, highlighted code,
   PNG, animated GIF and **WebP** (decoded in Pascal - nothing to install),
   links with Back and Forward, find-in-page, selection and copy, touch
-  scrolling, and a CSS reader with light and dark `prefers-color-scheme`.
+  scrolling, laid out from the page's CSS as a browser lays it out, with
+  light and dark `prefers-color-scheme`.
 * **Markdown is native.** Every display control takes
   `TextFormat := itfMarkdown`; the page loads whole `.md` documents,
   read the way GitHub reads them.

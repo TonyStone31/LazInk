@@ -226,26 +226,28 @@ the page was scrolled.
 
 ## The CSS it reads
 
-A small reader, not CSS conformance - but the properties a documentation page
-actually uses:
+The cascade a browser runs - `<style>`, `<link rel="stylesheet">`,
+`@import`, `@layer`, `@property`, custom properties and `var()`, every
+selector (pseudo-classes, `:is()`/`:where()`/`:has()`, attribute selectors,
+`::before`/`::after`/`::marker`), `!important`, inheritance - and boxes laid
+out from it:
 
 | | |
 |---|---|
-| **Color** | `color`, `background`, `background-color` |
-| **Text** | `font-size`, `font-weight`, `font-style`, `text-decoration`, `text-align`, `text-transform`, `white-space`, `line-height` |
-| **Box** | `margin` and `margin-top`/`-bottom`, `padding` and `padding-top`, `width`, `max-width`, `height` |
-| **Borders** | `border`, `border-color`, `border-radius`, `border-collapse`, `border-spacing` |
-| **Lists** | `list-style`, `list-style-type` |
-| **Layout** | `display` (including `none`), `flex`, `flex-basis`, `flex-wrap`, `flex-flow`, `gap`, `grid-template-columns` |
+| **Box** | `display`, `margin`, `padding`, `border` (each side, `border-radius`), `width`/`height` and their `min-`/`max-`, `box-sizing`, `overflow` (as a clip) |
+| **Layout** | normal flow with margin collapsing, `float`/`clear`, `position` (`relative`, `absolute`, `fixed`), `z-index`, flex (wrap, grow, shrink, basis, alignment, `order`, `gap`), grid (`grid-template-*`, named areas, `repeat()`, `minmax()`, `auto-fill`, spans), tables (`border-collapse`, `border-spacing`, `table-layout`, spans, captions) |
+| **Text** | `color`, `background-color`, `font-*`, `text-align`, `text-decoration`, `text-transform`, `white-space`, `line-height`, `vertical-align`, `visibility`, `opacity: 0` |
+| **Lists** | `list-style-type`, `list-style-position`, counters in markers |
 | **Scrollbar** | `scrollbar-color`, `scrollbar-width` (see the README) |
 
-Selectors: a tag (`h2`), a class (`.note`), both (`td.empty`), a list of them
-(`h2, h3`), and a descendant **inside a table or a flex/grid container**
-(`table.cards td`). No pseudo-classes, no `#id` selectors, no positioning.
+Still approximate: words do not flow line by line round a float,
+`position: fixed` scrolls with the page, background pictures, masks and
+`box-shadow` are not drawn, and a gradient is its first color.
 
-`var(--name)` is resolved. `@media` understands `min-width`, `max-width`
-and `prefers-color-scheme`, which is enough for a page that narrows to one
-column and carries a light and a dark palette:
+`@media` is judged at the control's width, for `min-width`/`max-width`
+(and the range syntax), `prefers-color-scheme` and the rest, which is enough
+for a page that narrows to one column and carries a light and a dark
+palette:
 
 ```css
 :root { --bg: #23262c; --text: #e6e6e6 }            /* dark by default */
@@ -271,9 +273,7 @@ CSS combines them - `(prefers-color-scheme: dark) and (max-width: 600px)`
 holds only when both do - and LazInk applies no palette of its own: a page
 with no scheme rules looks exactly as it always did.
 
-A `style` attribute is read on a word or on a whole block, for color,
-background, font size, weight, slant, decoration, alignment, margins and
-padding.
+A `style` attribute is read as a browser reads it, on any element.
 
 ### Sizes are pixels
 
@@ -316,10 +316,12 @@ worth it when it should look native.
 ## What it does not do
 
 * No JavaScript, no forms or form controls, no video or audio, no web fonts.
-* No floats, and no text flowing around a picture.
-* No positioning, no pseudo-classes, no `#id` selectors.
-* No `letter-spacing`, `word-spacing`, `opacity`, `box-shadow`,
-  `background-image`, `text-shadow`.
+* Words do not flow line by line round a float: the float takes its side
+  and the text sits beside it.
+* `position: fixed` scrolls with the page.
+* No `letter-spacing`, `word-spacing`, `box-shadow`, `background-image`,
+  masks or `text-shadow`; `opacity` is read only as 0, and a gradient is
+  its first color.
 * `<table>` has no `<col>`/`<colgroup>` widths.
 * Colors come from the page, but the control's own theme supplies the
   defaults - a page that relies on the browser's light/dark scheme will take

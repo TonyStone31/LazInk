@@ -2322,6 +2322,15 @@ begin
           begin
             { padding alone is room, with nothing to paint }
             if (BG=clNone) and (R.Style.PillBorder=clNone) then Continue;
+            { CSS lines leave a padded shade standing out of its line; it is
+              cut to the line, so it never covers the words either side.  A
+              box with a border is drawn whole. }
+            if Options.CSSLines and (R.Style.PillBorder=clNone) then
+            begin
+              DrawRect.Top:=Max(DrawRect.Top,L.Bounds.Top+DY);
+              DrawRect.Bottom:=Min(DrawRect.Bottom,L.Bounds.Bottom+DY);
+              if DrawRect.Bottom<=DrawRect.Top then Continue;
+            end;
             if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG end
             else Canvas.Brush.Style:=bsClear;
             if R.Style.PillBorder<>clNone then Canvas.Pen.Color:=R.Style.PillBorder

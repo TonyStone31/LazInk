@@ -327,6 +327,40 @@ begin
     ((N.Namespace = insSVG) and (N.Name = 'svg'));
 end;
 
+{ what a row holds that is not a cell goes into a cell made for it, as a
+  browser does: cells made display: block stack in one cell }
+procedure CellsOfRow(ARow: TInkBox);
+var I, J: Integer; K, Cell: TInkBox; Kids: TFPList; Blank: Boolean;
+begin
+  Kids := TFPList.Create;
+  try
+    Cell := nil;
+    for I := 0 to ARow.Count - 1 do
+    begin
+      K := ARow[I];
+      Blank := K.Anon and (K.Kind = ibkText);
+      if Blank then
+        for J := 0 to High(K.Inline) do
+          if (K.Inline[J].Kind <> inkText) or (Trim(K.Inline[J].Data) <> '') then Blank := False;
+      if (K.Kind = ibkCell) or K.Absolute or Blank then
+      begin
+        Cell := nil;
+        Kids.Add(K);
+        Continue;
+      end;
+      if Cell = nil then
+      begin
+        Cell := TInkBox.Create(ibkCell, nil, ARow.Style);
+        Cell.Parent := ARow; Cell.ColSpan := 1; Cell.RowSpan := 1;
+        Kids.Add(Cell);
+      end;
+      Cell.FKids.Add(K);
+      K.Parent := Cell;
+    end;
+    ARow.FKids.Assign(Kids);
+  finally Kids.Free end;
+end;
+
 function TInkLayout.MakeBox(N: TInkNode; AParent: TInkBox): TInkBox;
 var S: TInkStyle; D: string; K: TInkBoxKind;
 begin
@@ -363,6 +397,7 @@ begin
   BuildChildren(Result, N);
   AddPseudo(Result, N, 'before');
   AddPseudo(Result, N, 'after');
+  if K = ibkRow then CellsOfRow(Result);
   { a block holding nothing but one run of text is that run }
   if (K = ibkBlock) and (Result.Count = 1) and (Result[0].Kind = ibkText) and
     (Result[0].Anon) then
@@ -2174,7 +2209,9 @@ begin
     if Spec >= 0 then
     begin
       if not BorderBoxSizing(B) then Inc(Spec, EdgesH(B));
-      AW := Max(Spec, SumMin);
+      { a fixed table is as wide as it says, whatever its cells hold }
+      if B.Style.Keyword('table-layout') = 'fixed' then AW := Spec
+      else AW := Max(Spec, SumMin);
     end
     else AW := Max(SumMin, Min(AAvail, SumMax));
     AW := ClampW(B, AW, ACBW);
@@ -2199,6 +2236,41 @@ begin
     SumMin := 0; SumMax := 0;
     for J := 0 to G.NCols - 1 do begin Inc(SumMin, MinC[J]); Inc(SumMax, MaxC[J]) end;
     W := CW - SH * (G.NCols + 1);
+    if (B.Style.Keyword('table-layout') = 'fixed') and (Len(B.Style, 'width', ACBW, -1) >= 0) then
+    begin
+      { a fixed table: the first row's widths, and the rest shared evenly -
+        what the cells hold has no say }
+      for J := 0 to G.NCols - 1 do ColW[J] := -1;
+      for I := 0 to High(G.Cells) do
+        if (G.Cells[I].Row = 0) and (G.Cells[I].Box.ColSpan = 1) and not G.Cells[I].Box.Anon then
+        begin
+          { a percentage is a share of the table; a length is the cell's }
+          if Pos('%', G.Cells[I].Box.Style.Keyword('width')) > 0 then
+            ColW[G.Cells[I].Col] := Round(G.Cells[I].Box.Style.Length(G.Cells[I].Box.Style.Keyword('width'), W, 0))
+          else ColW[G.Cells[I].Col] := SpecW(G.Cells[I].Box, 'width', W);
+        end;
+      Extra := W; AutoN := 0;
+      for J := 0 to G.NCols - 1 do
+        if ColW[J] >= 0 then Dec(Extra, ColW[J]) else Inc(AutoN);
+      for J := 0 to G.NCols - 1 do
+        if (ColW[J] < 0) or (AutoN = 0) then
+        begin
+          { what is left over, or short, shared evenly - the pixels a
+            division leaves go to the first columns }
+          if AutoN = 0 then
+          begin
+            Inc(ColW[J], Extra div G.NCols);
+            if J < Extra mod G.NCols then Inc(ColW[J]);
+          end
+          else
+          begin
+            ColW[J] := Max(0, Extra div AutoN);
+            if J < Extra mod AutoN then Inc(ColW[J]);
+          end;
+        end;
+    end
+    else
+    begin
     { percentages first, then the rest by how much more each could take }
     for J := 0 to G.NCols - 1 do
       if Pct[J] > 0 then ColW[J] := Max(MinC[J], Round(W * Pct[J] / 100)) else ColW[J] := -1;
@@ -2235,6 +2307,7 @@ begin
         end
         else ColW[J] := MinC[J];
       end;
+    end;
     SetLength(ColX, G.NCols + 1);
     ColX[0] := B.ContentX + SH;
     for J := 0 to G.NCols - 1 do ColX[J + 1] := ColX[J] + ColW[J] + SH;

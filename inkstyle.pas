@@ -99,7 +99,6 @@ type
       in Objects whether they inherit }
     FRegistered: TStringList;
     FAnonLayers: Integer;
-    FRoot: TInkNode;
     FRootFont: Double;
     FImportDepth: Integer;
     procedure RegisterLayer(const AName: string);
@@ -112,7 +111,7 @@ type
     function MediaIndex(const AText: string): Integer;
     procedure EvaluateMedia;
     procedure Index(ARef: TObject);
-    procedure BuildInfos(ARoot: TInkNode);
+    procedure BuildInfos(ARoot: TInkNode; AFrom: Integer);
     function ComputeOne(AInfo: Pointer): TInkStyle;
     function Resolve(const ASpec: array of string; ASpecCustom: TStringList;
       AParent: TInkStyle; AIsRoot: Boolean): TInkStyle;
@@ -140,6 +139,15 @@ type
     procedure AddDocumentSheets(ADoc: TInkDocument; const BaseURL: string);
     { computes every element under ARoot; StyleOf answers after }
     procedure Compute(ARoot: TInkNode);
+    { computes ARoot's elements too, keeping what was computed before - one
+      styler for many small documents, as a memo's messages are }
+    procedure Include(ARoot: TInkNode);
+    { works ARoot's elements out again after their attributes changed; the
+      tree must have kept its shape }
+    procedure Restyle(ARoot: TInkNode);
+    { how many elements have styles; ReleaseTo forgets those added after }
+    function Mark: Integer;
+    procedure ReleaseTo(AMark: Integer);
     { what Compute hung on the tree is taken off it again; with
       ATouchNodes off, only forgotten - for a tree that may have lost nodes
       since, as a document changed by its program has }
@@ -182,7 +190,7 @@ type
   end;
 
 const
-  PropDefs: array[0..132] of TPropDef = (
+  PropDefs: array[0..134] of TPropDef = (
     (N:'accent-color';Inh:True;Init:'auto'),
     (N:'align-content';Inh:False;Init:'normal'),
     (N:'align-items';Inh:False;Init:'normal'),
@@ -295,6 +303,8 @@ const
     (N:'quotes';Inh:True;Init:'auto'),
     (N:'right';Inh:False;Init:'auto'),
     (N:'row-gap';Inh:False;Init:'normal'),
+    (N:'scrollbar-color';Inh:True;Init:'auto'),
+    (N:'scrollbar-width';Inh:False;Init:'auto'),
     (N:'tab-size';Inh:True;Init:'8'),
     (N:'table-layout';Inh:False;Init:'auto'),
     (N:'text-align';Inh:True;Init:'start'),
@@ -3516,10 +3526,26 @@ begin
   FInfos.Clear;
   FShare.Clear;
   FStyles.Clear;
-  FRoot := nil;
 end;
 
-procedure TInkStyler.BuildInfos(ARoot: TInkNode);
+function TInkStyler.Mark: Integer;
+begin
+  Result := FInfos.Count;
+end;
+
+{ the styles stay: a later element that computes the same shares them }
+procedure TInkStyler.ReleaseTo(AMark: Integer);
+var I: Integer;
+begin
+  for I := FInfos.Count - 1 downto Max(0, AMark) do
+  begin
+    if PInfo(FInfos[I])^.Node <> nil then PInfo(FInfos[I])^.Node.Info := nil;
+    Dispose(PInfo(FInfos[I]));
+    FInfos.Delete(I);
+  end;
+end;
+
+procedure TInkStyler.BuildInfos(ARoot: TInkNode; AFrom: Integer);
 var N, C: TInkNode; Info, CI: PInfo; Cls: string; P, Q, K, Count: Integer;
   Kids: array of PInfo; Names: TStringList; Idx: Integer;
 begin
@@ -3556,7 +3582,7 @@ begin
       N := N.NextInTree(ARoot);
     end;
     { where each element stands among its siblings }
-    for K := 0 to FInfos.Count - 1 do
+    for K := AFrom to FInfos.Count - 1 do
     begin
       Info := PInfo(FInfos[K]);
       if Info^.Node.FirstChild = nil then Continue;
@@ -3587,7 +3613,7 @@ begin
     end;
     { the root's own position: it is the only element of the document }
     if (ARoot.Kind = inkDocument) or (ARoot.Parent = nil) then
-      for K := 0 to FInfos.Count - 1 do
+      for K := AFrom to FInfos.Count - 1 do
         if PInfo(FInfos[K])^.Index = 0 then
         begin
           PInfo(FInfos[K])^.Index := 1; PInfo(FInfos[K])^.Count := 1;
@@ -4243,17 +4269,36 @@ begin
 end;
 
 procedure TInkStyler.Compute(ARoot: TInkNode);
-var I: Integer;
 begin
   Release;
+  Include(ARoot);
+end;
+
+procedure TInkStyler.Include(ARoot: TInkNode);
+var I, From: Integer;
+begin
   if ARoot = nil then Exit;
-  FRoot := ARoot;
   Media.Quirks := (ARoot is TInkDocument) and TInkDocument(ARoot).Quirks;
   EvaluateMedia;
   RankLayers;
-  BuildInfos(ARoot);
-  for I := 0 to FInfos.Count - 1 do
+  From := FInfos.Count;
+  BuildInfos(ARoot, From);
+  for I := From to FInfos.Count - 1 do
     PInfo(FInfos[I])^.Style := ComputeOne(FInfos[I]);
+end;
+
+procedure TInkStyler.Restyle(ARoot: TInkNode);
+var N: TInkNode;
+begin
+  if ARoot = nil then Exit;
+  EvaluateMedia;
+  N := ARoot;
+  while N <> nil do
+  begin
+    if (N.Kind = inkElement) and (N.Info <> nil) then
+      PInfo(N.Info)^.Style := ComputeOne(N.Info);
+    N := N.NextInTree(ARoot);
+  end;
 end;
 
 function TInkStyler.Explain(N: TInkNode): TStringList;
