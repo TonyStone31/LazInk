@@ -24,7 +24,7 @@ licensed**, so you can use it anywhere with no strings at all.
   and writes Markdown whole. Nothing else for Lazarus does this.
 * **Selection like a browser, everywhere.** Drag, double-click a word,
   Shift+arrows, a right-click copy menu, Ctrl+C as text and HTML - in the
-  page, the memo, the list box, even the label.
+  page, the memo, the list box, even the label if you switch it on.
 * **Chat-ready.** `TInkMemo.AppendBlock` appends a whole message - lists,
   tables, highlighted code - as one entry with its own band color, and
   `ReplaceLast` grows the answer in place as it streams in.

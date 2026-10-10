@@ -67,6 +67,7 @@ type
     { character selection: offsets into the run map's Words }
     FRunText: TInkRunText;
     FRunsReady: Boolean;
+    FSelectable: Boolean;
     FSelAnchor, FSelCaret: Integer;
     FSelecting, FSelMoved: Boolean;
     FSelectUnit: Integer;              // 0 characters, 1 words, 2 all
@@ -75,6 +76,7 @@ type
     FClicks, FLastClickX, FLastClickY: Integer;
     FLastClickTime: QWord;
     procedure NeedRuns;
+    procedure SetSelectable(AValue: Boolean);
     procedure InvalidateRuns(AClearSelection: Boolean);
     procedure ExtendSelectionTo(AOffset: Integer);
     procedure DoSelectAll(Sender: TObject);
@@ -157,6 +159,10 @@ type
     property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
     { lets a program add its own items to that menu as it opens }
     property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
+    { lets the mouse select characters, as in a browser: a drag, a double
+      click for a word, a triple click for everything.  Off, the label
+      behaves like any other label; SelectAll still works from code. }
+    property Selectable: Boolean read FSelectable write SetSelectable default False;
 
     property Align;
     property Anchors;
@@ -316,6 +322,13 @@ begin
   if FRunsReady then Exit;
   FRunText.Build(Canvas, ClientRect, RenderText, Options);
   FRunsReady := True;
+end;
+
+procedure TInkLabel.SetSelectable(AValue: Boolean);
+begin
+  if FSelectable = AValue then Exit;
+  FSelectable := AValue;
+  if not AValue then ClearSelection;
 end;
 
 procedure TInkLabel.InvalidateRuns(AClearSelection: Boolean);
@@ -492,7 +505,7 @@ var
   Near: Boolean;
 begin
   inherited MouseDown(Button, Shift, X, Y);
-  if Button <> mbLeft then Exit;
+  if (Button <> mbLeft) or not FSelectable then Exit;
   NeedRuns;
   P := FRunText.OffsetAt(Canvas, X, Y);
   FSelecting := True;
@@ -593,8 +606,13 @@ begin
   UpdateHover(HTMLHitTest(Canvas, ClientRect, RenderText, Opts, X, Y));
   if FHoverIndex = 0 then
   begin
-    NeedRuns;
-    if FRunText.OverText(X, Y) then Cursor := crIBeam else Cursor := crDefault;
+    if FSelectable then
+    begin
+      NeedRuns;
+      if FRunText.OverText(X, Y) then Cursor := crIBeam else Cursor := crDefault;
+    end
+    else
+      Cursor := crDefault;
   end;
 end;
 
@@ -677,9 +695,9 @@ function TInkLabel.BuildCopyMenu(X, Y: Integer): TPopupMenu;
 var Texts: TInkCopyTexts;
 begin
   Texts := Default(TInkCopyTexts);
-  Texts.CanSelect := True;
+  Texts.CanSelect := FSelectable;
   Texts.Selection := SelectedText;
-  Texts.SelectAll := @DoSelectAll;
+  if FSelectable then Texts.SelectAll := @DoSelectAll;
   Texts.Link := FHoverLink;
   Texts.All := PlainText;
   FCopyMenuHost.Build(Self, Texts, X, Y, FOnCopyMenu);

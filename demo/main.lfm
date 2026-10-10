@@ -845,6 +845,7 @@ object frmMain: TfrmMain
         LinkHoverStyle.Color = clBlue
         LinkHoverStyle.BackColor = clNone
         LinkHoverStyle.Underline = True
+        Selectable = True
         AutoSize = True
         ParentColor = False
       end
@@ -902,7 +903,7 @@ object frmMain: TfrmMain
         Height = 18
         Top = 174
         Width = 386
-        Caption = '<font color="#7F8C8D">WordWrap = True — resize the window and this re-flows:</font>'
+        Caption = '<font color="#7F8C8D">WordWrap = True — this re-flows. Selectable = True — drag or double-click:</font>'
         SuperSubScriptRatio = 0.7
         LinkStyle.Color = clBlue
         LinkStyle.BackColor = clNone
@@ -921,6 +922,7 @@ object frmMain: TfrmMain
         Caption = 'The renderer only ever broke a line where the markup said so, at a <b>&lt;br&gt;</b>. Word wrap works by re-writing the markup: measure the line, drop in a break at the last word that fits, and carry the still-open <b>tags</b> across so the second line stays <font color="#C0392B">exactly as formatted</font> as the first one was.'
         SuperSubScriptRatio = 0.7
         WordWrap = True
+        Selectable = True
         LinkStyle.Color = clBlue
         LinkStyle.BackColor = clNone
         LinkStyle.Underline = False
