@@ -53,6 +53,11 @@ type
     LinkColor: TColor;
     LinkBackColor: TColor;
     LinkUnderline: Boolean;
+    { a link keeps the color its markup gives it, as one styled by CSS does }
+    LinkKeepsColor: Boolean;
+    { lines are built as CSS builds them: each holds the block's own font,
+      and a pill's padding reaches past its line instead of growing it }
+    CSSLines: Boolean;
     { and the one under the mouse instead; HoverIndex counts from 1 }
     HoverIndex: Integer;
     HoverColor: TColor;
@@ -288,6 +293,8 @@ begin
   Result.LinkColor := Options.LinkColor;
   Result.LinkBackColor := Options.LinkBackColor;
   Result.LinkUnderline := Options.LinkUnderline;
+  Result.LinkKeepsColor := Options.LinkKeepsColor;
+  Result.CSSLines := Options.CSSLines;
   Result.HoverIndex := Options.HoverIndex;
   Result.HoverColor := Options.HoverColor;
   Result.HoverBackColor := Options.HoverBackColor;

@@ -28,6 +28,8 @@
       <Item><Filename Value="inkentities.inc"/><Type Value="Include"/></Item>
       <Item><Filename Value="inkstyle.pas"/><UnitName Value="InkStyle"/></Item>
       <Item><Filename Value="inkua.inc"/><Type Value="Include"/></Item>
+      <Item><Filename Value="inklayout.pas"/><UnitName Value="InkLayout"/></Item>
+      <Item><Filename Value="inkpagetree.inc"/><Type Value="Include"/></Item>
       <Item><Filename Value="inkcode.pas"/><UnitName Value="InkCode"/></Item>
       <Item><Filename Value="inkwebp.pas"/><UnitName Value="InkWebP"/></Item>
       <Item><Filename Value="inkwebplossless.pas"/><UnitName Value="InkWebPLossless"/></Item>

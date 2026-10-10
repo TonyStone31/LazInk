@@ -2,8 +2,17 @@
 unit InkPage;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit, InkDOM, InkStyle;
+uses Classes, SysUtils, Controls, StdCtrls, Graphics, Types, Menus, LMessages, InkDraw, InkMarkdown, InkCSS, InkCode, InkGIF, InkWebP, ExtCtrls, InkScrollBar, InkTouch, InkCopyMenu, InkEdit, InkDOM, InkStyle, InkLayout;
 type
+  { one thing the tree layout paints: a box's background and borders, or a
+    block's words, and the rectangle overflow cuts it to }
+  TInkTreePaint = record
+    Box: TObject;
+    Block: Integer;
+    Clip: TRect;
+    Clipped: Boolean;
+  end;
+
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
   { Everything about a clicked link. }
   TInkLinkInfo = record
@@ -166,6 +175,13 @@ type
     RunCount: Integer;
     Words: string;
     RunsReady: Boolean;
+    { made by the tree layout: its box, its words' narrowest and widest, the
+      width last wrapped at and the height it came to, and whether a list
+      marker hangs in the margin or stands in the words }
+    Tree: Boolean;
+    TreeBox: TObject;
+    TextMinW, TextMaxW, WrapWidth, TreeTextH: Integer;
+    WidthsKnown, MarkerHangs: Boolean;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -190,6 +206,19 @@ type
       asked for }
     FStyler: TInkStyler;
     FStyled: Boolean;
+    { the tree layout: whether it is on, the boxes, what measures their
+      words, which @media queries held, the paint order, the <details> each
+      summary works, and the canvas's color }
+    FTree: Boolean;
+    FTreeLayout: TInkLayout;
+    FTreeMeasure: TObject;
+    FTreeKey: string;
+    FTreePaint: array of TInkTreePaint;
+    { the clip a block being painted is inside, in window pixels }
+    FPaintClip: TRect;
+    FPaintClipped: Boolean;
+    FTreeFolds: array of TInkNode;
+    FCanvasBack: TColor;
     { the wheel's part of a pixel not yet scrolled, and when the page last
       reached the screen }
     FWheelRest: Double;
@@ -204,6 +233,23 @@ type
     FSchemeApplied: TInkColorScheme;
     FTimer: TTimer;
     function FetchSheet(const URL: string): string;
+    procedure SetTreeLayout(AValue: Boolean);
+    function TreeTextHeight(B: TInkPageBlock; AWidth: Integer): Integer;
+    procedure TreeTextWidths(B: TInkPageBlock; out AMin, AMax: Integer);
+    procedure TreeText(ABox: TInkBox; B: TInkPageBlock);
+    procedure TreeStyle(AWidth: Integer);
+    procedure TreeBuild;
+    function TreeViewWidth: Integer;
+    function ControlFontPixels: Integer;
+    function TreeCanvasBack: TColor;
+    procedure TreeLayoutRun;
+    procedure TreePaintOrder;
+    procedure TreePaintBox(ACanvas: TCanvas; ABox: TInkBox);
+    procedure TreeRender(ACanvas: TCanvas);
+    function TreePaintMarker(ACanvas: TCanvas; B: TInkPageBlock; const TR: TRect): Boolean;
+    function TreeBlockAt(X, DocY: Integer; ANearest: Boolean): Integer;
+    procedure TreeToggleFold(Index: Integer);
+    procedure LoadPicture(B: TInkPageBlock);
     procedure Animate(Sender: TObject);
     procedure SetImageFit(AValue: TInkImageFit);
     procedure SetScrollBars(AValue: TInkScrollBarStyle);
@@ -354,6 +400,8 @@ type
     procedure CodeHeadFont(ACanvas: TCanvas);
     procedure PaintCodeHead(ACanvas: TCanvas; Index: Integer; B: TInkPageBlock; const R: TRect);
     function CodeButtonAt(X,Y: Integer; out ABlock, AButton: Integer): Boolean;
+    procedure PaintBlock(ACanvas: TCanvas; I: Integer; ASelected: Boolean;
+      const SelFrom, SelTo: TInkPagePosition);
     procedure PressCodeButton(ABlock, AButton: Integer);
     function FirstShownBlock(ATop: Integer): Integer;
     { a code block's markup: the host's coloring, or the page's own }
@@ -447,6 +495,11 @@ type
     { the rules that apply to an element, weakest first, as an inspector
       shows them; the caller frees the list }
     function ExplainStyle(ANode: TInkNode): TStringList;
+    { Lays the page out from its document tree - CSS boxes as a browser
+      makes them: real margins, padding, borders and backgrounds, floats,
+      positioning, flex, grid and tables - rather than from the classic
+      reader's run of blocks.  Off by default while it is new. }
+    property TreeLayout: Boolean read FTree write SetTreeLayout;
     procedure RenderTo(ACanvas: TCanvas);
     function PlainText: string;
     function ImageCount: Integer;
@@ -1198,6 +1251,8 @@ begin
   FCodeTimer.Enabled := False; FCodeActions.OnChange := nil; FCodeActions.Free;
   FStyleSheet.OnChange := nil; FStyleSheet.Free;
   FreeAndNil(FRenderCache);
+  FreeAndNil(FTreeLayout);
+  FreeAndNil(FTreeMeasure);
   FreeAndNil(FStyler);
   FreeAndNil(FDocument);
   FreeAndNil(FImageCache);
@@ -1313,6 +1368,7 @@ procedure TInkCustomPage.ToggleFold(Index: Integer);
 var B: TInkPageBlock;
 begin
   if (Index<0) or (Index>=FBlocks.Count) then Exit;
+  if FTree then begin TreeToggleFold(Index); Exit end;
   B := TInkPageBlock(FBlocks[Index]);
   if (B.FoldHead<0) or (B.FoldHead>=Length(FFoldOpen)) then Exit;
   FFoldOpen[B.FoldHead] := not FFoldOpen[B.FoldHead];
@@ -1339,6 +1395,11 @@ begin
   B := TInkPageBlock(FBlocks[Index]);
   Result.LineHeight := B.LineHeight;
   Result.NoWrap := B.NoWrap;
+  { a link in the tree layout wears what its CSS says, underline and all }
+  if B.Tree then
+  begin
+    Result.LinkKeepsColor := True; Result.LinkUnderline := False; Result.CSSLines := True;
+  end;
   if B.NoLinkUnderline then Result.LinkUnderline := False;
   if B.LinkColor<>clNone then Result.LinkColor := B.LinkColor;
 end;
@@ -1607,6 +1668,47 @@ procedure TInkCustomPage.Forward;
 begin
   if FHistoryIndex+1>=FHistory.Count then Exit;
   GoHistory(FHistoryIndex+1);
+end;
+{ B.ImageSrc decoded into B: a still picture from the cache when it was
+  decoded before, an animated GIF or WebP with a decoder of its own }
+procedure TInkCustomPage.LoadPicture(B: TInkPageBlock);
+var I: Integer; ImageData: TMemoryStream; ImageHeader: RawByteString; Cached: TPicture;
+begin
+  { a picture used again is decoded once: the same file twenty times on a
+    page, or the page read again after DocumentChanged }
+  I := FImageCache.IndexOf(B.ImageSrc);
+  if I>=0 then begin B.Picture.Assign(TPicture(FImageCache.Objects[I])); Exit end;
+  ImageData := TMemoryStream.Create;
+  try
+    try
+      if ReadResource(B.ImageSrc,ImageData) then
+      begin
+        SetLength(ImageHeader, Min(12, ImageData.Size));
+        ImageData.Position := 0;
+        if ImageHeader <> '' then ImageData.ReadBuffer(ImageHeader[1], Length(ImageHeader));
+        ImageData.Position := 0;
+        if InkIsWebP(ImageHeader) then
+        begin
+          B.WebP := TInkWebP.Create(ImageData);
+          if B.WebP.Decoded then B.Picture.Assign(B.WebP.Bitmap)
+          else FreeAndNil(B.WebP);
+        end
+        else B.Picture.LoadFromStream(ImageData);
+        if B.Picture.Graphic is TGIFImage then
+        begin
+          B.Animation := TInkGIF.Create(ImageData);
+          B.Picture.Assign(B.Animation.Bitmap);
+        end;
+      end;
+    except on E: Exception do B.Picture.Clear end;
+  finally ImageData.Free end;
+  { a still picture only: a moving one keeps its own frame }
+  if (B.Picture.Graphic<>nil) and (B.WebP=nil) and (B.Animation=nil) then
+  begin
+    Cached := TPicture.Create;
+    Cached.Assign(B.Picture);
+    FImageCache.AddObject(B.ImageSrc,Cached);
+  end;
 end;
 procedure TInkCustomPage.Parse;
 var
@@ -2341,6 +2443,7 @@ begin
     where implied ends, misnested tags and stray table text get mended }
   { the styles go with the tree they were worked out for; a tree its
     program changed may have lost nodes, which are not touched again }
+  FreeAndNil(FTreeLayout); SetLength(FTreePaint,0);
   if FStyler<>nil then FStyler.Release(not FKeepDocument);
   FStyled := False;
   if FKeepDocument and (FDocument<>nil) then FKeepDocument := False
@@ -2379,6 +2482,21 @@ begin
     P := Q+1;
   end;
   FMediaState := FStyles.MediaState(FStyles.MediaWidth);
+  if FTree then
+  begin
+    TreeBuild;
+    if FTitle='' then FTitle := FDocument.Title;
+    if FTitle='' then
+      for I := 0 to FBlocks.Count-1 do
+        if IsHeadingTag(TInkPageBlock(FBlocks[I]).Tag) and (TInkPageBlock(FBlocks[I]).Source<>'') then
+        begin
+          FTitle := Trim(HTMLPlainText(TInkPageBlock(FBlocks[I]).Source));
+          Break;
+        end;
+    FindAnimations;
+    FScroll.Position := 0; InvalidateLayout(0);
+    Exit;
+  end;
   { code with no background of its own gets a shade of the page's, so it
     still reads as code }
   PageBack := FStyles.Color('body','','background',FStyles.Color('body','','background-color',Color));
@@ -2799,42 +2917,7 @@ begin
       B.Anchor := PendingAnchor; PendingAnchor := '';
       { a picture used again is decoded once: the same file twenty times on a
         page, or the page read again after DocumentChanged }
-      I := FImageCache.IndexOf(B.ImageSrc);
-      if I>=0 then B.Picture.Assign(TPicture(FImageCache.Objects[I]))
-      else
-      begin
-      ImageData := TMemoryStream.Create;
-      try
-        try
-          if ReadResource(ResolveURL(Attribute(Raw,'src')),ImageData) then
-          begin
-            SetLength(ImageHeader, Min(12, ImageData.Size));
-            ImageData.Position := 0;
-            if ImageHeader <> '' then ImageData.ReadBuffer(ImageHeader[1], Length(ImageHeader));
-            ImageData.Position := 0;
-            if InkIsWebP(ImageHeader) then
-            begin
-              B.WebP := TInkWebP.Create(ImageData);
-              if B.WebP.Decoded then B.Picture.Assign(B.WebP.Bitmap)
-              else FreeAndNil(B.WebP);
-            end
-            else B.Picture.LoadFromStream(ImageData);
-            if B.Picture.Graphic is TGIFImage then
-            begin
-              B.Animation := TInkGIF.Create(ImageData);
-              B.Picture.Assign(B.Animation.Bitmap);
-            end;
-          end;
-        except on E: Exception do B.Picture.Clear end;
-      finally ImageData.Free end;
-      { a still picture only: a moving one keeps its own frame }
-      if (B.Picture.Graphic<>nil) and (B.WebP=nil) and (B.Animation=nil) then
-      begin
-        Cached := TPicture.Create;
-        Cached.Assign(B.Picture);
-        FImageCache.AddObject(B.ImageSrc,Cached);
-      end;
-      end;
+      LoadPicture(B);
       if B.Picture.Graphic=nil then
       begin
         { a picture that did not load is its alt text - still a link }
@@ -3346,6 +3429,12 @@ var I,Y,W,BlockLeft,ImageW,ImageH,ImageX,TextW,Thick,Start,KeepY,Cols,Pending,
   B,Prev: TInkPageBlock; Sz: TSize; O: THTMLOptions;
 begin
   if not FLayoutDirty then Exit;
+  if FTree then
+  begin
+    FLayoutDirty := False;
+    TreeLayoutRun;
+    Exit;
+  end;
   { a width that crosses one of the page's @media queries reads it again }
   if (ClientWidth>0) and (FStyles.MediaState(ClientWidth)<>FMediaState) then
   begin
@@ -3711,141 +3800,158 @@ end;
 
 procedure TInkCustomPage.Paint;
 begin RenderTo(Canvas); FLastPaint := GetTickCount64 end;
-procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
-var I,J,BarTop,BarBottom,Saved,RX: Integer; B,Next: TInkPageBlock; R,TR: TRect; O: THTMLOptions;
+{ one block: its bars, background and borders, then its words, marker,
+  picture, selection and code header }
+procedure TInkCustomPage.PaintBlock(ACanvas: TCanvas; I: Integer; ASelected: Boolean;
+  const SelFrom, SelTo: TInkPagePosition);
+var J,BarTop,BarBottom,RX: Integer; B,Next: TInkPageBlock; R,TR,Clip: TRect; O: THTMLOptions;
   RuleC: TColor;
+begin
+  B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
+  O := Options;
+  if BlockHidden(B) then Exit;
+  { a quote's bar runs on through the gap to the next block in the same
+    quote, so a quote of several paragraphs has one bar }
+  if Length(B.Bars)>0 then
+  begin
+    Next := nil;
+    if I+1<FBlocks.Count then Next := TInkPageBlock(FBlocks[I+1]);
+    ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
+    for J := 0 to High(B.Bars) do
+    begin
+      BarTop := R.Top; BarBottom := R.Bottom;
+      if (Next<>nil) and (Length(Next.Bars)>J) then Inc(BarBottom,B.GapAfter+Next.GapBefore);
+      ACanvas.FillRect(Rect(FColumnLeft+B.Bars[J]+Scale96ToFont(4),BarTop,
+        FColumnLeft+B.Bars[J]+Scale96ToFont(4)+Max(2,Scale96ToFont(3)),BarBottom));
+    end;
+  end;
+  BlockFont(ACanvas,B);
+  if B.Tag='hr' then
+  begin
+    ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
+    TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
+    if B.RuleDashed then
+    begin
+      RX := TR.Left;
+      while RX<TR.Right do
+      begin
+        ACanvas.FillRect(Rect(RX,TR.Top,Min(RX+3,TR.Right),TR.Bottom));
+        Inc(RX,6);
+      end;
+    end
+    else if B.RuleInset and (TR.Bottom-TR.Top>=2) then
+    begin
+      { the top row at two thirds of the color, which is how Chromium
+        darkens an inset border - shading toward white barely moves a
+        light gray at all }
+      RuleC := ColorToRGB(B.BarColor);
+      ACanvas.Brush.Color := RGBToColor(Red(RuleC)*2 div 3,
+        Green(RuleC)*2 div 3,Blue(RuleC)*2 div 3);
+      ACanvas.FillRect(Rect(TR.Left,TR.Top,TR.Right,TR.Top+1));
+      ACanvas.Brush.Color := B.BarColor;
+      ACanvas.FillRect(Rect(TR.Left,TR.Top+1,TR.Right,TR.Bottom));
+    end
+    else
+      ACanvas.FillRect(TR);
+    { and put the brush back: a rule's color has no business being the
+      canvas's color for the rest of the page }
+    ACanvas.Brush.Color := FPageBack; ACanvas.Brush.Style := bsClear;
+    Exit;
+  end;
+  if B.BackColor<>clNone then
+  begin
+    ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid;
+    ACanvas.FillRect(R);
+    if B.BandWithNext and (I+1<FBlocks.Count) then
+      ACanvas.FillRect(Rect(R.Left,R.Bottom,R.Right,
+        TInkPageBlock(FBlocks[I+1]).Bounds.Top-FScroll.Position));
+  end;
+  ACanvas.Brush.Style := bsClear;
+  if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
+  { a stripe down one edge, drawn over the background and inside the block.
+    A zero-width edge is no edge: GTK3 paints an empty FillRect as a
+    one-pixel line, which framed every line of a TInkMemo }
+  ACanvas.Brush.Style := bsSolid;
+  if (B.EdgeColor[0]<>clNone) and (B.EdgeWidth[0]>0) then
+  begin
+    ACanvas.Brush.Color := B.EdgeColor[0];
+    ACanvas.FillRect(Rect(R.Left,R.Top,R.Left+B.EdgeWidth[0],R.Bottom));
+  end;
+  if (B.EdgeColor[1]<>clNone) and (B.EdgeWidth[1]>0) then
+  begin
+    ACanvas.Brush.Color := B.EdgeColor[1];
+    ACanvas.FillRect(Rect(R.Left,R.Top,R.Right,R.Top+B.EdgeWidth[1]));
+  end;
+  if (B.EdgeColor[2]<>clNone) and (B.EdgeWidth[2]>0) then
+  begin
+    ACanvas.Brush.Color := B.EdgeColor[2];
+    ACanvas.FillRect(Rect(R.Right-B.EdgeWidth[2],R.Top,R.Right,R.Bottom));
+  end;
+  if (B.EdgeColor[3]<>clNone) and (B.EdgeWidth[3]>0) then
+  begin
+    ACanvas.Brush.Color := B.EdgeColor[3];
+    ACanvas.FillRect(Rect(R.Left,R.Bottom-B.EdgeWidth[3],R.Right,R.Bottom));
+  end;
+  ACanvas.Brush.Style := bsClear;
+  if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
+  begin
+    R := B.ImageRect; OffsetRect(R,0,-FScroll.Position);
+    if Assigned(B.WebP) then ACanvas.StretchDraw(R,B.WebP.Bitmap)
+    else ACanvas.StretchDraw(R,B.Picture.Graphic);
+    Exit;
+  end;
+  TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
+  { the marker on the first line's baseline: drawn with the block's own
+    line height, as its words are }
+  O := BlockOptions(I);
+  if (B.Marker<>'') and not (B.Tree and TreePaintMarker(ACanvas,B,TR)) then
+    HTMLDrawOpt(ACanvas,Rect(TR.Left-B.MarkerWidth,TR.Top,TR.Left,TR.Bottom),[],
+      HTMLEscape(B.Marker),O,FRenderCache);
+  { nothing that draws text depends on what the last thing to draw left
+    behind: the marker's own draw is a draw like any other }
+  ACanvas.Brush.Style := bsClear;
+  if B.NoWrap or FPaintClipped then
+  begin
+    { a long line of code is cut off at the block's edge, not wrapped; and
+      a block in a box that clips is cut at that too.  Set on the canvas,
+      not saved and restored: GTK3's RestoreDC fails once the fonts have
+      changed in between }
+    if B.NoWrap then Clip := R else Clip := Rect(-MaxInt div 2,-MaxInt div 2,MaxInt div 2,MaxInt div 2);
+    if FPaintClipped then IntersectRect(Clip,Clip,FPaintClip);
+    ACanvas.ClipRect := Clip; ACanvas.Clipping := True;
+    try
+      HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O,FRenderCache);
+      if ASelected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
+        PaintSelection(ACanvas,I,B,SelFrom,SelTo);
+    finally ACanvas.Clipping := False end;
+  end
+  else
+  begin
+    HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O,FRenderCache);
+    if ASelected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
+      PaintSelection(ACanvas,I,B,SelFrom,SelTo);
+  end;
+  if B.CodeHead>0 then PaintCodeHead(ACanvas,I,B,R);
+end;
+procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
+var I: Integer; B: TInkPageBlock; R: TRect;
   SelFrom, SelTo: TInkPagePosition; Selected: Boolean;
 begin
+  if FTree then begin TreeRender(ACanvas); Exit end;
   Layout;
   Selected := HasSelection;
   SelFrom := SelectionStart; SelTo := SelectionEnd;
   ACanvas.Brush.Color := FStyles.Color('body','','background',
     FStyles.Color('body','','background-color',Color));
   ACanvas.Brush.Style := bsSolid;
-  ACanvas.FillRect(ClientRect); O := Options;
+  ACanvas.FillRect(ClientRect);
   for I := FirstShownBlock(FScroll.Position) to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]); R := B.Bounds; OffsetRect(R,0,-FScroll.Position);
     { blocks are laid out top to bottom: past the window's bottom, done }
     if R.Top-B.GapBefore>ClientHeight then Break;
     if R.Bottom+B.GapAfter<0 then Continue;
-    if BlockHidden(B) then Continue;
-    { a quote's bar runs on through the gap to the next block in the same
-      quote, so a quote of several paragraphs has one bar }
-    if Length(B.Bars)>0 then
-    begin
-      Next := nil;
-      if I+1<FBlocks.Count then Next := TInkPageBlock(FBlocks[I+1]);
-      ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
-      for J := 0 to High(B.Bars) do
-      begin
-        BarTop := R.Top; BarBottom := R.Bottom;
-        if (Next<>nil) and (Length(Next.Bars)>J) then Inc(BarBottom,B.GapAfter+Next.GapBefore);
-        ACanvas.FillRect(Rect(FColumnLeft+B.Bars[J]+Scale96ToFont(4),BarTop,
-          FColumnLeft+B.Bars[J]+Scale96ToFont(4)+Max(2,Scale96ToFont(3)),BarBottom));
-      end;
-    end;
-    BlockFont(ACanvas,B);
-    if B.Tag='hr' then
-    begin
-      ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := B.BarColor;
-      TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
-      if B.RuleDashed then
-      begin
-        RX := TR.Left;
-        while RX<TR.Right do
-        begin
-          ACanvas.FillRect(Rect(RX,TR.Top,Min(RX+3,TR.Right),TR.Bottom));
-          Inc(RX,6);
-        end;
-      end
-      else if B.RuleInset and (TR.Bottom-TR.Top>=2) then
-      begin
-        { the top row at two thirds of the color, which is how Chromium
-          darkens an inset border - shading toward white barely moves a
-          light gray at all }
-        RuleC := ColorToRGB(B.BarColor);
-        ACanvas.Brush.Color := RGBToColor(Red(RuleC)*2 div 3,
-          Green(RuleC)*2 div 3,Blue(RuleC)*2 div 3);
-        ACanvas.FillRect(Rect(TR.Left,TR.Top,TR.Right,TR.Top+1));
-        ACanvas.Brush.Color := B.BarColor;
-        ACanvas.FillRect(Rect(TR.Left,TR.Top+1,TR.Right,TR.Bottom));
-      end
-      else
-        ACanvas.FillRect(TR);
-      { and put the brush back: a rule's color has no business being the
-        canvas's color for the rest of the page }
-      ACanvas.Brush.Color := FPageBack; ACanvas.Brush.Style := bsClear;
-      Continue;
-    end;
-    if B.BackColor<>clNone then
-    begin
-      ACanvas.Brush.Color := B.BackColor; ACanvas.Brush.Style := bsSolid;
-      ACanvas.FillRect(R);
-      if B.BandWithNext and (I+1<FBlocks.Count) then
-        ACanvas.FillRect(Rect(R.Left,R.Bottom,R.Right,
-          TInkPageBlock(FBlocks[I+1]).Bounds.Top-FScroll.Position));
-    end;
-    ACanvas.Brush.Style := bsClear;
-    if B.BorderColor<>clNone then begin ACanvas.Pen.Color := B.BorderColor; ACanvas.Rectangle(R) end;
-    { a stripe down one edge, drawn over the background and inside the block.
-      A zero-width edge is no edge: GTK3 paints an empty FillRect as a
-      one-pixel line, which framed every line of a TInkMemo }
-    ACanvas.Brush.Style := bsSolid;
-    if (B.EdgeColor[0]<>clNone) and (B.EdgeWidth[0]>0) then
-    begin
-      ACanvas.Brush.Color := B.EdgeColor[0];
-      ACanvas.FillRect(Rect(R.Left,R.Top,R.Left+B.EdgeWidth[0],R.Bottom));
-    end;
-    if (B.EdgeColor[1]<>clNone) and (B.EdgeWidth[1]>0) then
-    begin
-      ACanvas.Brush.Color := B.EdgeColor[1];
-      ACanvas.FillRect(Rect(R.Left,R.Top,R.Right,R.Top+B.EdgeWidth[1]));
-    end;
-    if (B.EdgeColor[2]<>clNone) and (B.EdgeWidth[2]>0) then
-    begin
-      ACanvas.Brush.Color := B.EdgeColor[2];
-      ACanvas.FillRect(Rect(R.Right-B.EdgeWidth[2],R.Top,R.Right,R.Bottom));
-    end;
-    if (B.EdgeColor[3]<>clNone) and (B.EdgeWidth[3]>0) then
-    begin
-      ACanvas.Brush.Color := B.EdgeColor[3];
-      ACanvas.FillRect(Rect(R.Left,R.Bottom-B.EdgeWidth[3],R.Right,R.Bottom));
-    end;
-    ACanvas.Brush.Style := bsClear;
-    if (B.Picture.Graphic<>nil) and (B.Picture.Width>0) then
-    begin
-      R := B.ImageRect; OffsetRect(R,0,-FScroll.Position);
-      if Assigned(B.WebP) then ACanvas.StretchDraw(R,B.WebP.Bitmap)
-      else ACanvas.StretchDraw(R,B.Picture.Graphic);
-      Continue;
-    end;
-    TR := B.TextBounds; OffsetRect(TR,0,-FScroll.Position);
-    if B.Marker<>'' then
-      HTMLDrawOpt(ACanvas,Rect(TR.Left-B.MarkerWidth,TR.Top,TR.Left,TR.Bottom),[],
-        HTMLEscape(B.Marker),O,FRenderCache);
-    { nothing that draws text depends on what the last thing to draw left
-      behind: the marker's own draw is a draw like any other }
-    ACanvas.Brush.Style := bsClear;
-    O := BlockOptions(I);
-    if B.NoWrap then
-    begin
-      { a long line of code is cut off at the block's edge, not wrapped }
-      Saved := SaveDC(ACanvas.Handle);
-      try
-        IntersectClipRect(ACanvas.Handle,R.Left,R.Top,R.Right,R.Bottom);
-        HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O,FRenderCache);
-        if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
-          PaintSelection(ACanvas,I,B,SelFrom,SelTo);
-      finally RestoreDC(ACanvas.Handle,Saved) end;
-    end
-    else
-    begin
-      HTMLDrawOpt(ACanvas,TR,[],B.Wrapped,O,FRenderCache);
-      if Selected and (I>=SelFrom.Block) and (I<=SelTo.Block) then
-        PaintSelection(ACanvas,I,B,SelFrom,SelTo);
-    end;
-    if B.CodeHead>0 then PaintCodeHead(ACanvas,I,B,R);
+    PaintBlock(ACanvas,I,Selected,SelFrom,SelTo);
   end;
   if FScroll.Visible then
     FScroll.RenderTo(ACanvas,Rect(ClientWidth-FScroll.Width,0,ClientWidth,ClientHeight));
@@ -4335,6 +4441,7 @@ begin
   Layout;
   Result := -1;
   DocY := Y+FScroll.Position;
+  if FTree then Exit(TreeBlockAt(X,DocY,False));
   for I := 0 to FBlocks.Count-1 do
   begin
     B := TInkPageBlock(FBlocks[I]);
@@ -4351,8 +4458,10 @@ begin
   DocY := Y+FScroll.Position;
   { the block, or the one after the gap the point is in }
   I := 0;
-  while (I<FBlocks.Count-1) and
-    (DocY>=TInkPageBlock(FBlocks[I]).Bounds.Bottom+TInkPageBlock(FBlocks[I]).GapAfter) do Inc(I);
+  if FTree then I := Max(0,TreeBlockAt(X,DocY,True))
+  else
+    while (I<FBlocks.Count-1) and
+      (DocY>=TInkPageBlock(FBlocks[I]).Bounds.Bottom+TInkPageBlock(FBlocks[I]).GapAfter) do Inc(I);
   B := TInkPageBlock(FBlocks[I]);
   Result.Block := I;
   PrepareRuns(B);
@@ -5126,5 +5235,14 @@ begin
       (R.Top+R.Bottom-ACanvas.TextHeight(Glyphs[K])) div 2,Glyphs[K]);
   end;
 end;
+
+procedure TInkCustomPage.SetTreeLayout(AValue: Boolean);
+begin
+  if FTree=AValue then Exit;
+  FTree := AValue;
+  if FSource<>'' then Reread;
+end;
+
+{$I inkpagetree.inc}
 
 end.
