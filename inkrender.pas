@@ -2258,6 +2258,7 @@ var I,J,DX,DY,Pass,TextY,CheckRad,CheckW: Integer; L: TInkRenderLine; R: TInkRen
     was last asked for: a paragraph's runs nearly all share one }
   AscFace: string; AscSize, AscBits, AscScript, PaintAscent: Integer;
   TM: TTextMetric;
+  WantLine: Boolean; BaseY, EmPx, LineOff, LineTh: Integer;
 
   { the colors a run is painted in: its own, a link's, hover's, selection's }
   procedure RunColors(const ARun: TInkRenderRun; out AColor, ABack: TColor);
@@ -2413,6 +2414,13 @@ begin
         if (R.Style.LinkIndex>0) and (Options.LinkUnderline or
           ((R.Style.LinkIndex=Options.HoverIndex) and Options.HoverUnderline)) then
           Canvas.Font.Style:=Canvas.Font.Style+[fsUnderline];
+        { The underline is drawn by hand, the way a browser draws its
+          text-decoration: one thin line a shade below the baseline.  The
+          font engine's own underline sits on the baseline and runs two
+          pixels thick at reading sizes here, cutting through descenders
+          and touching the letters. }
+        WantLine:=fsUnderline in Canvas.Font.Style;
+        if WantLine then Canvas.Font.Style:=Canvas.Font.Style-[fsUnderline];
         Canvas.Font.Color:=C;
         { the backgrounds are down already, and TextOut paints one of its own
           - the font's whole cell - whenever the brush is solid }
@@ -2471,6 +2479,22 @@ begin
           end;
           { a pill's words sit inside its padding }
           Canvas.TextOut(DrawRect.Left+R.Style.PillPadH,TextY,R.Text);
+          if WantLine then
+          begin
+            if R.Style.Size<0 then EmPx:=-R.Style.Size
+            else EmPx:=Max(1,Round(R.Style.Size*96/72));
+            { where a browser's auto decoration lands: about an eighth of
+              an em under the baseline, a fourteenth of an em thick }
+            LineOff:=Max(2,Round(EmPx*0.13));
+            LineTh:=Max(1,Round(EmPx/14));
+            if R.Ascent>0 then BaseY:=DrawRect.Top+R.Ascent
+            else if PaintAscent>0 then BaseY:=TextY+PaintAscent
+            else BaseY:=DrawRect.Bottom-LineOff-LineTh;
+            Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=C;
+            Canvas.FillRect(DrawRect.Left+R.Style.PillPadH,BaseY+LineOff,
+              DrawRect.Right-R.Style.PillPadH,BaseY+LineOff+LineTh);
+            Canvas.Brush.Style:=bsClear;
+          end;
         end;
       end;
     end;
