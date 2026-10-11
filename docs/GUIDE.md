@@ -499,7 +499,7 @@ Markdown notes app - while using the vocabulary once each: tables with
 spans, flex cards, grid, pills, a mocked chat and log, `text-overflow`,
 `<wbr>`, nested folds, highlighted code, entities.  After editing it,
 remake the picture with `tools/browser_shot.sh demo/showcase.html
-demo/showcase-browser.png 548 7310` (shoot tall once and read off the
+demo/showcase-browser.png 548 7560` (shoot tall once and read off the
 new height if the page grew).
 
 ![The side by side tab](../images/demo-compare.png)

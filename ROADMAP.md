@@ -264,6 +264,12 @@ best after the widgetset runs in D, so the listing's claims are true.
   story): the pill run became an atomic box - forced width and height,
   centered words, real border styles, standing even empty, its vertical
   margins counted into the line the way a browser counts them.
+* **Half a pixel a line against a browser** (found 11 October 2026 by
+  the side-by-side): a computed line-height of 22.5px is kept as 22,
+  so long pages come up short by half a pixel per ruled line - 125px
+  over the showcase before its pitches were made integral.  The fix is
+  fractional line advance through the engine;
+  `bugs/2026-10-11-halfpixel-lineheight` has the measurement.
 * `<abbr title>`: a title on anything that is not a link is dropped.
 * Markdown: emphasis does not follow full CommonMark delimiter rules, link
   definitions must fit on one line, no footnotes, an image in a table cell
