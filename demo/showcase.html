@@ -17,8 +17,12 @@
          demo/showcase-browser.png 548 <height>
      (shoot once tall, read where the content ends, shoot again). -->
 <style>
+  /* Line pitches that come out whole in pixels (15px x 1.6 = 24), so
+     the comparison is not dominated by sub-pixel line stacking: LazInk
+     keeps whole-pixel line heights and loses half a pixel a line
+     against a browser's 22.5 - bugs/2026-10-11-halfpixel-lineheight. */
   body { background: #ffffff; color: #22262c; font-size: 15px;
-         font-family: Arial, sans-serif; line-height: 1.5;
+         font-family: Arial, sans-serif; line-height: 1.6;
          padding: 14px 16px }
   code, kbd, pre { font-family: 'DejaVu Sans Mono', monospace }
   h1 { color: #14315c; font-size: 27px; margin: 4px 0 2px }
@@ -27,7 +31,8 @@
   a { color: #176bbd }
   code, kbd { background: #eef0f3; padding: 1px 4px; border-radius: 3px }
   kbd { border: 1px solid #c8ccd2 }
-  pre { background: #f4f6f8; padding: 10px; overflow-x: hidden }
+  pre { background: #f4f6f8; padding: 10px; overflow-x: hidden;
+        font-size: 13px; line-height: 20px }
   pre code { background: none; padding: 0 }
   blockquote { color: #5e6670; border-left: 4px solid #c8ccd2;
                margin-left: 0; padding-left: 12px }
@@ -39,7 +44,7 @@
   th { background: #eef2f7 }
   td.num { text-align: right }
   td.mid { text-align: center }
-  .lede { font-size: 16px; color: #46505c }
+  .lede { font-size: 16px; line-height: 1.5; color: #46505c }
   .pill { border-radius: 999px; padding: 2px 10px; color: white;
           font-size: 12px; white-space: nowrap }
   .blue { background: #2e86de } .green { background: #1e8449 }
@@ -66,14 +71,14 @@
   .ans { background: #eaf6ee; margin-right: 60px }
   .who { font-size: 11px; color: #7a828c; text-transform: uppercase }
   /* the log mock */
-  pre.log { background: #22262c; color: #d6dae0; font-size: 13px }
+  pre.log { background: #22262c; color: #d6dae0 }
   .t { color: #7a828c } .ok { color: #58b368 } .err { color: #e4604e }
   .warnc { color: #d9a514 }
   /* one-line machinery */
   .clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           border: 1px solid #d8dce2; padding: 4px 8px; margin: 6px 0 }
   .airy { line-height: 2 }
-  .snug { line-height: 1.1 }
+  .snug { line-height: 1.2 }
   .shout { text-transform: uppercase }
   figure { margin: 14px 0 }
   figcaption { font-size: 12px; color: #7a828c; margin-top: 4px }
