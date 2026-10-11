@@ -1287,6 +1287,43 @@ begin
   end;
 end;
 
+{ The element under a point of the page, read off the paint order: the
+  last thing painted there is on top, as a browser's elementFromPoint
+  answers.  An anonymous box answers the element it belongs to, a
+  ::before or ::after the element it decorates. }
+function TInkCustomPage.TreeElementAt(X, DocY: Integer): TInkNode;
+var I: Integer; It: TInkTreePaint; Box: TInkBox; B: TInkPageBlock; R: TRect; P: TPoint;
+begin
+  Result := nil;
+  Layout;
+  P := Point(X, DocY);
+  for I := High(FTreePaint) downto 0 do
+  begin
+    It := FTreePaint[I];
+    if It.Section <> nil then Continue;
+    if It.Clipped and not PtInRect(It.Clip, P) then Continue;
+    if It.Box <> nil then
+    begin
+      Box := TInkBox(It.Box);
+      R := Box.BorderRect;
+    end
+    else
+    begin
+      if (It.Block < 0) or (It.Block >= FBlocks.Count) then Continue;
+      B := TInkPageBlock(FBlocks[It.Block]);
+      R := B.Bounds;
+      Box := TInkBox(B.TreeBox);
+    end;
+    if (Box = nil) or not PtInRect(R, P) then Continue;
+    while Box <> nil do
+    begin
+      if Box.Node <> nil then Exit(Box.Node);
+      if Box.PseudoOf <> nil then Exit(Box.PseudoOf);
+      Box := Box.Parent;
+    end;
+  end;
+end;
+
 procedure TInkCustomPage.TreeToggleFold(Index: Integer);
 var B: TInkPageBlock; S: TInkTreeSection; D: TInkNode;
 begin
