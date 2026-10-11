@@ -1845,6 +1845,7 @@ object frmMain: TfrmMain
         Anchors = [akTop, akLeft, akBottom]
         OnLinkClick = DocLinkClick
         OnMouseMove = CompareCross
+        CodeHeader = False
         Color = clWhite
         Font.Color = clWindowText
         Font.Height = -15

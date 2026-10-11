@@ -4,17 +4,23 @@
 <meta charset="utf-8">
 <title>The LazInk showcase</title>
 <!-- One readable document, written around what LazInk is for - and at
-     the same time a test document: each section leans on different
-     machinery, so the demo's "Side by side" tab and tools/compare.sh
-     can hold the renderer against a browser line by line.
-     The colors are the page's own, so both sides match in any theme.
+     the same time a test document: each section is numbered and leans
+     on different machinery, so the demo's "Side by side" tab can hold
+     the renderer against a browser line by line and a difference can
+     be named by its section.
+     The colors are the page's own, so both sides match in any theme,
+     and the font stacks name concrete faces - the browser and Pango
+     resolve a bare sans-serif to different fonts, which is a fonts
+     policy, not a rendering bug.
      After editing, remake the browser's picture:
        tools/browser_shot.sh demo/showcase.html \
          demo/showcase-browser.png 548 <height>
      (shoot once tall, read where the content ends, shoot again). -->
 <style>
   body { background: #ffffff; color: #22262c; font-size: 15px;
-         font-family: sans-serif; line-height: 1.5; padding: 14px 16px }
+         font-family: Arial, sans-serif; line-height: 1.5;
+         padding: 14px 16px }
+  code, kbd, pre { font-family: 'DejaVu Sans Mono', monospace }
   h1 { color: #14315c; font-size: 27px; margin: 4px 0 2px }
   h2 { color: #176bbd; font-size: 20px; margin-top: 30px }
   h3 { color: #5e6670; font-size: 16px }
@@ -98,20 +104,20 @@ and E=mc<sup>2</sup>,
 and <small>the small print</small>.</p>
 
 <div class="note"><b>How this page is used.</b> The demo shows it beside
-a browser&rsquo;s picture of the same file, crosshair on, scroll-locked;
-<code>tools/compare.sh</code> opens it beside a live browser. Where the
-two sides disagree by more than a few pixels of font metric, that is a
-bug worth a folder in <code>bugs/</code>.</div>
+a browser&rsquo;s picture of the same file, crosshair on, scroll-locked.
+Where the two sides disagree by more than a few pixels of font metric,
+that is a bug worth a folder in <code>bugs/</code>.</div>
 
-<p>On this page: <a href="#build">what you could build</a> &middot;
-<a href="#engine">the engine</a> &middot; <a href="#chat">a chat
-window</a> &middot; <a href="#log">a log console</a> &middot;
-<a href="#tables">tables</a> &middot; <a href="#lines">single
-lines</a> &middot; <a href="#lists">lists</a> &middot;
-<a href="#folds">folds and fine print</a> &mdash; the links jump, as
-they would in a help viewer.</p>
+<p>On this page: <a href="#build">1 what you could build</a>,
+<a href="#engine">2 the engine</a>, <a href="#chat">3 a chat
+window</a>, <a href="#log">4 a log console</a>,
+<a href="#tables">5 tables</a>, <a href="#lines">6 single
+lines</a>, <a href="#lists">7 lists</a>,
+<a href="#folds">8 folds and fine print</a> &mdash; numbered so a
+difference between the two halves can be named by its section, and
+the links jump, as they would in a help viewer.</p>
 
-<h2 id="build">What you could build with it</h2>
+<h2 id="build">1 &middot; What you could build with it</h2>
 
 <p>Anywhere a Lazarus program shows words that deserve better than a
 <code>TLabel</code>, there is a control here for it:</p>
@@ -147,7 +153,7 @@ they would in a help viewer.</p>
   attribute.</figcaption>
 </figure>
 
-<h2 id="engine">The engine underneath</h2>
+<h2 id="engine">2 &middot; The engine underneath</h2>
 
 <p>Since October 2026 every page stands on a real document tree: a
 browser&rsquo;s own tag-soup parsing, the full CSS cascade, and layout
@@ -180,7 +186,7 @@ design, ever), words flowing line by line beside a floated picture
 <code>&lt;noscript&gt;</code> and the fallback inside an
 <code>&lt;iframe&gt;</code>.</div>
 
-<h2 id="chat">A chat window, mocked in plain markup</h2>
+<h2 id="chat">3 &middot; A chat window, mocked in plain markup</h2>
 
 <p>These bubbles are <code>div</code>s with a radius and a tint &mdash;
 the real thing is three calls on a <code>TInkMemo</code>
@@ -202,7 +208,7 @@ the real thing is three calls on a <code>TInkMemo</code>
   when it shows, so a token&rsquo;s checksum can glow red.</div>
 </div>
 
-<h2 id="log">A log console, mocked in a dark block</h2>
+<h2 id="log">4 &middot; A log console, mocked in a dark block</h2>
 
 <p>One <code>pre</code> with colored spans &mdash; in a program this is
 a <code>TInkListBox</code> arriving line by line:</p>
@@ -213,7 +219,7 @@ a <code>TInkListBox</code> arriving line by line:</p>
 <span class="t">09:14:05.550</span> <span class="err">error</span>    worker bravo &mdash; disk full
 <span class="t">09:14:06.117</span> <span class="ok">done</span>     worker alpha, 1,284 rows</pre>
 
-<h2 id="tables">Tables, the way documentation writes them</h2>
+<h2 id="tables">5 &middot; Tables, the way documentation writes them</h2>
 
 <p>Automatic column widths from the words, cells that span, columns
 that align:</p>
@@ -237,7 +243,7 @@ that align:</p>
   <tr><td>Plain text</td><td><code>itfPlain</code></td><td>as itself</td></tr>
 </table>
 
-<h2 id="lines">Single lines, cut honestly</h2>
+<h2 id="lines">6 &middot; Single lines, cut honestly</h2>
 
 <p>A status line that must stay one line ends in an ellipsis, as CSS
 asks (<code>nowrap</code>, a clipping <code>overflow</code>,
@@ -262,7 +268,7 @@ typography comes out right: caf&eacute;, na&iuml;ve, &frac34; of a pie,
 25&nbsp;&deg;C, x&nbsp;&ne;&nbsp;y, &ldquo;curly quotes&rdquo;, an
 em&nbsp;dash &mdash; and a non&#8209;breaking hyphen.</p>
 
-<h2 id="lists">Lists of every kind</h2>
+<h2 id="lists">7 &middot; Lists of every kind</h2>
 
 <ol>
   <li>A numbered step</li>
@@ -295,7 +301,7 @@ em&nbsp;dash &mdash; and a non&#8209;breaking hyphen.</p>
   <li><input type="checkbox" disabled> flow text round a floated picture</li>
 </ul>
 
-<h2 id="folds">The folded and the fine print</h2>
+<h2 id="folds">8 &middot; The folded and the fine print</h2>
 
 <details>
   <summary>What is under this fold?</summary>
@@ -320,9 +326,9 @@ end;</code></pre>
 
 <hr>
 
-<p class="fine">Written for the LazInk demo and for
-<code>tools/compare.sh</code> &mdash; prose first, test document second,
-and honest about both. <a href="#top">Back to the top.</a></p>
+<p class="fine">Written for the LazInk demo&rsquo;s side-by-side tab
+&mdash; prose first, test document second, and honest about both.
+<a href="#top">Back to the top.</a></p>
 
 </body>
 </html>
