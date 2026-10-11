@@ -1873,8 +1873,9 @@ end;
 
 function TInkRenderer.MeasureInline(ABox: TInkBox; const Canvas: TCanvas;
   AWidth, AY: Integer): Integer;
-var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc,StrutAsc,StrutDesc: Integer;
-  R: TInkRenderRun; Sz, ImgSz: TSize; Text,Atom: string; Start,Bytes: Integer;
+var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc,StrutAsc,StrutDesc,
+    LineAsc,LineDesc: Integer;
+  R, PillRun: TInkRenderRun; Sz, ImgSz: TSize; Text,Atom: string; Start,Bytes: Integer;
   CanBreak, Pill, CutLine: Boolean;
   EllRun: TInkRenderRun; EllSz: TSize; EllText: string; Limit, EK: Integer;
   C: Cardinal; L: TInkRenderLine;
@@ -1883,15 +1884,25 @@ var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc,StrutAsc,StrutDesc:
     descent, which is what makes a heading and small text sit together. }
   procedure AlignBaselines(First, Count: Integer; var ALineH: Integer;
     out ABaseline: Integer);
-  var K, Asc, Desc, Shift, H, Pad: Integer;
+  var K, Asc, Desc, Shift, H, Pad, A2, D2: Integer;
   begin
     Asc := 0; Desc := 0;
     { the block's own font is on every line, whatever the line holds }
     if FOpt.CSSLines then begin Asc := StrutAsc; Desc := StrutDesc end;
     for K := First to First+Count-1 do
     begin
-      { a pill's padding reaches past the line rather than growing it, as
-        an inline box's does in CSS }
+      { a pill's box and padding reach past the line rather than growing
+        it, as an inline box's do in CSS: the line takes the run's
+        line-height metrics, not the box }
+      if FOpt.CSSLines and
+        ((FLayout.FRuns[K].Style.PillPadH>0) or (FLayout.FRuns[K].Style.PillPadV>0) or
+         (FLayout.FRuns[K].Style.PillRadius>0) or (FLayout.FRuns[K].Style.PillBorder<>clNone)) then
+      begin
+        Metrics(Canvas,FLayout.FRuns[K],A2,D2);
+        Asc := Max(Asc,A2);
+        Desc := Max(Desc,D2);
+        Continue;
+      end;
       Pad := 0;
       if FOpt.CSSLines then Pad := FLayout.FRuns[K].Style.PillPadV;
       Asc := Max(Asc,FLayout.FRuns[K].Ascent-Pad);
@@ -2063,14 +2074,31 @@ begin
         RunDesc:=InkRenderScalePx(2,FOpt.Scale);
         RunAsc:=Max(1,Sz.cy-RunDesc);
       end
+      else if Pill then
+      begin
+        { a pill's box hugs its words: the font's own height, not the
+          line's.  A browser sizes an inline box to its content and
+          centers it on the baseline, whatever line-height the page set
+          around it - measured with the line-height switched off, or a
+          roomy line would puff every pill up to the line box. }
+        PillRun:=R; PillRun.Style.LineHeight:=-1;
+        Metrics(Canvas,PillRun,RunAsc,RunDesc);
+      end
       else Metrics(Canvas,R,RunAsc,RunDesc);
       if Pill then begin Inc(RunAsc,R.Style.PillPadV); Inc(RunDesc,R.Style.PillPadV) end;
       R.Ascent:=RunAsc; R.Descent:=RunDesc;
       { a provisional place; AlignBaselines settles it when the line ends }
-      if Pill then R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy+2*R.Style.PillPadV)
+      if Pill then R.Bounds:=Rect(X,Y,X+W,Y+RunAsc+RunDesc)
       else R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W);
-      if Pill and FOpt.CSSLines then MaxLineH:=Max(MaxLineH,RunAsc+RunDesc-2*R.Style.PillPadV)
+      if Pill and FOpt.CSSLines then
+      begin
+        { the pill's box may stand taller than the line, but it does not
+          grow it: the line takes what a plain run of this style would
+          give it - line-height rules the line box, as in a browser }
+        Metrics(Canvas,R,LineAsc,LineDesc);
+        MaxLineH:=Max(MaxLineH,LineAsc+LineDesc);
+      end
       else MaxLineH:=Max(MaxLineH,RunAsc+RunDesc);
       { where the next break may fall: after whitespace, or after a CJK
         character, which needs no space to break beside }

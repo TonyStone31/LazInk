@@ -4141,6 +4141,45 @@ begin
   finally Rules.Free end;
 end;
 
+{ a pill's box hugs its words - the font's height plus the padding - and
+  is centered on the line, however roomy the line-height around it.  A
+  browser sizes an inline box to its content; LazInk used to size it to
+  the line box, so a line-height of 2 puffed every pill up. }
+procedure PillBoxChecks;
+  function PillHeight(const ALineHeight: string): Integer;
+  var BM: TBitmap; X, Y, MinY, MaxY: Integer; C: TColor;
+  begin
+    Probe.LoadHTML('<html><head><style>body{line-height:'+ALineHeight+'}'+
+      '.pill{background:#eef0f3;border:1px solid #c8ccd2;'+
+      'border-radius:999px;padding:1px 10px}</style></head>'+
+      '<body><p>word <span class="pill">neutral</span> word</p></body></html>');
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(Probe.ClientWidth,Probe.ClientHeight);
+      Probe.RenderTo(BM.Canvas);
+      MinY := MaxInt; MaxY := -1;
+      for Y := 0 to BM.Height-1 do
+        for X := 0 to BM.Width-1 do
+        begin
+          C := BM.Canvas.Pixels[X,Y];
+          if (C=RGBToColor($EE,$F0,$F3)) or (C=RGBToColor($C8,$CC,$D2)) then
+          begin
+            if Y<MinY then MinY := Y; if Y>MaxY then MaxY := Y;
+          end;
+        end;
+      Check(MaxY>=0,'pill: the box paints at line-height '+ALineHeight);
+      Result := MaxY-MinY+1;
+    finally BM.Free end;
+  end;
+var Snug, Airy: Integer;
+begin
+  Snug := PillHeight('1');
+  Airy := PillHeight('2.2');
+  Check(Snug=Airy,
+    Format('pill: the box hugs its words whatever the line-height (%d at 1, %d at 2.2)',
+    [Snug,Airy]));
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -4349,6 +4388,7 @@ begin
     CodeHeaderChecks;
     SelectionBChecks;
     OldSchoolChecks;
+    PillBoxChecks;
     DocumentTreeChecks;
     TreeLayoutChecks;
 
