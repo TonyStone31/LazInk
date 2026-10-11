@@ -4308,7 +4308,7 @@ end;
 procedure InlineBoxChecks;
 const Doc = '<html><head><style>body{margin:0;font:15px/1.5 "DejaVu Sans"}'+
   '.c{display:inline-block;width:110px;border:2px dashed #555555;padding:2px 6px;text-align:center}'+
-  '.d{display:inline-block;width:46px;height:46px;background:#2e86de;border-radius:50%}'+
+  '.d{display:inline-block;width:46px;height:46px;background:#2e86de;border-radius:50%;margin:5px 0 3px}'+
   '</style></head><body><p><span class=c>chip</span> word</p>'+
   '<p>a <span class=d></span> dot</p></body></html>';
 var P: TInkPageBlock; I, Seg, X, ChipW, ChipL, ChipT, DotW, DotH: Integer;
@@ -4334,8 +4334,10 @@ begin
     begin
       DotW := P.Runs[I].Width; DotH := P.Runs[I].Height;
     end;
-  Check((DotW = 46) and (DotH = 46),
-    Format('inline-block: an empty dot still stands, 46 by 46 (%d by %d)',[DotW,DotH]));
+  { 46 of box and 5 above, 3 below of margin, counted into the line the
+    way a browser counts an atomic inline's margin box }
+  Check((DotW = 46) and (DotH = 54),
+    Format('inline-block: an empty dot stands with its margins, 46 by 54 (%d by %d)',[DotW,DotH]));
   { the dashed border really dashes: the top edge is segments, not a line }
   BM := TBitmap.Create;
   try

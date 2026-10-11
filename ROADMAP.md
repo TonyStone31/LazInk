@@ -262,9 +262,8 @@ best after the widgetset runs in D, so the listing's claims are true.
 * ~~An inline-block is a pill, not a box~~ - found and fixed the same
   day, 11 October 2026 (`bugs/2026-10-11-inline-block-boxes` has the
   story): the pill run became an atomic box - forced width and height,
-  centered words, real border styles, standing even empty.  Left over:
-  its vertical margins do not reach the line box, so stacked chips sit
-  a little tighter than a browser's.
+  centered words, real border styles, standing even empty, its vertical
+  margins counted into the line the way a browser counts them.
 * `<abbr title>`: a title on anything that is not a link is dropped.
 * Markdown: emphasis does not follow full CommonMark delimiter rules, link
   definitions must fit on one line, no footnotes, an image in a table cell

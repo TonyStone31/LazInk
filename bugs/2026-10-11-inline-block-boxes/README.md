@@ -59,5 +59,9 @@ stands 46 by 46, a dashed border has dashes - each proven able to fail
 by putting the mutation back.  Sections 11 and 12 of the showcase were
 one bug; both came right together.
 
-Still approximate: an inline-block's vertical margins do not reach its
-line box, so stacked chips sit a little tighter than a browser's.
+Later the same day, the last of it: an atomic box's vertical margins
+now count into its line - outside the painted box, inside the line's
+height, as a browser counts an inline-block's margin box - so stacked
+chips sit apart the way the browser's rows do.  The dot check holds
+46 of box plus 5 and 3 of margin to a 54-pixel line share, and fails
+(46 by 49) when the margin attribute is dropped.
