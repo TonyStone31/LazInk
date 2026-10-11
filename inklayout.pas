@@ -2221,7 +2221,7 @@ end;
 function TFlow.LayTable(B: TInkBox; AForceW: Integer; ACBW: Integer): Integer;
 var Rows, Groups, Caps: TFPList; G: TTableGrid; MinC, MaxC, ColW, ColX, RowH, RowY: array of Integer;
   Pct: array of Double; I, J, SH, SV, CW, SumMin, SumMax, Extra, W, X, Y, R, CellH, Need, Off,
-  ContentH, Bottom, AutoMax, AutoN: Integer; Cell, Row, Cap: TInkBox; VA, Side: string; Total: Double;
+  ContentH, Bottom, AutoMax, AutoN, Ov: Integer; Cell, Row, Cap: TInkBox; VA, Side: string; Total: Double;
   Fixed: array of Boolean;
 begin
   CW := B.ContentW;
@@ -2339,12 +2339,26 @@ begin
         RowH[G.Cells[I].Row] := Max(RowH[G.Cells[I].Row], Need);
       end;
     end;
+    { collapsed borders share their interior edges: where two 1px cell
+      borders meet, the table charges one pixel, not two - a browser's
+      row pitch is content + padding + one border.  The shared pixel is
+      the narrower of the meeting borders, so a uniform grid shares its
+      whole border and a borderless table shares nothing. }
+    Ov := 0;
+    if B.Style.Keyword('border-collapse') = 'collapse' then
+    begin
+      Ov := MaxInt;
+      for I := 0 to High(G.Cells) do
+        if not G.Cells[I].Box.Anon then
+          Ov := Min(Ov, Min(G.Cells[I].Box.Border.Top, G.Cells[I].Box.Border.Bottom));
+      if Ov = MaxInt then Ov := 0;
+    end;
     for I := 0 to High(G.Cells) do
     begin
       Cell := G.Cells[I].Box;
       if Cell.RowSpan > 1 then
       begin
-        Need := Cell.H - SV * (Cell.RowSpan - 1);
+        Need := Cell.H - (SV - Ov) * (Cell.RowSpan - 1);
         for R := G.Cells[I].Row to G.Cells[I].Row + Cell.RowSpan - 1 do Dec(Need, RowH[R]);
         if Need > 0 then Inc(RowH[G.Cells[I].Row + Cell.RowSpan - 1], Need);
       end;
@@ -2353,6 +2367,8 @@ begin
     begin
       RowY[R] := Y;
       Inc(Y, RowH[R] + SV);
+      { the shared edge: every interior row boundary gives one back }
+      if R < G.NRows - 1 then Dec(Y, Ov);
     end;
     RowY[G.NRows] := Y;
     { each cell to its row and its height, its content where
@@ -2362,6 +2378,9 @@ begin
       Cell := G.Cells[I].Box;
       R := G.Cells[I].Row;
       CellH := RowY[R + Cell.RowSpan] - RowY[R] - SV;
+      { a cell above a shared edge reaches into it, so its bottom border
+        and the next row's top border are the same pixels - one line }
+      if R + Cell.RowSpan < G.NRows then Inc(CellH, Ov);
       ContentH := Cell.H;
       Cell.Shift(0, RowY[R] - Cell.Y);
       Cell.H := CellH;
