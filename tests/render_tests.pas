@@ -4261,6 +4261,49 @@ begin
       'text-overflow: without it the line is cut plain');
 end;
 
+{ --- the underline, drawn like a browser's text-decoration --- }
+procedure UnderlineChecks;
+var BM: TBitmap; O: THTMLOptions; Y, GlyphBot, LineBot, Rows: Integer;
+  function RowInk(AY: Integer): Boolean;
+  var AX: Integer; C: TColor;
+  begin
+    Result := False;
+    for AX := 0 to BM.Width-1 do
+    begin
+      C := BM.Canvas.Pixels[AX,AY];
+      if (Abs(Red(C)-$CC)<40) and (Abs(Green(C)-$22)<40) and (Abs(Blue(C)-$44)<40) then
+        Exit(True);
+    end;
+  end;
+begin
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(120,40);
+    O := DefaultHTMLOptions;
+    BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Height := -15;
+    BM.Canvas.Brush.Style := bsSolid; BM.Canvas.Brush.Color := clWhite;
+    BM.Canvas.FillRect(0,0,120,40);
+    HTMLDrawOpt(BM.Canvas,Rect(2,2,118,38),[],'<font color="#CC2244">ooo</font>',O);
+    GlyphBot := -1;
+    for Y := BM.Height-1 downto 0 do if RowInk(Y) then begin GlyphBot := Y; Break end;
+    Check(GlyphBot > 0,'underline: the plain word is there');
+    BM.Canvas.Brush.Style := bsSolid; BM.Canvas.Brush.Color := clWhite;
+    BM.Canvas.FillRect(0,0,120,40);
+    HTMLDrawOpt(BM.Canvas,Rect(2,2,118,38),[],'<font color="#CC2244"><u>ooo</u></font>',O);
+    LineBot := -1;
+    for Y := BM.Height-1 downto 0 do if RowInk(Y) then begin LineBot := Y; Break end;
+    Rows := 0;
+    for Y := GlyphBot+1 to BM.Height-1 do if RowInk(Y) then Inc(Rows);
+    Check(LineBot > GlyphBot,'underline: a line is drawn under the word');
+    Check(Rows = 1,Format('underline: one pixel thin at reading size (%d rows)',[Rows]));
+    { 'o' sits on the baseline and the line starts two below it - the gap
+      a browser leaves.  The font engine's own underline hugged the
+      letters (one row down) and ran two rows thick. }
+    Check(LineBot-GlyphBot >= 3,Format('underline: clear of the letters (glyphs to %d, line to %d)',
+      [GlyphBot,LineBot]));
+  finally BM.Free end;
+end;
+
 { --- font stacks resolved the way the platform would --- }
 procedure FaceChecks;
 begin
@@ -4531,6 +4574,7 @@ begin
     WbrEllipsisChecks;
     ElementEventChecks;
     FaceChecks;
+    UnderlineChecks;
     DocumentTreeChecks;
     TreeLayoutChecks;
 
