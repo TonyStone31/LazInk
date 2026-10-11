@@ -304,7 +304,7 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
   { an element inside the run: what it changes, around its content }
   procedure Element(E: TInkNode; P: TInkStyle; Deco: string);
   var S: TInkStyle; Open, Close, Attrs, Ty, V2, Href: string; C: TInkNode; Bg: TInkRGBA;
-    PadV, PadH, Rad, Bw, SpL, SpR: Integer; Sub: Boolean;
+    PadV, PadH, Rad, Bw, SpL, SpR, BoxW, BoxH, MarkLen: Integer; Sub, Atomic: Boolean;
   begin
     S := FStyler.StyleOf(E);
     if S = nil then S := P;
@@ -381,17 +381,46 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
     if S.Keyword('border-top-style') = 'none' then Bw := 0;
     PadV := Round(S.Px('padding-top')) + Bw; PadH := Round(S.Px('padding-left')) + Bw;
     Rad := Round(S.Px('border-top-left-radius'));
+    { an inline-block is an atomic box: its width and height are law, its
+      border styles real, and it stands even empty }
+    V2 := S.Keyword('display');
+    Atomic := (V2 = 'inline-block') or (V2 = 'inline-flex') or
+      (V2 = 'inline-grid') or (V2 = 'inline-table');
+    BoxW := 0; BoxH := 0;
+    if Atomic then
+    begin
+      if S.Keyword('width') <> 'auto' then BoxW := Round(S.Px('width'));
+      if S.Keyword('height') <> 'auto' then BoxH := Round(S.Px('height'));
+      { a percentage radius is as round as the box allows; the engine
+        clamps the stroke to a pill or a circle }
+      if (Rad = 0) and (Pos('%', S.Value('border-top-left-radius')) > 0) then
+        Rad := 999;
+    end;
     { the room around it: its margins, and its padding too when there is
       nothing to paint in that - a pill keeps its words on one line }
     SpL := Max(0, Round(S.Px('margin-left'))); SpR := Max(0, Round(S.Px('margin-right')));
-    if ((Bg shr 24) > 0) or (Bw > 0) then
+    if ((Bg shr 24) > 0) or (Bw > 0) or (Atomic and ((BoxW > 0) or (BoxH > 0))) then
     begin
-      if (PadV > 0) or (PadH > 0) or (Rad > 0) then
+      if (PadV > 0) or (PadH > 0) or (Rad > 0) or
+        (Atomic and ((BoxW > 0) or (BoxH > 0))) then
       begin
         Attrs := Attrs + Format(' pad="%d %d"', [PadV, PadH]);
         if Rad > 0 then Attrs := Attrs + ' radius="' + IntToStr(Rad) + '"';
         if Bw > 0 then
           Attrs := Attrs + ' pillborder="' + ColorAttr(InkToColor(S.Color('border-top-color'), BackCol)) + '"';
+        if Atomic then
+        begin
+          Attrs := Attrs + ' pillbox="1"';
+          { the attribute carries the border box: CSS width plus the
+            padding and border already folded into PadH and PadV }
+          if BoxW > 0 then Attrs := Attrs + ' minw="' + IntToStr(BoxW + 2*PadH) + '"';
+          if BoxH > 0 then Attrs := Attrs + ' minh="' + IntToStr(BoxH + 2*PadV) + '"';
+          if S.Keyword('text-align') = 'center' then Attrs := Attrs + ' pillc="1"';
+          if Bw > 1 then Attrs := Attrs + ' pillbw="' + IntToStr(Bw) + '"';
+          V2 := S.Keyword('border-top-style');
+          if (Bw > 0) and (V2 <> 'solid') then
+            Attrs := Attrs + ' pillline="' + V2 + '"';
+        end;
       end;
     end
     else
@@ -428,6 +457,7 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       Put(' '); PendingSpace := False;
     end;
     Put(Open);
+    MarkLen := Length(Out_);
     Generated(E, 'before');
     C := E.FirstChild;
     while C <> nil do
@@ -436,6 +466,10 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       C := C.NextSibling;
     end;
     Generated(E, 'after');
+    { an empty sized inline-block still stands - a dot, a swatch, a
+      spacer.  A zero-width space gives the engine a run to size. }
+    if Atomic and ((BoxW > 0) or (BoxH > 0)) and (Length(Out_) = MarkLen) then
+      Put('&#8203;');
     if Sub then ;
     Put(Close);
   end;

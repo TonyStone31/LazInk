@@ -63,6 +63,13 @@ type
       not wrap: a badge is one thing. }
     PillPadH, PillPadV, PillRadius: Integer;
     PillBorder: TColor;
+    { an inline-block made a pill: an atomic box.  MinW/MinH force its
+      size, BW and Line are its border's width and style, Center puts
+      the words in the middle of a forced width, and Box marks it
+      atomic - it grows its line, as a browser's inline-block does }
+    PillMinW, PillMinH, PillBW: Integer;
+    PillLine: string;
+    PillCenter, PillBox: Boolean;
     { the run's own line height in pixels: nought takes the options' one,
       -1 is the font's own (CSS's normal) }
     LineHeight: Integer;
@@ -797,6 +804,8 @@ begin
   Result.Align := naLeft; Result.Indent := 0;
   Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
   Result.PillBorder := clNone; Result.LineHeight := 0;
+  Result.PillMinW := 0; Result.PillMinH := 0; Result.PillBW := 0;
+  Result.PillLine := ''; Result.PillCenter := False; Result.PillBox := False;
 end;
 
 function TInkRenderer.StyleFor(const Stack: array of TInkRenderStyle): TInkRenderStyle;
@@ -813,6 +822,8 @@ begin
   Result.LinkName := ''; Result.Indent := 0;
   Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
   Result.PillBorder := clNone; Result.LineHeight := 0;
+  Result.PillMinW := 0; Result.PillMinH := 0; Result.PillBW := 0;
+  Result.PillLine := ''; Result.PillCenter := False; Result.PillBox := False;
   for I := 0 to High(Stack) do
   begin
     if Stack[I].Face <> '' then Result.Face := Stack[I].Face;
@@ -827,10 +838,14 @@ begin
     if Stack[I].LineHeight <> 0 then Result.LineHeight := Stack[I].LineHeight;
     { a pill is one unit: the innermost pill replaces any outer one }
     if (Stack[I].PillPadH<>0) or (Stack[I].PillPadV<>0) or
-      (Stack[I].PillRadius<>0) or (Stack[I].PillBorder<>clNone) then
+      (Stack[I].PillRadius<>0) or (Stack[I].PillBorder<>clNone) or
+      (Stack[I].PillMinW<>0) or (Stack[I].PillMinH<>0) or Stack[I].PillBox then
     begin
       Result.PillPadH := Stack[I].PillPadH; Result.PillPadV := Stack[I].PillPadV;
       Result.PillRadius := Stack[I].PillRadius; Result.PillBorder := Stack[I].PillBorder;
+      Result.PillMinW := Stack[I].PillMinW; Result.PillMinH := Stack[I].PillMinH;
+      Result.PillBW := Stack[I].PillBW; Result.PillLine := Stack[I].PillLine;
+      Result.PillCenter := Stack[I].PillCenter; Result.PillBox := Stack[I].PillBox;
     end;
   end;
 end;
@@ -929,6 +944,16 @@ begin
             N := StrToIntDef(InkRenderAttr(T.Attributes,'radius'),0);
             if N>0 then S.PillRadius := InkRenderScalePx(N,Options.Scale);
             S.PillBorder := InkRenderColor(InkRenderAttr(T.Attributes,'pillborder'),S.PillBorder);
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'minw'),0);
+            if N>0 then S.PillMinW := InkRenderScalePx(N,Options.Scale);
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'minh'),0);
+            if N>0 then S.PillMinH := InkRenderScalePx(N,Options.Scale);
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'pillbw'),0);
+            if N>0 then S.PillBW := InkRenderScalePx(N,Options.Scale);
+            if InkRenderAttr(T.Attributes,'pillline')<>'' then
+              S.PillLine := InkRenderAttr(T.Attributes,'pillline');
+            if InkRenderAttr(T.Attributes,'pillc')<>'' then S.PillCenter := True;
+            if InkRenderAttr(T.Attributes,'pillbox')<>'' then S.PillBox := True;
             N := StrToIntDef(InkRenderAttr(T.Attributes,'lineheight'),0);
             if N<>0 then S.LineHeight := N;
           end
@@ -1318,7 +1343,8 @@ var
       if FG<>clNone then Run.Style.Color := FG;
       ApplyCellText(Index,Run);
       Pill := (Run.Style.PillPadH>0) or (Run.Style.PillPadV>0) or
-        (Run.Style.PillRadius>0) or (Run.Style.PillBorder<>clNone);
+        (Run.Style.PillRadius>0) or (Run.Style.PillBorder<>clNone) or
+        (Run.Style.PillMinW>0) or (Run.Style.PillMinH>0);
       Text := Run.Text;
       P := 1;
       while P<=Length(Text) do
@@ -1349,6 +1375,14 @@ var
         Atom := Copy(Text,Start,P-Start);
         Run.Text := Atom; Sz := MeasureRun(Canvas,Run); RW := Sz.cx;
         if Pill then Inc(RW,2*Run.Style.PillPadH);
+        if Pill and (Run.Style.PillMinW>RW) then
+        begin
+          { a forced width: the words move to the middle when asked by
+            growing the side padding they are drawn behind }
+          if Run.Style.PillCenter then
+            Inc(Run.Style.PillPadH,(Run.Style.PillMinW-RW) div 2);
+          RW := Run.Style.PillMinW;
+        end;
         if (CX>AX+Pad.Left) and (CX+RW>AX+Pad.Left+AWidth) and
           not Cells[Index].NoWrapCell and
           (Atom[1]<>' ') and (Atom[1]<>#9) then
@@ -1406,12 +1440,13 @@ var
     longest single word), both without the padding }
   { the text of one run, added to a line being measured }
   procedure WidthOfRun(const ARun: TInkRenderRun; var ALineW, AWant, ALeast: Integer);
-  var P, Start, Bytes, PadW: Integer; Run: TInkRenderRun; Text, Atom: string;
+  var P, Start, Bytes, PadW, RW: Integer; Run: TInkRenderRun; Text, Atom: string;
     C: Cardinal; Sz: TSize; Pill: Boolean;
   begin
     Run := ARun; Text := Run.Text; P := 1;
     Pill := (Run.Style.PillPadH>0) or (Run.Style.PillPadV>0) or
-      (Run.Style.PillRadius>0) or (Run.Style.PillBorder<>clNone);
+      (Run.Style.PillRadius>0) or (Run.Style.PillBorder<>clNone) or
+      (Run.Style.PillMinW>0) or (Run.Style.PillMinH>0);
     PadW := 0; if Pill then PadW := 2*Run.Style.PillPadH;
     while P<=Length(Text) do
     begin
@@ -1428,8 +1463,10 @@ var
         begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
       Atom := Copy(Text,Start,P-Start);
       Run.Text := Atom; Sz := MeasureRun(Canvas,Run);
-      Inc(ALineW,Sz.cx+PadW); AWant := Max(AWant,ALineW);
-      if not (Atom[1] in [' ',#9]) then ALeast := Max(ALeast,Sz.cx+PadW);
+      RW := Sz.cx+PadW;
+      if Pill and (Run.Style.PillMinW>RW) then RW := Run.Style.PillMinW;
+      Inc(ALineW,RW); AWant := Max(AWant,ALineW);
+      if not (Atom[1] in [' ',#9]) then ALeast := Max(ALeast,RW);
     end;
   end;
 
@@ -1902,7 +1939,7 @@ var I,P,Line,First,Count,X,Y,MaxLineH,Avail,W,RunAsc,RunDesc,StrutAsc,StrutDesc,
       { a pill's box and padding reach past the line rather than growing
         it, as an inline box's do in CSS: the line takes the run's
         line-height metrics, not the box }
-      if FOpt.CSSLines and
+      if FOpt.CSSLines and not FLayout.FRuns[K].Style.PillBox and
         ((FLayout.FRuns[K].Style.PillPadH>0) or (FLayout.FRuns[K].Style.PillPadV>0) or
          (FLayout.FRuns[K].Style.PillRadius>0) or (FLayout.FRuns[K].Style.PillBorder<>clNone)) then
       begin
@@ -2005,7 +2042,8 @@ begin
       Text:=#1
     end else Text:=R.Text;
     Pill:=(R.Style.PillPadH>0) or (R.Style.PillPadV>0) or
-      (R.Style.PillRadius>0) or (R.Style.PillBorder<>clNone);
+      (R.Style.PillRadius>0) or (R.Style.PillBorder<>clNone) or
+      (R.Style.PillMinW>0) or (R.Style.PillMinH>0);
     P:=1;
     while P<=Length(Text) do
     begin
@@ -2033,6 +2071,13 @@ begin
       if R.IsImage or (R.Check>0) then Sz:=ImgSz else Sz:=MeasureRun(Canvas,R);
       W:=Sz.cx;
       if Pill then Inc(W,2*R.Style.PillPadH);
+      if Pill and (R.Style.PillMinW>W) then
+      begin
+        { a forced width: the words move to the middle when asked by
+          growing the side padding they are drawn behind }
+        if R.Style.PillCenter then Inc(R.Style.PillPadH,(R.Style.PillMinW-W) div 2);
+        W:=R.Style.PillMinW;
+      end;
       { NoWrap with an ellipsis: the atom that crosses the right edge is cut
         back a whole code point at a time until it and the ellipsis fit, and
         the ellipsis is drawn in that run's own font and color.  A picture
@@ -2047,7 +2092,7 @@ begin
         EllRun:=R; EllRun.Text:=EllText; EllRun.IsImage:=False;
         EllSz:=MeasureRun(Canvas,EllRun);
         FLayout.FWasCut:=True; CutLine:=True;
-        if R.IsImage or (R.Check>0) or Pill then begin Atom:=''; R.IsImage:=False; R.Check:=0; R.Style.PillRadius:=0; R.Style.PillPadH:=0; R.Style.PillPadV:=0; R.Style.PillBorder:=clNone end;
+        if R.IsImage or (R.Check>0) or Pill then begin Atom:=''; R.IsImage:=False; R.Check:=0; R.Style.PillRadius:=0; R.Style.PillPadH:=0; R.Style.PillPadV:=0; R.Style.PillBorder:=clNone; R.Style.PillMinW:=0; R.Style.PillMinH:=0; R.Style.PillBox:=False end;
         if Atom<>'' then
         begin
           R.Text:=Atom; Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
@@ -2096,16 +2141,26 @@ begin
       end
       else Metrics(Canvas,R,RunAsc,RunDesc);
       if Pill then begin Inc(RunAsc,R.Style.PillPadV); Inc(RunDesc,R.Style.PillPadV) end;
+      if Pill and (R.Style.PillMinH>RunAsc+RunDesc) then
+      begin
+        { a forced height.  An empty sized box - a dot, a swatch - stands
+          whole above the baseline, as a browser stands an empty
+          inline-block; one with words grows upward around them }
+        if Atom=#$E2#$80#$8B then begin RunAsc:=R.Style.PillMinH; RunDesc:=0 end
+        else Inc(RunAsc,R.Style.PillMinH-RunAsc-RunDesc);
+      end;
       R.Ascent:=RunAsc; R.Descent:=RunDesc;
       { a provisional place; AlignBaselines settles it when the line ends }
       if Pill then R.Bounds:=Rect(X,Y,X+W,Y+RunAsc+RunDesc)
       else R.Bounds:=Rect(X,Y,X+W,Y+Sz.cy);
       SetLength(FLayout.FRuns,Length(FLayout.FRuns)+1); FLayout.FRuns[High(FLayout.FRuns)]:=R; Inc(Count); Inc(X,W);
-      if Pill and FOpt.CSSLines then
+      if Pill and FOpt.CSSLines and not R.Style.PillBox then
       begin
         { the pill's box may stand taller than the line, but it does not
           grow it: the line takes what a plain run of this style would
-          give it - line-height rules the line box, as in a browser }
+          give it - line-height rules the line box, as in a browser.  An
+          atomic inline-block is the exception: its box grows the line,
+          the way a picture does. }
         Metrics(Canvas,R,LineAsc,LineDesc);
         MaxLineH:=Max(MaxLineH,LineAsc+LineDesc);
       end
@@ -2248,6 +2303,76 @@ begin
   PaintLayout(Canvas,Bounds,Options,Layout(Canvas,Options),AOffsetX,AOffsetY);
 end;
 
+{ One square box's border in the style CSS named - dashes, dots, a double
+  stroke, or the two-tone bevels - drawn side by side, the way the page
+  engine draws a block's.  Pills with a radius keep a plain stroke. }
+procedure PillSides(Canvas: TCanvas; const R: TRect; const AStyle: string;
+  AW: Integer; AColor: TColor);
+var K, Step: Integer; TopLeft, BottomRight: TColor;
+  function Shade(C: TColor; ADark: Boolean): TColor;
+  begin
+    C := ColorToRGB(C);
+    if ADark then Result := RGBToColor(Red(C)*2 div 3,Green(C)*2 div 3,Blue(C)*2 div 3)
+    else Result := RGBToColor(Red(C)+(255-Red(C))*3 div 5,
+      Green(C)+(255-Green(C))*3 div 5,Blue(C)+(255-Blue(C))*3 div 5);
+  end;
+  procedure Dashes(const Side: TRect; Horizontal: Boolean);
+  begin
+    Canvas.Brush.Style := bsSolid; Canvas.Brush.Color := AColor;
+    if AStyle='dotted' then Step := Max(2,AW) else Step := Max(2,AW*3);
+    if Horizontal then
+    begin
+      K := Side.Left;
+      while K<Side.Right do
+      begin
+        Canvas.FillRect(Rect(K,Side.Top,Min(K+Step,Side.Right),Side.Bottom));
+        Inc(K,Step*2);
+      end;
+    end
+    else
+    begin
+      K := Side.Top;
+      while K<Side.Bottom do
+      begin
+        Canvas.FillRect(Rect(Side.Left,K,Side.Right,Min(K+Step,Side.Bottom)));
+        Inc(K,Step*2);
+      end;
+    end;
+  end;
+begin
+  if (AStyle='dashed') or (AStyle='dotted') then
+  begin
+    Dashes(Rect(R.Left,R.Top,R.Right,R.Top+AW),True);
+    Dashes(Rect(R.Left,R.Bottom-AW,R.Right,R.Bottom),True);
+    Dashes(Rect(R.Left,R.Top,R.Left+AW,R.Bottom),False);
+    Dashes(Rect(R.Right-AW,R.Top,R.Right,R.Bottom),False);
+    Exit;
+  end;
+  if (AStyle='double') and (AW>=3) then
+  begin
+    Canvas.Brush.Style := bsClear;
+    Canvas.Pen.Style := psSolid; Canvas.Pen.Color := AColor;
+    Canvas.Pen.Width := Max(1,AW div 3);
+    Canvas.Rectangle(R.Left,R.Top,R.Right,R.Bottom);
+    Canvas.Rectangle(R.Left+AW-AW div 3,R.Top+AW-AW div 3,
+      R.Right-AW+AW div 3,R.Bottom-AW+AW div 3);
+    Canvas.Pen.Width := 1;
+    Exit;
+  end;
+  TopLeft := AColor; BottomRight := AColor;
+  if (AStyle='inset') or (AStyle='groove') then
+  begin TopLeft := Shade(AColor,True); BottomRight := Shade(AColor,False) end
+  else if (AStyle='outset') or (AStyle='ridge') then
+  begin TopLeft := Shade(AColor,False); BottomRight := Shade(AColor,True) end;
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := TopLeft;
+  Canvas.FillRect(Rect(R.Left,R.Top,R.Right,R.Top+AW));
+  Canvas.FillRect(Rect(R.Left,R.Top,R.Left+AW,R.Bottom));
+  Canvas.Brush.Color := BottomRight;
+  Canvas.FillRect(Rect(R.Left,R.Bottom-AW,R.Right,R.Bottom));
+  Canvas.FillRect(Rect(R.Right-AW,R.Top,R.Right,R.Bottom));
+end;
+
 procedure TInkRenderer.PaintLayout(Canvas: TCanvas; const Bounds: TRect;
   const Options: TInkRenderOptions; ALayout: TInkRenderLayout;
   AOffsetX: Integer; AOffsetY: Integer);
@@ -2258,7 +2383,7 @@ var I,J,DX,DY,Pass,TextY,CheckRad,CheckW: Integer; L: TInkRenderLine; R: TInkRen
     was last asked for: a paragraph's runs nearly all share one }
   AscFace: string; AscSize, AscBits, AscScript, PaintAscent: Integer;
   TM: TTextMetric;
-  WantLine: Boolean; BaseY, EmPx, LineOff, LineTh: Integer;
+  WantLine: Boolean; BaseY, EmPx, LineOff, LineTh, PillBW: Integer;
 
   { the colors a run is painted in: its own, a link's, hover's, selection's }
   procedure RunColors(const ARun: TInkRenderRun; out AColor, ABack: TColor);
@@ -2357,30 +2482,46 @@ begin
           { a pill: its padded box with round corners and a border, drawn
             whole - the line was made tall enough for it in layout }
           if (R.Style.PillPadH>0) or (R.Style.PillPadV>0) or
-            (R.Style.PillRadius>0) or (R.Style.PillBorder<>clNone) then
+            (R.Style.PillRadius>0) or (R.Style.PillBorder<>clNone) or
+            (R.Style.PillMinW>0) or (R.Style.PillMinH>0) then
           begin
             { padding alone is room, with nothing to paint }
             if (BG=clNone) and (R.Style.PillBorder=clNone) then Continue;
             { CSS lines leave a padded shade standing out of its line; it is
               cut to the line, so it never covers the words either side.  A
-              box with a border is drawn whole. }
-            if Options.CSSLines and (R.Style.PillBorder=clNone) then
+              box with a border, or an atomic inline-block, is drawn whole. }
+            if Options.CSSLines and (R.Style.PillBorder=clNone) and
+              not R.Style.PillBox then
             begin
               DrawRect.Top:=Max(DrawRect.Top,L.Bounds.Top+DY);
               DrawRect.Bottom:=Min(DrawRect.Bottom,L.Bounds.Bottom+DY);
               if DrawRect.Bottom<=DrawRect.Top then Continue;
             end;
+            PillBW:=Max(1,R.Style.PillBW);
             if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG end
             else Canvas.Brush.Style:=bsClear;
-            if R.Style.PillBorder<>clNone then Canvas.Pen.Color:=R.Style.PillBorder
-            else if BG<>clNone then Canvas.Pen.Color:=BG
-            else Canvas.Pen.Style:=psClear;
-            Canvas.Pen.Width:=1;
-            if R.Style.PillRadius>0 then
-              Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,
-                Min(R.Style.PillRadius*2,Min(DrawRect.Right-DrawRect.Left,DrawRect.Bottom-DrawRect.Top)),
-                Min(R.Style.PillRadius*2,Min(DrawRect.Right-DrawRect.Left,DrawRect.Bottom-DrawRect.Top)))
-            else Canvas.Rectangle(DrawRect);
+            if (R.Style.PillBorder<>clNone) and (R.Style.PillLine<>'') and
+              (R.Style.PillRadius=0) then
+            begin
+              { the border styles a browser draws on a square box: dashes,
+                dots, a double stroke, and the two-tone bevels.  The fill
+                goes down first, the sides on top of its edges. }
+              if BG<>clNone then begin Canvas.Pen.Color:=BG; Canvas.Rectangle(DrawRect) end;
+              PillSides(Canvas,DrawRect,R.Style.PillLine,PillBW,R.Style.PillBorder);
+            end
+            else
+            begin
+              if R.Style.PillBorder<>clNone then Canvas.Pen.Color:=R.Style.PillBorder
+              else if BG<>clNone then Canvas.Pen.Color:=BG
+              else Canvas.Pen.Style:=psClear;
+              Canvas.Pen.Width:=PillBW;
+              if R.Style.PillRadius>0 then
+                Canvas.RoundRect(DrawRect.Left,DrawRect.Top,DrawRect.Right,DrawRect.Bottom,
+                  Min(R.Style.PillRadius*2,Min(DrawRect.Right-DrawRect.Left,DrawRect.Bottom-DrawRect.Top)),
+                  Min(R.Style.PillRadius*2,Min(DrawRect.Right-DrawRect.Left,DrawRect.Bottom-DrawRect.Top)))
+              else Canvas.Rectangle(DrawRect);
+              Canvas.Pen.Width:=1;
+            end;
             Canvas.Pen.Style:=psSolid;
             Continue;
           end;

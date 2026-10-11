@@ -169,6 +169,7 @@ type
     pgCompareBrowser: TInkPage;
     pgCompareInk: TInkPage;
     shpCrossH, shpCrossVL, shpCrossVR: TPanel;
+    btnNudgeUp, btnNudgeDown: TButton;
     tmrCompare: TTimer;
 
     { ---- tab: DOM events ---- }
@@ -201,6 +202,7 @@ type
     procedure DomElementHover(Sender: TObject; AElement: TInkNode);
     { side by side }
     procedure tmrCompareTimer(Sender: TObject);
+    procedure btnNudgeClick(Sender: TObject);
     procedure CompareCross(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     { Markdown editor }
     procedure MdOpen(Sender: TObject);
@@ -272,8 +274,9 @@ type
   private
     FSyncing: Boolean;
     { where each side of the side-by-side tab was last tick, so whichever
-      moved leads and the other follows }
-    FCmpBrowserY, FCmpInkY: Integer;
+      moved leads and the other follows - and the hand-set offset between
+      them, for lining a drifted spot up under the crosshair }
+    FCmpBrowserY, FCmpInkY, FCmpOffset: Integer;
     { one entry per character of edtMarkup: 0 plain, 1 tag, 2 attribute value.
       Worked out once when the text changes rather than per character, because
       OnGetCharAttrs is handed a character with no idea what surrounds it. }
@@ -642,11 +645,22 @@ end;
 procedure TfrmMain.tmrCompareTimer(Sender: TObject);
 begin
   if pcMain.ActivePage <> tabCompare then Exit;
-  { whichever side moved since the last tick leads; the other follows }
+  { whichever side moved since the last tick leads and the other follows,
+    the nudged offset held between them }
   if pgCompareBrowser.ScrollY <> FCmpBrowserY then
-    pgCompareInk.ScrollTo(pgCompareBrowser.ScrollY)
+    pgCompareInk.ScrollTo(pgCompareBrowser.ScrollY + FCmpOffset)
   else if pgCompareInk.ScrollY <> FCmpInkY then
-    pgCompareBrowser.ScrollTo(pgCompareInk.ScrollY);
+    pgCompareBrowser.ScrollTo(pgCompareInk.ScrollY - FCmpOffset);
+  FCmpBrowserY := pgCompareBrowser.ScrollY;
+  FCmpInkY := pgCompareInk.ScrollY;
+end;
+
+procedure TfrmMain.btnNudgeClick(Sender: TObject);
+begin
+  { one pixel of the live side only - the browser's picture stays put, so
+    a drifted spot can be lined back up under the crosshair }
+  if Sender = btnNudgeUp then Dec(FCmpOffset) else Inc(FCmpOffset);
+  pgCompareInk.ScrollTo(pgCompareBrowser.ScrollY + FCmpOffset);
   FCmpBrowserY := pgCompareBrowser.ScrollY;
   FCmpInkY := pgCompareInk.ScrollY;
 end;
