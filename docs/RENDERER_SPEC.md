@@ -737,10 +737,11 @@ heading is not shouted), and it draws no form controls.
 
 ## 13. Measured against a browser
 
-`tests/compare/page.html` is drawn by a browser and by LazInk at the same
-width and the two heights compared.  As of the pixel-sizing work the page
-comes out **3,194 pixels in LazInk against 3,199 in the browser** - five
-pixels over three thousand.
+`demo/showcase.html` is drawn by a browser and by LazInk at the same
+width and the two heights compared - the demo's **Side by side** tab shows
+the two next to each other, scroll-locked.  As of the font-stack work the
+page comes out **5,086 pixels in LazInk against 5,081 in the browser** -
+five pixels over five thousand.
 
 Two things got it there, and both are worth keeping:
 

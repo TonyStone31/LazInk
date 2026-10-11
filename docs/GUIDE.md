@@ -499,7 +499,7 @@ Markdown notes app - while using the vocabulary once each: tables with
 spans, flex cards, grid, pills, a mocked chat and log, `text-overflow`,
 `<wbr>`, nested folds, highlighted code, entities.  After editing it,
 remake the picture with `tools/browser_shot.sh demo/showcase.html
-demo/showcase-browser.png 548 5080` (shoot tall once and read off the
+demo/showcase-browser.png 548 5100` (shoot tall once and read off the
 new height if the page grew).
 
 ![The side by side tab](../images/demo-compare.png)
@@ -612,19 +612,14 @@ Given those two, it also checks that every visible piece of text in the source
 pages survived into the rendered page (`tests/check_help_text.pas`, which reads
 the pages with the FCL's own HTML reader rather than LazInk's).
 
-To put a page up beside a real browser's rendering of it, in one command:
-
-```sh
-LAZARUS_DIR=... FPC=... tools/compare.sh          # the long page, in Xephyr
-LAZARUS_DIR=... FPC=... tools/compare.sh my.html  # one of your own
-```
-
-It writes the page if it is the generated one, takes the browser's picture
-when there isn't a current one, builds the viewer and opens the two side by
-side with their scrolling locked together.  `tests/compare/long.html` is
-ninety-six numbered sections cycling through every construct LazInk draws -
-about thirty thousand pixels of it - so a section that looks wrong can be
-named rather than described.
+To put LazInk up beside a real browser's rendering, open the demo's
+**Side by side** tab: the browser's picture of `demo/showcase.html` on the
+left, a live `TInkPage` on the right, scroll-locked, crosshair on, and the
+showcase's sections numbered so a difference can be named rather than
+described.  (The old standalone viewer, its launcher and its generated
+long page lived in `tools/compare.sh`, `tools/sidebyside.pas`,
+`tools/make_long_page.py` and `tests/compare/`; the demo tab replaced
+them, and git history keeps them.)
 
 A page keeps its blocks' finished geometry, so painting, measuring and hit
 testing share one layout rather than each rebuilding it.
@@ -642,7 +637,7 @@ roadmap's section H.
 To find *where* a page disagrees with a browser rather than looking for it:
 
 ```sh
-LAZARUS_DIR=... FPC=... tools/drift.sh tests/compare/long.html
+LAZARUS_DIR=... FPC=... tools/drift.sh demo/showcase.html
 ```
 
 It asks a browser where every heading of the page landed - with a script

@@ -7,9 +7,11 @@ same in a browser and in the program.
 
 LazInk is not a browser and does not try to be one. What it does do, it tries
 to do the way a browser does: the same font sizes, the same line heights, the
-same margins. The comparison page in `tests/compare/page.html` is drawn side
-by side with a real browser by `tools/sidebyside.pas`; at the time of writing
-the two agree on the height of a 3,200-pixel page to within five pixels.
+same margins. The demo's **Side by side** tab holds `demo/showcase.html` as
+LazInk draws it against a browser's picture of the same file; at the time of
+writing the two agree on the height of a 5,000-pixel page to within five
+pixels, and `tools/drift.sh` prints where any page drifts, heading by
+heading.
 
 Write the page as ordinary HTML. It will open in a browser too, and that is
 the point - author it in a browser, ship it to `TInkPage`.

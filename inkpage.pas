@@ -761,6 +761,11 @@ function LinkHref(const AHit: THTMLHitInfo): string;
 procedure InkColorSchemeChanged;
 { a computed color as a TColor, its opacity mixed into what is behind it }
 function InkToColor(C: TInkRGBA; ABehind: TColor): TColor;
+{ A CSS font stack resolved to one face this machine answers for: the
+  first installed family, or a well-known web name (Arial, Helvetica,
+  Courier New...) handed on for the font backend to substitute, or ''
+  when a generic is best served by the control's own font. }
+function InkResolveFace(const AStack: string): string;
 
 implementation
 uses Math, StrUtils, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
@@ -818,6 +823,19 @@ begin
       N := Trim(N);
       if N='' then Continue;
       if Have(N) then Exit(N);
+      { The names half the web leads its stacks with.  Screen.Fonts does
+        not list them on Linux, but the font backend resolves them anyway:
+        Windows has them, fontconfig aliases each to its metric twin
+        (Arial -> Liberation Sans here), which is the same answer a
+        browser gets.  Handing the name on is the system's substitution;
+        falling through to the control's font was LazInk's own guess, and
+        it measured six per cent wide of the browser on real pages. }
+      case LowerCase(N) of
+        'arial','helvetica','helvetica neue','times new roman','times',
+        'courier new','courier','verdana','tahoma','georgia','segoe ui',
+        'calibri','cambria','trebuchet ms':
+          Exit(N);
+      end;
       { the generic families, as this machine spells them }
       case LowerCase(N) of
         'monospace','ui-monospace':

@@ -496,7 +496,7 @@ begin
       '<p><b>showcase-browser.png</b> was not found beside the program. ' +
       'Make the browser''s picture once with:</p>' +
       '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding +
-      '  demo/showcase-browser.png 548 5080</pre></body>');
+      '  demo/showcase-browser.png 548 5100</pre></body>');
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
 
@@ -656,9 +656,9 @@ var
   P: TPoint;
   RelX: Integer;
 begin
-  { the crosshair is always on: the same spot marked on both halves, as
-    tools/compare.sh does with G.  The lines stand a hair beside the
-    pointer so they never sit under it and steal the wheel from the page. }
+  { the crosshair is always on: the same spot marked on both halves.
+    The lines stand a hair beside the pointer so they never sit under it
+    and steal the wheel from the page. }
   P := tabCompare.ScreenToClient(Mouse.CursorPos);
   shpCrossH.Top := P.Y + 1;
   if P.X >= pgCompareInk.Left then RelX := P.X - pgCompareInk.Left

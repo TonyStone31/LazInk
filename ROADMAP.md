@@ -221,8 +221,11 @@ Sketch's next window finds.
   `itfHTML` beside `itfPlain` in its sidebar, and the **Side by side**
   tab holds a live `TInkPage` against the browser's own picture of
   `demo/showcase.html` - the showcase is one readable document using the
-  vocabulary once, and `tools/compare.sh demo/showcase.html` opens the
-  same page beside a live browser.
+  vocabulary once, its sections numbered so a difference can be named.
+  The old standalone compare setup (compare.sh, sidebyside.pas,
+  make_long_page.py, tests/compare/) is retired - the demo tab does its
+  job now, and git history keeps it; tools/drift.sh and
+  tools/browser_shot.sh stay.
 * **Source and preview scrolled together** - nice, not essential.
 * **A build on the current stable Lazarus** - only trunk has been run.
 
@@ -277,7 +280,7 @@ too far; `InkWheelNotches` reads the real delta, and the page asks for a
 frame every 33 ms while a wheel streams events (GTK draws only when input
 stops).  Pictures used more than once are now decoded once.  Measured: a
 frame of the long page takes 2-3 ms to render off screen; on screen in
-Xephyr (where `tools/compare.sh` runs) it is 20-40 ms, most of it the
+Xephyr (where the old side-by-side viewer ran) it is 20-40 ms, most of it the
 nested X server - not yet measured on a real display.  Left, in the order
 worth trying:
 

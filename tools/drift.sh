@@ -1,7 +1,7 @@
 #!/bin/sh
 # Where a page drifts away from the browser, section by section.
 #
-#   tools/drift.sh tests/compare/long.html [width]
+#   tools/drift.sh demo/showcase.html [width]
 #
 # Asks a browser where each heading of the page lands, asks LazInk the same,
 # and prints the two beside each other with the drift at each heading and

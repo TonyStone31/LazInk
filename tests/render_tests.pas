@@ -4261,6 +4261,20 @@ begin
       'text-overflow: without it the line is cut plain');
 end;
 
+{ --- font stacks resolved the way the platform would --- }
+procedure FaceChecks;
+begin
+  Check(InkResolveFace('"DejaVu Sans", Arial, sans-serif') = 'DejaVu Sans',
+    'an installed family wins the stack');
+  { not in Screen.Fonts on Linux, but fontconfig aliases it to its metric
+    twin - the same substitution a browser gets, so the name is handed on }
+  Check(InkResolveFace('Arial, sans-serif') = 'Arial',
+    'a famous name is handed to the font backend: ' +
+    InkResolveFace('Arial, sans-serif'));
+  Check(InkResolveFace('NoSuchFaceAnywhere, sans-serif') = '',
+    'an unknown name still falls through to the generic');
+end;
+
 { --- the element under the mouse, and the events that carry it --- }
 procedure ElementEventChecks;
 const Doc = '<html><head><style>body{margin:0;font:15px/1.5 sans-serif}</style></head><body>'+
@@ -4516,6 +4530,7 @@ begin
     PillBoxChecks;
     WbrEllipsisChecks;
     ElementEventChecks;
+    FaceChecks;
     DocumentTreeChecks;
     TreeLayoutChecks;
 
