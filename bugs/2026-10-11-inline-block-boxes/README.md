@@ -40,3 +40,24 @@ styles everywhere); the first is the smaller patch.
 Repro: load `demo/showcase.html`, section 12, beside
 `demo/showcase-browser.png` - the demo's Side by side tab does exactly
 this.
+
+## Fixed, 11 October 2026
+
+The smaller patch, done whole: the pill run learned to be an atomic box.
+The serializer marks any inline-block (`pillbox`), carries its border
+box (`minw`/`minh`, CSS width plus the padding and border), its centered
+words (`pillc`), its border's width and style (`pillbw`, `pillline`),
+turns a percentage radius into one the engine clamps to a circle, and
+puts a zero-width space in an empty sized element so a run exists to
+size.  The engine honors the forced width in all three measuring paths
+(lines, cells, narrowest-word), centers by growing the side padding the
+words are drawn behind, stands an empty box whole above the baseline,
+lets an atomic box grow its line the way a picture does, and draws
+dashed, dotted, double and the two-tone bevel borders side by side
+(`PillSides`).  Checks: the width is law (126 wanted), the empty dot
+stands 46 by 46, a dashed border has dashes - each proven able to fail
+by putting the mutation back.  Sections 11 and 12 of the showcase were
+one bug; both came right together.
+
+Still approximate: an inline-block's vertical margins do not reach its
+line box, so stacked chips sit a little tighter than a browser's.

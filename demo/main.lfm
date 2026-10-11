@@ -1811,8 +1811,8 @@ object frmMain: TfrmMain
         Left = 8
         Height = 18
         Top = 8
-        Width = 1122
-        Caption = '<b>A browser''s picture</b> of demo/showcase.html on the left — <b>LazInk rendering the same file live</b> on the right. Scroll either side and the other follows; the crosshair marks the same spot on both.'
+        Width = 1050
+        Caption = '<b>A browser''s picture</b> of demo/showcase.html left — <b>LazInk live</b> right. Scroll either side; the crosshair marks the same spot; the arrows nudge the live side a pixel.'
         SuperSubScriptRatio = 0.7
         LinkStyle.Color = clBlue
         LinkStyle.BackColor = clNone
@@ -1822,6 +1822,24 @@ object frmMain: TfrmMain
         LinkHoverStyle.Underline = True
         AutoSize = True
         ParentColor = False
+      end
+      object btnNudgeUp: TButton
+        Left = 1072
+        Height = 24
+        Top = 4
+        Width = 30
+        Caption = #9650
+        TabOrder = 2
+        OnClick = btnNudgeClick
+      end
+      object btnNudgeDown: TButton
+        Left = 1104
+        Height = 24
+        Top = 4
+        Width = 30
+        Caption = #9660
+        TabOrder = 3
+        OnClick = btnNudgeClick
       end
       object pgCompareBrowser: TInkPage
         Left = 2

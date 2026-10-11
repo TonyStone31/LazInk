@@ -4304,6 +4304,55 @@ begin
   finally BM.Free end;
 end;
 
+{ --- an inline-block is an atomic box: sized, bordered, standing empty --- }
+procedure InlineBoxChecks;
+const Doc = '<html><head><style>body{margin:0;font:15px/1.5 "DejaVu Sans"}'+
+  '.c{display:inline-block;width:110px;border:2px dashed #555555;padding:2px 6px;text-align:center}'+
+  '.d{display:inline-block;width:46px;height:46px;background:#2e86de;border-radius:50%}'+
+  '</style></head><body><p><span class=c>chip</span> word</p>'+
+  '<p>a <span class=d></span> dot</p></body></html>';
+var P: TInkPageBlock; I, Seg, X, ChipW, ChipL, ChipT, DotW, DotH: Integer;
+  BM: TBitmap; InDash, Was: Boolean; C: TColor;
+begin
+  Probe.LoadHTML(Doc);
+  Probe.ScrollTo(0);
+  P := FindBlock(Probe,'p','chip');
+  Probe.BlockText(P.Index);
+  ChipW := 0; ChipL := 0; ChipT := 0;
+  for I := 0 to P.RunCount-1 do
+    if Pos('chip',P.Runs[I].Text)>0 then
+    begin
+      ChipW := P.Runs[I].Width; ChipL := P.Runs[I].Left; ChipT := P.Runs[I].Top;
+    end;
+  { 110 of CSS width and 8 each side of padding-plus-border }
+  Check(ChipW = 126,Format('inline-block: the width is law (126 wanted, %d got)',[ChipW]));
+  P := FindBlock(Probe,'p','dot');
+  Probe.BlockText(P.Index);
+  DotW := 0; DotH := 0;
+  for I := 0 to P.RunCount-1 do
+    if P.Runs[I].Text = #$E2#$80#$8B then
+    begin
+      DotW := P.Runs[I].Width; DotH := P.Runs[I].Height;
+    end;
+  Check((DotW = 46) and (DotH = 46),
+    Format('inline-block: an empty dot still stands, 46 by 46 (%d by %d)',[DotW,DotH]));
+  { the dashed border really dashes: the top edge is segments, not a line }
+  BM := TBitmap.Create;
+  try
+    BM.SetSize(Probe.ClientWidth,Max(60,ChipT+40));
+    Probe.RenderTo(BM.Canvas);
+    Seg := 0; Was := False;
+    for X := ChipL to ChipL+ChipW-1 do
+    begin
+      C := BM.Canvas.Pixels[X,ChipT+1];
+      InDash := (Abs(Red(C)-$55)<48) and (Abs(Green(C)-$55)<48) and (Abs(Blue(C)-$55)<48);
+      if InDash and not Was then Inc(Seg);
+      Was := InDash;
+    end;
+    Check(Seg >= 4,Format('inline-block: a dashed border has dashes (%d segments)',[Seg]));
+  finally BM.Free end;
+end;
+
 { --- font stacks resolved the way the platform would --- }
 procedure FaceChecks;
 begin
@@ -4575,6 +4624,7 @@ begin
     ElementEventChecks;
     FaceChecks;
     UnderlineChecks;
+    InlineBoxChecks;
     DocumentTreeChecks;
     TreeLayoutChecks;
 

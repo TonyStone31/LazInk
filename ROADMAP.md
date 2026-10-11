@@ -259,11 +259,12 @@ best after the widgetset runs in D, so the listing's claims are true.
 
 ### G. Small gaps, when they get in the way
 
-* **An inline-block is a pill, not a box** (found 11 October 2026 by
-  the showcase's own side-by-side, first catch): explicit `width` is
-  ignored, non-solid border styles draw solid, an empty sized span
-  disappears.  Repro and the two possible fixes in
-  `bugs/2026-10-11-inline-block-boxes`.
+* ~~An inline-block is a pill, not a box~~ - found and fixed the same
+  day, 11 October 2026 (`bugs/2026-10-11-inline-block-boxes` has the
+  story): the pill run became an atomic box - forced width and height,
+  centered words, real border styles, standing even empty.  Left over:
+  its vertical margins do not reach the line box, so stacked chips sit
+  a little tighter than a browser's.
 * `<abbr title>`: a title on anything that is not a link is dropped.
 * Markdown: emphasis does not follow full CommonMark delimiter rules, link
   definitions must fit on one line, no footnotes, an image in a table cell
