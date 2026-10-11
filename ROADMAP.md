@@ -35,7 +35,7 @@ Sketch.
   Markdown features go in the converter, once.
 * **Real pages, no JavaScript.**  The measure is HTML and CSS as people
   actually write them (see "Where it is going").  Say plainly what is not
-  supported yet (`docs/HELP_COMPATIBILITY.md`, README "Limits").
+  supported yet (`docs/HTML_SUPPORT.md`).
 * **US English** everywhere: color, center, license, gray.
 * **Tested.**  `tests/run.sh` stays green, new behavior comes with checks,
   and a new check must be able to fail.
@@ -342,8 +342,12 @@ section 1 now, and web fonts are an open question there.
   before pushing.
 * **A stale demo build**: `lazbuild` can miss an edit to `demo/main.lfm`
   made in the same second as the build.  `rm -rf demo/lib` and build again.
-* Update `README.md`, `docs/HELP_COMPATIBILITY.md` and this file as items
+* Update `README.md`, `docs/HTML_SUPPORT.md` and this file as items
   land.  Commit finished work; don't leave it uncommitted.
 * `bugs/` holds one dated folder per bug or wishlist, each with a repro;
   a fixed one gets a "Fixed" section saying how, and stays as the record.
+* **Commit messages carry no AI-session links** - the commit says what
+  changed and why; conversations are not published.  The hook in
+  `tools/hooks/commit-msg` refuses them: `cp tools/hooks/commit-msg
+  .git/hooks/` once per clone.
 * How everything so far was built, and why: `docs/HISTORY.md`.

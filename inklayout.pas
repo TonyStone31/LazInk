@@ -1190,7 +1190,7 @@ begin
     if TA = '-webkit-center' then begin MarginAutoL := True; MarginAutoR := True end
     else if TA = '-webkit-right' then MarginAutoL := True;
   end;
-  { auto margins centre a box with a width }
+  { auto margins center a box with a width }
   if (not B.Anon) and not B.Floating and not B.Absolute and (Avail > W) and
     (MarginAutoL or MarginAutoR) and (AForceW < 0) then
   begin

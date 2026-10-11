@@ -331,8 +331,8 @@ end;
 Try the demo's **Documents** tab, or pass an HTML filename on its command
 line. Keep the help folder's relative image and stylesheet paths intact.
 Remote content can be supplied through `OnResource`; HTTP transport is not
-built in. See [the compatibility report](HELP_COMPATIBILITY.md) for the
-exact CSS subset, tested site coverage, and remaining limitations.
+built in. See [Writing pages](HTML_SUPPORT.md) for every tag and CSS
+property the engine reads, and what is still approximate.
 
 ## Tables and Markdown
 
@@ -531,8 +531,6 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 
 **[HTML_SUPPORT.md](HTML_SUPPORT.md) is the reference for writing
 pages** - every tag and every CSS property LazInk reads, with examples.
-[docs/HELP_COMPATIBILITY.md](HELP_COMPATIBILITY.md) is the audit of one
-real help site against it.
 
 ## Tests
 
@@ -601,8 +599,8 @@ render happened.  To measure rather than check:
 LAZARUS_DIR=... FPC=... tools/run_render_bench.sh table 250
 ```
 
-[RENDER_PERFORMANCE_AUDIT.md](RENDER_PERFORMANCE_AUDIT.md) has the
-numbers, what they came from, and what is still worth doing.
+What is still worth doing for scrolling speed is written in the
+roadmap's section H.
 
 To find *where* a page disagrees with a browser rather than looking for it:
 

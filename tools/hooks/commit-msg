@@ -1,0 +1,8 @@
+#!/bin/sh
+# LazInk commit-msg hook: a commit message may not point at an AI session.
+# Conversations are not part of the repository - the commit itself says
+# what changed and why.  Install: cp tools/hooks/commit-msg .git/hooks/
+if grep -qiE 'claude-session|claude\.ai/(code/)?session' "$1"; then
+  echo "commit-msg: remove the session link - conversations are not published" >&2
+  exit 1
+fi
