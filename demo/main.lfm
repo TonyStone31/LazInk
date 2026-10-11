@@ -1812,7 +1812,7 @@ object frmMain: TfrmMain
         Height = 18
         Top = 8
         Width = 1122
-        Caption = '<b>A browser''s picture</b> of demo/showcase.html on the left — <b>LazInk rendering the same file live</b> on the right. Scroll either side and the other follows.'
+        Caption = '<b>A browser''s picture</b> of demo/showcase.html on the left — <b>LazInk rendering the same file live</b> on the right. Scroll either side and the other follows; the crosshair marks the same spot on both.'
         SuperSubScriptRatio = 0.7
         LinkStyle.Color = clBlue
         LinkStyle.BackColor = clNone
@@ -1827,8 +1827,9 @@ object frmMain: TfrmMain
         Left = 2
         Height = 660
         Top = 32
-        Width = 560
+        Width = 566
         Anchors = [akTop, akLeft, akBottom]
+        OnMouseMove = CompareCross
         Color = clWhite
         Font.Color = clWindowText
         Font.Height = -15
@@ -1837,18 +1838,54 @@ object frmMain: TfrmMain
         TabOrder = 0
       end
       object pgCompareInk: TInkPage
-        Left = 566
+        Left = 570
         Height = 660
         Top = 32
-        Width = 560
+        Width = 566
         Anchors = [akTop, akLeft, akBottom]
         OnLinkClick = DocLinkClick
+        OnMouseMove = CompareCross
         Color = clWhite
         Font.Color = clWindowText
         Font.Height = -15
         ParentColor = False
         ParentFont = False
         TabOrder = 1
+      end
+      object shpCrossH: TPanel
+        Left = 2
+        Height = 2
+        Top = 330
+        Width = 1134
+        BevelOuter = bvNone
+        Color = clRed
+        ParentColor = False
+        ParentBackground = False
+        OnMouseMove = CompareCross
+      end
+      object shpCrossVL: TPanel
+        Left = 200
+        Height = 660
+        Top = 32
+        Width = 2
+        Anchors = [akTop, akLeft, akBottom]
+        BevelOuter = bvNone
+        Color = clRed
+        ParentColor = False
+        ParentBackground = False
+        OnMouseMove = CompareCross
+      end
+      object shpCrossVR: TPanel
+        Left = 800
+        Height = 660
+        Top = 32
+        Width = 2
+        Anchors = [akTop, akLeft, akBottom]
+        BevelOuter = bvNone
+        Color = clRed
+        ParentColor = False
+        ParentBackground = False
+        OnMouseMove = CompareCross
       end
     end
   end

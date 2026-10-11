@@ -3,16 +3,20 @@
 <head>
 <meta charset="utf-8">
 <title>The LazInk showcase</title>
-<!-- One readable document that uses the whole vocabulary once, rather
-     than a test page that repeats each construct a hundred times.  The
-     demo shows it beside a browser's picture of the same file, and
-     tools/compare.sh opens it beside a live browser strip.
-     The colors are the page's own, so both sides match in any theme. -->
+<!-- One readable document, written around what LazInk is for - and at
+     the same time a test document: each section leans on different
+     machinery, so the demo's "Side by side" tab and tools/compare.sh
+     can hold the renderer against a browser line by line.
+     The colors are the page's own, so both sides match in any theme.
+     After editing, remake the browser's picture:
+       tools/browser_shot.sh demo/showcase.html \
+         demo/showcase-browser.png 548 <height>
+     (shoot once tall, read where the content ends, shoot again). -->
 <style>
   body { background: #ffffff; color: #22262c; font-size: 15px;
          font-family: sans-serif; line-height: 1.5; padding: 14px 16px }
   h1 { color: #14315c; font-size: 27px; margin: 4px 0 2px }
-  h2 { color: #176bbd; font-size: 20px; margin-top: 28px }
+  h2 { color: #176bbd; font-size: 20px; margin-top: 30px }
   h3 { color: #5e6670; font-size: 16px }
   a { color: #176bbd }
   code, kbd { background: #eef0f3; padding: 1px 4px; border-radius: 3px }
@@ -23,16 +27,17 @@
                margin-left: 0; padding-left: 12px }
   mark { background: #fff3a0 }
   small { color: #7a828c }
-  hr { border: none; border-top: 1px solid #c8ccd2; margin: 22px 0 }
+  hr { border: none; border-top: 1px solid #c8ccd2; margin: 24px 0 }
   table { border-collapse: collapse; margin: 10px 0 }
   th, td { border: 1px solid #c8ccd2; padding: 5px 9px; text-align: left }
   th { background: #eef2f7 }
   td.num { text-align: right }
+  td.mid { text-align: center }
   .lede { font-size: 16px; color: #46505c }
   .pill { border-radius: 999px; padding: 2px 10px; color: white;
           font-size: 12px; white-space: nowrap }
   .blue { background: #2e86de } .green { background: #1e8449 }
-  .slate { background: #5e6670 }
+  .slate { background: #5e6670 } .plum { background: #7d3c98 }
   .note { background: #eef6ff; border-left: 4px solid #176bbd;
           padding: 8px 12px; margin: 12px 0 }
   .warn { background: #fff7ed; border-left: 4px solid #d97706;
@@ -48,108 +53,225 @@
   dt { font-weight: bold; margin-top: 8px }
   dd { margin-left: 16px; color: #46505c }
   .fine { font-size: 12px; color: #7a828c }
+  /* the chat mock: two sides, two tints, round corners */
+  .chat { max-width: 440px }
+  .q, .ans { border-radius: 10px; padding: 8px 12px; margin: 8px 0 }
+  .q { background: #e8f1fb; margin-left: 60px }
+  .ans { background: #eaf6ee; margin-right: 60px }
+  .who { font-size: 11px; color: #7a828c; text-transform: uppercase }
+  /* the log mock */
+  pre.log { background: #22262c; color: #d6dae0; font-size: 13px }
+  .t { color: #7a828c } .ok { color: #58b368 } .err { color: #e4604e }
+  .warnc { color: #d9a514 }
+  /* one-line machinery */
+  .clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          border: 1px solid #d8dce2; padding: 4px 8px; margin: 6px 0 }
+  .airy { line-height: 2 }
+  .snug { line-height: 1.1 }
+  .shout { text-transform: uppercase }
+  figure { margin: 14px 0 }
+  figcaption { font-size: 12px; color: #7a828c; margin-top: 4px }
 </style>
 </head>
 <body>
 
-<h1>The LazInk showcase</h1>
-<p class="lede">One page, written to be read &mdash; and to use, once each,
-most of what the renderer knows.</p>
+<h1 id="top">The LazInk showcase</h1>
+<p class="lede">What a canvas-drawn renderer is <i>for</i> &mdash; written
+as one readable page that is also a test document.</p>
 
 <p>
 <span class="pill blue">canvas-drawn</span>
 <span class="pill green">0BSD</span>
 <span class="pill slate">no JavaScript</span>
+<span class="pill plum">no browser engine</span>
 </p>
 
 <p>LazInk draws formatted text on a plain <code>TCanvas</code>: labels,
-memos, list boxes, a page viewer and an editor, reading
-<b>HTML</b> or <b>Markdown</b> through one renderer. This document is
-ordinary HTML with a small stylesheet &mdash; the kind of page a help
-system or a release note actually is. Inline it handles <b>bold</b>,
-<i>italics</i>, <u>underline</u>, <s>strikethrough</s>,
-<mark>highlighted phrases</mark>, H<sub>2</sub>O and E=mc<sup>2</sup>,
+memos, list boxes, a page viewer and an editor, reading <b>HTML</b> or
+<b>Markdown</b> through one renderer. No WebView, no SynEdit, no GPL
+code &mdash; a Lazarus package that weighs what a package should. Inline
+it handles <b>bold</b>, <i>italics</i>, <u>underline</u>,
+<s>strikethrough</s>, <mark>highlighted phrases</mark>, H<sub>2</sub>O
+and E=mc<sup>2</sup>,
 <a href="https://github.com/TonyStone31/LazInk">links</a>,
 <code>code spans</code>, the <kbd>Ctrl</kbd>+<kbd>F</kbd> kind of key,
 and <small>the small print</small>.</p>
 
-<div class="note"><b>How this page is used.</b> The demo shows it beside a
-browser&rsquo;s picture of the same file; <code>tools/compare.sh</code>
-opens it beside a live browser. Scroll either and the other follows.</div>
+<div class="note"><b>How this page is used.</b> The demo shows it beside
+a browser&rsquo;s picture of the same file, crosshair on, scroll-locked;
+<code>tools/compare.sh</code> opens it beside a live browser. Where the
+two sides disagree by more than a few pixels of font metric, that is a
+bug worth a folder in <code>bugs/</code>.</div>
 
-<h2>What reads what</h2>
+<p>On this page: <a href="#build">what you could build</a> &middot;
+<a href="#engine">the engine</a> &middot; <a href="#chat">a chat
+window</a> &middot; <a href="#log">a log console</a> &middot;
+<a href="#tables">tables</a> &middot; <a href="#lines">single
+lines</a> &middot; <a href="#lists">lists</a> &middot;
+<a href="#folds">folds and fine print</a> &mdash; the links jump, as
+they would in a help viewer.</p>
 
-<p>Every display control has a <code>TextFormat</code>; the table says
-what each one is for. The widths come from the words, as a browser
-works them out:</p>
+<h2 id="build">What you could build with it</h2>
 
-<table>
-  <tr><th>Control</th><th>Reads</th><th class="num">Lines of code to use it</th></tr>
-  <tr><td><code>TInkLabel</code></td><td>a line or a paragraph</td><td class="num">1</td></tr>
-  <tr><td><code>TInkMemo</code></td><td>log lines, chat entries</td><td class="num">2</td></tr>
-  <tr><td><code>TInkPage</code></td><td>whole documents</td><td class="num">1</td></tr>
-  <tr><td colspan="2">rendered by the same engine</td><td class="num">&mdash;</td></tr>
-</table>
-
-<h2>Boxes from CSS</h2>
-
-<p>Flex puts cards in a row and shares the width; each card is a border,
-a radius and a padding away from a plain <code>div</code>:</p>
-
-<div class="row">
-  <div class="card"><h3>Parse</h3>A browser&rsquo;s own tree construction:
-  tag soup in, a document out.</div>
-  <div class="card"><h3>Style</h3>The full cascade &mdash; selectors,
-  variables, <code>calc()</code>, media queries.</div>
-  <div class="card"><h3>Lay out</h3>Blocks, floats, tables, flex and
-  grid, from the computed styles.</div>
-</div>
-
-<p>Grid divides the other way:</p>
+<p>Anywhere a Lazarus program shows words that deserve better than a
+<code>TLabel</code>, there is a control here for it:</p>
 
 <div class="grid">
-  <div class="cell"><b>Pills</b> are a <code>border-radius</code> taller
-  than the line &mdash; sized like a browser sizes them.</div>
-  <div class="cell"><b>Notes</b> like the blue one above are a
-  <code>border-left</code> and a tint.</div>
-  <div class="cell"><b>Cards</b> hold any markup: <i>italics</i>,
-  <a href="#top">links</a>, <code>code</code>.</div>
-  <div class="cell"><b>This grid</b> is
-  <code>grid-template-columns:&nbsp;1fr&nbsp;1fr</code>.</div>
+  <div class="cell"><b>A help viewer.</b> Point <code>TInkPage</code> at
+  a folder of HTML and it walks the links, finds, selects, remembers
+  where Back goes &mdash; the manual of a real program already ships
+  this way.</div>
+  <div class="cell"><b>Release notes.</b> A dialog with a page beats a
+  memo full of asterisks: headings, links to the tracker,
+  <code>&lt;details&gt;</code> for the long tail.</div>
+  <div class="cell"><b>A chat window.</b> <code>TInkMemo</code> appends
+  each message as a little document on its own band &mdash; a growing
+  answer re-lays only its own entry.</div>
+  <div class="cell"><b>A log console.</b> Markup per line, owner-drawn,
+  with an in-place editor if the operator may annotate &mdash; the list
+  box this package grew out of.</div>
+  <div class="cell"><b>A Markdown notes app.</b> The WYSIWYG editor
+  reads and writes Markdown as a fixed point; nothing else for Lazarus
+  does.</div>
+  <div class="cell"><b>A status page.</b> <code>SetInnerHTML</code>
+  changes one element by id without rebuilding the page; the host hears
+  clicks through <code>OnElementClick</code> and does what script
+  would.</div>
 </div>
 
-<div class="warn"><b>Not yet.</b> Words do not flow line by line beside a
-floated picture, and there is no JavaScript &mdash; by design, ever.</div>
+<figure>
+  <img src="../images/demo-memo.png" width="516" alt="the demo's chat window">
+  <figcaption>The demo&rsquo;s memo tab: whole Markdown messages as
+  entries, each on its own band &mdash; this picture is itself an
+  <code>&lt;img&gt;</code> scaled by its <code>width</code>
+  attribute.</figcaption>
+</figure>
 
-<h2>Code, quoted and highlighted</h2>
+<h2 id="engine">The engine underneath</h2>
 
-<p>A fenced block names its language and the small highlighter colors
-comments, strings, numbers and keywords &mdash; nothing more. A host with
-its own highlighter plugs in through <code>OnHighlightCode</code>.</p>
+<p>Since October 2026 every page stands on a real document tree: a
+browser&rsquo;s own tag-soup parsing, the full CSS cascade, and layout
+from the computed styles. Flex puts cards in a row and shares the
+width:</p>
 
-<pre><code class="language-pascal">procedure TForm1.FormCreate(Sender: TObject);
-begin
-  // one line is enough
-  Page.LoadMarkdown('# Hello' + LineEnding + 'It *renders*.');
-end;</code></pre>
+<div class="row">
+  <div class="card"><h3>Parse</h3>Implied tags, misnested tags mended,
+  entities, old code pages &mdash; 1706 of html5lib&rsquo;s 1784 tree
+  tests pass.</div>
+  <div class="card"><h3>Style</h3>Selectors with every combinator,
+  variables, <code>calc()</code>, <code>@media</code>,
+  <code>light-dark()</code> &mdash; held against
+  <code>getComputedStyle</code>.</div>
+  <div class="card"><h3>Lay out</h3>Blocks, margins that collapse,
+  floats, tables, flex and grid, positioning &mdash; the boxes this very
+  page is made of.</div>
+</div>
 
 <blockquote>
 <p>The measure is HTML and CSS as people actually write them &mdash; an
-old help file, a Markdown README, a saved article should come out the way
-a browser draws them.</p>
+old help file, a Markdown README, a saved article should come out the
+way a browser draws them.</p>
 <p><small>&mdash; the roadmap, on where this is going</small></p>
 </blockquote>
 
-<h2>Lists of every kind</h2>
+<div class="warn"><b>Said plainly, not supported:</b> JavaScript (by
+design, ever), words flowing line by line beside a floated picture
+(yet), <code>&lt;video&gt;</code>, embedded frames. The page shows its
+<code>&lt;noscript&gt;</code> and the fallback inside an
+<code>&lt;iframe&gt;</code>.</div>
 
-<p>Ordered, unordered, nested, definitions and tasks:</p>
+<h2 id="chat">A chat window, mocked in plain markup</h2>
+
+<p>These bubbles are <code>div</code>s with a radius and a tint &mdash;
+the real thing is three calls on a <code>TInkMemo</code>
+(<code>AppendBlock</code>, <code>ReplaceLast</code>,
+<code>EntryAt</code>):</p>
+
+<div class="chat">
+  <div class="q"><span class="who">you</span><br>
+  Can the answer stream in <i>while</i> it renders Markdown?</div>
+  <div class="ans"><span class="who">assistant</span><br>
+  Yes &mdash; the last entry is replaced as the words arrive, and only
+  that entry is laid out again. Code arrives fenced:
+  <pre><code class="language-pascal">Memo.ReplaceLast(SoFar);  // one entry re-laid</code></pre>
+  and the fence gets a header with <b>Copy</b> on it.</div>
+  <div class="q"><span class="who">you</span><br>
+  And the input box can hide what I type?</div>
+  <div class="ans"><span class="who">assistant</span><br>
+  <code>TInkEdit.PasswordChar</code> &mdash; with per-character colors
+  when it shows, so a token&rsquo;s checksum can glow red.</div>
+</div>
+
+<h2 id="log">A log console, mocked in a dark block</h2>
+
+<p>One <code>pre</code> with colored spans &mdash; in a program this is
+a <code>TInkListBox</code> arriving line by line:</p>
+
+<pre class="log"><span class="t">09:14:02.114</span> <span class="ok">started</span>  worker alpha
+<span class="t">09:14:02.882</span> <span class="ok">started</span>  worker bravo
+<span class="t">09:14:04.010</span> <span class="warnc">halted</span>   worker charlie &mdash; retrying
+<span class="t">09:14:05.550</span> <span class="err">error</span>    worker bravo &mdash; disk full
+<span class="t">09:14:06.117</span> <span class="ok">done</span>     worker alpha, 1,284 rows</pre>
+
+<h2 id="tables">Tables, the way documentation writes them</h2>
+
+<p>Automatic column widths from the words, cells that span, columns
+that align:</p>
+
+<table>
+  <tr><th>Control</th><th>Reads</th><th class="num">Lines to use it</th></tr>
+  <tr><td><code>TInkLabel</code></td><td>a line or a paragraph</td><td class="num">1</td></tr>
+  <tr><td><code>TInkMemo</code></td><td>log lines, chat entries</td><td class="num">2</td></tr>
+  <tr><td><code>TInkPage</code></td><td>whole documents</td><td class="num">1</td></tr>
+  <tr><td><code>TInkRichEdit</code></td><td>Markdown, edited as the thing itself</td><td class="num">3</td></tr>
+  <tr><td colspan="2">one renderer behind all of them</td><td class="mid">&mdash;</td></tr>
+</table>
+
+<p>A second table, tighter, with a header that spans rows:</p>
+
+<table>
+  <tr><th rowspan="2">Format</th><th colspan="2">Where it goes</th></tr>
+  <tr><th>Display</th><th>Editing</th></tr>
+  <tr><td>HTML</td><td>every control</td><td>as markup</td></tr>
+  <tr><td>Markdown</td><td>every control</td><td>WYSIWYG, round-trip</td></tr>
+  <tr><td>Plain text</td><td><code>itfPlain</code></td><td>as itself</td></tr>
+</table>
+
+<h2 id="lines">Single lines, cut honestly</h2>
+
+<p>A status line that must stay one line ends in an ellipsis, as CSS
+asks (<code>nowrap</code>, a clipping <code>overflow</code>,
+<code>text-overflow:&nbsp;ellipsis</code>):</p>
+
+<div class="clip">Indexing /home/tony/projects/lazarus/components/lazutils and seventeen other directories, 48,112 files seen, none skipped, no errors so far</div>
+
+<p>And a word too long for any line parts only where
+<code>&lt;wbr&gt;</code> allows:</p>
+
+<div class="clip" style="white-space: normal; text-overflow: clip">
+TInkVeryLongGeneratedIdentifier<wbr>_ThatNoLineCouldHold<wbr>_SplitsAtTheMarksAndNowhereElse</div>
+
+<p class="airy">A line-height of 2 opens a paragraph up &mdash; airy,
+the way settings pages like it &mdash; and the next one closes down
+to 1.1:</p>
+<p class="snug">snug lines pack a sidebar tight without clipping their
+ascenders or descenders.</p>
+
+<p><span class="shout">text-transform shouts this span,</span> and
+typography comes out right: caf&eacute;, na&iuml;ve, &frac34; of a pie,
+25&nbsp;&deg;C, x&nbsp;&ne;&nbsp;y, &ldquo;curly quotes&rdquo;, an
+em&nbsp;dash &mdash; and a non&#8209;breaking hyphen.</p>
+
+<h2 id="lists">Lists of every kind</h2>
 
 <ol>
   <li>A numbered step</li>
   <li>Another, holding a nested list:
     <ul>
       <li>a bullet</li>
-      <li>a second bullet with <code>inline code</code></li>
+      <li>a second bullet with <code>inline code</code>
+        <ul><li>and a third level, still lined up</li></ul>
+      </li>
     </ul>
   </li>
   <li>The last step</li>
@@ -161,34 +283,46 @@ a browser draws them.</p>
   <dt>Converter</dt>
   <dd>Markdown in, the renderer&rsquo;s HTML out &mdash; new Markdown
   features land here, once.</dd>
+  <dt>Styler</dt>
+  <dd>The cascade, shared by display and by the host through
+  <code>ComputedStyle</code> and <code>ExplainStyle</code>.</dd>
 </dl>
 
 <ul style="list-style: none; padding-left: 0">
   <li><input type="checkbox" checked disabled> ship the tree layout</li>
   <li><input type="checkbox" checked disabled> element events for the host</li>
+  <li><input type="checkbox" checked disabled> this very showcase</li>
   <li><input type="checkbox" disabled> flow text round a floated picture</li>
 </ul>
 
-<h2>The folded and the fine print</h2>
+<h2 id="folds">The folded and the fine print</h2>
 
 <details>
   <summary>What is under this fold?</summary>
   <p>A <code>&lt;details&gt;</code> element, opened and shut by its
   summary &mdash; drawn and handled by LazInk, no script involved.</p>
+  <details>
+    <summary>And one inside it?</summary>
+    <p>Folds nest, as a FAQ wants them to.</p>
+  </details>
 </details>
 
-<p>Entities and punctuation come out right: caf&eacute;,
-na&iuml;ve, &frac34; of a pie, 25&nbsp;&deg;C, x&nbsp;&ne;&nbsp;y,
-&ldquo;curly quotes&rdquo;, an em&nbsp;dash &mdash; and a
-non&#8209;breaking hyphen.</p>
+<p>A fenced block names its language and the small highlighter colors
+comments, strings, numbers and keywords &mdash; nothing more; a host
+with a real highlighter plugs in through <code>OnHighlightCode</code>:</p>
+
+<pre><code class="language-pascal">procedure TForm1.FormCreate(Sender: TObject);
+begin
+  // one line is enough
+  Page.LoadMarkdown('# Hello' + LineEnding + 'It *renders*.');
+  Page.OnElementClick := @WhatScriptWouldDo;  { the host's turn }
+end;</code></pre>
 
 <hr>
 
 <p class="fine">Written for the LazInk demo and for
-<code>tools/compare.sh</code>. If the two sides of the screen agree,
-the renderer is doing its job; where they differ by more than a few
-pixels of font metric, that is a bug worth a folder in
-<code>bugs/</code>.</p>
+<code>tools/compare.sh</code> &mdash; prose first, test document second,
+and honest about both. <a href="#top">Back to the top.</a></p>
 
 </body>
 </html>

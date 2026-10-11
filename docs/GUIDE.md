@@ -490,12 +490,17 @@ sidebar shows one caption twice - as `itfHTML` and as `itfPlain`.
 
 **Side by side** holds LazInk against a browser, inside the demo itself:
 the left half is a browser's picture of `demo/showcase.html`, the right a
-live `TInkPage` showing the same file, and scrolling either side moves
-both.  The showcase is one readable document that uses the vocabulary
-once - tables, flex cards, grid, pills, highlighted code, folds, entities
-- rather than a test page repeating each construct.  After editing it,
+live `TInkPage` showing the same file.  Scrolling either side moves both,
+a crosshair follows the mouse on both halves to mark the same spot, and
+each pane is a scrollbar wider than the picture so the two text columns
+line up.  The showcase is written around what you could build with
+LazInk - a help viewer, release notes, a chat window, a log console, a
+Markdown notes app - while using the vocabulary once each: tables with
+spans, flex cards, grid, pills, a mocked chat and log, `text-overflow`,
+`<wbr>`, nested folds, highlighted code, entities.  After editing it,
 remake the picture with `tools/browser_shot.sh demo/showcase.html
-demo/showcase-browser.png 560 2420`.
+demo/showcase-browser.png 548 5080` (shoot tall once and read off the
+new height if the page grew).
 
 ![The side by side tab](../images/demo-compare.png)
 

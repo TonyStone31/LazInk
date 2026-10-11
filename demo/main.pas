@@ -168,6 +168,7 @@ type
     lblCompareHdr: TInkLabel;
     pgCompareBrowser: TInkPage;
     pgCompareInk: TInkPage;
+    shpCrossH, shpCrossVL, shpCrossVR: TPanel;
     tmrCompare: TTimer;
 
     { ---- tab: DOM events ---- }
@@ -200,6 +201,7 @@ type
     procedure DomElementHover(Sender: TObject; AElement: TInkNode);
     { side by side }
     procedure tmrCompareTimer(Sender: TObject);
+    procedure CompareCross(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     { Markdown editor }
     procedure MdOpen(Sender: TObject);
     procedure MdCharAttrs(Sender: TObject; AIndex: Integer;
@@ -472,10 +474,14 @@ begin
     '</body></html>');
   { the side-by-side tab: the browser's picture of showcase.html beside
     LazInk rendering the same file live, scroll-locked by tmrCompare }
-  { the live side's scrollbar draws inside its width; the browser's
-    picture has none, so the live pane is a scrollbar wider and the two
-    text columns come out the same }
-  pgCompareInk.Width := pgCompareBrowser.Width + pgCompareInk.ScrollBar.Width;
+  { Each pane's scrollbar draws inside its width - the picture pane's
+    over the picture, the live pane's over the page - and the browser's
+    picture is 548 wide with no scrollbar at all.  So each pane is
+    548 + a scrollbar, and the two text columns come out the same. }
+  pgCompareBrowser.Width := 548 + pgCompareBrowser.ScrollBar.Width;
+  pgCompareInk.Width := pgCompareBrowser.Width;
+  pgCompareInk.Left := pgCompareBrowser.Left + pgCompareBrowser.Width + 2;
+  shpCrossH.Width := pgCompareInk.Left + pgCompareInk.Width - shpCrossH.Left;
   S := DemoFile('showcase.html');
   if S <> '' then pgCompareInk.LoadFromFile(S)
   else pgCompareInk.LoadHTML('<body style="font-family: sans-serif">' +
@@ -490,7 +496,7 @@ begin
       '<p><b>showcase-browser.png</b> was not found beside the program. ' +
       'Make the browser''s picture once with:</p>' +
       '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding +
-      '  demo/showcase-browser.png 560 2420</pre></body>');
+      '  demo/showcase-browser.png 548 5080</pre></body>');
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
 
@@ -643,6 +649,23 @@ begin
     pgCompareBrowser.ScrollTo(pgCompareInk.ScrollY);
   FCmpBrowserY := pgCompareBrowser.ScrollY;
   FCmpInkY := pgCompareInk.ScrollY;
+end;
+
+procedure TfrmMain.CompareCross(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+var
+  P: TPoint;
+  RelX: Integer;
+begin
+  { the crosshair is always on: the same spot marked on both halves, as
+    tools/compare.sh does with G.  The lines stand a hair beside the
+    pointer so they never sit under it and steal the wheel from the page. }
+  P := tabCompare.ScreenToClient(Mouse.CursorPos);
+  shpCrossH.Top := P.Y + 1;
+  if P.X >= pgCompareInk.Left then RelX := P.X - pgCompareInk.Left
+  else RelX := P.X - pgCompareBrowser.Left;
+  if (RelX < 0) or (RelX >= pgCompareBrowser.Width) then Exit;
+  shpCrossVL.Left := pgCompareBrowser.Left + RelX + 1;
+  shpCrossVR.Left := pgCompareInk.Left + RelX + 1;
 end;
 
 { -------------------------------------------------------- Markdown editor }
