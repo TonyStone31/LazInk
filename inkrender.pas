@@ -68,6 +68,9 @@ type
       the words in the middle of a forced width, and Box marks it
       atomic - it grows its line, as a browser's inline-block does }
     PillMinW, PillMinH, PillBW: Integer;
+    { an atomic box's vertical margins: counted into its line, kept clear
+      of its painted box, as a browser counts an inline-block's }
+    PillMarT, PillMarB: Integer;
     PillLine: string;
     PillCenter, PillBox: Boolean;
     { the run's own line height in pixels: nought takes the options' one,
@@ -805,6 +808,7 @@ begin
   Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
   Result.PillBorder := clNone; Result.LineHeight := 0;
   Result.PillMinW := 0; Result.PillMinH := 0; Result.PillBW := 0;
+  Result.PillMarT := 0; Result.PillMarB := 0;
   Result.PillLine := ''; Result.PillCenter := False; Result.PillBox := False;
 end;
 
@@ -823,6 +827,7 @@ begin
   Result.PillPadH := 0; Result.PillPadV := 0; Result.PillRadius := 0;
   Result.PillBorder := clNone; Result.LineHeight := 0;
   Result.PillMinW := 0; Result.PillMinH := 0; Result.PillBW := 0;
+  Result.PillMarT := 0; Result.PillMarB := 0;
   Result.PillLine := ''; Result.PillCenter := False; Result.PillBox := False;
   for I := 0 to High(Stack) do
   begin
@@ -845,6 +850,7 @@ begin
       Result.PillRadius := Stack[I].PillRadius; Result.PillBorder := Stack[I].PillBorder;
       Result.PillMinW := Stack[I].PillMinW; Result.PillMinH := Stack[I].PillMinH;
       Result.PillBW := Stack[I].PillBW; Result.PillLine := Stack[I].PillLine;
+      Result.PillMarT := Stack[I].PillMarT; Result.PillMarB := Stack[I].PillMarB;
       Result.PillCenter := Stack[I].PillCenter; Result.PillBox := Stack[I].PillBox;
     end;
   end;
@@ -954,6 +960,10 @@ begin
               S.PillLine := InkRenderAttr(T.Attributes,'pillline');
             if InkRenderAttr(T.Attributes,'pillc')<>'' then S.PillCenter := True;
             if InkRenderAttr(T.Attributes,'pillbox')<>'' then S.PillBox := True;
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'pillmt'),0);
+            if N>0 then S.PillMarT := InkRenderScalePx(N,Options.Scale);
+            N := StrToIntDef(InkRenderAttr(T.Attributes,'pillmb'),0);
+            if N>0 then S.PillMarB := InkRenderScalePx(N,Options.Scale);
             N := StrToIntDef(InkRenderAttr(T.Attributes,'lineheight'),0);
             if N<>0 then S.LineHeight := N;
           end
@@ -2092,7 +2102,7 @@ begin
         EllRun:=R; EllRun.Text:=EllText; EllRun.IsImage:=False;
         EllSz:=MeasureRun(Canvas,EllRun);
         FLayout.FWasCut:=True; CutLine:=True;
-        if R.IsImage or (R.Check>0) or Pill then begin Atom:=''; R.IsImage:=False; R.Check:=0; R.Style.PillRadius:=0; R.Style.PillPadH:=0; R.Style.PillPadV:=0; R.Style.PillBorder:=clNone; R.Style.PillMinW:=0; R.Style.PillMinH:=0; R.Style.PillBox:=False end;
+        if R.IsImage or (R.Check>0) or Pill then begin Atom:=''; R.IsImage:=False; R.Check:=0; R.Style.PillRadius:=0; R.Style.PillPadH:=0; R.Style.PillPadV:=0; R.Style.PillBorder:=clNone; R.Style.PillMinW:=0; R.Style.PillMinH:=0; R.Style.PillMarT:=0; R.Style.PillMarB:=0; R.Style.PillBox:=False end;
         if Atom<>'' then
         begin
           R.Text:=Atom; Sz:=MeasureRun(Canvas,R); W:=Sz.cx;
@@ -2148,6 +2158,12 @@ begin
           inline-block; one with words grows upward around them }
         if Atom=#$E2#$80#$8B then begin RunAsc:=R.Style.PillMinH; RunDesc:=0 end
         else Inc(RunAsc,R.Style.PillMinH-RunAsc-RunDesc);
+      end;
+      { an atomic box's vertical margins ride above and below its box and
+        count into the line, as a browser counts an inline-block's }
+      if Pill then
+      begin
+        Inc(RunAsc,R.Style.PillMarT); Inc(RunDesc,R.Style.PillMarB);
       end;
       R.Ascent:=RunAsc; R.Descent:=RunDesc;
       { a provisional place; AlignBaselines settles it when the line ends }
@@ -2498,6 +2514,9 @@ begin
               if DrawRect.Bottom<=DrawRect.Top then Continue;
             end;
             PillBW:=Max(1,R.Style.PillBW);
+            if R.Style.PillMarT>0 then Inc(DrawRect.Top,R.Style.PillMarT);
+            if R.Style.PillMarB>0 then Dec(DrawRect.Bottom,R.Style.PillMarB);
+            if DrawRect.Bottom<=DrawRect.Top then Continue;
             if BG<>clNone then begin Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=BG end
             else Canvas.Brush.Style:=bsClear;
             if (R.Style.PillBorder<>clNone) and (R.Style.PillLine<>'') and

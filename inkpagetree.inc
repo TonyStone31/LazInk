@@ -416,6 +416,11 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
           if BoxW > 0 then Attrs := Attrs + ' minw="' + IntToStr(BoxW + 2*PadH) + '"';
           if BoxH > 0 then Attrs := Attrs + ' minh="' + IntToStr(BoxH + 2*PadV) + '"';
           if S.Keyword('text-align') = 'center' then Attrs := Attrs + ' pillc="1"';
+          { its vertical margins count into the line, as a browser's do }
+          if Round(S.Px('margin-top')) > 0 then
+            Attrs := Attrs + ' pillmt="' + IntToStr(Round(S.Px('margin-top'))) + '"';
+          if Round(S.Px('margin-bottom')) > 0 then
+            Attrs := Attrs + ' pillmb="' + IntToStr(Round(S.Px('margin-bottom'))) + '"';
           if Bw > 1 then Attrs := Attrs + ' pillbw="' + IntToStr(Bw) + '"';
           V2 := S.Keyword('border-top-style');
           if (Bw > 0) and (V2 <> 'solid') then
