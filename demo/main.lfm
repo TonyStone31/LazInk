@@ -1659,6 +1659,198 @@ object frmMain: TfrmMain
         TabOrder = 1
       end
     end
+    object tabDom: TTabSheet
+      Caption = 'DOM events'
+      ClientHeight = 698
+      ClientWidth = 1138
+      object pgDom: TInkPage
+        Left = 0
+        Height = 698
+        Top = 0
+        Width = 818
+        OnElementClick = DomElementClick
+        OnElementHover = DomElementHover
+        Align = alClient
+        Color = clWindow
+        Font.Color = clWindowText
+        Font.Height = -15
+        ParentColor = False
+        ParentFont = False
+        TabOrder = 0
+      end
+      object pnlDomSide: TPanel
+        Left = 818
+        Height = 698
+        Top = 0
+        Width = 320
+        Align = alRight
+        BevelOuter = bvNone
+        ClientHeight = 698
+        ClientWidth = 320
+        TabOrder = 1
+        object lblDomHelp: TInkLabel
+          Left = 12
+          Height = 160
+          Top = 12
+          Width = 296
+          Caption = '<b>The page has no JavaScript</b> — the program does what script would.<br><br>It holds the page as a document tree (<b>Document</b>), and the page tells it what the mouse touched: <b>OnElementClick</b> and <b>OnElementHover</b> carry the element itself. Click a line of the list on the left: the handler flips a class on that element and calls <b>DocumentChanged</b>.'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
+          ParentColor = False
+        end
+        object lblDomHoverHdr: TInkLabel
+          Left = 12
+          Height = 18
+          Top = 196
+          Width = 296
+          Caption = '<b>OnElementHover</b> — under the mouse now:'
+          SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
+          AutoSize = True
+          ParentColor = False
+        end
+        object lblDomHover: TInkLabel
+          Left = 12
+          Height = 40
+          Top = 220
+          Width = 296
+          Caption = '<font color="#7F8C8D">(move the mouse over the page)</font>'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
+          ParentColor = False
+        end
+        object lblPlainHdr: TInkLabel
+          Left = 12
+          Height = 60
+          Top = 290
+          Width = 296
+          Caption = '<b>TextFormat</b> — every control reads HTML, Markdown or plain text. The same caption, as <b>itfHTML</b> and as <b>itfPlain</b>:'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
+          ParentColor = False
+        end
+        object lblPlainHtml: TInkLabel
+          Left = 12
+          Height = 20
+          Top = 360
+          Width = 296
+          Caption = 'Water is H<sub>2</sub>O &amp; <b>bold</b> works'
+          SuperSubScriptRatio = 0.7
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
+          AutoSize = True
+          ParentColor = False
+        end
+        object lblPlainDemo: TInkLabel
+          Left = 12
+          Height = 20
+          Top = 388
+          Width = 296
+          Caption = 'Water is H<sub>2</sub>O &amp; <b>bold</b> works'
+          SuperSubScriptRatio = 0.7
+          TextFormat = itfPlain
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
+          AutoSize = True
+          ParentColor = False
+        end
+        object lblPillNote: TInkLabel
+          Left = 12
+          Height = 60
+          Top = 430
+          Width = 296
+          Caption = '<font color="#7F8C8D">The colored pills on the page are plain CSS — <b>border-radius</b> on a span, sized like a browser sizes them.</font>'
+          SuperSubScriptRatio = 0.7
+          WordWrap = True
+          LinkStyle.Color = clBlue
+          LinkStyle.BackColor = clNone
+          LinkStyle.Underline = False
+          LinkHoverStyle.Color = clBlue
+          LinkHoverStyle.BackColor = clNone
+          LinkHoverStyle.Underline = True
+          ParentColor = False
+        end
+      end
+    end
+    object tabCompare: TTabSheet
+      Caption = 'Side by side'
+      ClientHeight = 698
+      ClientWidth = 1138
+      object lblCompareHdr: TInkLabel
+        Left = 8
+        Height = 18
+        Top = 8
+        Width = 1122
+        Caption = '<b>A browser''s picture</b> of demo/showcase.html on the left — <b>LazInk rendering the same file live</b> on the right. Scroll either side and the other follows.'
+        SuperSubScriptRatio = 0.7
+        LinkStyle.Color = clBlue
+        LinkStyle.BackColor = clNone
+        LinkStyle.Underline = False
+        LinkHoverStyle.Color = clBlue
+        LinkHoverStyle.BackColor = clNone
+        LinkHoverStyle.Underline = True
+        AutoSize = True
+        ParentColor = False
+      end
+      object pgCompareBrowser: TInkPage
+        Left = 2
+        Height = 660
+        Top = 32
+        Width = 560
+        Anchors = [akTop, akLeft, akBottom]
+        Color = clWhite
+        Font.Color = clWindowText
+        Font.Height = -15
+        ParentColor = False
+        ParentFont = False
+        TabOrder = 0
+      end
+      object pgCompareInk: TInkPage
+        Left = 566
+        Height = 660
+        Top = 32
+        Width = 560
+        Anchors = [akTop, akLeft, akBottom]
+        OnLinkClick = DocLinkClick
+        Color = clWhite
+        Font.Color = clWindowText
+        Font.Height = -15
+        ParentColor = False
+        ParentFont = False
+        TabOrder = 1
+      end
+    end
   end
   object dlgDocOpen: TOpenDialog
     Filter = 'Documents (HTML, Markdown)|*.html;*.htm;*.md;*.markdown|All files|*'
@@ -1670,6 +1862,12 @@ object frmMain: TfrmMain
     Interval = 300
     OnTimer = MdTimer
     Left = 1000
+    Top = 60
+  end
+  object tmrCompare: TTimer
+    Interval = 30
+    OnTimer = tmrCompareTimer
+    Left = 1120
     Top = 60
   end
   object dlgMdOpen: TOpenDialog

@@ -29,7 +29,7 @@ uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, StdCtrls,
   ComCtrls, Buttons, ImgList, LCLIntf, LCLType,
   InkLabel, InkEdit, InkMemo, InkListBox, InkRichEdit, InkCodeMemo, InkDraw,
-  InkMarkdown, InkPage;
+  InkMarkdown, InkPage, InkDOM;
 
 type
 
@@ -163,6 +163,25 @@ type
     dlgMdOpen: TOpenDialog;
     dlgMdSave: TSaveDialog;
 
+    { ---- tab: side by side ---- }
+    tabCompare: TTabSheet;
+    lblCompareHdr: TInkLabel;
+    pgCompareBrowser: TInkPage;
+    pgCompareInk: TInkPage;
+    tmrCompare: TTimer;
+
+    { ---- tab: DOM events ---- }
+    tabDom: TTabSheet;
+    pgDom: TInkPage;
+    pnlDomSide: TPanel;
+    lblDomHelp: TInkLabel;
+    lblDomHoverHdr: TInkLabel;
+    lblDomHover: TInkLabel;
+    lblPlainHdr: TInkLabel;
+    lblPlainHtml: TInkLabel;
+    lblPlainDemo: TInkLabel;
+    lblPillNote: TInkLabel;
+
     dlgColor: TColorDialog;
     { status icons for <img src="n"> in the log listbox }
     ilStatus: TImageList;
@@ -176,6 +195,11 @@ type
     procedure DocNavigate(Sender: TObject);
     procedure DocThemeChange(Sender: TObject);
     procedure DocLinkClick(Sender: TObject; const URL: string);
+    { DOM events }
+    procedure DomElementClick(Sender: TObject; AElement: TInkNode);
+    procedure DomElementHover(Sender: TObject; AElement: TInkNode);
+    { side by side }
+    procedure tmrCompareTimer(Sender: TObject);
     { Markdown editor }
     procedure MdOpen(Sender: TObject);
     procedure MdCharAttrs(Sender: TObject; AIndex: Integer;
@@ -245,6 +269,9 @@ type
     procedure btnMemoClearClick(Sender: TObject);
   private
     FSyncing: Boolean;
+    { where each side of the side-by-side tab was last tick, so whichever
+      moved leads and the other follows }
+    FCmpBrowserY, FCmpInkY: Integer;
     { one entry per character of edtMarkup: 0 plain, 1 tag, 2 attribute value.
       Worked out once when the text changes rather than per character, because
       OnGetCharAttrs is handed a character with no idea what surrounds it. }
@@ -415,6 +442,55 @@ begin
   UpdateToolbar;
   edtMarkupChange(edtMarkup);
   edtPasswordChange(edtPassword);
+  { the DOM events tab: a page the program drives through Document,
+    OnElementClick and OnElementHover - what script would do, in Pascal }
+  pgDom.LoadHTML(
+    '<html><head><style>' +
+    'body { margin: 16px; font: 15px/1.6 sans-serif }' +
+    'h2 { margin-top: 0 }' +
+    '.pill { border-radius: 999px; padding: 2px 10px; color: white; font-size: 12px }' +
+    '.blue { background: #2E86DE } .green { background: #1E8449 } .gold { background: #B7950B }' +
+    '#todo { list-style: none; padding-left: 0; max-width: 420px }' +
+    '#todo li { border: 1px solid light-dark(#ccc, #555); border-radius: 6px; ' +
+    'padding: 6px 10px; margin: 6px 0 }' +
+    '#todo li.done { text-decoration: line-through; color: #7F8C8D; ' +
+    'background: light-dark(#f2f3f4, #2a2d31) }' +
+    '</style></head><body>' +
+    '<h2>A to-do list with no script</h2>' +
+    '<p><span class="pill blue">canvas-drawn</span> <span class="pill green">0BSD</span> ' +
+    '<span class="pill gold">no JavaScript</span></p>' +
+    '<p>Click a line to cross it out, and again to bring it back. The page runs ' +
+    'nothing: the program hears the click and changes the document.</p>' +
+    '<ul id=todo>' +
+    '<li class=done>parse pages into a document tree</li>' +
+    '<li class=done>compute every element''s style</li>' +
+    '<li class=done>lay the boxes out from the tree</li>' +
+    '<li>flow words round a floated picture</li>' +
+    '<li>forms drawn by LazInk</li>' +
+    '</ul>' +
+    '<p>Move the mouse anywhere on this page: the right side names the element under it.</p>' +
+    '</body></html>');
+  { the side-by-side tab: the browser's picture of showcase.html beside
+    LazInk rendering the same file live, scroll-locked by tmrCompare }
+  { the live side's scrollbar draws inside its width; the browser's
+    picture has none, so the live pane is a scrollbar wider and the two
+    text columns come out the same }
+  pgCompareInk.Width := pgCompareBrowser.Width + pgCompareInk.ScrollBar.Width;
+  S := DemoFile('showcase.html');
+  if S <> '' then pgCompareInk.LoadFromFile(S)
+  else pgCompareInk.LoadHTML('<body style="font-family: sans-serif">' +
+    '<p><b>showcase.html</b> was not found beside the program.</p></body>');
+  S := DemoFile('showcase-browser.png');
+  if S <> '' then
+    pgCompareBrowser.LoadHTML('<html><body style="margin:0;background:#fff">' +
+      '<img src="' + ExtractFileName(S) + '" alt="the browser''s picture"></body></html>',
+      FilenameToURI(ExtractFilePath(S)))
+  else
+    pgCompareBrowser.LoadHTML('<body style="font-family: sans-serif">' +
+      '<p><b>showcase-browser.png</b> was not found beside the program. ' +
+      'Make the browser''s picture once with:</p>' +
+      '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding +
+      '  demo/showcase-browser.png 560 2420</pre></body>');
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
 
@@ -513,6 +589,60 @@ begin
   except
     on E: Exception do ShowMessage(E.Message);
   end;
+end;
+
+{ ------------------------------------------------------------- DOM events }
+
+procedure TfrmMain.DomElementClick(Sender: TObject; AElement: TInkNode);
+var
+  N: TInkNode;
+begin
+  { what script would do, done by the program: a click anywhere in a to-do
+    line crosses it out }
+  N := AElement;
+  while (N <> nil) and (N.Name <> 'li') do N := N.Parent;
+  if N = nil then Exit;
+  if N.GetAttribute('class') = 'done' then N.SetAttribute('class', '')
+  else N.SetAttribute('class', 'done');
+  pgDom.DocumentChanged;
+end;
+
+procedure TfrmMain.DomElementHover(Sender: TObject; AElement: TInkNode);
+var
+  S, Part: string;
+begin
+  if AElement = nil then
+  begin
+    lblDomHover.Caption := '<font color="#7F8C8D">(nothing)</font>';
+    Exit;
+  end;
+  { the element's path, the way an inspector writes it }
+  S := '';
+  while (AElement <> nil) and (AElement.Name <> 'html') do
+  begin
+    Part := AElement.Name;
+    if AElement.GetAttribute('id') <> '' then
+      Part := Part + '#' + AElement.GetAttribute('id');
+    if AElement.GetAttribute('class') <> '' then
+      Part := Part + '.' + AElement.GetAttribute('class');
+    if S = '' then S := Part else S := Part + ' &gt; ' + S;
+    AElement := AElement.Parent;
+  end;
+  lblDomHover.Caption := '<font color="#2E86DE"><b>' + S + '</b></font>';
+end;
+
+{ ------------------------------------------------------------ side by side }
+
+procedure TfrmMain.tmrCompareTimer(Sender: TObject);
+begin
+  if pcMain.ActivePage <> tabCompare then Exit;
+  { whichever side moved since the last tick leads; the other follows }
+  if pgCompareBrowser.ScrollY <> FCmpBrowserY then
+    pgCompareInk.ScrollTo(pgCompareBrowser.ScrollY)
+  else if pgCompareInk.ScrollY <> FCmpInkY then
+    pgCompareBrowser.ScrollTo(pgCompareInk.ScrollY);
+  FCmpBrowserY := pgCompareBrowser.ScrollY;
+  FCmpInkY := pgCompareInk.ScrollY;
 end;
 
 { -------------------------------------------------------- Markdown editor }

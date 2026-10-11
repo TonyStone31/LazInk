@@ -153,13 +153,24 @@ The direction in section 1, step by step:
   line round a float, an inline picture is a block of its own, `fixed`
   does not stay put when scrolling, background pictures and masks are not
   drawn (a gradient is its first color), no `box-shadow`.
-* [ ] **4. Paint and hit-testing from the boxes**, laying out and painting
-  only what is on screen.
+* [x] **4. Paint and hit-testing from the boxes** - done 11 October 2026.
+  Painting has come from the boxes since the tree rework, culled to the
+  viewport, and a change lays out again only from the changed item (a
+  fold toggled, a memo entry appended).  What was missing was the hit
+  test: `TreeElementAt` reads the paint order backwards and answers the
+  topmost box under a point - positioned boxes, floats and clips win the
+  way they do in a browser's `elementFromPoint` - published as
+  `ElementAt(X, Y)`.
 * [ ] **5. Resources through the host** - partly there (`OnResource`);
   SVG still to come.
-* [ ] **6. The Pascal DOM API** - started: `Document`, `DocumentChanged`,
-  `ComputedStyle`, `ExplainStyle`, `InkQuerySelector(All)`.  Still to
-  come: element events (click, hover, change) carrying the element.
+* [x] **6. The Pascal DOM API** - done 11 October 2026: `Document`,
+  `DocumentChanged`, `ComputedStyle`, `ExplainStyle`,
+  `InkQuerySelector(All)` - and the events: `OnElementClick` fires for
+  every click with the element under it, `OnElementHover` whenever the
+  element under the pointer changes (nil on the way out), on `TInkPage`
+  and `TInkMemo` both.  A change event belongs to forms, step 7.  The
+  demo's **DOM events** tab is the working example: a to-do list crossed
+  out by Pascal doing what script would.
 * [ ] **7. Forms** drawn by LazInk.
 
 Left over from steps 1 and 2, when they get in the way:
@@ -205,7 +216,13 @@ Sketch's next window finds.
 
 ### C. The demo
 
-* **Show somewhere still**: pills and `itfPlain` have no demo spot yet.
+* ~~Show somewhere still: pills and `itfPlain`~~ - done 11 October 2026:
+  the **DOM events** tab shows CSS pills on its page and one caption as
+  `itfHTML` beside `itfPlain` in its sidebar, and the **Side by side**
+  tab holds a live `TInkPage` against the browser's own picture of
+  `demo/showcase.html` - the showcase is one readable document using the
+  vocabulary once, and `tools/compare.sh demo/showcase.html` opens the
+  same page beside a live browser.
 * **Source and preview scrolled together** - nice, not essential.
 * **A build on the current stable Lazarus** - only trunk has been run.
 
@@ -226,7 +243,11 @@ out as a fixed point.  Nothing else for Lazarus does this.
 Open polish:
 
 * **Images** in the editor.
-* **A pipe inside a table cell** - the separator wins today.
+* **A pipe inside a table cell** - the separator wins today.  Looked at
+  11 October 2026: not a patch.  The editor's table model is the literal
+  `|` character in the text stream, so a pipe that is a glyph needs a
+  per-character mark that paint, selection, Tab-hopping and both
+  serializers all respect - a planned half day, not an evening's trim.
 
 ### F. An Online Package Manager listing
 

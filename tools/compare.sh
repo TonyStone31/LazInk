@@ -2,8 +2,16 @@
 # Put a page up beside a real browser's rendering of it, in one command.
 #
 #   tools/compare.sh                          the long page, in Xephyr
+#   tools/compare.sh demo/showcase.html       the readable showcase page
 #   tools/compare.sh tests/compare/page.html  a page of your own
 #   tools/compare.sh some.html 760            at another width
+#
+# The long page is the exhaustive fixture - every construct, many times
+# over, for hunting rendering bugs.  demo/showcase.html is the pleasant
+# one: a single readable document that uses the vocabulary once; the
+# demo's "Side by side" tab shows it against the browser picture in
+# demo/showcase-browser.png (remake that with tools/browser_shot.sh
+# after editing the showcase).
 #
 # It builds tools/sidebyside.pas, takes the browser's picture when there
 # isn't a current one, starts Xephyr if DISPLAY is not already somewhere

@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>The LazInk showcase</title>
+<!-- One readable document that uses the whole vocabulary once, rather
+     than a test page that repeats each construct a hundred times.  The
+     demo shows it beside a browser's picture of the same file, and
+     tools/compare.sh opens it beside a live browser strip.
+     The colors are the page's own, so both sides match in any theme. -->
+<style>
+  body { background: #ffffff; color: #22262c; font-size: 15px;
+         font-family: sans-serif; line-height: 1.5; padding: 14px 16px }
+  h1 { color: #14315c; font-size: 27px; margin: 4px 0 2px }
+  h2 { color: #176bbd; font-size: 20px; margin-top: 28px }
+  h3 { color: #5e6670; font-size: 16px }
+  a { color: #176bbd }
+  code, kbd { background: #eef0f3; padding: 1px 4px; border-radius: 3px }
+  kbd { border: 1px solid #c8ccd2 }
+  pre { background: #f4f6f8; padding: 10px; overflow-x: hidden }
+  pre code { background: none; padding: 0 }
+  blockquote { color: #5e6670; border-left: 4px solid #c8ccd2;
+               margin-left: 0; padding-left: 12px }
+  mark { background: #fff3a0 }
+  small { color: #7a828c }
+  hr { border: none; border-top: 1px solid #c8ccd2; margin: 22px 0 }
+  table { border-collapse: collapse; margin: 10px 0 }
+  th, td { border: 1px solid #c8ccd2; padding: 5px 9px; text-align: left }
+  th { background: #eef2f7 }
+  td.num { text-align: right }
+  .lede { font-size: 16px; color: #46505c }
+  .pill { border-radius: 999px; padding: 2px 10px; color: white;
+          font-size: 12px; white-space: nowrap }
+  .blue { background: #2e86de } .green { background: #1e8449 }
+  .slate { background: #5e6670 }
+  .note { background: #eef6ff; border-left: 4px solid #176bbd;
+          padding: 8px 12px; margin: 12px 0 }
+  .warn { background: #fff7ed; border-left: 4px solid #d97706;
+          padding: 8px 12px; margin: 12px 0 }
+  .row { display: flex; gap: 10px; margin: 12px 0 }
+  .card { flex: 1; background: #f4f7ff; border: 1px solid #c7d2fe;
+          border-radius: 8px; padding: 10px 12px }
+  .card h3 { margin: 0 0 6px; color: #14315c }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+          margin: 12px 0 }
+  .cell { background: #f7f8fa; border: 1px solid #d8dce2;
+          border-radius: 6px; padding: 8px 10px }
+  dt { font-weight: bold; margin-top: 8px }
+  dd { margin-left: 16px; color: #46505c }
+  .fine { font-size: 12px; color: #7a828c }
+</style>
+</head>
+<body>
+
+<h1>The LazInk showcase</h1>
+<p class="lede">One page, written to be read &mdash; and to use, once each,
+most of what the renderer knows.</p>
+
+<p>
+<span class="pill blue">canvas-drawn</span>
+<span class="pill green">0BSD</span>
+<span class="pill slate">no JavaScript</span>
+</p>
+
+<p>LazInk draws formatted text on a plain <code>TCanvas</code>: labels,
+memos, list boxes, a page viewer and an editor, reading
+<b>HTML</b> or <b>Markdown</b> through one renderer. This document is
+ordinary HTML with a small stylesheet &mdash; the kind of page a help
+system or a release note actually is. Inline it handles <b>bold</b>,
+<i>italics</i>, <u>underline</u>, <s>strikethrough</s>,
+<mark>highlighted phrases</mark>, H<sub>2</sub>O and E=mc<sup>2</sup>,
+<a href="https://github.com/TonyStone31/LazInk">links</a>,
+<code>code spans</code>, the <kbd>Ctrl</kbd>+<kbd>F</kbd> kind of key,
+and <small>the small print</small>.</p>
+
+<div class="note"><b>How this page is used.</b> The demo shows it beside a
+browser&rsquo;s picture of the same file; <code>tools/compare.sh</code>
+opens it beside a live browser. Scroll either and the other follows.</div>
+
+<h2>What reads what</h2>
+
+<p>Every display control has a <code>TextFormat</code>; the table says
+what each one is for. The widths come from the words, as a browser
+works them out:</p>
+
+<table>
+  <tr><th>Control</th><th>Reads</th><th class="num">Lines of code to use it</th></tr>
+  <tr><td><code>TInkLabel</code></td><td>a line or a paragraph</td><td class="num">1</td></tr>
+  <tr><td><code>TInkMemo</code></td><td>log lines, chat entries</td><td class="num">2</td></tr>
+  <tr><td><code>TInkPage</code></td><td>whole documents</td><td class="num">1</td></tr>
+  <tr><td colspan="2">rendered by the same engine</td><td class="num">&mdash;</td></tr>
+</table>
+
+<h2>Boxes from CSS</h2>
+
+<p>Flex puts cards in a row and shares the width; each card is a border,
+a radius and a padding away from a plain <code>div</code>:</p>
+
+<div class="row">
+  <div class="card"><h3>Parse</h3>A browser&rsquo;s own tree construction:
+  tag soup in, a document out.</div>
+  <div class="card"><h3>Style</h3>The full cascade &mdash; selectors,
+  variables, <code>calc()</code>, media queries.</div>
+  <div class="card"><h3>Lay out</h3>Blocks, floats, tables, flex and
+  grid, from the computed styles.</div>
+</div>
+
+<p>Grid divides the other way:</p>
+
+<div class="grid">
+  <div class="cell"><b>Pills</b> are a <code>border-radius</code> taller
+  than the line &mdash; sized like a browser sizes them.</div>
+  <div class="cell"><b>Notes</b> like the blue one above are a
+  <code>border-left</code> and a tint.</div>
+  <div class="cell"><b>Cards</b> hold any markup: <i>italics</i>,
+  <a href="#top">links</a>, <code>code</code>.</div>
+  <div class="cell"><b>This grid</b> is
+  <code>grid-template-columns:&nbsp;1fr&nbsp;1fr</code>.</div>
+</div>
+
+<div class="warn"><b>Not yet.</b> Words do not flow line by line beside a
+floated picture, and there is no JavaScript &mdash; by design, ever.</div>
+
+<h2>Code, quoted and highlighted</h2>
+
+<p>A fenced block names its language and the small highlighter colors
+comments, strings, numbers and keywords &mdash; nothing more. A host with
+its own highlighter plugs in through <code>OnHighlightCode</code>.</p>
+
+<pre><code class="language-pascal">procedure TForm1.FormCreate(Sender: TObject);
+begin
+  // one line is enough
+  Page.LoadMarkdown('# Hello' + LineEnding + 'It *renders*.');
+end;</code></pre>
+
+<blockquote>
+<p>The measure is HTML and CSS as people actually write them &mdash; an
+old help file, a Markdown README, a saved article should come out the way
+a browser draws them.</p>
+<p><small>&mdash; the roadmap, on where this is going</small></p>
+</blockquote>
+
+<h2>Lists of every kind</h2>
+
+<p>Ordered, unordered, nested, definitions and tasks:</p>
+
+<ol>
+  <li>A numbered step</li>
+  <li>Another, holding a nested list:
+    <ul>
+      <li>a bullet</li>
+      <li>a second bullet with <code>inline code</code></li>
+    </ul>
+  </li>
+  <li>The last step</li>
+</ol>
+
+<dl>
+  <dt>Renderer</dt>
+  <dd>The one engine behind every control.</dd>
+  <dt>Converter</dt>
+  <dd>Markdown in, the renderer&rsquo;s HTML out &mdash; new Markdown
+  features land here, once.</dd>
+</dl>
+
+<ul style="list-style: none; padding-left: 0">
+  <li><input type="checkbox" checked disabled> ship the tree layout</li>
+  <li><input type="checkbox" checked disabled> element events for the host</li>
+  <li><input type="checkbox" disabled> flow text round a floated picture</li>
+</ul>
+
+<h2>The folded and the fine print</h2>
+
+<details>
+  <summary>What is under this fold?</summary>
+  <p>A <code>&lt;details&gt;</code> element, opened and shut by its
+  summary &mdash; drawn and handled by LazInk, no script involved.</p>
+</details>
+
+<p>Entities and punctuation come out right: caf&eacute;,
+na&iuml;ve, &frac34; of a pie, 25&nbsp;&deg;C, x&nbsp;&ne;&nbsp;y,
+&ldquo;curly quotes&rdquo;, an em&nbsp;dash &mdash; and a
+non&#8209;breaking hyphen.</p>
+
+<hr>
+
+<p class="fine">Written for the LazInk demo and for
+<code>tools/compare.sh</code>. If the two sides of the screen agree,
+the renderer is doing its job; where they differ by more than a few
+pixels of font metric, that is a bug worth a folder in
+<code>bugs/</code>.</p>
+
+</body>
+</html>

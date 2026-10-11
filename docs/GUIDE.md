@@ -184,6 +184,17 @@ InkPage1.DocumentChanged;   // shown, scroll kept, N still valid
 `InsertBefore`, `Remove` and `Clone` are there too, and `InkQuerySelector`
 / `InkQuerySelectorAll` (unit `InkStyle`) take any CSS selector.
 
+**The mouse, answered with elements:** `ElementAt(X, Y)` names the element
+under a point of the page, the way a browser's `elementFromPoint` does -
+the topmost one painted there, so a positioned box wins over what it
+covers.  `OnElementClick` fires for every click with the element under it
+(links included, before the link is followed), and `OnElementHover`
+whenever the element under the pointer changes - `nil` on the way out.
+With `Document` and `DocumentChanged` that is the whole loop script would
+run, written in Pascal instead: the demo's **DOM events** tab crosses out
+to-do lines this way.  `TInkMemo` has the same events; there the element
+belongs to the entry it was appended in.
+
 **Computed styles:** `ComputedStyle(Node)` runs the cascade a browser runs
 (unit `InkStyle`) - the browser's own defaults, the page's old attributes
 (`bgcolor`, `<font>`, `cellpadding`), its `<style>` and `<link>` sheets with
@@ -194,7 +205,8 @@ computed values: `Value('display')`, `Px('margin-top')`, `Color('color')`.
 `ExplainStyle(Node)` lists the rules that apply, weakest first, as a
 browser's inspector does.  Styles are worked out the first time one is
 asked for, so a program that never asks pays nothing.  What a page draws
-does not come from these yet - that is the layout step on the roadmap.  The parser needs no
+comes from these same computed styles: the layout builds its boxes from
+them.  The parser needs no
 widgetset, so `InkParseHTML` works in a console program as well.  It never
 runs script: `<noscript>` is ordinary content.
 
@@ -466,6 +478,26 @@ out of, a simulated log arriving into an owner-drawn list with an editor
 that floats into place over the item you click:
 
 ![The list box tab](../images/demo-listbox.png)
+
+**DOM events** is a page with no script that behaves as if it had some:
+click a to-do line and the program hears `OnElementClick`, flips a class
+on that element and calls `DocumentChanged`; move the mouse and
+`OnElementHover` reports the element path on the right, the way an
+inspector writes one.  The pills are plain CSS `border-radius`, and the
+sidebar shows one caption twice - as `itfHTML` and as `itfPlain`.
+
+![The DOM events tab](../images/demo-dom.png)
+
+**Side by side** holds LazInk against a browser, inside the demo itself:
+the left half is a browser's picture of `demo/showcase.html`, the right a
+live `TInkPage` showing the same file, and scrolling either side moves
+both.  The showcase is one readable document that uses the vocabulary
+once - tables, flex cards, grid, pills, highlighted code, folds, entities
+- rather than a test page repeating each construct.  After editing it,
+remake the picture with `tools/browser_shot.sh demo/showcase.html
+demo/showcase-browser.png 560 2420`.
+
+![The side by side tab](../images/demo-compare.png)
 
 `lazinkdemo FILE` opens a page on the Documents tab, and
 `lazinkdemo --screenshots DIR` saves a picture of every tab and quits - which is
