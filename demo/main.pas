@@ -496,7 +496,7 @@ begin
       '<p><b>showcase-browser.png</b> was not found beside the program. ' +
       'Make the browser''s picture once with:</p>' +
       '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding +
-      '  demo/showcase-browser.png 548 5100</pre></body>');
+      '  demo/showcase-browser.png 548 7310</pre></body>');
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
 

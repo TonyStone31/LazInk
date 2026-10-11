@@ -77,6 +77,44 @@
   .shout { text-transform: uppercase }
   figure { margin: 14px 0 }
   figcaption { font-size: 12px; color: #7a828c; margin-top: 4px }
+  /* 9: selectors doing the work */
+  table.roster tr:nth-child(even) td { background: #f2f5f9 }
+  table.roster td:first-child { font-weight: bold }
+  table.roster tr:last-child td { border-bottom: 2px solid #176bbd }
+  caption { font-size: 12px; color: #7a828c; caption-side: top;
+            text-align: left; padding-bottom: 4px }
+  /* 10: generated content */
+  ul.crumbs { list-style: none; padding: 0 }
+  ul.crumbs li { display: inline }
+  ul.crumbs li + li::before { content: " / "; color: #7a828c }
+  p.tagged::before { content: "NOTE "; color: #d97706; font-weight: bold;
+                     font-size: 12px }
+  a.out::after { content: " \2197" }
+  /* 11: variables, calc and color-mix */
+  :root { --accent: #2e86de; --pad: 8px }
+  .swatch { display: inline-block; width: 90px; padding: 6px 0;
+            text-align: center; color: white; font-size: 12px }
+  .meter { background: #eef0f3; padding: var(--pad) }
+  .meter div { background: var(--accent); color: white; font-size: 12px;
+               padding: 2px 8px; width: calc(70% - 16px) }
+  /* 12: borders of every stripe */
+  .bb { display: inline-block; width: 110px; padding: 6px 8px;
+        margin: 4px 6px 4px 0; font-size: 12px; text-align: center }
+  .dot { border-radius: 50%; width: 46px; height: 46px; background: #2e86de;
+         display: inline-block }
+  hr.fat { border: none; height: 6px; background: #c7d2fe }
+  /* 13: out of the flow */
+  .well { border: 1px solid #d8dce2; padding: 10px; margin: 10px 0 }
+  .fl { width: 110px; padding: 8px; font-size: 12px; background: #f4f7ff;
+        border: 1px solid #c7d2fe }
+  .tag { position: absolute; top: -10px; right: 12px; background: #d97706;
+         color: white; font-size: 11px; padding: 2px 8px;
+         border-radius: 999px }
+  .ib { display: inline-block; border: 1px solid #d8dce2; padding: 6px 10px;
+        margin-right: 6px; border-radius: 6px; font-size: 13px }
+  /* 14: space, kept and squeezed */
+  pre.poem { background: none; padding: 0; white-space: pre-wrap;
+             font-family: Arial, sans-serif; color: #46505c }
 </style>
 </head>
 <body>
@@ -113,7 +151,11 @@ that is a bug worth a folder in <code>bugs/</code>.</div>
 window</a>, <a href="#log">4 a log console</a>,
 <a href="#tables">5 tables</a>, <a href="#lines">6 single
 lines</a>, <a href="#lists">7 lists</a>,
-<a href="#folds">8 folds and fine print</a> &mdash; numbered so a
+<a href="#folds">8 folds</a>,
+<a href="#sel">9 selectors</a>, <a href="#gen">10 generated words</a>,
+<a href="#vars">11 variables</a>, <a href="#borders">12 borders</a>,
+<a href="#flow">13 out of the flow</a>, <a href="#space">14 space</a>
+&mdash; numbered so a
 difference between the two halves can be named by its section, and
 the links jump, as they would in a help viewer.</p>
 
@@ -323,6 +365,133 @@ begin
   Page.LoadMarkdown('# Hello' + LineEnding + 'It *renders*.');
   Page.OnElementClick := @WhatScriptWouldDo;  { the host's turn }
 end;</code></pre>
+
+
+<h2 id="sel">9 &middot; Selectors doing the work</h2>
+
+<p>None of this table&rsquo;s rows is styled by hand: the zebra is
+<code>tr:nth-child(even)</code>, the bold first column
+<code>td:first-child</code>, the closing rule
+<code>tr:last-child</code>, and the title is a real
+<code>&lt;caption&gt;</code>:</p>
+
+<table class="roster">
+  <caption>The controls, striped by the stylesheet</caption>
+  <tr><th>Control</th><th>Kind</th><th>Since</th></tr>
+  <tr><td>TInkLabel</td><td>display</td><td>the beginning</td></tr>
+  <tr><td>TInkListBox</td><td>list</td><td>the forum demo</td></tr>
+  <tr><td>TInkMemo</td><td>display</td><td>early on</td></tr>
+  <tr><td>TInkPage</td><td>document</td><td>the help viewer</td></tr>
+  <tr><td>TInkRichEdit</td><td>editor</td><td>October 2026</td></tr>
+</table>
+
+<h2 id="gen">10 &middot; Words the stylesheet wrote</h2>
+
+<p>The slashes, the NOTE and the arrow below are not in the markup -
+they are <code>::before</code> and <code>::after</code> content:</p>
+
+<ul class="crumbs">
+  <li><a href="#top">home</a></li>
+  <li><a href="#build">controls</a></li>
+  <li>TInkPage</li>
+</ul>
+
+<p class="tagged">a paragraph the stylesheet labels, the way docs sites
+tag their callouts.</p>
+
+<p>An outbound link grows its arrow:
+<a class="out" href="https://www.lazarus-ide.org/">the Lazarus site</a>.</p>
+
+<h2 id="vars">11 &middot; Variables, calc() and color-mix()</h2>
+
+<p>One <code>--accent</code> variable, mixed down the line with
+<code>color-mix()</code>:</p>
+
+<p>
+<span class="swatch" style="background: var(--accent)">accent</span><span
+ class="swatch" style="background: color-mix(in srgb, var(--accent) 70%, white)">70%</span><span
+ class="swatch" style="background: color-mix(in srgb, var(--accent) 40%, white); color: #22262c">40%</span><span
+ class="swatch" style="background: color-mix(in srgb, var(--accent) 15%, white); color: #22262c">15%</span>
+</p>
+
+<p>And a meter whose bar is <code>calc(70% - 16px)</code> wide, inside
+padding named by <code>var(--pad)</code>:</p>
+
+<div class="meter"><div>70 percent</div></div>
+
+<h2 id="borders">12 &middot; Borders of every stripe</h2>
+
+<p>
+<span class="bb" style="border: 2px solid #5e6670">solid</span>
+<span class="bb" style="border: 2px dashed #5e6670">dashed</span>
+<span class="bb" style="border: 2px dotted #5e6670">dotted</span>
+<span class="bb" style="border: 4px double #5e6670">double</span>
+<span class="bb" style="border: 3px inset #9aa4b0">inset</span>
+<span class="bb" style="border: 3px outset #9aa4b0">outset</span>
+<span class="bb" style="border: 4px groove #9aa4b0">groove</span>
+<span class="bb" style="border: 4px ridge #9aa4b0">ridge</span>
+</p>
+
+<p>A radius of 50% is a circle <span class="dot"></span> and a styled
+<code>&lt;hr&gt;</code> is a band:</p>
+
+<hr class="fat">
+
+<h2 id="flow">13 &middot; Out of the flow</h2>
+
+<p>Two floated boxes, one each way, and a cleared line under them -
+said plainly: words do not yet flow line by line <i>beside</i> a
+float, so this page keeps its floats on lines of their own:</p>
+
+<div class="well">
+  <div class="fl" style="float: left">floated left</div>
+  <div class="fl" style="float: right">floated right</div>
+  <div style="clear: both; padding-top: 8px">the cleared line walks
+  under both floats.</div>
+</div>
+
+<p>A positioned badge pins to its card&rsquo;s corner, out of the flow
+entirely:</p>
+
+<div class="well" style="position: relative; margin-top: 16px">
+  <span class="tag">pinned</span>
+  The card is <code>position:&nbsp;relative</code>, the badge
+  <code>absolute</code> - the way a &ldquo;NEW&rdquo; sticker sits on a
+  product tile.
+</div>
+
+<p>And three <code>inline-block</code> chips that flow like words:</p>
+
+<p><span class="ib">one</span><span class="ib">two</span><span
+ class="ib">three</span> &mdash; the paragraph carries on after them.</p>
+
+<h2 id="space">14 &middot; Space, kept and squeezed</h2>
+
+<p>A <code>pre-wrap</code> block keeps the poet&rsquo;s line breaks and
+indents, in the page&rsquo;s own face:</p>
+
+<pre class="poem">The renderer walked into town,
+    its boxes stacked up high -
+it drew each border, left to right,
+        and let the floats go by.</pre>
+
+<p>Sizes share one baseline:
+<span style="font-size: 12px">twelve</span>
+<span style="font-size: 15px">fifteen</span>
+<span style="font-size: 22px">twenty-two</span>
+<span style="font-size: 12px">and twelve again</span> - the small words
+stand on the same line as the large.</p>
+
+<p>The heading ladder, h3 to h6:</p>
+<h3 style="margin: 4px 0">An h3 heading</h3>
+<h4 style="margin: 4px 0">An h4 heading</h4>
+<h5 style="margin: 4px 0">An h5 heading</h5>
+<h6 style="margin: 4px 0">An h6 heading</h6>
+
+<p>And the quieter inline semantics: <del>deleted</del> and
+<ins>inserted</ins> text, a <q>quoted phrase</q> with its own marks,
+a <cite>cited title</cite>, <var>variables</var> beside
+<samp>sample output</samp>.</p>
 
 <hr>
 

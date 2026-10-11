@@ -739,9 +739,11 @@ heading is not shouted), and it draws no form controls.
 
 `demo/showcase.html` is drawn by a browser and by LazInk at the same
 width and the two heights compared - the demo's **Side by side** tab shows
-the two next to each other, scroll-locked.  As of the font-stack work the
-page comes out **5,086 pixels in LazInk against 5,081 in the browser** -
-five pixels over five thousand.
+the two next to each other, scroll-locked, and `tools/drift.sh` prints the
+drift heading by heading.  As of the font-stack work the prose sections
+agree to a few pixels in several thousand; the known exception is the
+inline-block section, 120 pixels short until
+`bugs/2026-10-11-inline-block-boxes` is taken.
 
 Two things got it there, and both are worth keeping:
 
