@@ -283,10 +283,14 @@ details/summary, dl, em and px units.
 To do, smallest first (Tony: "go ahead and mark those... those will be
 good, and floated images should be important too"):
 
-* **`<wbr>`** - a break opportunity in a long identifier.  The tag is
-  already parsed as void; the engine just never learns the spot.
-* **`text-overflow: ellipsis`** - computed, but the layout does not draw
-  it yet.
+* ~~`<wbr>`~~ - done 10 October 2026: the tree hands the engine a
+  `<wbr>` marker, one control character in the text stream, and every
+  layout path - lines, table cells, the narrowest-word measure - may
+  part a word there and nowhere it could not before.
+* ~~`text-overflow: ellipsis`~~ - done 10 October 2026: a block with
+  `white-space: nowrap`, a clipping `overflow` and `text-overflow:
+  ellipsis` ends its cut line in "...", through the ellipsizing the
+  engine already had.
 * **Text flowing round a floated picture** (`float: left/right`,
   `<img align=>`) - floats are laid out, but words do not yet flow line
   by line beside them.  Agreed as important - the big item of this

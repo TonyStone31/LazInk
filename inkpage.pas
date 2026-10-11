@@ -130,6 +130,8 @@ type
     { laid out as written, and cut off at the edge - code, or a memo with
       WordWrap off }
     NoWrap: Boolean;
+    { with NoWrap: the cut line ends in "..." - text-overflow: ellipsis }
+    Ellipsize: Boolean;
     Bold: Boolean;
     FaceName: string;
     TextColor, BackColor: TColor;
@@ -1114,6 +1116,7 @@ begin
   B := TInkPageBlock(FBlocks[Index]);
   Result.LineHeight := B.LineHeight;
   Result.NoWrap := B.NoWrap;
+  Result.Ellipsis := B.Ellipsize;
   { a link in the tree layout wears what its CSS says, underline and all }
   if B.Tree then
   begin

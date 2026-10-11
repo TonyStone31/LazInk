@@ -81,6 +81,7 @@ begin
   O := Options;
   O.LineHeight := B.LineHeight;
   O.NoWrap := B.NoWrap;
+  O.Ellipsis := B.Ellipsize;
   O.CSSLines := True;
   B.MarkerWidth := 0;
   if B.Marker <> '' then B.MarkerWidth := Canvas.TextWidth(B.Marker + ' ');
@@ -317,6 +318,13 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       Put('<br>'); PendingSpace := False;
       Exit;
     end;
+    if E.Name = 'wbr' then
+    begin
+      { a break opportunity, nothing more: the word either side may part
+        here when the line is full }
+      Put('<wbr>');
+      Exit;
+    end;
     if E.Name = 'img' then
     begin
       V2 := E.GetAttribute('alt');
@@ -507,6 +515,10 @@ begin
   V := Base.Keyword('white-space');
   B.NoWrap := (V = 'pre') or (V = 'nowrap');
   B.Pre := (V = 'pre') or (V = 'pre-wrap') or (V = 'break-spaces');
+  { text-overflow: ellipsis - only on a line that cannot wrap and whose
+    box clips, which is the condition a browser puts on it }
+  B.Ellipsize := B.NoWrap and (Base.Keyword('text-overflow') = 'ellipsis') and
+    (Base.Keyword('overflow-x') <> 'visible');
   Targets := TStringList.Create; Titles := TStringList.Create;
   try
     Out_ := ''; PendingSpace := False; AtStart := True;

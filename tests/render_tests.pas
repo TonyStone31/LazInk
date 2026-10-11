@@ -4180,6 +4180,51 @@ begin
     [Snug,Airy]));
 end;
 
+{ <wbr> is a break opportunity inside a word, and text-overflow: ellipsis
+  ends a clipped nowrap line in "..." - the last two of roadmap I's small
+  CSS round }
+procedure WbrEllipsisChecks;
+var P: TInkPageBlock; I, FirstLine, SecondLine: Integer; Found: Boolean;
+const Long = 'averylongidentifier_thatnoline_couldhold';
+begin
+  { the word fits only in halves: without the marker it stays one piece }
+  Probe.LoadHTML('<html><body><p>'+Long+Long+'</p></body></html>');
+  P := FindBlock(Probe,'p','averylong');
+  Probe.BlockText(P.Index);
+  for I := 0 to P.RunCount-1 do
+    Check(P.Runs[I].Line=0,'wbr: without it the word is one unbroken line');
+  Probe.LoadHTML('<html><body><p>'+Long+'<wbr>'+Long+'</p></body></html>');
+  P := FindBlock(Probe,'p','averylong');
+  Probe.BlockText(P.Index);
+  FirstLine := -1; SecondLine := -1;
+  for I := 0 to P.RunCount-1 do
+    if Trim(P.Runs[I].Text)<>'' then
+      if FirstLine<0 then FirstLine := P.Runs[I].Line
+      else SecondLine := P.Runs[I].Line;
+  Check((FirstLine=0) and (SecondLine=1),
+    Format('wbr: the word parts at the marker (lines %d and %d)',
+    [FirstLine,SecondLine]));
+
+  { the ellipsis asks for all three: nowrap, a clipping box, and the
+    text-overflow itself }
+  Probe.LoadHTML('<html><head><style>p{white-space:nowrap;overflow:hidden;'+
+    'text-overflow:ellipsis}</style></head><body><p>'+Long+Long+
+    '</p></body></html>');
+  P := FindBlock(Probe,'p','averylong');
+  Probe.BlockText(P.Index);
+  Found := False;
+  for I := 0 to P.RunCount-1 do
+    if Pos(#$E2#$80#$A6,P.Runs[I].Text)>0 then Found := True;
+  Check(Found,'text-overflow: the cut line ends in an ellipsis');
+  Probe.LoadHTML('<html><head><style>p{white-space:nowrap;overflow:hidden}'+
+    '</style></head><body><p>'+Long+Long+'</p></body></html>');
+  P := FindBlock(Probe,'p','averylong');
+  Probe.BlockText(P.Index);
+  for I := 0 to P.RunCount-1 do
+    Check(Pos(#$E2#$80#$A6,P.Runs[I].Text)=0,
+      'text-overflow: without it the line is cut plain');
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -4389,6 +4434,7 @@ begin
     SelectionBChecks;
     OldSchoolChecks;
     PillBoxChecks;
+    WbrEllipsisChecks;
     DocumentTreeChecks;
     TreeLayoutChecks;
 

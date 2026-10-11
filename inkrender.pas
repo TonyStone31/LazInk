@@ -674,7 +674,7 @@ begin
     (N = 'br') or (N = 'hr') or (N = 'p') or (N = 'center') or
     (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'img') or
     (N = 'table') or (N = 'tr') or (N = 'td') or (N = 'th') or
-    (N = 'vgap') or (N = 'checkbox') or (N = 'sp');
+    (N = 'vgap') or (N = 'checkbox') or (N = 'sp') or (N = 'wbr');
 end;
 
 function TInkRenderer.IsStyleTag(const N: string): Boolean;
@@ -751,6 +751,9 @@ begin
         Attrs.Values[Key] := Val;
       end;
       if Name = 'br' then AddToken(ntBreak,Name,'',SelfClosing,Attrs)
+      { a word may break after this spot and nowhere it could not before:
+        the marker is one control character in the text stream }
+      else if Name = 'wbr' then AddToken(ntText,'',#11,SelfClosing,Attrs)
       else if Name = 'hr' then AddToken(ntRule,Name,'',SelfClosing,Attrs)
       else if Closing then AddToken(ntClose,Name,'',SelfClosing,Attrs)
       else AddToken(ntOpen,Name,'',SelfClosing,Attrs);
@@ -1331,6 +1334,9 @@ var
           LineFirst := Length(FLayout.FRuns);
           Continue;
         end;
+        { <wbr>: a cell breaks between atoms, so splitting the word here
+          is the break opportunity }
+        if Text[P]=#11 then begin Inc(P); Continue end;
         Start := P;
         if Pill then
           { a pill is one thing: its words stay in one box and do not wrap }
@@ -1338,7 +1344,7 @@ var
         else if Text[P] in [' ',#9] then
           while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
         else
-          while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
+          while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10,#11]) do
           begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
         Atom := Copy(Text,Start,P-Start);
         Run.Text := Atom; Sz := MeasureRun(Canvas,Run); RW := Sz.cx;
@@ -1410,13 +1416,15 @@ var
     while P<=Length(Text) do
     begin
       if Text[P]=#10 then begin Inc(P); ALineW := 0; Continue end;
+      { <wbr>: the longest unbreakable word ends here }
+      if Text[P]=#11 then begin Inc(P); Continue end;
       Start := P;
       if Pill then
         while (P<=Length(Text)) and (Text[P]<>#10) do Inc(P)
       else if Text[P] in [' ',#9] then
         while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
       else
-        while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
+        while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10,#11]) do
         begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
       Atom := Copy(Text,Start,P-Start);
       Run.Text := Atom; Sz := MeasureRun(Canvas,Run);
@@ -2002,6 +2010,8 @@ begin
     while P<=Length(Text) do
     begin
       if Text[P]=#10 then begin Inc(P); FinishLine(True); CutLine:=False; Continue end;
+      { <wbr>: the next word may break here, as if a space stood before it }
+      if Text[P]=#11 then begin Inc(P); CanBreak:=True; Continue end;
       { everything after a cut is consumed, not placed, until the next line }
       if CutLine then begin Inc(P); Continue end;
       Start:=P;
@@ -2011,7 +2021,7 @@ begin
       else if Text[P] in [' ',#9] then
         while (P<=Length(Text)) and (Text[P] in [' ',#9]) do Inc(P)
       else
-        while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10]) do
+        while (P<=Length(Text)) and not (Text[P] in [' ',#9,#10,#11]) do
         begin C:=CodepointAt(Text,P,Bytes); Inc(P,Bytes); if IsCJK(C) then Break end;
       Atom:=Copy(Text,Start,P-Start); R.Text:=Atom;
       if Count=0 then
