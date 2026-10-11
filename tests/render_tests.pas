@@ -96,6 +96,15 @@ type
     procedure Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
     procedure Coast(Milliseconds: Integer);
   public
+    { what OnElementClick and OnElementHover answered, as name#id }
+    LastClick, LastHover: string;
+    ClickFires, HoverFires: Integer;
+    procedure ElementClicked(Sender: TObject; AElement: TInkNode);
+    procedure ElementHovered(Sender: TObject; AElement: TInkNode);
+    { the mouse moving with no button down, and the pointer leaving }
+    procedure Glide(X, Y: Integer);
+    procedure Gone;
+  public
     Reads: Integer;
     procedure CountRead(Sender: TObject; const URL: string; Destination: TStream; var Handled: Boolean);
   end;
@@ -192,6 +201,33 @@ end;
 procedure TPageProbe.Coast(Milliseconds: Integer);
 begin
   FlickStep(Milliseconds);
+end;
+
+function ElementLabel(AElement: TInkNode): string;
+begin
+  if AElement = nil then Exit('(nil)');
+  Result := AElement.Name;
+  if AElement.GetAttribute('id') <> '' then Result := Result + '#' + AElement.GetAttribute('id');
+end;
+
+procedure TPageProbe.ElementClicked(Sender: TObject; AElement: TInkNode);
+begin
+  LastClick := ElementLabel(AElement); Inc(ClickFires);
+end;
+
+procedure TPageProbe.ElementHovered(Sender: TObject; AElement: TInkNode);
+begin
+  LastHover := ElementLabel(AElement); Inc(HoverFires);
+end;
+
+procedure TPageProbe.Glide(X, Y: Integer);
+begin
+  MouseMove([], X, Y);
+end;
+
+procedure TPageProbe.Gone;
+begin
+  MouseLeave;
 end;
 
 {$IFDEF LCLGTK3}
@@ -4225,6 +4261,50 @@ begin
       'text-overflow: without it the line is cut plain');
 end;
 
+{ --- the element under the mouse, and the events that carry it --- }
+procedure ElementEventChecks;
+const Doc = '<html><head><style>body{margin:0;font:15px/1.5 sans-serif}</style></head><body>'+
+  '<div id=top style="height:50px;background:#eee">first words</div>'+
+  '<p id=para style="margin:0;height:30px">plain words</p>'+
+  '<div id=hole style="height:60px"></div>'+
+  '<div id=over style="position:absolute;left:0;top:100px;width:80px;height:30px;background:#ddd">over</div>'+
+  '</body></html>';
+var N: TInkNode;
+begin
+  Probe.OnElementClick := @Probe.ElementClicked;
+  Probe.OnElementHover := @Probe.ElementHovered;
+  Probe.LastClick := ''; Probe.LastHover := ''; Probe.ClickFires := 0; Probe.HoverFires := 0;
+  Probe.LoadHTML(Doc);
+  Probe.ScrollTo(0);
+  { the page is laid out with #top at 0..50, #para at 50..80, #hole at
+    80..140 and #over absolute over #hole's left end, 100..130 }
+  N := Probe.ElementAt(10,25);
+  Check((N<>nil) and (N.GetAttribute('id')='top'),
+    'ElementAt: words answer their element ('+ElementLabel(N)+')');
+  N := Probe.ElementAt(300,110);
+  Check((N<>nil) and (N.GetAttribute('id')='hole'),
+    'ElementAt: an empty box answers itself ('+ElementLabel(N)+')');
+  N := Probe.ElementAt(10,110);
+  Check((N<>nil) and (N.GetAttribute('id')='over'),
+    'ElementAt: the positioned box on top wins ('+ElementLabel(N)+')');
+  Probe.Glide(10,25);
+  Check((Probe.LastHover='div#top') and (Probe.HoverFires=1),
+    'hover: entering an element fires, and carries it ('+Probe.LastHover+')');
+  Probe.Glide(12,26);
+  Check(Probe.HoverFires=1,'hover: moving within it is quiet');
+  Probe.Glide(10,65);
+  Check((Probe.LastHover='p#para') and (Probe.HoverFires=2),
+    'hover: crossing into the next fires once ('+Probe.LastHover+')');
+  Probe.Gone;
+  Check((Probe.LastHover='(nil)') and (Probe.HoverFires=3),'hover: leaving answers nil');
+  Probe.Press(10,65); Probe.Let(10,65);
+  Check((Probe.LastClick='p#para') and (Probe.ClickFires=1),
+    'click: carries the element under it ('+Probe.LastClick+')');
+  Probe.Press(10,110); Probe.Let(10,110);
+  Check(Probe.LastClick='div#over','click: the box on top takes it ('+Probe.LastClick+')');
+  Probe.OnElementClick := nil; Probe.OnElementHover := nil;
+end;
+
 { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
 procedure SchemeAndMoreChecks;
 const SchemeDoc = '<html><head><style>'+
@@ -4435,6 +4515,7 @@ begin
     OldSchoolChecks;
     PillBoxChecks;
     WbrEllipsisChecks;
+    ElementEventChecks;
     DocumentTreeChecks;
     TreeLayoutChecks;
 

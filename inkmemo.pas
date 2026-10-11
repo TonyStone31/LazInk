@@ -193,6 +193,11 @@ type
     property OnLinkEnter: TInkMemoLinkEvent read FOnLinkEnter write FOnLinkEnter;
     property OnLinkLeave: TInkMemoLinkEvent read FOnLinkLeave write FOnLinkLeave;
     property OnLinkRightClick: TInkMemoLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
+    { the element under a click or the pointer, as on TInkPage; in a memo
+      the element belongs to its entry's document (Block().Entry says
+      which entry a block is from) }
+    property OnElementClick;
+    property OnElementHover;
     { Re-flow each line to the width.  Off, a long line is cut off at the
       right edge. }
     property WordWrap: Boolean read FWordWrap write SetWordWrap default False;

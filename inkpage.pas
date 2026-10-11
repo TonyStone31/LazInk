@@ -32,6 +32,11 @@ type
   { Handled stops the page from doing anything more with the click. }
   TInkLinkActivateEvent = procedure(Sender: TObject; const Link: TInkLinkInfo;
     var Handled: Boolean) of object;
+  { An element of Document the mouse touched: OnElementClick's and
+    OnElementHover's.  Read its Name and attributes, change it and call
+    DocumentChanged - the host does what script would.  Hover answers nil
+    when the pointer leaves the last element. }
+  TInkElementEvent = procedure(Sender: TObject; AElement: TInkNode) of object;
   { How a picture is sized: never larger than it is (the default), always as
     wide as the column, or as large as fits in the window - for a window that
     shows one picture. }
@@ -245,6 +250,7 @@ type
     procedure TreeRender(ACanvas: TCanvas);
     function TreePaintMarker(ACanvas: TCanvas; B: TInkPageBlock; const TR: TRect): Boolean;
     function TreeBlockAt(X, DocY: Integer; ANearest: Boolean): Integer;
+    function TreeElementAt(X, DocY: Integer): TInkNode;
     procedure TreeToggleFold(Index: Integer);
     procedure LoadPicture(B: TInkPageBlock);
     procedure Animate(Sender: TObject);
@@ -259,6 +265,9 @@ type
   private
     FSource, FLocation, FTitle, FHoverLink: string;
     FHoverBlock, FHoverLinkIndex: Integer;
+    { the element last answered to OnElementHover - compared, never read }
+    FHoverElement: TInkNode;
+    FOnElementClick, FOnElementHover: TInkElementEvent;
     FClickedLink: TInkLinkInfo;
     FOnLinkActivate: TInkLinkActivateEvent;
     FImageFit: TInkImageFit;
@@ -298,6 +307,7 @@ type
     procedure GrabMove(X,Y: Integer; Time: QWord);
     procedure GrabEnd(X,Y: Integer; Time: QWord);
     procedure ClickAt(X,Y: Integer);
+    procedure HoverElementAt(X,Y: Integer);
     procedure StopFlick;
     procedure FlickTimer(Sender: TObject);
     function GetFlicking: Boolean;
@@ -499,6 +509,12 @@ type
     { the rules that apply to an element, weakest first, as an inspector
       shows them; the caller frees the list }
     function ExplainStyle(ANode: TInkNode): TStringList;
+    { The element under client X, Y - the topmost one painted there, as a
+      browser's elementFromPoint answers: a positioned box wins over what
+      it covers, a float over the flow.  A word answers the element whose
+      box holds it (an inline element has no box of its own, so a <span>'s
+      words answer the paragraph).  nil off the page's elements. }
+    function ElementAt(X,Y: Integer): TInkNode;
     procedure RenderTo(ACanvas: TCanvas);
     function PlainText: string;
     function ImageCount: Integer;
@@ -621,6 +637,14 @@ type
     { Before OnLinkClick, with everything about the link: its target, and the
       picture it wraps.  Set Handled to stop there. }
     property OnLinkActivate: TInkLinkActivateEvent read FOnLinkActivate write FOnLinkActivate;
+    { A click on the page, with the element under it (ElementAt) - fired
+      for every click, links included, before the link is followed.  The
+      host does what script would: read the element, change the document,
+      call DocumentChanged. }
+    property OnElementClick: TInkElementEvent read FOnElementClick write FOnElementClick;
+    { the element under the pointer changed - the one it moved onto, or
+      nil when it left the last one }
+    property OnElementHover: TInkElementEvent read FOnElementHover write FOnElementHover;
     property ImageFit: TInkImageFit read FImageFit write SetImageFit default iifShrink;
     property OnResource: TInkPageResourceEvent read FOnResource write FOnResource;
     { Colors a code block's comments, strings, numbers and keywords.  The
@@ -690,6 +714,8 @@ type
     property MarkdownInlineHTML;
     property OnLinkClick;
     property OnLinkActivate;
+    property OnElementClick;
+    property OnElementHover;
     property ImageFit;
     property OnResource;
     property HighlightCode;
@@ -985,6 +1011,8 @@ end;
 procedure TInkCustomPage.BeginDocument;
 begin
   ClearItems; FTitle := ''; FHoverLink := ''; FHoverBlock := -1;
+  { the old document's nodes are going away; the next move re-answers }
+  FHoverElement := nil;
   FSchemeApplied := GetActiveColorScheme;
   FSelecting := False;
   if HasSelection then
@@ -1302,6 +1330,10 @@ function TInkCustomPage.ExplainStyle(ANode: TInkNode): TStringList;
 begin
   if ComputedStyle(ANode)<>nil then Result := FStyler.Explain(ANode)
   else Result := TStringList.Create;
+end;
+function TInkCustomPage.ElementAt(X,Y: Integer): TInkNode;
+begin
+  Result := TreeElementAt(X,Y+FScroll.Position);
 end;
 procedure TInkCustomPage.DocumentChanged;
 begin
@@ -2130,12 +2162,18 @@ end;
 
 procedure TInkCustomPage.ClickAt(X,Y: Integer);
 var B, CI: Integer; Hit: THTMLHitInfo; Info: TInkLinkInfo; Blk: TInkPageBlock;
+  N: TInkNode;
 begin
   if CanFocus then SetFocus;
   if CodeButtonAt(X,Y,B,CI) then
   begin
     PressCodeButton(B,CI);
     Exit;
+  end;
+  if Assigned(FOnElementClick) then
+  begin
+    N := ElementAt(X,Y);
+    if N<>nil then FOnElementClick(Self,N);
   end;
   if not HitTestLink(X,Y,B,Hit) then
   begin
@@ -2157,6 +2195,16 @@ begin
   else if (Hit.LinkIndex>=1) and (Hit.LinkIndex<=Length(Blk.LinkTargets)) then
     Info.Target := Blk.LinkTargets[Hit.LinkIndex-1];
   LinkClicked(Info);
+end;
+
+procedure TInkCustomPage.HoverElementAt(X,Y: Integer);
+var N: TInkNode;
+begin
+  if not Assigned(FOnElementHover) then Exit;
+  N := ElementAt(X,Y);
+  if N=FHoverElement then Exit;
+  FHoverElement := N;
+  FOnElementHover(Self,N);
 end;
 
 procedure TInkCustomPage.StopFlick;
@@ -2311,6 +2359,7 @@ begin
       Exit;
     end;
   end;
+  HoverElementAt(X,Y);
   HitTestLink(X,Y,HoverBlock,HoverHit);
   if HoverHit.OnLink then FHoverLink := ResolveURL(LinkHref(HoverHit))
   else FHoverLink := '';
@@ -2390,6 +2439,11 @@ procedure TInkCustomPage.MouseLeave;
 var NoHit: THTMLHitInfo;
 begin
   inherited MouseLeave;
+  if FHoverElement<>nil then
+  begin
+    FHoverElement := nil;
+    if Assigned(FOnElementHover) then FOnElementHover(Self,nil);
+  end;
   if FHoverBlock<0 then Exit;
   FHoverBlock := -1; FHoverLinkIndex := 0; FHoverLink := '';
   NoHit.OnLink := False; NoHit.LinkName := ''; NoHit.LinkText := ''; NoHit.LinkIndex := 0;
