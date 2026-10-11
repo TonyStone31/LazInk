@@ -42,6 +42,7 @@ A page's own rules beat the program's stylesheet.
 | `<small>` | smaller |
 | `<q>` | wrapped in quotation marks |
 | `<br>` | a line break |
+| `<wbr>` | a break opportunity inside a long word |
 | `<span style="...">` | whatever the style attribute says |
 | `<abbr title="...">` | its text (the title is not shown) |
 
@@ -236,7 +237,7 @@ out from it:
 |---|---|
 | **Box** | `display`, `margin`, `padding`, `border` (each side, `border-radius`), `width`/`height` and their `min-`/`max-`, `box-sizing`, `overflow` (as a clip) |
 | **Layout** | normal flow with margin collapsing, `float`/`clear`, `position` (`relative`, `absolute`, `fixed`), `z-index`, flex (wrap, grow, shrink, basis, alignment, `order`, `gap`), grid (`grid-template-*`, named areas, `repeat()`, `minmax()`, `auto-fill`, spans), tables (`border-collapse`, `border-spacing`, `table-layout`, spans, captions) |
-| **Text** | `color`, `background-color`, `font-*`, `text-align`, `text-decoration`, `text-transform`, `white-space`, `line-height`, `vertical-align`, `visibility`, `opacity: 0` |
+| **Text** | `color`, `background-color`, `font-*`, `text-align`, `text-decoration`, `text-transform`, `white-space`, `line-height`, `vertical-align`, `text-overflow: ellipsis` (with `nowrap` and a clipping `overflow`), `visibility`, `opacity: 0` |
 | **Lists** | `list-style-type`, `list-style-position`, counters in markers |
 | **Scrollbar** | `scrollbar-color`, `scrollbar-width` (see the README) |
 
