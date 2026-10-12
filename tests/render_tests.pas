@@ -1,53 +1,108 @@
 program RenderTests;
 {$mode objfpc}{$H+}
-uses Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types, LCLType, LCLIntf,
-  InkRichEdit, InkCodeMemo,
+uses
+  Interfaces,
+  Forms,
+  Controls,
+  Classes,
+  SysUtils,
+  Graphics,
+  Types,
+  LCLType,
+  LCLIntf,
+  InkRichEdit,
+  InkCodeMemo,
   {$IFDEF LCLGTK3}LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
-  InkScrollBar, InkDraw, InkMarkdown, InkLabel, InkMemo, InkListBox, InkPage, InkDOM, InkStyle, InkLayout, InkCode, InkGIF,
-  InkWebP, WebP_Checks, Layout_Cache_Checks,
-  LResources, LazInkReg,
-  InkTouch, InkCopyMenu, InkEdit, Menus, Clipbrd, URIParser, Math;
+  InkScrollBar,
+  InkDraw,
+  InkMarkdown,
+  InkLabel,
+  InkMemo,
+  InkListBox,
+  InkPage,
+  InkDOM,
+  InkStyle,
+  InkLayout,
+  InkCode,
+  InkGIF,
+  InkWebP,
+  WebP_Checks,
+  Layout_Cache_Checks,
+  LResources,
+  LazInkReg,
+  InkTouch,
+  InkCopyMenu,
+  InkEdit,
+  Menus,
+  Clipbrd,
+  URIParser,
+  Math;
+
 type
   TTestExceptions = class
     procedure Handle(Sender: TObject; E: Exception);
   end;
-var TestExceptions: TTestExceptions;
+var
+  TestExceptions: TTestExceptions;
 
-procedure TTestExceptions.Handle(Sender: TObject; E: Exception);
-begin
-  WriteLn(StdErr,E.ClassName,': ',E.Message);
-  DumpExceptionBackTrace(StdErr);
-  Halt(1);
-end;
+  procedure TTestExceptions.Handle(Sender: TObject; E: Exception);
+  begin
+    WriteLn(StdErr, E.ClassName, ': ', E.Message);
+    DumpExceptionBackTrace(StdErr);
+    Halt(1);
+  end;
 
-var B: TBitmap; O: THTMLOptions; Wide, Narrow: TSize; Hit: THTMLHitInfo;
-  S: string; X,Y, Found: Integer; F: TForm; M: TInkMemo; L: TInkLabel;
-  List: TInkListBox; Page: TInkPage;
+var
+  B: TBitmap;
+  O: THTMLOptions;
+  Wide, Narrow: TSize;
+  Hit: THTMLHitInfo;
+  S: string;
+  X, Y, Found: integer;
+  F: TForm;
+  M: TInkMemo;
+  L: TInkLabel;
+  List: TInkListBox;
+  Page: TInkPage;
   TextOutput: TStringList;
-  Files: TStringList; I, Images, Pass: Integer; GIF: TInkGIF; GIFStream: TFileStream;
-  Source: TStringList; Tags: string; K, Wanted: Integer; SR: TSearchRec;
+  Files: TStringList;
+  I, Images, Pass: integer;
+  GIF: TInkGIF;
+  GIFStream: TFileStream;
+  Source: TStringList;
+  Tags: string;
+  K, Wanted: integer;
+  SR: TSearchRec;
 { how many images a GIF holds, by walking its blocks - independent of the
   decoder being tested }
-function GIFFrames(AStream: TStream): Integer;
-var Head: array[0..12] of Byte; B, Size: Byte; Packed_: Byte;
-  procedure SkipSubBlocks;
+  function GIFFrames(AStream: TStream): integer;
+  var
+    Head: array[0..12] of byte;
+    B, Size: byte;
+    Packed_: byte;
+
+    procedure SkipSubBlocks;
+    begin
+      repeat
+        AStream.ReadBuffer(Size, 1);
+        AStream.Seek(Size, soCurrent);
+      until Size = 0;
+    end;
+
   begin
-    repeat
-      AStream.ReadBuffer(Size, 1);
-      AStream.Seek(Size, soCurrent);
-    until Size = 0;
-  end;
-begin
-  Result := 0;
-  AStream.Position := 0;
-  AStream.ReadBuffer(Head, 13);
-  if (Head[10] and $80) <> 0 then AStream.Seek(3 * (1 shl ((Head[10] and 7) + 1)), soCurrent);
-  while AStream.Position < AStream.Size do
-  begin
-    AStream.ReadBuffer(B, 1);
-    case B of
-      $21: begin AStream.Seek(1, soCurrent); SkipSubBlocks end;
-      $2C:
+    Result := 0;
+    AStream.Position := 0;
+    AStream.ReadBuffer(Head, 13);
+    if (Head[10] and $80) <> 0 then AStream.Seek(3 * (1 shl ((Head[10] and 7) + 1)), soCurrent);
+    while AStream.Position < AStream.Size do
+    begin
+      AStream.ReadBuffer(B, 1);
+      case B of
+        $21: begin
+          AStream.Seek(1, soCurrent);
+          SkipSubBlocks;
+        end;
+        $2C:
         begin
           Inc(Result);
           AStream.Seek(8, soCurrent);
@@ -56,17 +111,17 @@ begin
           AStream.Seek(1, soCurrent);
           SkipSubBlocks;
         end;
-    else
-      Break;
+        else
+          Break;
+      end;
     end;
+    AStream.Position := 0;
   end;
-  AStream.Position := 0;
-end;
 
-procedure Check(OK: Boolean; const MessageText: string);
-begin
-  if not OK then raise Exception.Create(MessageText);
-end;
+  procedure Check(OK: boolean; const MessageText: string);
+  begin
+    if not OK then raise Exception.Create(MessageText);
+  end;
 
 type
   { the mouse handlers are protected; a test reaches them the way a
@@ -74,163 +129,165 @@ type
   TPageProbe = class(TInkPage)
   public
     Clicked: string;
-    Changes, Navigations: Integer;
+    Changes, Navigations: integer;
     Activated: TInkLinkInfo;
-    Activations: Integer;
-    HandleLinks: Boolean;
-    procedure LinkActivated(Sender: TObject; const Link: TInkLinkInfo; var Handled: Boolean);
+    Activations: integer;
+    HandleLinks: boolean;
+    procedure LinkActivated(Sender: TObject; const Link: TInkLinkInfo; var Handled: boolean);
     procedure Navigated(Sender: TObject);
-    procedure Button(AButton: TMouseButton; X, Y: Integer);
-    procedure Press(X, Y: Integer; Shift: TShiftState = []);
-    procedure Key(K: Word; Shift: TShiftState);
+    procedure Button(AButton: TMouseButton; X, Y: integer);
+    procedure Press(X, Y: integer; Shift: TShiftState = []);
+    procedure Key(K: word; Shift: TShiftState);
     procedure SelChanged(Sender: TObject);
-    procedure AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: Integer);
+    procedure AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: integer);
     procedure Tick;
     procedure LoadURLForTest(const URL: string);
-    procedure MoveTo(X, Y: Integer);
-    procedure Let(X, Y: Integer);
+    procedure MoveTo(X, Y: integer);
+    procedure Let(X, Y: integer);
     procedure LinkHit(Sender: TObject; const URL: string);
-    function LinkAt(X, Y: Integer): string;
+    function LinkAt(X, Y: integer): string;
     procedure Highlight(Sender: TObject; const ACode, ALanguage: string; var AMarkup: string);
     { a finger, at a time of the test's choosing }
-    procedure Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
-    procedure Coast(Milliseconds: Integer);
+    procedure Finger(Phase: TInkTouchPhase; X, Y: integer; Time: QWord);
+    procedure Coast(Milliseconds: integer);
   public
     { what OnElementClick and OnElementHover answered, as name#id }
     LastClick, LastHover: string;
-    ClickFires, HoverFires: Integer;
+    ClickFires, HoverFires: integer;
     procedure ElementClicked(Sender: TObject; AElement: TInkNode);
     procedure ElementHovered(Sender: TObject; AElement: TInkNode);
     { the mouse moving with no button down, and the pointer leaving }
-    procedure Glide(X, Y: Integer);
+    procedure Glide(X, Y: integer);
     procedure Gone;
   public
-    Reads: Integer;
-    procedure CountRead(Sender: TObject; const URL: string; Destination: TStream; var Handled: Boolean);
+    Reads: integer;
+    procedure CountRead(Sender: TObject; const URL: string; Destination: TStream; var Handled: boolean);
   end;
 
-procedure TPageProbe.CountRead(Sender: TObject; const URL: string; Destination: TStream; var Handled: Boolean);
-begin
-  if Pos('.png',URL)>0 then Inc(Reads);
-end;
+  procedure TPageProbe.CountRead(Sender: TObject; const URL: string; Destination: TStream; var Handled: boolean);
+  begin
+    if Pos('.png', URL) > 0 then Inc(Reads);
+  end;
 
-procedure TPageProbe.Press(X, Y: Integer; Shift: TShiftState);
-begin
-  MouseDown(mbLeft, [ssLeft] + Shift, X, Y);
-end;
+  procedure TPageProbe.Press(X, Y: integer; Shift: TShiftState);
+  begin
+    MouseDown(mbLeft, [ssLeft] + Shift, X, Y);
+  end;
 
-procedure TPageProbe.Key(K: Word; Shift: TShiftState);
-begin
-  KeyDown(K, Shift);
-end;
+  procedure TPageProbe.Key(K: word; Shift: TShiftState);
+  begin
+    KeyDown(K, Shift);
+  end;
 
-procedure TPageProbe.LinkActivated(Sender: TObject; const Link: TInkLinkInfo; var Handled: Boolean);
-begin
-  Activated := Link;
-  Inc(Activations);
-  Handled := HandleLinks;
-end;
+  procedure TPageProbe.LinkActivated(Sender: TObject; const Link: TInkLinkInfo; var Handled: boolean);
+  begin
+    Activated := Link;
+    Inc(Activations);
+    Handled := HandleLinks;
+  end;
 
-procedure TPageProbe.Navigated(Sender: TObject);
-begin
-  Inc(Navigations);
-end;
+  procedure TPageProbe.Navigated(Sender: TObject);
+  begin
+    Inc(Navigations);
+  end;
 
-procedure TPageProbe.Button(AButton: TMouseButton; X, Y: Integer);
-begin
-  MouseDown(AButton, [], X, Y);
-  MouseUp(AButton, [], X, Y);
-end;
+  procedure TPageProbe.Button(AButton: TMouseButton; X, Y: integer);
+  begin
+    MouseDown(AButton, [], X, Y);
+    MouseUp(AButton, [], X, Y);
+  end;
 
-procedure TPageProbe.SelChanged(Sender: TObject);
-begin
-  Inc(Changes);
-end;
+  procedure TPageProbe.SelChanged(Sender: TObject);
+  begin
+    Inc(Changes);
+  end;
 
-procedure TPageProbe.AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: Integer);
-var Item: TMenuItem;
-begin
-  Item := TMenuItem.Create(Menu);
-  Item.Caption := 'Mine';
-  Menu.Items.Add(Item);
-end;
+  procedure TPageProbe.AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: integer);
+  var
+    Item: TMenuItem;
+  begin
+    Item := TMenuItem.Create(Menu);
+    Item.Caption := 'Mine';
+    Menu.Items.Add(Item);
+  end;
 
-procedure TPageProbe.LoadURLForTest(const URL: string);
-begin
-  LoadFromURL(URL);
-end;
+  procedure TPageProbe.LoadURLForTest(const URL: string);
+  begin
+    LoadFromURL(URL);
+  end;
 
-procedure TPageProbe.Tick;
-begin
-  AutoScrollTimer(Self);
-end;
+  procedure TPageProbe.Tick;
+  begin
+    AutoScrollTimer(Self);
+  end;
 
-procedure TPageProbe.MoveTo(X, Y: Integer);
-begin
-  MouseMove([ssLeft], X, Y);
-end;
+  procedure TPageProbe.MoveTo(X, Y: integer);
+  begin
+    MouseMove([ssLeft], X, Y);
+  end;
 
-procedure TPageProbe.Let(X, Y: Integer);
-begin
-  MouseUp(mbLeft, [], X, Y);
-end;
+  procedure TPageProbe.Let(X, Y: integer);
+  begin
+    MouseUp(mbLeft, [], X, Y);
+  end;
 
-procedure TPageProbe.LinkHit(Sender: TObject; const URL: string);
-begin
-  Clicked := URL;
-end;
+  procedure TPageProbe.LinkHit(Sender: TObject; const URL: string);
+  begin
+    Clicked := URL;
+  end;
 
-function TPageProbe.LinkAt(X, Y: Integer): string;
-begin
-  Result := HitLink(X, Y);
-end;
+  function TPageProbe.LinkAt(X, Y: integer): string;
+  begin
+    Result := HitLink(X, Y);
+  end;
 
-procedure TPageProbe.Highlight(Sender: TObject; const ACode, ALanguage: string;
-  var AMarkup: string);
-begin
-  { a host with its own highlighter - SynEdit's, one day - answers like this }
-  Clicked := ALanguage;
-  AMarkup := '<font color="#123456">' + HTMLEscape(ACode) + '</font>';
-end;
+  procedure TPageProbe.Highlight(Sender: TObject; const ACode, ALanguage: string; var AMarkup: string);
+  begin
+    { a host with its own highlighter - SynEdit's, one day - answers like this }
+    Clicked := ALanguage;
+    AMarkup := '<font color="#123456">' + HTMLEscape(ACode) + '</font>';
+  end;
 
-procedure TPageProbe.Finger(Phase: TInkTouchPhase; X, Y: Integer; Time: QWord);
-begin
-  TouchAt(Phase, X, Y, Time);
-end;
+  procedure TPageProbe.Finger(Phase: TInkTouchPhase; X, Y: integer; Time: QWord);
+  begin
+    TouchAt(Phase, X, Y, Time);
+  end;
 
-procedure TPageProbe.Coast(Milliseconds: Integer);
-begin
-  FlickStep(Milliseconds);
-end;
+  procedure TPageProbe.Coast(Milliseconds: integer);
+  begin
+    FlickStep(Milliseconds);
+  end;
 
-function ElementLabel(AElement: TInkNode): string;
-begin
-  if AElement = nil then Exit('(nil)');
-  Result := AElement.Name;
-  if AElement.GetAttribute('id') <> '' then Result := Result + '#' + AElement.GetAttribute('id');
-end;
+  function ElementLabel(AElement: TInkNode): string;
+  begin
+    if AElement = nil then Exit('(nil)');
+    Result := AElement.Name;
+    if AElement.GetAttribute('id') <> '' then Result := Result + '#' + AElement.GetAttribute('id');
+  end;
 
-procedure TPageProbe.ElementClicked(Sender: TObject; AElement: TInkNode);
-begin
-  LastClick := ElementLabel(AElement); Inc(ClickFires);
-end;
+  procedure TPageProbe.ElementClicked(Sender: TObject; AElement: TInkNode);
+  begin
+    LastClick := ElementLabel(AElement);
+    Inc(ClickFires);
+  end;
 
-procedure TPageProbe.ElementHovered(Sender: TObject; AElement: TInkNode);
-begin
-  LastHover := ElementLabel(AElement); Inc(HoverFires);
-end;
+  procedure TPageProbe.ElementHovered(Sender: TObject; AElement: TInkNode);
+  begin
+    LastHover := ElementLabel(AElement);
+    Inc(HoverFires);
+  end;
 
-procedure TPageProbe.Glide(X, Y: Integer);
-begin
-  MouseMove([], X, Y);
-end;
+  procedure TPageProbe.Glide(X, Y: integer);
+  begin
+    MouseMove([], X, Y);
+  end;
 
-procedure TPageProbe.Gone;
-begin
-  MouseLeave;
-end;
+  procedure TPageProbe.Gone;
+  begin
+    MouseLeave;
+  end;
 
-{$IFDEF LCLGTK3}
+  {$IFDEF LCLGTK3}
 { A touch event made the way GDK makes one, sent to the control's window the
   way GTK sends it - so the hook in InkTouch is what gets tested. }
 { a mouse button, the same way }
@@ -297,105 +354,112 @@ begin
   end;
   while g_main_context_pending(nil) do g_main_context_iteration(nil, False);
 end;
-{$ENDIF}
+  {$ENDIF}
 
 type
   { the scrollbar's mouse handlers, reached the same way }
   TBarProbe = class(TInkScrollBar)
   public
-    Changes: Integer;
-    procedure Press(X, Y: Integer);
-    procedure MoveTo(X, Y: Integer);
-    procedure Let(X, Y: Integer);
-    procedure Key(K: Word);
-    procedure Wheel(Delta: Integer);
+    Changes: integer;
+    procedure Press(X, Y: integer);
+    procedure MoveTo(X, Y: integer);
+    procedure Let(X, Y: integer);
+    procedure Key(K: word);
+    procedure Wheel(Delta: integer);
     procedure Changed(Sender: TObject);
   end;
 
-procedure TBarProbe.Press(X, Y: Integer);
-begin
-  MouseDown(mbLeft, [ssLeft], X, Y);
-end;
+  procedure TBarProbe.Press(X, Y: integer);
+  begin
+    MouseDown(mbLeft, [ssLeft], X, Y);
+  end;
 
-procedure TBarProbe.MoveTo(X, Y: Integer);
-begin
-  MouseMove([ssLeft], X, Y);
-end;
+  procedure TBarProbe.MoveTo(X, Y: integer);
+  begin
+    MouseMove([ssLeft], X, Y);
+  end;
 
-procedure TBarProbe.Let(X, Y: Integer);
-begin
-  MouseUp(mbLeft, [], X, Y);
-end;
+  procedure TBarProbe.Let(X, Y: integer);
+  begin
+    MouseUp(mbLeft, [], X, Y);
+  end;
 
-procedure TBarProbe.Key(K: Word);
-begin
-  KeyDown(K, []);
-end;
+  procedure TBarProbe.Key(K: word);
+  begin
+    KeyDown(K, []);
+  end;
 
-procedure TBarProbe.Wheel(Delta: Integer);
-begin
-  DoMouseWheel([], Delta, Point(0, 0));
-end;
+  procedure TBarProbe.Wheel(Delta: integer);
+  begin
+    DoMouseWheel([], Delta, Point(0, 0));
+  end;
 
-procedure TBarProbe.Changed(Sender: TObject);
-begin
-  Inc(Changes);
-end;
+  procedure TBarProbe.Changed(Sender: TObject);
+  begin
+    Inc(Changes);
+  end;
 
-var Probe: TPageProbe; Tall: string; J: Integer;
-  Bar: TBarProbe; TR: TRect; Before: Integer; Shot: TBitmap;
+var
+  Probe: TPageProbe;
+  Tall: string;
+  J: integer;
+  Bar: TBarProbe;
+  TR: TRect;
+  Before: integer;
+  Shot: TBitmap;
 
-function Pos2(ABlock, AOffset: Integer): TInkPagePosition;
-begin
-  Result.Block := ABlock;
-  Result.Offset := AOffset;
-end;
+  function Pos2(ABlock, AOffset: integer): TInkPagePosition;
+  begin
+    Result.Block := ABlock;
+    Result.Offset := AOffset;
+  end;
 
 type
   { protected members, reached as a descendant would }
   TMemoAccess = class(TInkMemo);
+
   TMemoProbe = class(TInkMemo)
   public
     Clicked: string;
-    procedure LinkHit(Sender: TObject; LineIndex: Integer; const LinkName: string);
+    procedure LinkHit(Sender: TObject; LineIndex: integer; const LinkName: string);
   end;
 
-procedure TMemoProbe.LinkHit(Sender: TObject; LineIndex: Integer; const LinkName: string);
-begin
-  Clicked := IntToStr(LineIndex) + ':' + LinkName;
-end;
+  procedure TMemoProbe.LinkHit(Sender: TObject; LineIndex: integer; const LinkName: string);
+  begin
+    Clicked := IntToStr(LineIndex) + ':' + LinkName;
+  end;
 
 type
   { reaches the editor's protected keyboard, for the table's Tab and Enter }
   TRichProbe = class(TInkRichEdit)
   public
-    procedure Key(AKey: Word; AShift: TShiftState);
+    procedure Key(AKey: word; AShift: TShiftState);
   end;
 
-procedure TRichProbe.Key(AKey: Word; AShift: TShiftState);
-begin
-  KeyDown(AKey, AShift);
-end;
+  procedure TRichProbe.Key(AKey: word; AShift: TShiftState);
+  begin
+    KeyDown(AKey, AShift);
+  end;
 
 type
   TEditProbe = class(TInkEdit)
   public
-    procedure Key(AKey: Word; AShift: TShiftState);
+    procedure Key(AKey: word; AShift: TShiftState);
     procedure Press(const C: TUTF8Char);
   end;
 
-procedure TEditProbe.Key(AKey: Word; AShift: TShiftState);
-begin
-  KeyDown(AKey, AShift);
-end;
+  procedure TEditProbe.Key(AKey: word; AShift: TShiftState);
+  begin
+    KeyDown(AKey, AShift);
+  end;
 
-procedure TEditProbe.Press(const C: TUTF8Char);
-var
-  U: TUTF8Char;
-begin
-  U := C;
-  UTF8KeyPress(U);
-end;
+  procedure TEditProbe.Press(const C: TUTF8Char);
+  var
+    U: TUTF8Char;
+  begin
+    U := C;
+    UTF8KeyPress(U);
+  end;
 
 type
   { a form streamed in with OnChange written before Text, the way an old
@@ -406,12 +470,12 @@ type
   end;
 
 var
-  LoadFired: Integer = 0;
+  LoadFired: integer = 0;
 
-procedure TLoadForm.EdChange(Sender: TObject);
-begin
-  Inc(LoadFired);
-end;
+  procedure TLoadForm.EdChange(Sender: TObject);
+  begin
+    Inc(LoadFired);
+  end;
 
 type
   TCodeProbe = class(TInkCodeMemo)
@@ -419,244 +483,257 @@ type
     procedure Press(const C: TUTF8Char);
   end;
 
-procedure TCodeProbe.Press(const C: TUTF8Char);
-var
-  U: TUTF8Char;
-begin
-  U := C;
-  UTF8KeyPress(U);
-end;
+  procedure TCodeProbe.Press(const C: TUTF8Char);
+  var
+    U: TUTF8Char;
+  begin
+    U := C;
+    UTF8KeyPress(U);
+  end;
 
 type
   TListAccess = class(TInkListBox);
   TLabelAccess = class(TInkLabel);
   TInkEditAccess = class(TInkEdit);
 
-{ --- the list box's in-place editor, by every route --- }
-procedure ListEditChecks(AList: TInkListBox);
-var R: TRect; K: Word; T: QWord;
+  { --- the list box's in-place editor, by every route --- }
+  procedure ListEditChecks(AList: TInkListBox);
+  var
+    R: TRect;
+    K: word;
+    T: QWord;
 
-  procedure Click(Shift: TShiftState = []);
+    procedure Click(Shift: TShiftState = []);
+    begin
+      TListAccess(AList).MouseDown(mbLeft, Shift, R.Left + 5, R.Top + 2);
+      TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
+    end;
+
   begin
-    TListAccess(AList).MouseDown(mbLeft, Shift, R.Left + 5, R.Top + 2);
+    R := AList.ItemRect(1);
+    AList.EditMode := emNone;
+    AList.ItemIndex := 1;
+    Click;
+    Check(not AList.Editing, 'emNone: a click does not edit');
+    K := VK_F2;
+    TListAccess(AList).KeyDown(K, []);
+    Check(not AList.Editing, 'emNone: nor does F2');
+    AList.EditItem(1);
+    Check(AList.Editing, 'EditItem edits whatever the mode');
+    AList.CancelEdit;
+    Check(not AList.Editing, 'CancelEdit closes it');
+
+    AList.EditMode := emOnDblClick;
+    Sleep(GetDoubleClickTime + 50);
+    Click;
+    Check(not AList.Editing, 'emOnDblClick: one click does not edit');
+    TListAccess(AList).DblClick;
+    Check(AList.Editing, 'emOnDblClick: a double click edits');
+    AList.CancelEdit;
+    K := VK_F2;
+    TListAccess(AList).KeyDown(K, []);
+    Check(AList.Editing, 'F2 edits the current item');
+    AList.CancelEdit;
+
+    AList.EditMode := emOnTripleClick;
+    Sleep(GetDoubleClickTime + 50);
+    Click;
+    Sleep(80);
+    Click;
+    Check(not AList.Editing, 'emOnTripleClick: two clicks do not edit');
+    Sleep(80);
+    Click;
+    Check(AList.Editing, 'emOnTripleClick: the third does, unmarked as GTK3 sends it');
+    AList.CancelEdit;
+
+    AList.EditMode := emOnClickSelected;
+    Sleep(GetDoubleClickTime + 50);
+    AList.ItemIndex := 1;
+    Click;
+    Check(not AList.Editing, 'emOnClickSelected: not at once');
+    T := GetTickCount64;
+    while not AList.Editing and (GetTickCount64 - T < 3000) do
+    begin
+      Application.ProcessMessages;
+      Sleep(10);
+    end;
+    Check(AList.Editing, 'emOnClickSelected: a moment after a click on the selected item');
+    AList.CancelEdit;
+    Sleep(GetDoubleClickTime + 50);
+    Click;
+    Sleep(60);
+    Click([ssDouble]);
+    T := GetTickCount64;
+    while GetTickCount64 - T < GetDoubleClickTime + 300 do
+    begin
+      Application.ProcessMessages;
+      Sleep(10);
+    end;
+    Check(not AList.Editing, 'emOnClickSelected: a double click is not a rename');
+    { a held button drags the highlight; emOnSelect edits on the release }
+    AList.EditMode := emOnSelect;
+    AList.ItemIndex := 0;
+    Sleep(GetDoubleClickTime + 50);
+    R := AList.ItemRect(0);
+    TListAccess(AList).MouseDown(mbLeft, [ssLeft], R.Left + 5, R.Top + 2);
+    R := AList.ItemRect(2);
+    TListAccess(AList).MouseMove([ssLeft], R.Left + 5, R.Top + 2);
+    Check(AList.ItemIndex = 2, Format('the highlight follows a held mouse (%d)', [AList.ItemIndex]));
+    Check(not AList.Editing, 'emOnSelect waits while the button is down');
     TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
+    Check(AList.Editing, 'and edits on the release');
+    AList.CancelEdit;
+    TListAccess(AList).MouseMove([], R.Left + 5, AList.ItemRect(1).Top + 2);
+    Check(AList.ItemIndex = 2, 'without the button the highlight stays');
+    R := AList.ItemRect(0);
+    AList.ItemIndex := 2;
+    Sleep(GetDoubleClickTime + 50);
+    TListAccess(AList).MouseDown(mbLeft, [ssLeft], R.Left + 5, R.Top + 2);
+    Check(not AList.Editing, 'emOnSelect: the first item is not edited under the press');
+    TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
+    Check(AList.Editing and (AList.ItemIndex = 0), 'the first item can be edited');
+    AList.CancelEdit;
+    AList.EditMode := emNone;
   end;
 
-begin
-  R := AList.ItemRect(1);
-  AList.EditMode := emNone;
-  AList.ItemIndex := 1;
-  Click;
-  Check(not AList.Editing, 'emNone: a click does not edit');
-  K := VK_F2; TListAccess(AList).KeyDown(K, []);
-  Check(not AList.Editing, 'emNone: nor does F2');
-  AList.EditItem(1);
-  Check(AList.Editing, 'EditItem edits whatever the mode');
-  AList.CancelEdit;
-  Check(not AList.Editing, 'CancelEdit closes it');
-
-  AList.EditMode := emOnDblClick;
-  Sleep(GetDoubleClickTime + 50);
-  Click;
-  Check(not AList.Editing, 'emOnDblClick: one click does not edit');
-  TListAccess(AList).DblClick;
-  Check(AList.Editing, 'emOnDblClick: a double click edits');
-  AList.CancelEdit;
-  K := VK_F2; TListAccess(AList).KeyDown(K, []);
-  Check(AList.Editing, 'F2 edits the current item');
-  AList.CancelEdit;
-
-  AList.EditMode := emOnTripleClick;
-  Sleep(GetDoubleClickTime + 50);
-  Click; Sleep(80); Click;
-  Check(not AList.Editing, 'emOnTripleClick: two clicks do not edit');
-  Sleep(80); Click;
-  Check(AList.Editing, 'emOnTripleClick: the third does, unmarked as GTK3 sends it');
-  AList.CancelEdit;
-
-  AList.EditMode := emOnClickSelected;
-  Sleep(GetDoubleClickTime + 50);
-  AList.ItemIndex := 1;
-  Click;
-  Check(not AList.Editing, 'emOnClickSelected: not at once');
-  T := GetTickCount64;
-  while not AList.Editing and (GetTickCount64 - T < 3000) do
+  { --- copying from the memo, the list box and the label --- }
+  procedure ListCopyChecks(AMemo: TMemoProbe; AList: TInkListBox; ALabel: TInkLabel);
+  const
+    E = LineEnding;
+  var
+    Menu: TPopupMenu;
+    R: TRect;
+    P: TPoint;
+    Handled: boolean;
+    K: word;
+    Y0: integer;
   begin
+    AMemo.TextFormat := itfHTML;
+    AMemo.SetBounds(0, 300, 300, 150);
+    AMemo.WordWrap := True;
+    AMemo.Lines.Text := '<b>first</b> line' + E + 'second <i>line</i>' + E + 'third';
     Application.ProcessMessages;
-    Sleep(10);
+    Check(AMemo.Count = 3, 'memo: three lines');
+    Check(AMemo.BlockText(1) = 'second line', 'memo: a line''s words: ' + AMemo.BlockText(1));
+    AMemo.Select(Pos2(1, 0), Pos2(1, MaxInt));
+    Check(AMemo.SelectedText = 'second line', 'memo: a selected line: ' + AMemo.SelectedText);
+    Clipboard.AsText := '';
+    K := VK_C;
+    TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
+    Check(Clipboard.AsText = 'second line', 'memo: Ctrl+C copies it');
+    AMemo.Select(Pos2(0, 6), Pos2(1, 6));
+    Check(AMemo.SelectedText = 'line' + E + 'second', 'memo: a selection across lines: ' + AMemo.SelectedText);
+    K := VK_A;
+    TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
+    K := VK_C;
+    TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
+    Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third',
+      'memo: Ctrl+A then Ctrl+C copies everything: ' + Clipboard.AsText);
+    P := AMemo.PositionPoint(Pos2(2, 1));
+    Menu := AMemo.BuildCopyMenu(P.X, P.Y + 2);
+    Check(Menu.Items[0].Caption = SInkCopy, 'memo menu: Copy');
+    Check(Menu.Items[1].Caption = SInkCopyLine, 'memo menu: Copy this line');
+    Menu.Items[1].Click;
+    Check(Clipboard.AsText = 'third', 'memo menu copies the line under the pointer: ' + Clipboard.AsText);
+    Menu.Items[2].Click;
+    Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third', 'memo menu: Copy all');
+    AMemo.CopyMenu := False;
+    Handled := False;
+    TMemoAccess(TInkMemo(AMemo)).DoContextPopup(Point(P.X, P.Y + 2), Handled);
+    Check(not Handled, 'memo: CopyMenu off shows no menu');
+    AMemo.CopyMenu := True;
+
+    { Append adds a line, and follows the end only when the view was there }
+    for K := 1 to 29 do AMemo.Append('line ' + IntToStr(K));
+    Check(AMemo.Count = 32, 'memo: Append');
+    Check(AMemo.ScrollY > 0, 'memo: while it was all in view, the end was followed');
+    AMemo.ScrollTo(0);
+    AMemo.Append('line 30');
+    Check(AMemo.ScrollY = 0, 'memo: a view scrolled back to the top stays there');
+    AMemo.ScrollTo(MaxInt);
+    Y0 := AMemo.ScrollY;
+    AMemo.Append('<b>newest</b>');
+    Check(AMemo.ScrollY > Y0, 'memo: a view at the end follows new lines');
+    Check(AMemo.BlockText(33) = 'newest', 'memo: the appended line is drawn');
+    Check(AMemo.Block(33).Bounds.Top > AMemo.Block(32).Bounds.Top, 'memo: below the one before');
+
+    { links: the line and the href, as written }
+    AMemo.Clicked := '';
+    AMemo.OnLinkClick := @AMemo.LinkHit;
+    AMemo.MouseDrag := imdSelect;
+    AMemo.Lines.Text := 'a <a href="x&amp;y">link</a> here';
+    AMemo.ScrollTo(0);
+    P := AMemo.PositionPoint(Pos2(0, 3));
+    TMemoAccess(TInkMemo(AMemo)).MouseDown(mbLeft, [ssLeft], P.X, P.Y + 3);
+    TMemoAccess(TInkMemo(AMemo)).MouseUp(mbLeft, [], P.X, P.Y + 3);
+    Check(AMemo.Clicked = '0:x&y', 'memo: OnLinkClick has the line and href: ' + AMemo.Clicked);
+    AMemo.OnLinkClick := nil;
+    AMemo.WordWrap := False;
+
+    AList.TextFormat := itfHTML;
+    AList.EditMode := emNone;
+    AList.SetBounds(300, 300, 200, 150);
+    AList.MultiSelect := True;
+    AList.Items.Text := 'alpha' + E + '<b>beta</b>' + E + 'gamma';
+    Application.ProcessMessages;
+    AList.Selected[0] := True;
+    AList.Selected[2] := True;
+    Check(AList.SelectedText = 'alpha' + E + 'gamma', 'list: every selected item: ' + AList.SelectedText);
+    Check(AList.PlainText = 'alpha' + E + 'beta' + E + 'gamma' + E, 'list: PlainText');
+    R := AList.ItemRect(1);
+    Menu := AList.BuildCopyMenu(R.Left + 5, R.Top + 2);
+    Check(Menu.Items[1].Caption = SInkCopyItem, 'list menu: Copy this item');
+    Menu.Items[1].Click;
+    Check(Clipboard.AsText = 'beta', 'list menu copies the item under the pointer');
+    Menu.Items[Menu.Items.Count - 1].Click;
+    Check(AList.Selected[1] and (AList.SelectedText = 'alpha' + E + 'beta' + E + 'gamma'),
+      'list menu: Select all');
+    AList.PopupMenu := Menu;
+    Handled := False;
+    TListAccess(AList).DoContextPopup(Point(R.Left + 5, R.Top + 2), Handled);
+    Check(not Handled, 'list: a PopupMenu of the program''s own wins');
+    AList.PopupMenu := nil;
+    AList.MultiSelect := False;
+    ListEditChecks(AList);
+
+    ALabel.TextFormat := itfMarkdown;
+    ALabel.Caption := '**hello** [there](http://x.org)';
+    Check(ALabel.PlainText = 'hello there', 'label: a Markdown caption''s plain text: ' + ALabel.PlainText);
+    { out of the box the label does not select: its menu starts at Copy all }
+    Check(not ALabel.Selectable, 'label: not selectable by default');
+    Menu := ALabel.BuildCopyMenu(0, 0);
+    Check(Menu.Items[0].Caption = SInkCopyAll,
+      'label menu: Copy all leads while the label does not select');
+    Check(Menu.Items[Menu.Items.Count - 1].Caption <> SInkSelectAll,
+      'label menu: and Select all is not offered');
+    ALabel.Selectable := True;
+    Menu := ALabel.BuildCopyMenu(0, 0);
+    Check((Menu.Items[0].Caption = SInkCopy) and not Menu.Items[0].Enabled,
+      'label menu: Copy leads, gray with nothing selected');
+    Check(Menu.Items[1].Caption = SInkCopyAll, 'label menu: then Copy all');
+    Check(Menu.Items[Menu.Items.Count - 1].Caption = SInkSelectAll,
+      'label menu: Select all now that the label selects');
+    Menu.Items[1].Click;
+    Check(Clipboard.AsText = 'hello there', 'label menu copies the caption''s words');
+    ALabel.CopyMenu := False;
+    Handled := False;
+    TLabelAccess(ALabel).DoContextPopup(Point(0, 0), Handled);
+    Check(not Handled, 'label: CopyMenu off shows no menu');
+    ALabel.CopyMenu := True;
   end;
-  Check(AList.Editing, 'emOnClickSelected: a moment after a click on the selected item');
-  AList.CancelEdit;
-  Sleep(GetDoubleClickTime + 50);
-  Click; Sleep(60); Click([ssDouble]);
-  T := GetTickCount64;
-  while GetTickCount64 - T < GetDoubleClickTime + 300 do
+
+
+  { --- selecting text with the mouse, and copying it --- }
+  function FindBlock(APage: TInkPage; const Tag, Text: string): TInkPageBlock;
+  var
+    K: integer;
   begin
-    Application.ProcessMessages;
-    Sleep(10);
+    Result := nil;
+    for K := 0 to APage.BlockCount - 1 do
+      if ((Tag = '') or (APage.Block(K).Tag = Tag)) and (Pos(Text, HTMLPlainText(APage.Block(K).Source)) > 0) then
+        Exit(APage.Block(K));
+    raise Exception.Create('No ' + Tag + ' block with "' + Text + '"');
   end;
-  Check(not AList.Editing, 'emOnClickSelected: a double click is not a rename');
-  { a held button drags the highlight; emOnSelect edits on the release }
-  AList.EditMode := emOnSelect;
-  AList.ItemIndex := 0;
-  Sleep(GetDoubleClickTime + 50);
-  R := AList.ItemRect(0);
-  TListAccess(AList).MouseDown(mbLeft, [ssLeft], R.Left + 5, R.Top + 2);
-  R := AList.ItemRect(2);
-  TListAccess(AList).MouseMove([ssLeft], R.Left + 5, R.Top + 2);
-  Check(AList.ItemIndex = 2, Format('the highlight follows a held mouse (%d)', [AList.ItemIndex]));
-  Check(not AList.Editing, 'emOnSelect waits while the button is down');
-  TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
-  Check(AList.Editing, 'and edits on the release');
-  AList.CancelEdit;
-  TListAccess(AList).MouseMove([], R.Left + 5, AList.ItemRect(1).Top + 2);
-  Check(AList.ItemIndex = 2, 'without the button the highlight stays');
-  R := AList.ItemRect(0);
-  AList.ItemIndex := 2;
-  Sleep(GetDoubleClickTime + 50);
-  TListAccess(AList).MouseDown(mbLeft, [ssLeft], R.Left + 5, R.Top + 2);
-  Check(not AList.Editing, 'emOnSelect: the first item is not edited under the press');
-  TListAccess(AList).MouseUp(mbLeft, [], R.Left + 5, R.Top + 2);
-  Check(AList.Editing and (AList.ItemIndex = 0), 'the first item can be edited');
-  AList.CancelEdit;
-  AList.EditMode := emNone;
-end;
-
-{ --- copying from the memo, the list box and the label --- }
-procedure ListCopyChecks(AMemo: TMemoProbe; AList: TInkListBox; ALabel: TInkLabel);
-const
-  E = LineEnding;
-var
-  Menu: TPopupMenu;
-  R: TRect;
-  P: TPoint;
-  Handled: Boolean;
-  K: Word;
-  Y0: Integer;
-begin
-  AMemo.TextFormat := itfHTML;
-  AMemo.SetBounds(0, 300, 300, 150);
-  AMemo.WordWrap := True;
-  AMemo.Lines.Text := '<b>first</b> line' + E + 'second <i>line</i>' + E + 'third';
-  Application.ProcessMessages;
-  Check(AMemo.Count = 3, 'memo: three lines');
-  Check(AMemo.BlockText(1) = 'second line', 'memo: a line''s words: ' + AMemo.BlockText(1));
-  AMemo.Select(Pos2(1, 0), Pos2(1, MaxInt));
-  Check(AMemo.SelectedText = 'second line', 'memo: a selected line: ' + AMemo.SelectedText);
-  Clipboard.AsText := '';
-  K := VK_C; TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
-  Check(Clipboard.AsText = 'second line', 'memo: Ctrl+C copies it');
-  AMemo.Select(Pos2(0, 6), Pos2(1, 6));
-  Check(AMemo.SelectedText = 'line' + E + 'second', 'memo: a selection across lines: ' + AMemo.SelectedText);
-  K := VK_A; TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
-  K := VK_C; TMemoAccess(TInkMemo(AMemo)).KeyDown(K, [ssCtrl]);
-  Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third',
-    'memo: Ctrl+A then Ctrl+C copies everything: ' + Clipboard.AsText);
-  P := AMemo.PositionPoint(Pos2(2, 1));
-  Menu := AMemo.BuildCopyMenu(P.X, P.Y + 2);
-  Check(Menu.Items[0].Caption = SInkCopy, 'memo menu: Copy');
-  Check(Menu.Items[1].Caption = SInkCopyLine, 'memo menu: Copy this line');
-  Menu.Items[1].Click;
-  Check(Clipboard.AsText = 'third', 'memo menu copies the line under the pointer: ' + Clipboard.AsText);
-  Menu.Items[2].Click;
-  Check(Clipboard.AsText = 'first line' + E + 'second line' + E + 'third', 'memo menu: Copy all');
-  AMemo.CopyMenu := False;
-  Handled := False;
-  TMemoAccess(TInkMemo(AMemo)).DoContextPopup(Point(P.X, P.Y + 2), Handled);
-  Check(not Handled, 'memo: CopyMenu off shows no menu');
-  AMemo.CopyMenu := True;
-
-  { Append adds a line, and follows the end only when the view was there }
-  for K := 1 to 29 do AMemo.Append('line ' + IntToStr(K));
-  Check(AMemo.Count = 32, 'memo: Append');
-  Check(AMemo.ScrollY > 0, 'memo: while it was all in view, the end was followed');
-  AMemo.ScrollTo(0);
-  AMemo.Append('line 30');
-  Check(AMemo.ScrollY = 0, 'memo: a view scrolled back to the top stays there');
-  AMemo.ScrollTo(MaxInt);
-  Y0 := AMemo.ScrollY;
-  AMemo.Append('<b>newest</b>');
-  Check(AMemo.ScrollY > Y0, 'memo: a view at the end follows new lines');
-  Check(AMemo.BlockText(33) = 'newest', 'memo: the appended line is drawn');
-  Check(AMemo.Block(33).Bounds.Top > AMemo.Block(32).Bounds.Top, 'memo: below the one before');
-
-  { links: the line and the href, as written }
-  AMemo.Clicked := '';
-  AMemo.OnLinkClick := @AMemo.LinkHit;
-  AMemo.MouseDrag := imdSelect;
-  AMemo.Lines.Text := 'a <a href="x&amp;y">link</a> here';
-  AMemo.ScrollTo(0);
-  P := AMemo.PositionPoint(Pos2(0, 3));
-  TMemoAccess(TInkMemo(AMemo)).MouseDown(mbLeft, [ssLeft], P.X, P.Y + 3);
-  TMemoAccess(TInkMemo(AMemo)).MouseUp(mbLeft, [], P.X, P.Y + 3);
-  Check(AMemo.Clicked = '0:x&y', 'memo: OnLinkClick has the line and href: ' + AMemo.Clicked);
-  AMemo.OnLinkClick := nil;
-  AMemo.WordWrap := False;
-
-  AList.TextFormat := itfHTML;
-  AList.EditMode := emNone;
-  AList.SetBounds(300, 300, 200, 150);
-  AList.MultiSelect := True;
-  AList.Items.Text := 'alpha' + E + '<b>beta</b>' + E + 'gamma';
-  Application.ProcessMessages;
-  AList.Selected[0] := True;
-  AList.Selected[2] := True;
-  Check(AList.SelectedText = 'alpha' + E + 'gamma', 'list: every selected item: ' + AList.SelectedText);
-  Check(AList.PlainText = 'alpha' + E + 'beta' + E + 'gamma' + E, 'list: PlainText');
-  R := AList.ItemRect(1);
-  Menu := AList.BuildCopyMenu(R.Left + 5, R.Top + 2);
-  Check(Menu.Items[1].Caption = SInkCopyItem, 'list menu: Copy this item');
-  Menu.Items[1].Click;
-  Check(Clipboard.AsText = 'beta', 'list menu copies the item under the pointer');
-  Menu.Items[Menu.Items.Count - 1].Click;
-  Check(AList.Selected[1] and (AList.SelectedText = 'alpha' + E + 'beta' + E + 'gamma'),
-    'list menu: Select all');
-  AList.PopupMenu := Menu;
-  Handled := False;
-  TListAccess(AList).DoContextPopup(Point(R.Left + 5, R.Top + 2), Handled);
-  Check(not Handled, 'list: a PopupMenu of the program''s own wins');
-  AList.PopupMenu := nil;
-  AList.MultiSelect := False;
-  ListEditChecks(AList);
-
-  ALabel.TextFormat := itfMarkdown;
-  ALabel.Caption := '**hello** [there](http://x.org)';
-  Check(ALabel.PlainText = 'hello there', 'label: a Markdown caption''s plain text: ' + ALabel.PlainText);
-  { out of the box the label does not select: its menu starts at Copy all }
-  Check(not ALabel.Selectable, 'label: not selectable by default');
-  Menu := ALabel.BuildCopyMenu(0, 0);
-  Check(Menu.Items[0].Caption = SInkCopyAll,
-    'label menu: Copy all leads while the label does not select');
-  Check(Menu.Items[Menu.Items.Count - 1].Caption <> SInkSelectAll,
-    'label menu: and Select all is not offered');
-  ALabel.Selectable := True;
-  Menu := ALabel.BuildCopyMenu(0, 0);
-  Check((Menu.Items[0].Caption = SInkCopy) and not Menu.Items[0].Enabled,
-    'label menu: Copy leads, gray with nothing selected');
-  Check(Menu.Items[1].Caption = SInkCopyAll, 'label menu: then Copy all');
-  Check(Menu.Items[Menu.Items.Count - 1].Caption = SInkSelectAll,
-    'label menu: Select all now that the label selects');
-  Menu.Items[1].Click;
-  Check(Clipboard.AsText = 'hello there', 'label menu copies the caption''s words');
-  ALabel.CopyMenu := False;
-  Handled := False;
-  TLabelAccess(ALabel).DoContextPopup(Point(0, 0), Handled);
-  Check(not Handled, 'label: CopyMenu off shows no menu');
-  ALabel.CopyMenu := True;
-end;
-
-
-{ --- selecting text with the mouse, and copying it --- }
-function FindBlock(APage: TInkPage; const Tag, Text: string): TInkPageBlock;
-var K: Integer;
-begin
-  Result := nil;
-  for K := 0 to APage.BlockCount - 1 do
-    if ((Tag = '') or (APage.Block(K).Tag = Tag)) and
-      (Pos(Text, HTMLPlainText(APage.Block(K).Source)) > 0) then
-      Exit(APage.Block(K));
-  raise Exception.Create('No ' + Tag + ' block with "' + Text + '"');
-end;
 
 type
   { the page's items are protected; a test reaches them as a descendant would }
@@ -664,338 +741,375 @@ type
 
 { the boxes of the page's documents made from an element named AName, in
   document order }
-function BoxesNamed(APage: TInkCustomPage; const AName: string): TList;
-var I: Integer; It: TObject;
+  function BoxesNamed(APage: TInkCustomPage; const AName: string): TList;
+  var
+    I: integer;
+    It: TObject;
 
-  procedure Walk(B: TInkBox);
-  var K: Integer;
-  begin
-    if (B.Node <> nil) and (B.Node.Name = AName) then Result.Add(B);
-    for K := 0 to B.Count - 1 do Walk(B[K]);
-  end;
-
-begin
-  Result := TList.Create;
-  TPageAccess(APage).Layout;
-  for I := 0 to TPageAccess(APage).ItemCount - 1 do
-  begin
-    It := TPageAccess(APage).PageItem(I);
-    if (It is TInkTreeSection) and (TInkTreeSection(It).Layout <> nil) and
-      (TInkTreeSection(It).Layout.Root <> nil) then Walk(TInkTreeSection(It).Layout.Root);
-  end;
-end;
-
-function CountBoxes(APage: TInkCustomPage; const AName: string): Integer;
-var L: TList;
-begin
-  L := BoxesNamed(APage, AName);
-  Result := L.Count;
-  L.Free;
-end;
-
-{ the nearest box around block B made from an element named AName }
-function UpTo(B: TInkPageBlock; const AName: string): TInkBox;
-begin
-  Result := TInkBox(B.TreeBox);
-  while (Result <> nil) and ((Result.Node = nil) or (Result.Node.Name <> AName)) do
-    Result := Result.Parent;
-end;
-
-{ how many runs of color other than the page's lie across row Y, left of X }
-function RunsLeftOf(ACanvas: TCanvas; X, Y: Integer): Integer;
-var K: Integer; Bg: TColor; Inside: Boolean;
-begin
-  Result := 0; Inside := False;
-  Bg := ColorToRGB(ACanvas.Pixels[0, Y]);
-  for K := 0 to X - 1 do
-    if ColorToRGB(ACanvas.Pixels[K, Y]) <> Bg then
+    procedure Walk(B: TInkBox);
+    var
+      K: integer;
     begin
-      if not Inside then Inc(Result);
-      Inside := True;
-    end
-    else Inside := False;
-end;
+      if (B.Node <> nil) and (B.Node.Name = AName) then Result.Add(B);
+      for K := 0 to B.Count - 1 do Walk(B[K]);
+    end;
 
-{ where a word was laid out on the page, in client coordinates }
-function WordPoint(const AWord: string; out P: TPoint): Boolean;
-var I, J: Integer; B: TInkPageBlock;
-begin
-  Result := False;
-  for I := 0 to Probe.BlockCount - 1 do
   begin
-    Probe.BlockText(I);
-    B := Probe.Block(I);
-    for J := 0 to B.RunCount - 1 do
-      if Copy(Trim(B.Runs[J].Text), 1, Length(AWord)) = AWord then
-      begin
-        P := Point(B.Runs[J].Left + B.Runs[J].Width div 2,
-          B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
-        Exit(True);
-      end;
-  end;
-end;
-
-procedure SelectionChecks;
-var
-  K, B0, Wrong: Integer;
-  P, Q: TPoint;
-  At: TInkPagePosition;
-  Text, Words: string;
-  Shot: TBitmap;
-  Menu: TPopupMenu;
-  Tall2: string;
-begin
-  Tall2 := '<html><body>';
-  for K := 1 to 60 do Tall2 := Tall2 + '<p>Paragraph ' + IntToStr(K) + '</p>';
-  Tall2 := Tall2 + '</body></html>';
-  Probe.MouseDrag := imdSelect;
-  Probe.OnSelectionChange := @Probe.SelChanged;
-  Probe.LoadHTML('<html><body><p>Hello brave new world, and a second sentence that is long enough ' +
-    'to wrap onto another line of this narrow page.</p>' +
-    '<ul><li>item one</li></ul>' +
-    '<pre>code  line' + #10 + '  indented</pre>' +
-    '<table><tr><td>a1</td><td>b1</td></tr><tr><td>a2</td><td>b2</td></tr></table>' +
-    '<p>Last <a href="linked">link</a> here.</p></body></html>');
-  Probe.ScrollTo(0);
-  Check(not Probe.HasSelection, 'a new page has nothing selected');
-  Words := Probe.BlockText(0);
-  Check(Pos('Hello brave new world, and a second sentence', Words) = 1, 'block words: ' + Words);
-  Check(Pos('another line of this narrow page.', Words) > 0, 'a wrapped line''s words join with a space: ' + Words);
-  Check(Probe.BlockText(2) = 'code  line' + #10 + '  indented', 'code keeps its lines: ' + Probe.BlockText(2));
-  Check(Pos('a1'#9'b1', Probe.PlainText) > 0, 'cells are apart by tabs: ' + Probe.PlainText);
-
-  { every place in the first block maps to a point and back }
-  Wrong := 0;
-  for K := 0 to Length(Words) do
-  begin
-    { only at character starts }
-    if (K < Length(Words)) and ((Ord(Words[K + 1]) and $C0) = $80) then Continue;
-    P := Probe.PositionPoint(Pos2(0, K));
-    At := Probe.PositionAt(P.X, P.Y + 2);
-    { the place at a wrap is both the end of one line and the start of the next }
-    if (At.Block <> 0) or ((At.Offset <> K) and not ((K > 0) and (Words[K] = ' ') and (At.Offset = K - 1))) then
+    Result := TList.Create;
+    TPageAccess(APage).Layout;
+    for I := 0 to TPageAccess(APage).ItemCount - 1 do
     begin
-      Inc(Wrong);
-      if Wrong < 30 then WriteLn('  k=', K, ' at=', At.Block, ':', At.Offset, ' pt=', P.X, ',', P.Y);
+      It := TPageAccess(APage).PageItem(I);
+      if (It is TInkTreeSection) and (TInkTreeSection(It).Layout <> nil) and (TInkTreeSection(It).Layout.Root <> nil) then Walk(TInkTreeSection(It).Layout.Root);
     end;
   end;
-  Check(Wrong = 0, Format('PositionAt(PositionPoint(k)) = k (%d wrong)', [Wrong]));
-  P := Probe.PositionPoint(Pos2(0, 6));
-  Q := Probe.PositionPoint(Pos2(0, 11));
-  Check((Q.X > P.X) and (Q.Y = P.Y), 'later on a line is further right');
-  P := Probe.PositionPoint(Pos2(0, Length(Words)));
-  Check(P.Y > Probe.PositionPoint(Pos2(0, 0)).Y, 'the end of a wrapped block is lower down');
-  At := Probe.PositionAt(-50, 0);
-  Check((At.Block = 0) and (At.Offset = 0), 'left of and above everything is the start');
-  At := Probe.PositionAt(Probe.ClientWidth + 50, Probe.ContentHeight + 50);
-  Check(At.Block = Probe.BlockCount - 1, 'below everything is the last block');
 
-  { press, drag, release: "brave new" }
-  Probe.Changes := 0;
-  P := Probe.PositionPoint(Pos2(0, 6));
-  Q := Probe.PositionPoint(Pos2(0, 15));
-  Probe.Press(P.X, P.Y + 3);
-  Probe.MoveTo((P.X + Q.X) div 2, P.Y + 3);
-  Probe.MoveTo(Q.X, Q.Y + 3);
-  Probe.Let(Q.X, Q.Y + 3);
-  Check(Probe.SelectedText = 'brave new', 'a mouse drag selects: "' + Probe.SelectedText + '"');
-  Check(Probe.Changes > 0, 'OnSelectionChange');
-  Check(Probe.ScrollY = 0, 'and does not scroll');
-  Check(Pos('<p>brave new</p>', Probe.SelectedHTML) > 0, 'selected HTML: ' + Probe.SelectedHTML);
+  function CountBoxes(APage: TInkCustomPage; const AName: string): integer;
+  var
+    L: TList;
+  begin
+    L := BoxesNamed(APage, AName);
+    Result := L.Count;
+    L.Free;
+  end;
 
-  { the selection is painted }
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
-    Probe.RenderTo(Shot.Canvas);
-    Check(ColorToRGB(Shot.Canvas.Pixels[P.X + 1, P.Y + 1]) = ColorToRGB(Probe.SelectionBackground),
-      'selected text has the selection color behind it');
-    Check(ColorToRGB(Shot.Canvas.Pixels[P.X - 3, P.Y + 1]) <> ColorToRGB(Probe.SelectionBackground),
-      'and the text before it does not');
-    Probe.SelectionColor := RGBToColor(1, 2, 3);
-    Probe.RenderTo(Shot.Canvas);
-    Check(ColorToRGB(Shot.Canvas.Pixels[P.X + 1, P.Y + 1]) = RGBToColor(1, 2, 3), 'SelectionColor');
-    Probe.SelectionColor := clDefault;
-  finally Shot.Free end;
+  { the nearest box around block B made from an element named AName }
+  function UpTo(B: TInkPageBlock; const AName: string): TInkBox;
+  begin
+    Result := TInkBox(B.TreeBox);
+    while (Result <> nil) and ((Result.Node = nil) or (Result.Node.Name <> AName)) do
+      Result := Result.Parent;
+  end;
 
-  { Ctrl+C }
-  Clipboard.AsText := 'before';
-  Probe.Key(VK_C, [ssCtrl]);
-  Check(Clipboard.AsText = 'brave new', 'Ctrl+C copies the selection: "' + Clipboard.AsText + '"');
+  { how many runs of color other than the page's lie across row Y, left of X }
+  function RunsLeftOf(ACanvas: TCanvas; X, Y: integer): integer;
+  var
+    K: integer;
+    Bg: TColor;
+    Inside: boolean;
+  begin
+    Result := 0;
+    Inside := False;
+    Bg := ColorToRGB(ACanvas.Pixels[0, Y]);
+    for K := 0 to X - 1 do
+      if ColorToRGB(ACanvas.Pixels[K, Y]) <> Bg then
+      begin
+        if not Inside then Inc(Result);
+        Inside := True;
+      end
+      else
+        Inside := False;
+  end;
 
-  { a click without moving clears it, and a click on a link still follows it }
-  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
-  Check(not Probe.HasSelection, 'a click clears the selection');
-  Probe.Clicked := '';
-  B0 := Probe.BlockCount - 1;
-  P := Probe.PositionPoint(Pos2(B0, 6));
-  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
-  Check(Probe.Clicked = 'linked', 'a click on a link follows it: ' + Probe.Clicked);
+  { where a word was laid out on the page, in client coordinates }
+  function WordPoint(const AWord: string; out P: TPoint): boolean;
+  var
+    I, J: integer;
+    B: TInkPageBlock;
+  begin
+    Result := False;
+    for I := 0 to Probe.BlockCount - 1 do
+    begin
+      Probe.BlockText(I);
+      B := Probe.Block(I);
+      for J := 0 to B.RunCount - 1 do
+        if Copy(Trim(B.Runs[J].Text), 1, Length(AWord)) = AWord then
+        begin
+          P := Point(B.Runs[J].Left + B.Runs[J].Width div 2, B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+          Exit(True);
+        end;
+    end;
+  end;
+
+  procedure SelectionChecks;
+  var
+    K, B0, Wrong: integer;
+    P, Q: TPoint;
+    At: TInkPagePosition;
+    Text, Words: string;
+    Shot: TBitmap;
+    Menu: TPopupMenu;
+    Tall2: string;
+  begin
+    Tall2 := '<html><body>';
+    for K := 1 to 60 do Tall2 := Tall2 + '<p>Paragraph ' + IntToStr(K) + '</p>';
+    Tall2 := Tall2 + '</body></html>';
+    Probe.MouseDrag := imdSelect;
+    Probe.OnSelectionChange := @Probe.SelChanged;
+    Probe.LoadHTML('<html><body><p>Hello brave new world, and a second sentence that is long enough ' + 'to wrap onto another line of this narrow page.</p>' +
+      '<ul><li>item one</li></ul>' + '<pre>code  line' + #10 + '  indented</pre>' + '<table><tr><td>a1</td><td>b1</td></tr><tr><td>a2</td><td>b2</td></tr></table>' +
+      '<p>Last <a href="linked">link</a> here.</p></body></html>');
+    Probe.ScrollTo(0);
+    Check(not Probe.HasSelection, 'a new page has nothing selected');
+    Words := Probe.BlockText(0);
+    Check(Pos('Hello brave new world, and a second sentence', Words) = 1, 'block words: ' + Words);
+    Check(Pos('another line of this narrow page.', Words) > 0, 'a wrapped line''s words join with a space: ' + Words);
+    Check(Probe.BlockText(2) = 'code  line' + #10 + '  indented', 'code keeps its lines: ' + Probe.BlockText(2));
+    Check(Pos('a1'#9'b1', Probe.PlainText) > 0, 'cells are apart by tabs: ' + Probe.PlainText);
+
+    { every place in the first block maps to a point and back }
+    Wrong := 0;
+    for K := 0 to Length(Words) do
+    begin
+      { only at character starts }
+      if (K < Length(Words)) and ((Ord(Words[K + 1]) and $C0) = $80) then Continue;
+      P := Probe.PositionPoint(Pos2(0, K));
+      At := Probe.PositionAt(P.X, P.Y + 2);
+      { the place at a wrap is both the end of one line and the start of the next }
+      if (At.Block <> 0) or ((At.Offset <> K) and not ((K > 0) and (Words[K] = ' ') and (At.Offset = K - 1))) then
+      begin
+        Inc(Wrong);
+        if Wrong < 30 then WriteLn('  k=', K, ' at=', At.Block, ':', At.Offset, ' pt=', P.X, ',', P.Y);
+      end;
+    end;
+    Check(Wrong = 0, Format('PositionAt(PositionPoint(k)) = k (%d wrong)', [Wrong]));
+    P := Probe.PositionPoint(Pos2(0, 6));
+    Q := Probe.PositionPoint(Pos2(0, 11));
+    Check((Q.X > P.X) and (Q.Y = P.Y), 'later on a line is further right');
+    P := Probe.PositionPoint(Pos2(0, Length(Words)));
+    Check(P.Y > Probe.PositionPoint(Pos2(0, 0)).Y, 'the end of a wrapped block is lower down');
+    At := Probe.PositionAt(-50, 0);
+    Check((At.Block = 0) and (At.Offset = 0), 'left of and above everything is the start');
+    At := Probe.PositionAt(Probe.ClientWidth + 50, Probe.ContentHeight + 50);
+    Check(At.Block = Probe.BlockCount - 1, 'below everything is the last block');
+
+    { press, drag, release: "brave new" }
+    Probe.Changes := 0;
+    P := Probe.PositionPoint(Pos2(0, 6));
+    Q := Probe.PositionPoint(Pos2(0, 15));
+    Probe.Press(P.X, P.Y + 3);
+    Probe.MoveTo((P.X + Q.X) div 2, P.Y + 3);
+    Probe.MoveTo(Q.X, Q.Y + 3);
+    Probe.Let(Q.X, Q.Y + 3);
+    Check(Probe.SelectedText = 'brave new', 'a mouse drag selects: "' + Probe.SelectedText + '"');
+    Check(Probe.Changes > 0, 'OnSelectionChange');
+    Check(Probe.ScrollY = 0, 'and does not scroll');
+    Check(Pos('<p>brave new</p>', Probe.SelectedHTML) > 0, 'selected HTML: ' + Probe.SelectedHTML);
+
+    { the selection is painted }
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+      Probe.RenderTo(Shot.Canvas);
+      Check(ColorToRGB(Shot.Canvas.Pixels[P.X + 1, P.Y + 1]) = ColorToRGB(Probe.SelectionBackground),
+        'selected text has the selection color behind it');
+      Check(ColorToRGB(Shot.Canvas.Pixels[P.X - 3, P.Y + 1]) <> ColorToRGB(Probe.SelectionBackground),
+        'and the text before it does not');
+      Probe.SelectionColor := RGBToColor(1, 2, 3);
+      Probe.RenderTo(Shot.Canvas);
+      Check(ColorToRGB(Shot.Canvas.Pixels[P.X + 1, P.Y + 1]) = RGBToColor(1, 2, 3), 'SelectionColor');
+      Probe.SelectionColor := clDefault;
+    finally
+      Shot.Free
+    end;
+
+    { Ctrl+C }
+    Clipboard.AsText := 'before';
+    Probe.Key(VK_C, [ssCtrl]);
+    Check(Clipboard.AsText = 'brave new', 'Ctrl+C copies the selection: "' + Clipboard.AsText + '"');
+
+    { a click without moving clears it, and a click on a link still follows it }
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Let(P.X, P.Y + 3);
+    Check(not Probe.HasSelection, 'a click clears the selection');
+    Probe.Clicked := '';
+    B0 := Probe.BlockCount - 1;
+    P := Probe.PositionPoint(Pos2(B0, 6));
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Let(P.X, P.Y + 3);
+    Check(Probe.Clicked = 'linked', 'a click on a link follows it: ' + Probe.Clicked);
 
   { double click takes a word, triple click the block, Shift extends.
     Gestures in the same place are kept apart by more than a double-click
     time, or the page counts them as one more click. }
-  Sleep(GetDoubleClickTime + 50);
-  P := Probe.PositionPoint(Pos2(0, 8));
-  Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.Let(P.X, P.Y + 3);
-  Check(Probe.SelectedText = 'brave', 'a double click selects a word: "' + Probe.SelectedText + '"');
-  Q := Probe.PositionPoint(Pos2(0, 18));
-  Sleep(GetDoubleClickTime + 50);
-  Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.MoveTo(Q.X, Q.Y + 3); Probe.Let(Q.X, Q.Y + 3);
-  Check(Probe.SelectedText = 'brave new world', 'dragging after a double click goes by words: "' + Probe.SelectedText + '"');
-  Sleep(GetDoubleClickTime + 50);
-  Probe.Press(P.X, P.Y + 3, [ssTriple]); Probe.Let(P.X, P.Y + 3);
-  Check(Probe.SelectedText = TrimRight(Words), 'a triple click selects the paragraph');
+    Sleep(GetDoubleClickTime + 50);
+    P := Probe.PositionPoint(Pos2(0, 8));
+    Probe.Press(P.X, P.Y + 3, [ssDouble]);
+    Probe.Let(P.X, P.Y + 3);
+    Check(Probe.SelectedText = 'brave', 'a double click selects a word: "' + Probe.SelectedText + '"');
+    Q := Probe.PositionPoint(Pos2(0, 18));
+    Sleep(GetDoubleClickTime + 50);
+    Probe.Press(P.X, P.Y + 3, [ssDouble]);
+    Probe.MoveTo(Q.X, Q.Y + 3);
+    Probe.Let(Q.X, Q.Y + 3);
+    Check(Probe.SelectedText = 'brave new world', 'dragging after a double click goes by words: "' + Probe.SelectedText + '"');
+    Sleep(GetDoubleClickTime + 50);
+    Probe.Press(P.X, P.Y + 3, [ssTriple]);
+    Probe.Let(P.X, P.Y + 3);
+    Check(Probe.SelectedText = TrimRight(Words), 'a triple click selects the paragraph');
   { as GTK3 delivers one: press, press, press-marked-double, press, press -
     the third click comes unmarked }
-  Sleep(GetDoubleClickTime + 50);
-  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
-  Sleep(80);
-  Probe.Press(P.X, P.Y + 3); Probe.Press(P.X, P.Y + 3, [ssDouble]); Probe.Let(P.X, P.Y + 3);
-  Check(Probe.SelectedText = 'brave', 'GTK3''s double click is a word, not three clicks');
-  Sleep(80);
-  Probe.Press(P.X, P.Y + 3); Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
-  Check(Probe.SelectedText = TrimRight(Words), 'and its unmarked third click is a triple click');
-  Sleep(GetDoubleClickTime + 50);
-  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
-  Probe.Press(Q.X, Q.Y + 3, [ssShift]); Probe.Let(Q.X, Q.Y + 3);
-  Check(not Probe.HasSelection, 'Shift+click with nothing selected just places');
-  Probe.Select(Pos2(0, 6), Pos2(0, 11));
-  Probe.Press(Q.X, Q.Y + 3, [ssShift]); Probe.Let(Q.X, Q.Y + 3);
-  Check(Probe.SelectedText = 'brave new wo', 'Shift+click extends, to the character: "' + Probe.SelectedText + '"');
+    Sleep(GetDoubleClickTime + 50);
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Let(P.X, P.Y + 3);
+    Sleep(80);
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Press(P.X, P.Y + 3, [ssDouble]);
+    Probe.Let(P.X, P.Y + 3);
+    Check(Probe.SelectedText = 'brave', 'GTK3''s double click is a word, not three clicks');
+    Sleep(80);
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Let(P.X, P.Y + 3);
+    Check(Probe.SelectedText = TrimRight(Words), 'and its unmarked third click is a triple click');
+    Sleep(GetDoubleClickTime + 50);
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Let(P.X, P.Y + 3);
+    Probe.Press(Q.X, Q.Y + 3, [ssShift]);
+    Probe.Let(Q.X, Q.Y + 3);
+    Check(not Probe.HasSelection, 'Shift+click with nothing selected just places');
+    Probe.Select(Pos2(0, 6), Pos2(0, 11));
+    Probe.Press(Q.X, Q.Y + 3, [ssShift]);
+    Probe.Let(Q.X, Q.Y + 3);
+    Check(Probe.SelectedText = 'brave new wo', 'Shift+click extends, to the character: "' + Probe.SelectedText + '"');
 
-  { across blocks, in document order, with the list's marker }
-  P := Probe.PositionPoint(Pos2(0, Length(Words) - 5));
-  Q := Probe.PositionPoint(Pos2(2, 4));
-  Probe.Press(Q.X, Q.Y + 3); Probe.MoveTo(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
-  Text := Probe.SelectedText;
-  Check(Text = 'page.' + LineEnding + '• item one' + LineEnding + 'code',
-    'a selection across blocks, dragged backwards: "' + Text + '"');
+    { across blocks, in document order, with the list's marker }
+    P := Probe.PositionPoint(Pos2(0, Length(Words) - 5));
+    Q := Probe.PositionPoint(Pos2(2, 4));
+    Probe.Press(Q.X, Q.Y + 3);
+    Probe.MoveTo(P.X, P.Y + 3);
+    Probe.Let(P.X, P.Y + 3);
+    Text := Probe.SelectedText;
+    Check(Text = 'page.' + LineEnding + '• item one' + LineEnding + 'code',
+      'a selection across blocks, dragged backwards: "' + Text + '"');
 
-  { Ctrl+A }
-  Probe.Key(VK_A, [ssCtrl]);
-  Text := Probe.SelectedText;
-  Check(Pos('Hello brave', Text) = 1, 'Ctrl+A selects from the start');
-  Check(Pos('a1'#9'b1' + LineEnding + 'a2'#9'b2', Text) > 0, 'tables copy as tab-separated rows: ' + Text);
-  Check(Pos('code  line' + #10 + '  indented', Text) > 0, 'code copies as written');
-  Check(Copy(Text, Length(Text) - 9, 10) = 'link here.', 'to the end');
+    { Ctrl+A }
+    Probe.Key(VK_A, [ssCtrl]);
+    Text := Probe.SelectedText;
+    Check(Pos('Hello brave', Text) = 1, 'Ctrl+A selects from the start');
+    Check(Pos('a1'#9'b1' + LineEnding + 'a2'#9'b2', Text) > 0, 'tables copy as tab-separated rows: ' + Text);
+    Check(Pos('code  line' + #10 + '  indented', Text) > 0, 'code copies as written');
+    Check(Copy(Text, Length(Text) - 9, 10) = 'link here.', 'to the end');
 
-  { it survives a new layout, and a new page clears it }
-  Probe.Select(Pos2(0, 6), Pos2(0, 15));
-  Probe.Width := 600; Probe.ScrollTo(0);
-  Check(Probe.SelectedText = 'brave new', 'the selection survives a resize');
-  Probe.Width := 400; Probe.ScrollTo(0);
+    { it survives a new layout, and a new page clears it }
+    Probe.Select(Pos2(0, 6), Pos2(0, 15));
+    Probe.Width := 600;
+    Probe.ScrollTo(0);
+    Check(Probe.SelectedText = 'brave new', 'the selection survives a resize');
+    Probe.Width := 400;
+    Probe.ScrollTo(0);
 
-  { the copy menu }
-  P := Probe.PositionPoint(Pos2(1, 2));
-  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
-  Check(Menu.Items.Count >= 4, Format('copy menu items (%d)', [Menu.Items.Count]));
-  Check(Menu.Items[0].Caption = SInkCopy, 'Copy first');
-  Check(Menu.Items[0].Enabled, 'enabled with a selection');
-  Clipboard.AsText := '';
-  Menu.Items[1].Click;
-  Check(Clipboard.AsText = '• item one', 'Copy this paragraph copies the block under the pointer: "' + Clipboard.AsText + '"');
-  Menu.Items[2].Click;
-  Check(Pos('Hello brave', Clipboard.AsText) = 1, 'Copy all');
-  Check(Clipboard.AsText = TrimRight(Probe.PlainText), 'Copy all is the page''s text');
-  Probe.ClearSelection;
-  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
-  Check(not Menu.Items[0].Enabled, 'Copy is grayed with nothing selected');
-  Menu.Items[Menu.Items.Count - 1].Click;
-  Check(Probe.HasSelection, 'Select all');
-  B0 := Probe.BlockCount - 1;
-  P := Probe.PositionPoint(Pos2(B0, 6));
-  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
-  Check(Menu.Items[1].Caption = SInkCopyLink, 'Copy link address, over a link');
-  Menu.Items[1].Click;
-  Check(Clipboard.AsText = 'linked', 'copies the link: ' + Clipboard.AsText);
-  Probe.OnCopyMenu := @Probe.AddToMenu;
-  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
-  Check(Menu.Items[Menu.Items.Count - 1].Caption = 'Mine', 'OnCopyMenu adds items');
-  Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
-  Check(Menu.Items[Menu.Items.Count - 1].Caption = 'Mine', 'once, however often it opens');
-  Check(Menu.Items[Menu.Items.Count - 2].Caption <> 'Mine', 'not twice');
-  Probe.OnCopyMenu := nil;
+    { the copy menu }
+    P := Probe.PositionPoint(Pos2(1, 2));
+    Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+    Check(Menu.Items.Count >= 4, Format('copy menu items (%d)', [Menu.Items.Count]));
+    Check(Menu.Items[0].Caption = SInkCopy, 'Copy first');
+    Check(Menu.Items[0].Enabled, 'enabled with a selection');
+    Clipboard.AsText := '';
+    Menu.Items[1].Click;
+    Check(Clipboard.AsText = '• item one', 'Copy this paragraph copies the block under the pointer: "' + Clipboard.AsText + '"');
+    Menu.Items[2].Click;
+    Check(Pos('Hello brave', Clipboard.AsText) = 1, 'Copy all');
+    Check(Clipboard.AsText = TrimRight(Probe.PlainText), 'Copy all is the page''s text');
+    Probe.ClearSelection;
+    Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+    Check(not Menu.Items[0].Enabled, 'Copy is grayed with nothing selected');
+    Menu.Items[Menu.Items.Count - 1].Click;
+    Check(Probe.HasSelection, 'Select all');
+    B0 := Probe.BlockCount - 1;
+    P := Probe.PositionPoint(Pos2(B0, 6));
+    Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+    Check(Menu.Items[1].Caption = SInkCopyLink, 'Copy link address, over a link');
+    Menu.Items[1].Click;
+    Check(Clipboard.AsText = 'linked', 'copies the link: ' + Clipboard.AsText);
+    Probe.OnCopyMenu := @Probe.AddToMenu;
+    Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+    Check(Menu.Items[Menu.Items.Count - 1].Caption = 'Mine', 'OnCopyMenu adds items');
+    Menu := Probe.BuildCopyMenu(P.X, P.Y + 3);
+    Check(Menu.Items[Menu.Items.Count - 1].Caption = 'Mine', 'once, however often it opens');
+    Check(Menu.Items[Menu.Items.Count - 2].Caption <> 'Mine', 'not twice');
+    Probe.OnCopyMenu := nil;
 
-  { a finger scrolls, even when the mouse selects }
-  Probe.ClearSelection;
-  Probe.LoadHTML(Tall2);
-  Probe.ScrollTo(0);
-  Probe.FlickScroll := False;
-  Probe.Finger(itpBegin, 100, 150, 20000);
-  Probe.Finger(itpMove, 100, 50, 20300);
-  Probe.Finger(itpEnd, 100, 50, 20600);
-  Check(Probe.ScrollY = 100, 'a finger scrolls with MouseDrag = imdSelect');
-  Check(not Probe.HasSelection, 'and selects nothing');
-  Probe.FlickScroll := True;
+    { a finger scrolls, even when the mouse selects }
+    Probe.ClearSelection;
+    Probe.LoadHTML(Tall2);
+    Probe.ScrollTo(0);
+    Probe.FlickScroll := False;
+    Probe.Finger(itpBegin, 100, 150, 20000);
+    Probe.Finger(itpMove, 100, 50, 20300);
+    Probe.Finger(itpEnd, 100, 50, 20600);
+    Check(Probe.ScrollY = 100, 'a finger scrolls with MouseDrag = imdSelect');
+    Check(not Probe.HasSelection, 'and selects nothing');
+    Probe.FlickScroll := True;
 
-  { dragging below the page scrolls it and selects on }
-  Sleep(550);
-  Probe.ScrollTo(0);
-  Probe.Press(20, 30);
-  Probe.MoveTo(20, Probe.ClientHeight + 40);
-  for K := 1 to 10 do Probe.Tick;
-  Check(Probe.ScrollY > 0, 'a drag below the page scrolls it');
-  Probe.Let(20, Probe.ClientHeight + 40);
-  Check(Probe.SelectionEnd.Block > 1, 'and the selection follows');
+    { dragging below the page scrolls it and selects on }
+    Sleep(550);
+    Probe.ScrollTo(0);
+    Probe.Press(20, 30);
+    Probe.MoveTo(20, Probe.ClientHeight + 40);
+    for K := 1 to 10 do Probe.Tick;
+    Check(Probe.ScrollY > 0, 'a drag below the page scrolls it');
+    Probe.Let(20, Probe.ClientHeight + 40);
+    Check(Probe.SelectionEnd.Block > 1, 'and the selection follows');
 
-  { an ampersand in a link survives the click }
-  Sleep(GetDoubleClickTime + 50);
-  Probe.LoadHTML('<p><a href="p?a=1&amp;b=2">go there</a></p>');
-  Probe.ScrollTo(0);
-  P := Probe.PositionPoint(Pos2(0, 2));
-  Probe.Clicked := '';
-  Probe.Press(P.X, P.Y + 3); Probe.Let(P.X, P.Y + 3);
-  Check(Probe.Clicked = 'p?a=1&b=2', 'a link''s & is kept: ' + Probe.Clicked);
+    { an ampersand in a link survives the click }
+    Sleep(GetDoubleClickTime + 50);
+    Probe.LoadHTML('<p><a href="p?a=1&amp;b=2">go there</a></p>');
+    Probe.ScrollTo(0);
+    P := Probe.PositionPoint(Pos2(0, 2));
+    Probe.Clicked := '';
+    Probe.Press(P.X, P.Y + 3);
+    Probe.Let(P.X, P.Y + 3);
+    Check(Probe.Clicked = 'p?a=1&b=2', 'a link''s & is kept: ' + Probe.Clicked);
 
-  Probe.OnSelectionChange := nil;
-  Probe.MouseDrag := imdScroll;
-end;
+    Probe.OnSelectionChange := nil;
+    Probe.MouseDrag := imdScroll;
+  end;
 
-{ --- Back and Forward --- }
-procedure NavigationChecks;
-var Dir, A, B2: string; SL: TStringList; K: Word;
-begin
-  Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'lazink-nav-' + IntToStr(GetProcessID);
-  ForceDirectories(Dir);
-  A := Dir + PathDelim + 'a.html'; B2 := Dir + PathDelim + 'b.md';
-  SL := TStringList.Create;
-  try
-    SL.Text := '<html><head><title>Page A</title></head><body><p><a href="b.md">to b</a></p></body></html>';
-    SL.SaveToFile(A);
-    SL.Text := '# Page B' + LineEnding + LineEnding + 'text';
-    SL.SaveToFile(B2);
-  finally SL.Free end;
-  Probe.Navigations := 0;
-  Probe.OnNavigate := @Probe.Navigated;
-  Probe.OnLinkClick := nil;
-  Probe.ClearHistory;
-  Check(not Probe.CanGoBack, 'ClearHistory');
-  Probe.LoadFromFile(A);
-  Probe.ClearHistory;
-  Check(Probe.Navigations = 1, 'OnNavigate after a load');
-  Check(not Probe.CanGoBack and not Probe.CanGoForward, 'one page: no Back or Forward');
-  Probe.LoadFromFile(B2);
-  Check(Probe.DocumentTitle = 'Page B', 'a .md page, by its name: ' + Probe.DocumentTitle);
-  Check(Probe.CanGoBack and not Probe.CanGoForward, 'two pages: Back');
-  Probe.Back;
-  Check((Probe.DocumentTitle = 'Page A') and Probe.CanGoForward and not Probe.CanGoBack,
-    'Back, and then Forward is possible');
-  Check(Probe.TextFormat = itfHTML, 'the .html page is HTML again');
-  Check(Probe.Navigations = 3, Format('OnNavigate after Back (%d)', [Probe.Navigations]));
-  Probe.Button(mbExtra2, 10, 10);
-  Check(Probe.DocumentTitle = 'Page B', 'the mouse''s forward button');
-  Probe.Button(mbExtra1, 10, 10);
-  Check(Probe.DocumentTitle = 'Page A', 'the mouse''s back button');
-  K := VK_RIGHT; Probe.KeyDown(K, [ssAlt]);
-  Check(Probe.DocumentTitle = 'Page B', 'Alt+Right');
-  K := VK_LEFT; Probe.KeyDown(K, [ssAlt]);
-  Check(Probe.DocumentTitle = 'Page A', 'Alt+Left');
-  K := VK_BROWSER_FORWARD; Probe.KeyDown(K, []);
-  Check(Probe.DocumentTitle = 'Page B', 'the Forward key');
-  K := VK_BROWSER_BACK; Probe.KeyDown(K, []);
-  Check(Probe.DocumentTitle = 'Page A', 'the Back key');
-  {$IFDEF LCLGTK3}
+  { --- Back and Forward --- }
+  procedure NavigationChecks;
+  var
+    Dir, A, B2: string;
+    SL: TStringList;
+    K: word;
+  begin
+    Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'lazink-nav-' + IntToStr(GetProcessID);
+    ForceDirectories(Dir);
+    A := Dir + PathDelim + 'a.html';
+    B2 := Dir + PathDelim + 'b.md';
+    SL := TStringList.Create;
+    try
+      SL.Text := '<html><head><title>Page A</title></head><body><p><a href="b.md">to b</a></p></body></html>';
+      SL.SaveToFile(A);
+      SL.Text := '# Page B' + LineEnding + LineEnding + 'text';
+      SL.SaveToFile(B2);
+    finally
+      SL.Free
+    end;
+    Probe.Navigations := 0;
+    Probe.OnNavigate := @Probe.Navigated;
+    Probe.OnLinkClick := nil;
+    Probe.ClearHistory;
+    Check(not Probe.CanGoBack, 'ClearHistory');
+    Probe.LoadFromFile(A);
+    Probe.ClearHistory;
+    Check(Probe.Navigations = 1, 'OnNavigate after a load');
+    Check(not Probe.CanGoBack and not Probe.CanGoForward, 'one page: no Back or Forward');
+    Probe.LoadFromFile(B2);
+    Check(Probe.DocumentTitle = 'Page B', 'a .md page, by its name: ' + Probe.DocumentTitle);
+    Check(Probe.CanGoBack and not Probe.CanGoForward, 'two pages: Back');
+    Probe.Back;
+    Check((Probe.DocumentTitle = 'Page A') and Probe.CanGoForward and not Probe.CanGoBack,
+      'Back, and then Forward is possible');
+    Check(Probe.TextFormat = itfHTML, 'the .html page is HTML again');
+    Check(Probe.Navigations = 3, Format('OnNavigate after Back (%d)', [Probe.Navigations]));
+    Probe.Button(mbExtra2, 10, 10);
+    Check(Probe.DocumentTitle = 'Page B', 'the mouse''s forward button');
+    Probe.Button(mbExtra1, 10, 10);
+    Check(Probe.DocumentTitle = 'Page A', 'the mouse''s back button');
+    K := VK_RIGHT;
+    Probe.KeyDown(K, [ssAlt]);
+    Check(Probe.DocumentTitle = 'Page B', 'Alt+Right');
+    K := VK_LEFT;
+    Probe.KeyDown(K, [ssAlt]);
+    Check(Probe.DocumentTitle = 'Page A', 'Alt+Left');
+    K := VK_BROWSER_FORWARD;
+    Probe.KeyDown(K, []);
+    Check(Probe.DocumentTitle = 'Page B', 'the Forward key');
+    K := VK_BROWSER_BACK;
+    Probe.KeyDown(K, []);
+    Check(Probe.DocumentTitle = 'Page A', 'the Back key');
+    {$IFDEF LCLGTK3}
   { GTK3's backend drops buttons 8 and 9; the hook brings them back }
   Application.ProcessMessages;
   SendButton(Probe, GDK_BUTTON_PRESS, 9, 10, 10);
@@ -1004,1624 +1118,1674 @@ begin
   SendButton(Probe, GDK_BUTTON_PRESS, 8, 10, 10);
   SendButton(Probe, GDK_BUTTON_RELEASE, 8, 10, 10);
   Check(Probe.DocumentTitle = 'Page A', 'button 8 through GTK3 goes back');
-  {$ENDIF}
-  { a link followed from a page goes into the history too }
-  Probe.LoadFromFile(A);
-  Probe.LoadURLForTest('b.md');
-  Check(Probe.DocumentTitle = 'Page B', 'a relative link');
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'Page A', 'and back from it');
-  Probe.OnNavigate := nil;
-  Probe.OnLinkClick := @Probe.LinkHit;
-  DeleteFile(A); DeleteFile(B2); RemoveDir(Dir);
-end;
-
-{ --- pictures you can click, and pictures sized to fit --- }
-procedure PictureChecks;
-var Base: string; B: TInkPageBlock; R: TRect; P: TPoint; W: Integer;
-
-  procedure ClickAt(X, Y: Integer);
-  begin
-    Probe.Press(X, Y); Probe.Let(X, Y);
+    {$ENDIF}
+    { a link followed from a page goes into the history too }
+    Probe.LoadFromFile(A);
+    Probe.LoadURLForTest('b.md');
+    Check(Probe.DocumentTitle = 'Page B', 'a relative link');
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'Page A', 'and back from it');
+    Probe.OnNavigate := nil;
+    Probe.OnLinkClick := @Probe.LinkHit;
+    DeleteFile(A);
+    DeleteFile(B2);
+    RemoveDir(Dir);
   end;
 
-begin
-  Base := FilenameToURI(ExpandFileName('images/page.html'));
-  Probe.OnLinkActivate := @Probe.LinkActivated;
-  Probe.OnLinkClick := @Probe.LinkHit;
-  Probe.LoadHTML('<html><body><p>Before</p>' +
-    '<a href="palette.png" target="_blank"><img src="palette.png" alt="the palette"></a>' +
-    '<p>after <a href="t.html" target="side">text</a> and <a href="u.html">plain</a></p>' +
-    '</body></html>', Base);
-  Probe.ScrollTo(0);
-  Check(Probe.BlockCount = 3, Format('a linked picture makes no empty blocks (%d)', [Probe.BlockCount]));
-  B := Probe.Block(1);
-  Check(B.Picture.Graphic <> nil, 'the picture loads');
-  Check((B.LinkHref = 'palette.png') and (B.LinkTarget = '_blank'), 'and knows its link');
+  { --- pictures you can click, and pictures sized to fit --- }
+  procedure PictureChecks;
+  var
+    Base: string;
+    B: TInkPageBlock;
+    R: TRect;
+    P: TPoint;
+    W: integer;
 
-  Probe.HandleLinks := True;
-  Probe.Activations := 0; Probe.Clicked := '';
-  R := B.ImageRect; OffsetRect(R, 0, -Probe.ScrollY);
-  ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
-  Check(Probe.Activations = 1, 'a click on a linked picture is a link click');
-  Check(Probe.Activated.Target = '_blank', 'with its target: ' + Probe.Activated.Target);
-  Check(Pos('images/palette.png', Probe.Activated.Image) > 0, 'and the picture: ' + Probe.Activated.Image);
-  Check(Pos('images/palette.png', Probe.Activated.URL) > 0, 'resolved: ' + Probe.Activated.URL);
-  Check(Probe.Activated.Href = 'palette.png', 'as written');
-  Check(Probe.Clicked = '', 'Handled stops it there');
-  ClickAt(R.Right + 20, (R.Top + R.Bottom) div 2);
-  Check(Probe.Activations = 1, 'beside the picture is not the link');
-
-  P := Probe.PositionPoint(Pos2(2, 7));
-  ClickAt(P.X, P.Y + 3);
-  Check((Probe.Activations = 2) and (Probe.Activated.Target = 'side') and (Probe.Activated.Image = ''),
-    'a text link''s target: ' + Probe.Activated.Target);
-  P := Probe.PositionPoint(Pos2(2, 17));
-  ClickAt(P.X, P.Y + 3);
-  Check((Probe.Activations = 3) and (Probe.Activated.Target = ''), 'no target: ' + Probe.Activated.Href);
-
-  Probe.HandleLinks := False;
-  ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
-  Check(Pos('palette.png', Probe.Clicked) > 0, 'not handled, OnLinkClick has it');
-  Check(Probe.ClickedLink.Target = '_blank', 'and ClickedLink says what it was');
-
-  { with nobody to take the click, a picture opens as a page of its own }
-  Probe.OnLinkClick := nil;
-  ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
-  Check(Probe.DocumentTitle = 'palette.png', 'the picture alone: ' + Probe.DocumentTitle);
-  Check(Probe.ImageCount = 1, 'showing the picture');
-  Check(Probe.CanGoBack, 'with a way back');
-  Probe.Back;
-  Check(Probe.BlockCount = 3, 'and back to a page that was given as text');
-  Probe.Forward;
-  Check(Probe.DocumentTitle = 'palette.png', 'and forward again');
-  Probe.Back;
-  Probe.OnLinkClick := @Probe.LinkHit;
-  Probe.OnLinkActivate := nil;
-
-  { how big a picture is drawn }
-  Probe.LoadHTML('<img src="palette.png">', Base);
-  Probe.ScrollTo(0);
-  B := Probe.Block(0);
-  W := B.Bounds.Right - B.Bounds.Left;
-  Check(B.ImageRect.Right - B.ImageRect.Left = Min(W, B.Picture.Width), 'iifShrink: never larger');
-  Probe.ImageFit := iifWidth;
-  B := Probe.Block(0);
-  W := B.Bounds.Right - B.Bounds.Left;
-  Check(B.ImageRect.Right - B.ImageRect.Left = W, 'iifWidth: as wide as the column');
-  Check(B.ImageRect.Bottom - B.ImageRect.Top =
-    Round(B.Picture.Height * W / B.Picture.Width), 'keeping its shape');
-  Probe.ImageFit := iifWindow;
-  B := Probe.Block(0);
-  R := B.ImageRect;
-  Check(R.Bottom - R.Top <= Probe.ClientHeight, 'iifWindow: no taller than the window');
-  Check(R.Right - R.Left <= Probe.ClientWidth - Probe.ScrollBar.Width, 'nor wider');
-  Check((R.Right - R.Left >= B.Bounds.Right - B.Bounds.Left - 2) or
-    (R.Bottom - R.Top >= Probe.ClientHeight - 60), 'and as big as fits');
-  { a bigger window zooms it, past its own size }
-  W := R.Right - R.Left;
-  Probe.SetBounds(0, 0, 1200, 1100);
-  B := Probe.Block(0); Probe.ScrollTo(0);
-  R := B.ImageRect;
-  Check((R.Right - R.Left > W) and (R.Right - R.Left > B.Picture.Width),
-    Format('iifWindow: a bigger window zooms the picture (%d, was %d, its own %d)',
-      [R.Right - R.Left, W, B.Picture.Width]));
-  Check((R.Bottom - R.Top <= Probe.ClientHeight) and
-    (R.Right - R.Left <= Probe.ClientWidth - Probe.ScrollBar.Width), 'and it still fits');
-  Probe.SetBounds(0, 0, 400, 200);
-  Probe.ImageFit := iifShrink;
-end;
-
-{ --- tables that look like a page --- }
-procedure CardTableChecks;
-const
-  Style =
-    '<style>body { background: #000000; color: #ffffff } ' +
-    'table.cards { width: 100%; border-collapse: separate; border-spacing: 10px; ' +
-    '  table-layout: fixed; margin: 4px -10px 10px } ' +
-    'table.cards td { background: #102030; border: 1px solid #405060; ' +
-    '  border-radius: 6px; padding: 8px 12px; vertical-align: top; width: 33% } ' +
-    'table.cards td.empty { background: none; border: none } ' +
-    'table.cards small { color: #00ff00 } ' +
-    'table.cards a { text-decoration: none } ' +
-    'table.lines td { border-bottom: 1px solid #ff0000; padding: 4px 8px 4px 0 } ' +
-    'small { color: #0000ff }</style>';
-var
-  B, Plain, Cell: TInkPageBlock;
-  Table, Body, Box: TInkBox;
-  Cells: TList;
-  R: TRect;
-  Shot: TBitmap;
-  K, Painted, X, Y: Integer;
-begin
-  Probe.SetBounds(0, 0, 500, 300);
-  Probe.LoadHTML('<html><head>' + Style + '</head><body><table class="cards"><tr>' +
-    '<td><a href="one.html"><b>One</b></a><br><small>first</small></td>' +
-    '<td><a href="two.html"><b>Two</b></a><br><small>second card, longer than the first one</small></td>' +
-    '<td class="empty"></td></tr></table>' +
-    '<p>after <small>fine print</small></p>' +
-    '<table class="lines"><tr><td>a</td><td>b</td></tr></table></body></html>');
-  Probe.ScrollTo(0);
-  B := FindBlock(Probe, '', 'One');
-  Table := UpTo(B, 'table');
-  Body := UpTo(B, 'body');
-  Check((Table <> nil) and (Body <> nil), 'the cards are in a table');
-  Check(Table.X = Body.ContentX - 10, Format('the table reaches out by its margin (%d, %d)',
-    [Table.X, Body.ContentX]));
-  Check(Table.W = Body.ContentW, Format('width: 100%% (%d, %d)', [Table.W, Body.ContentW]));
-  Check(Pos('#00ff00', LowerCase(B.Source)) > 0, 'small in a card: its own color: ' + B.Source);
-  Check(Pos('<u>', B.Source) = 0, 'links in cards are not underlined');
-  Plain := FindBlock(Probe, 'p', 'fine print');
-  Check((Pos('#0000ff', LowerCase(Plain.Source)) > 0) and (Pos('size=', Plain.Source) > 0),
-    'small elsewhere: smaller, and the plain rule''s color: ' + Plain.Source);
-  Cells := BoxesNamed(Probe, 'td');
-  try
-    Check(Cells.Count = 5, Format('five cells (%d)', [Cells.Count]));
-    { a fixed table: three equal columns, the spacing between them }
-    Check((Cells.Count >= 3) and (Abs(TInkBox(Cells[0]).W - TInkBox(Cells[1]).W) <= 1) and
-      (Abs(TInkBox(Cells[1]).W - TInkBox(Cells[2]).W) <= 1), 'fixed layout: equal columns');
-    Check(TInkBox(Cells[1]).X - (TInkBox(Cells[0]).X + TInkBox(Cells[0]).W) = 10, 'border-spacing');
-    Check(TInkBox(Cells[0]).Y - Table.Y = 10, 'the first card starts one spacing down');
-    Cell := FindBlock(Probe, '', 'first');
-    Check(Cell.Bounds.Left - TInkBox(Cells[0]).X = 13, Format('cell padding and border (%d)',
-      [Cell.Bounds.Left - TInkBox(Cells[0]).X]));
-    Shot := TBitmap.Create;
-    try
-      Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
-      Probe.RenderTo(Shot.Canvas);
-      Painted := 0;
-      for K := 0 to 2 do
-      begin
-        Box := TInkBox(Cells[K]);
-        X := Box.X + Box.W div 2; Y := Box.Y + Box.H - 4 - Probe.ScrollY;
-        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($10, $20, $30) then Inc(Painted);
-      end;
-      Check(Painted = 2, Format('two cards painted, the empty one not (%d)', [Painted]));
-      Box := TInkBox(Cells[0]);
-      Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + Box.W + 5, Box.Y + 20 - Probe.ScrollY]) = clBlack,
-        'a gap between cards');
-      Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + Box.W div 2, Box.Y - Probe.ScrollY]) = RGBToColor($40, $50, $60),
-        'cell border color');
-      Check(ColorToRGB(Shot.Canvas.Pixels[Box.X, Box.Y - Probe.ScrollY]) <> RGBToColor($40, $50, $60),
-        'rounded cells');
-      { the lined table: a red rule under each cell, none over it }
-      Box := TInkBox(Cells[3]);
-      R := Rect(Box.X, Box.Y - Probe.ScrollY, Box.X + Box.W, Box.Y + Box.H - Probe.ScrollY);
-      Check(ColorToRGB(Shot.Canvas.Pixels[R.Left + 2, R.Bottom - 1]) = clRed, 'a bottom border');
-      Check(ColorToRGB(Shot.Canvas.Pixels[R.Left + 2, R.Top]) <> clRed, 'alone');
-    finally Shot.Free end;
-  finally Cells.Free end;
-  Probe.SetBounds(0, 0, 400, 200);
-end;
-
-{ --- narrow windows: width queries, hidden things, wrapping --- }
-procedure NarrowChecks;
-const
-  Doc =
-    '<html><head><style>' +
-    'body { background: #000000; color: #ffffff } ' +
-    'p.note { color: #00ff00 } ' +
-    '@media (max-width: 600px) { p.note { color: #ff0000 } ' +
-    '  table.cards td { display: block; margin: 0 0 8px } table.cards td.empty { display: none } } ' +
-    '@media print { p.note { color: #0000ff } } ' +
-    'table.cards { width: 100%; border-spacing: 10px; table-layout: fixed } ' +
-    'nav { display: flex; gap: 6px } ' +
-    '.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px } ' +
-    '.card { background: #102030; padding: 4px 6px; text-decoration: none } ' +
-    '.gone { display: none } ' +
-    '</style></head><body>' +
-    '<nav><a href="a.html">Home</a><a href="b.html">Tools</a></nav>' +
-    '<p class="note">note</p>' +
-    '<table class="cards"><tr><td>one</td><td>two</td><td class="empty"></td></tr></table>' +
-    '<div class="grid">' +
-    '<a class="card" href="1.html"><b>One</b><br><small>first</small></a>' +
-    '<a class="card" href="2.html"><b>Two</b></a>' +
-    '<div class="card"><h3>Three</h3><p>third</p></div>' +
-    '<a class="card gone" href="x.html">hidden card</a>' +
-    '</div><p>after <span class="gone">secret</span>words</p></body></html>';
-var
-  Home, Tools, Note, One, Two: TInkPageBlock;
-  K: Integer;
-
-  procedure Blocks;
-  begin
-    Home := FindBlock(Probe, '', 'Home'); Tools := FindBlock(Probe, '', 'Tools');
-    Note := FindBlock(Probe, 'p', 'note');
-    One := FindBlock(Probe, '', 'one'); Two := FindBlock(Probe, '', 'two');
-  end;
-
-  { the grid's items, in how many rows }
-  function GridRows: Integer;
-  var L: TList; I, J: Integer; Grid: TInkBox; Seen: Boolean;
-  begin
-    Result := 0;
-    L := BoxesNamed(Probe, 'div');
-    try
-      Grid := nil;
-      for I := 0 to L.Count - 1 do
-        if TInkBox(L[I]).Node.GetAttribute('class') = 'grid' then Grid := TInkBox(L[I]);
-      Check(Grid <> nil, 'the grid is there');
-      if Grid = nil then Exit;
-      Check(Grid.Count = 3, Format('three grid items (%d)', [Grid.Count]));
-      for I := 0 to Grid.Count - 1 do
-      begin
-        Seen := False;
-        for J := 0 to I - 1 do
-          if Grid[J].Y = Grid[I].Y then Seen := True;
-        if not Seen then Inc(Result);
-      end;
-    finally L.Free end;
-  end;
-
-begin
-  Probe.SetBounds(0, 0, 900, 300);
-  Probe.LoadHTML(Doc);
-  Probe.ScrollTo(0);
-  Blocks;
-  Check(Pos('secret', Probe.PlainText) = 0, 'display: none hides an inline element');
-  Check(Pos('hidden card', Probe.PlainText) = 0, 'and a flex item');
-  Check(Pos('afterwords', StringReplace(Probe.PlainText, ' ', '', [rfReplaceAll])) > 0, 'the words around it stay');
-  Check(ColorToRGB(Note.TextColor) = RGBToColor(0, 255, 0), 'wide: the plain rule');
-  Check(One.Bounds.Top = Two.Bounds.Top, 'wide: the cards are one row');
-  K := GridRows;
-  Check(K = 1, Format('wide: three to a row (%d rows)', [K]));
-  Check(Pos('<u>', FindBlock(Probe, '', 'One').Source) = 0, 'a card that is a link is not underlined');
-  Check((Home.Bounds.Top = Tools.Bounds.Top) and (Tools.Bounds.Left - Home.Bounds.Right = 6),
-    'a flex row that does not wrap, its gap between');
-
-  Probe.SetBounds(0, 0, 360, 300);
-  Probe.ScrollTo(0);
-  Blocks;
-  Check(ColorToRGB(Note.TextColor) = RGBToColor(255, 0, 0), 'narrow: the max-width rule');
-  Check(Two.Bounds.Top > One.Bounds.Bottom, Format('narrow: a card to a row (%d, %d)',
-    [One.Bounds.Bottom, Two.Bounds.Top]));
-  Check(CountBoxes(Probe, 'td') = 2, 'the empty one gone');
-  K := GridRows;
-  Check(K > 1, Format('narrow: fewer to a row (%d rows)', [K]));
-  Probe.SetBounds(0, 0, 900, 300);
-  Probe.ScrollTo(0);
-  Blocks;
-  K := GridRows;
-  Check(K = 1, 'and back when it widens');
-  Check(ColorToRGB(Note.TextColor) = RGBToColor(0, 255, 0), 'wide again: the plain rule');
-  Probe.SetBounds(0, 0, 400, 200);
-end;
-
-{ --- style attributes, <details>, <caption>, <q> and link titles --- }
-procedure TagChecks;
-const
-  Doc =
-    '<html><head><style>' +
-    'body { background: #ffffff; color: #000000 } p.wide { color: #0000ff } ' +
-    'h4 { text-align: center } ' +
-    '</style></head><body>' +
-    '<p>Plain <span style="color: #ff0000">red</span>, ' +
-    '<span style="font-weight: bold">thick</span>, ' +
-    '<span style="text-decoration: underline; font-style: italic">under</span>, ' +
-    '<b style="color: #00ff00">both</b>.</p>' +
-    '<p class="wide" style="color: #008800; background: #101010; font-size: 24px">styled block</p>' +
-    '<p style="text-align: center">middled</p>' +
-    '<h4>a heading the sheet centers</h4>' +
-    '<center><p>in a center</p></center>' +
-    '<p>She said <q>hello</q> loudly.</p>' +
-    '<p><a href="a.html" title="the first page">link</a> and ' +
-    '<a href="b.html">no title</a></p>' +
-    '<table><caption>Table one</caption><tr><td>cell</td></tr></table>' +
-    '<details><summary>More</summary><p>the secret</p></details>' +
-    '<details open><summary>Already</summary><p>on show</p></details>' +
-    '<details><p>no summary here</p></details>' +
-    '<p>an icon <svg viewBox="0 0 8 8"><title>a drawing</title><path d="M0 0"/></svg> beside words</p>' +
-    '<template><p>not a real paragraph</p></template>' +
-    '<p>last line</p>' +
-    '</body></html>';
-var
-  I, Summary, Secret, Caption, TableAt, Middled: Integer;
-  B: TInkPageBlock; Plain, Spans: string; WasHigh: Integer;
-begin
-  Probe.SetBounds(0, 0, 500, 400);
-  Probe.LoadHTML(Doc);
-  Probe.ScrollTo(0);
-  Summary := -1; Secret := -1; Caption := -1; TableAt := -1; Middled := -1;
-  Spans := '';
-  for I := 0 to Probe.BlockCount - 1 do
-  begin
-    B := Probe.Block(I);
-    if Pos('Plain', B.Source) > 0 then Spans := B.Source;
-    if (Summary < 0) and (B.FoldHead >= 0) then Summary := I;
-    if Pos('the secret', B.Source) > 0 then Secret := I;
-    if B.Tag = 'caption' then Caption := I;
-    if (TableAt < 0) and (B.Tag = 'table') then TableAt := I;
-    if Pos('middled', B.Source) > 0 then Middled := I;
-  end;
-
-  { a style attribute on something inside a paragraph }
-  Check(Pos('<font color="#FF0000">red</font>', Spans) > 0, 'style="color" colors a span');
-  Check(Pos('<b>thick</b>', Spans) > 0, 'style="font-weight: bold" thickens one');
-  Check((Pos('<u>', Spans) > 0) and (Pos('<i>', Spans) > 0), 'underline and italic together');
-  Check(Pos('</u></i>', Spans) > 0, 'and they are closed in order');
-  Check(Pos('#00FF00"><b>both</b>', Spans) > 0,
-    'a style on an element that already draws something keeps both: ' + Spans);
-
-  { and on a block of its own }
-  B := Probe.Block(1);
-  Check(Pos('styled block', B.Source) > 0, 'the styled block is where it should be');
-  Check(ColorToRGB(B.TextColor) = RGBToColor(0, $88, 0), 'a block''s style attribute beats its class');
-  Check(UpTo(B, 'p').Style.Color('background-color') = $FF101010, 'and gives it a background');
-  { sizes are pixels, negative the way TFont.Height spells them }
-  Check(B.PointSize = -24, Format('font-size: 24px is 24 pixels (%d)', [B.PointSize]));
-
-  Check((Middled >= 0) and (Pos('<center>', Probe.Block(Middled).Source) = 1),
-    'style="text-align: center" centers a block');
-  for I := 0 to Probe.BlockCount - 1 do
-    if Probe.Block(I).Tag = 'h4' then
-      Check(Pos('<center>', Probe.Block(I).Source) = 1, 'and so does text-align in the stylesheet');
-  for I := 0 to Probe.BlockCount - 1 do
-    if Pos('in a center', Probe.Block(I).Source) > 0 then
-      Check(Pos('<center>', Probe.Block(I).Source) = 1, 'a <center> centers what is inside it');
-
-  Plain := Probe.PlainText;
-  Check(Pos('said ' + #$E2#$80#$9C + 'hello' + #$E2#$80#$9D + ' loudly', Plain) > 0,
-    '<q> puts quotation marks round what it holds');
-
-  { a link''s title is its tooltip }
-  for I := 0 to Probe.BlockCount - 1 do
-    if Pos('no title', Probe.Block(I).Source) > 0 then
+    procedure ClickAt(X, Y: integer);
     begin
-      B := Probe.Block(I);
-      Check(Length(B.LinkTitles) = 2, Format('a title for each link (%d)', [Length(B.LinkTitles)]));
-      Check(B.LinkTitles[0] = 'the first page', 'the title the page gave');
-      Check(B.LinkTitles[1] = '', 'and nothing for the link without one');
+      Probe.Press(X, Y);
+      Probe.Let(X, Y);
     end;
 
-  { a table''s caption is a line above it }
-  B := FindBlock(Probe, '', 'cell');
-  Check(Caption >= 0, 'a <caption> makes a block');
-  Check((Caption >= 0) and (Probe.Block(Caption).Bounds.Bottom <= B.Bounds.Top), 'and it comes above its table');
-  Check(Pos('Table one', Probe.Block(Caption).Source) > 0, 'holding the caption''s words');
-  Check(Pos('Table one', B.Source) = 0, 'and not left in the table');
+  begin
+    Base := FilenameToURI(ExpandFileName('images/page.html'));
+    Probe.OnLinkActivate := @Probe.LinkActivated;
+    Probe.OnLinkClick := @Probe.LinkHit;
+    Probe.LoadHTML('<html><body><p>Before</p>' + '<a href="palette.png" target="_blank"><img src="palette.png" alt="the palette"></a>' +
+      '<p>after <a href="t.html" target="side">text</a> and <a href="u.html">plain</a></p>' + '</body></html>', Base);
+    Probe.ScrollTo(0);
+    Check(Probe.BlockCount = 3, Format('a linked picture makes no empty blocks (%d)', [Probe.BlockCount]));
+    B := Probe.Block(1);
+    Check(B.Picture.Graphic <> nil, 'the picture loads');
+    Check((B.LinkHref = 'palette.png') and (B.LinkTarget = '_blank'), 'and knows its link');
 
-  { <details> starts shut, and a click on the summary opens it }
-  Check(Summary >= 0, 'a <summary> is a block that works a fold');
-  Check(Secret < 0, '<details> starts folded away');
+    Probe.HandleLinks := True;
+    Probe.Activations := 0;
+    Probe.Clicked := '';
+    R := B.ImageRect;
+    OffsetRect(R, 0, -Probe.ScrollY);
+    ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
+    Check(Probe.Activations = 1, 'a click on a linked picture is a link click');
+    Check(Probe.Activated.Target = '_blank', 'with its target: ' + Probe.Activated.Target);
+    Check(Pos('images/palette.png', Probe.Activated.Image) > 0, 'and the picture: ' + Probe.Activated.Image);
+    Check(Pos('images/palette.png', Probe.Activated.URL) > 0, 'resolved: ' + Probe.Activated.URL);
+    Check(Probe.Activated.Href = 'palette.png', 'as written');
+    Check(Probe.Clicked = '', 'Handled stops it there');
+    ClickAt(R.Right + 20, (R.Top + R.Bottom) div 2);
+    Check(Probe.Activations = 1, 'beside the picture is not the link');
+
+    P := Probe.PositionPoint(Pos2(2, 7));
+    ClickAt(P.X, P.Y + 3);
+    Check((Probe.Activations = 2) and (Probe.Activated.Target = 'side') and (Probe.Activated.Image = ''),
+      'a text link''s target: ' + Probe.Activated.Target);
+    P := Probe.PositionPoint(Pos2(2, 17));
+    ClickAt(P.X, P.Y + 3);
+    Check((Probe.Activations = 3) and (Probe.Activated.Target = ''), 'no target: ' + Probe.Activated.Href);
+
+    Probe.HandleLinks := False;
+    ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
+    Check(Pos('palette.png', Probe.Clicked) > 0, 'not handled, OnLinkClick has it');
+    Check(Probe.ClickedLink.Target = '_blank', 'and ClickedLink says what it was');
+
+    { with nobody to take the click, a picture opens as a page of its own }
+    Probe.OnLinkClick := nil;
+    ClickAt((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
+    Check(Probe.DocumentTitle = 'palette.png', 'the picture alone: ' + Probe.DocumentTitle);
+    Check(Probe.ImageCount = 1, 'showing the picture');
+    Check(Probe.CanGoBack, 'with a way back');
+    Probe.Back;
+    Check(Probe.BlockCount = 3, 'and back to a page that was given as text');
+    Probe.Forward;
+    Check(Probe.DocumentTitle = 'palette.png', 'and forward again');
+    Probe.Back;
+    Probe.OnLinkClick := @Probe.LinkHit;
+    Probe.OnLinkActivate := nil;
+
+    { how big a picture is drawn }
+    Probe.LoadHTML('<img src="palette.png">', Base);
+    Probe.ScrollTo(0);
+    B := Probe.Block(0);
+    W := B.Bounds.Right - B.Bounds.Left;
+    Check(B.ImageRect.Right - B.ImageRect.Left = Min(W, B.Picture.Width), 'iifShrink: never larger');
+    Probe.ImageFit := iifWidth;
+    B := Probe.Block(0);
+    W := B.Bounds.Right - B.Bounds.Left;
+    Check(B.ImageRect.Right - B.ImageRect.Left = W, 'iifWidth: as wide as the column');
+    Check(B.ImageRect.Bottom - B.ImageRect.Top = Round(B.Picture.Height * W / B.Picture.Width), 'keeping its shape');
+    Probe.ImageFit := iifWindow;
+    B := Probe.Block(0);
+    R := B.ImageRect;
+    Check(R.Bottom - R.Top <= Probe.ClientHeight, 'iifWindow: no taller than the window');
+    Check(R.Right - R.Left <= Probe.ClientWidth - Probe.ScrollBar.Width, 'nor wider');
+    Check((R.Right - R.Left >= B.Bounds.Right - B.Bounds.Left - 2) or (R.Bottom - R.Top >= Probe.ClientHeight - 60), 'and as big as fits');
+    { a bigger window zooms it, past its own size }
+    W := R.Right - R.Left;
+    Probe.SetBounds(0, 0, 1200, 1100);
+    B := Probe.Block(0);
+    Probe.ScrollTo(0);
+    R := B.ImageRect;
+    Check((R.Right - R.Left > W) and (R.Right - R.Left > B.Picture.Width),
+      Format('iifWindow: a bigger window zooms the picture (%d, was %d, its own %d)', [R.Right - R.Left, W, B.Picture.Width]));
+    Check((R.Bottom - R.Top <= Probe.ClientHeight) and (R.Right - R.Left <= Probe.ClientWidth - Probe.ScrollBar.Width), 'and it still fits');
+    Probe.SetBounds(0, 0, 400, 200);
+    Probe.ImageFit := iifShrink;
+  end;
+
+  { --- tables that look like a page --- }
+  procedure CardTableChecks;
+  const
+    Style =
+      '<style>body { background: #000000; color: #ffffff } ' + 'table.cards { width: 100%; border-collapse: separate; border-spacing: 10px; ' +
+      '  table-layout: fixed; margin: 4px -10px 10px } ' + 'table.cards td { background: #102030; border: 1px solid #405060; ' +
+      '  border-radius: 6px; padding: 8px 12px; vertical-align: top; width: 33% } ' + 'table.cards td.empty { background: none; border: none } ' +
+      'table.cards small { color: #00ff00 } ' + 'table.cards a { text-decoration: none } ' + 'table.lines td { border-bottom: 1px solid #ff0000; padding: 4px 8px 4px 0 } ' +
+      'small { color: #0000ff }</style>';
+  var
+    B, Plain, Cell: TInkPageBlock;
+    Table, Body, Box: TInkBox;
+    Cells: TList;
+    R: TRect;
+    Shot: TBitmap;
+    K, Painted, X, Y: integer;
+  begin
+    Probe.SetBounds(0, 0, 500, 300);
+    Probe.LoadHTML('<html><head>' + Style + '</head><body><table class="cards"><tr>' + '<td><a href="one.html"><b>One</b></a><br><small>first</small></td>' +
+      '<td><a href="two.html"><b>Two</b></a><br><small>second card, longer than the first one</small></td>' + '<td class="empty"></td></tr></table>' +
+      '<p>after <small>fine print</small></p>' + '<table class="lines"><tr><td>a</td><td>b</td></tr></table></body></html>');
+    Probe.ScrollTo(0);
+    B := FindBlock(Probe, '', 'One');
+    Table := UpTo(B, 'table');
+    Body := UpTo(B, 'body');
+    Check((Table <> nil) and (Body <> nil), 'the cards are in a table');
+    Check(Table.X = Body.ContentX - 10, Format('the table reaches out by its margin (%d, %d)', [Table.X, Body.ContentX]));
+    Check(Table.W = Body.ContentW, Format('width: 100%% (%d, %d)', [Table.W, Body.ContentW]));
+    Check(Pos('#00ff00', LowerCase(B.Source)) > 0, 'small in a card: its own color: ' + B.Source);
+    Check(Pos('<u>', B.Source) = 0, 'links in cards are not underlined');
+    Plain := FindBlock(Probe, 'p', 'fine print');
+    Check((Pos('#0000ff', LowerCase(Plain.Source)) > 0) and (Pos('size=', Plain.Source) > 0),
+      'small elsewhere: smaller, and the plain rule''s color: ' + Plain.Source);
+    Cells := BoxesNamed(Probe, 'td');
+    try
+      Check(Cells.Count = 5, Format('five cells (%d)', [Cells.Count]));
+      { a fixed table: three equal columns, the spacing between them }
+      Check((Cells.Count >= 3) and (Abs(TInkBox(Cells[0]).W - TInkBox(Cells[1]).W) <= 1) and (Abs(TInkBox(Cells[1]).W - TInkBox(Cells[2]).W) <= 1),
+        'fixed layout: equal columns');
+      Check(TInkBox(Cells[1]).X - (TInkBox(Cells[0]).X + TInkBox(Cells[0]).W) = 10, 'border-spacing');
+      Check(TInkBox(Cells[0]).Y - Table.Y = 10, 'the first card starts one spacing down');
+      Cell := FindBlock(Probe, '', 'first');
+      Check(Cell.Bounds.Left - TInkBox(Cells[0]).X = 13, Format('cell padding and border (%d)', [Cell.Bounds.Left - TInkBox(Cells[0]).X]));
+      Shot := TBitmap.Create;
+      try
+        Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+        Probe.RenderTo(Shot.Canvas);
+        Painted := 0;
+        for K := 0 to 2 do
+        begin
+          Box := TInkBox(Cells[K]);
+          X := Box.X + Box.W div 2;
+          Y := Box.Y + Box.H - 4 - Probe.ScrollY;
+          if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($10, $20, $30) then Inc(Painted);
+        end;
+        Check(Painted = 2, Format('two cards painted, the empty one not (%d)', [Painted]));
+        Box := TInkBox(Cells[0]);
+        Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + Box.W + 5, Box.Y + 20 - Probe.ScrollY]) = clBlack,
+          'a gap between cards');
+        Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + Box.W div 2, Box.Y - Probe.ScrollY]) = RGBToColor($40, $50, $60),
+          'cell border color');
+        Check(ColorToRGB(Shot.Canvas.Pixels[Box.X, Box.Y - Probe.ScrollY]) <> RGBToColor($40, $50, $60),
+          'rounded cells');
+        { the lined table: a red rule under each cell, none over it }
+        Box := TInkBox(Cells[3]);
+        R := Rect(Box.X, Box.Y - Probe.ScrollY, Box.X + Box.W, Box.Y + Box.H - Probe.ScrollY);
+        Check(ColorToRGB(Shot.Canvas.Pixels[R.Left + 2, R.Bottom - 1]) = clRed, 'a bottom border');
+        Check(ColorToRGB(Shot.Canvas.Pixels[R.Left + 2, R.Top]) <> clRed, 'alone');
+      finally
+        Shot.Free
+      end;
+    finally
+      Cells.Free
+    end;
+    Probe.SetBounds(0, 0, 400, 200);
+  end;
+
+  { --- narrow windows: width queries, hidden things, wrapping --- }
+  procedure NarrowChecks;
+  const
+    Doc =
+      '<html><head><style>' + 'body { background: #000000; color: #ffffff } ' + 'p.note { color: #00ff00 } ' +
+      '@media (max-width: 600px) { p.note { color: #ff0000 } ' + '  table.cards td { display: block; margin: 0 0 8px } table.cards td.empty { display: none } } ' +
+      '@media print { p.note { color: #0000ff } } ' + 'table.cards { width: 100%; border-spacing: 10px; table-layout: fixed } ' +
+      'nav { display: flex; gap: 6px } ' + '.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px } ' +
+      '.card { background: #102030; padding: 4px 6px; text-decoration: none } ' + '.gone { display: none } ' + '</style></head><body>' +
+      '<nav><a href="a.html">Home</a><a href="b.html">Tools</a></nav>' + '<p class="note">note</p>' +
+      '<table class="cards"><tr><td>one</td><td>two</td><td class="empty"></td></tr></table>' + '<div class="grid">' +
+      '<a class="card" href="1.html"><b>One</b><br><small>first</small></a>' + '<a class="card" href="2.html"><b>Two</b></a>' +
+      '<div class="card"><h3>Three</h3><p>third</p></div>' + '<a class="card gone" href="x.html">hidden card</a>' +
+      '</div><p>after <span class="gone">secret</span>words</p></body></html>';
+  var
+    Home, Tools, Note, One, Two: TInkPageBlock;
+    K: integer;
+
+    procedure Blocks;
+    begin
+      Home := FindBlock(Probe, '', 'Home');
+      Tools := FindBlock(Probe, '', 'Tools');
+      Note := FindBlock(Probe, 'p', 'note');
+      One := FindBlock(Probe, '', 'one');
+      Two := FindBlock(Probe, '', 'two');
+    end;
+
+    { the grid's items, in how many rows }
+    function GridRows: integer;
+    var
+      L: TList;
+      I, J: integer;
+      Grid: TInkBox;
+      Seen: boolean;
+    begin
+      Result := 0;
+      L := BoxesNamed(Probe, 'div');
+      try
+        Grid := nil;
+        for I := 0 to L.Count - 1 do
+          if TInkBox(L[I]).Node.GetAttribute('class') = 'grid' then Grid := TInkBox(L[I]);
+        Check(Grid <> nil, 'the grid is there');
+        if Grid = nil then Exit;
+        Check(Grid.Count = 3, Format('three grid items (%d)', [Grid.Count]));
+        for I := 0 to Grid.Count - 1 do
+        begin
+          Seen := False;
+          for J := 0 to I - 1 do
+            if Grid[J].Y = Grid[I].Y then Seen := True;
+          if not Seen then Inc(Result);
+        end;
+      finally
+        L.Free
+      end;
+    end;
+
+  begin
+    Probe.SetBounds(0, 0, 900, 300);
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(0);
+    Blocks;
+    Check(Pos('secret', Probe.PlainText) = 0, 'display: none hides an inline element');
+    Check(Pos('hidden card', Probe.PlainText) = 0, 'and a flex item');
+    Check(Pos('afterwords', StringReplace(Probe.PlainText, ' ', '', [rfReplaceAll])) > 0, 'the words around it stay');
+    Check(ColorToRGB(Note.TextColor) = RGBToColor(0, 255, 0), 'wide: the plain rule');
+    Check(One.Bounds.Top = Two.Bounds.Top, 'wide: the cards are one row');
+    K := GridRows;
+    Check(K = 1, Format('wide: three to a row (%d rows)', [K]));
+    Check(Pos('<u>', FindBlock(Probe, '', 'One').Source) = 0, 'a card that is a link is not underlined');
+    Check((Home.Bounds.Top = Tools.Bounds.Top) and (Tools.Bounds.Left - Home.Bounds.Right = 6),
+      'a flex row that does not wrap, its gap between');
+
+    Probe.SetBounds(0, 0, 360, 300);
+    Probe.ScrollTo(0);
+    Blocks;
+    Check(ColorToRGB(Note.TextColor) = RGBToColor(255, 0, 0), 'narrow: the max-width rule');
+    Check(Two.Bounds.Top > One.Bounds.Bottom, Format('narrow: a card to a row (%d, %d)', [One.Bounds.Bottom, Two.Bounds.Top]));
+    Check(CountBoxes(Probe, 'td') = 2, 'the empty one gone');
+    K := GridRows;
+    Check(K > 1, Format('narrow: fewer to a row (%d rows)', [K]));
+    Probe.SetBounds(0, 0, 900, 300);
+    Probe.ScrollTo(0);
+    Blocks;
+    K := GridRows;
+    Check(K = 1, 'and back when it widens');
+    Check(ColorToRGB(Note.TextColor) = RGBToColor(0, 255, 0), 'wide again: the plain rule');
+    Probe.SetBounds(0, 0, 400, 200);
+  end;
+
+  { --- style attributes, <details>, <caption>, <q> and link titles --- }
+  procedure TagChecks;
+  const
+    Doc =
+      '<html><head><style>' + 'body { background: #ffffff; color: #000000 } p.wide { color: #0000ff } ' + 'h4 { text-align: center } ' +
+      '</style></head><body>' + '<p>Plain <span style="color: #ff0000">red</span>, ' + '<span style="font-weight: bold">thick</span>, ' +
+      '<span style="text-decoration: underline; font-style: italic">under</span>, ' + '<b style="color: #00ff00">both</b>.</p>' +
+      '<p class="wide" style="color: #008800; background: #101010; font-size: 24px">styled block</p>' + '<p style="text-align: center">middled</p>' +
+      '<h4>a heading the sheet centers</h4>' + '<center><p>in a center</p></center>' + '<p>She said <q>hello</q> loudly.</p>' +
+      '<p><a href="a.html" title="the first page">link</a> and ' + '<a href="b.html">no title</a></p>' +
+      '<table><caption>Table one</caption><tr><td>cell</td></tr></table>' + '<details><summary>More</summary><p>the secret</p></details>' +
+      '<details open><summary>Already</summary><p>on show</p></details>' + '<details><p>no summary here</p></details>' +
+      '<p>an icon <svg viewBox="0 0 8 8"><title>a drawing</title><path d="M0 0"/></svg> beside words</p>' + '<template><p>not a real paragraph</p></template>' +
+      '<p>last line</p>' + '</body></html>';
+  var
+    I, Summary, Secret, Caption, TableAt, Middled: integer;
+    B: TInkPageBlock;
+    Plain, Spans: string;
+    WasHigh: integer;
+  begin
+    Probe.SetBounds(0, 0, 500, 400);
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(0);
+    Summary := -1;
+    Secret := -1;
+    Caption := -1;
+    TableAt := -1;
+    Middled := -1;
+    Spans := '';
+    for I := 0 to Probe.BlockCount - 1 do
+    begin
+      B := Probe.Block(I);
+      if Pos('Plain', B.Source) > 0 then Spans := B.Source;
+      if (Summary < 0) and (B.FoldHead >= 0) then Summary := I;
+      if Pos('the secret', B.Source) > 0 then Secret := I;
+      if B.Tag = 'caption' then Caption := I;
+      if (TableAt < 0) and (B.Tag = 'table') then TableAt := I;
+      if Pos('middled', B.Source) > 0 then Middled := I;
+    end;
+
+    { a style attribute on something inside a paragraph }
+    Check(Pos('<font color="#FF0000">red</font>', Spans) > 0, 'style="color" colors a span');
+    Check(Pos('<b>thick</b>', Spans) > 0, 'style="font-weight: bold" thickens one');
+    Check((Pos('<u>', Spans) > 0) and (Pos('<i>', Spans) > 0), 'underline and italic together');
+    Check(Pos('</u></i>', Spans) > 0, 'and they are closed in order');
+    Check(Pos('#00FF00"><b>both</b>', Spans) > 0,
+      'a style on an element that already draws something keeps both: ' + Spans);
+
+    { and on a block of its own }
+    B := Probe.Block(1);
+    Check(Pos('styled block', B.Source) > 0, 'the styled block is where it should be');
+    Check(ColorToRGB(B.TextColor) = RGBToColor(0, $88, 0), 'a block''s style attribute beats its class');
+    Check(UpTo(B, 'p').Style.Color('background-color') = $FF101010, 'and gives it a background');
+    { sizes are pixels, negative the way TFont.Height spells them }
+    Check(B.PointSize = -24, Format('font-size: 24px is 24 pixels (%d)', [B.PointSize]));
+
+    Check((Middled >= 0) and (Pos('<center>', Probe.Block(Middled).Source) = 1),
+      'style="text-align: center" centers a block');
+    for I := 0 to Probe.BlockCount - 1 do
+      if Probe.Block(I).Tag = 'h4' then
+        Check(Pos('<center>', Probe.Block(I).Source) = 1, 'and so does text-align in the stylesheet');
+    for I := 0 to Probe.BlockCount - 1 do
+      if Pos('in a center', Probe.Block(I).Source) > 0 then
+        Check(Pos('<center>', Probe.Block(I).Source) = 1, 'a <center> centers what is inside it');
+
+    Plain := Probe.PlainText;
+    Check(Pos('said ' + #$E2#$80#$9C + 'hello' + #$E2#$80#$9D + ' loudly', Plain) > 0,
+      '<q> puts quotation marks round what it holds');
+
+    { a link''s title is its tooltip }
+    for I := 0 to Probe.BlockCount - 1 do
+      if Pos('no title', Probe.Block(I).Source) > 0 then
+      begin
+        B := Probe.Block(I);
+        Check(Length(B.LinkTitles) = 2, Format('a title for each link (%d)', [Length(B.LinkTitles)]));
+        Check(B.LinkTitles[0] = 'the first page', 'the title the page gave');
+        Check(B.LinkTitles[1] = '', 'and nothing for the link without one');
+      end;
+
+    { a table''s caption is a line above it }
+    B := FindBlock(Probe, '', 'cell');
+    Check(Caption >= 0, 'a <caption> makes a block');
+    Check((Caption >= 0) and (Probe.Block(Caption).Bounds.Bottom <= B.Bounds.Top), 'and it comes above its table');
+    Check(Pos('Table one', Probe.Block(Caption).Source) > 0, 'holding the caption''s words');
+    Check(Pos('Table one', B.Source) = 0, 'and not left in the table');
+
+    { <details> starts shut, and a click on the summary opens it }
+    Check(Summary >= 0, 'a <summary> is a block that works a fold');
+    Check(Secret < 0, '<details> starts folded away');
   { the disclosure markers CSS names, inside the summary's words: U+25B8
     shut, U+25BE open }
-  Check(Pos(#$E2#$96#$B8, Probe.Block(Summary).Source) = 1, 'the summary points right while it is shut');
-  B := Probe.Block(Summary);
-  WasHigh := Probe.ContentHeight;
-  Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
-  Probe.Let(B.Bounds.Left + 4, B.Bounds.Top + 2);
-  B := FindBlock(Probe, '', 'the secret');
-  Check(B.Bounds.Bottom - B.Bounds.Top > 0, 'a click on the summary opens it');
-  Check(Probe.ContentHeight > WasHigh, 'so the page grows');
-  Check(Pos(#$E2#$96#$BE, Probe.Block(Summary).Source) = 1, 'and the summary points down');
-  B := Probe.Block(Summary);
-  Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
-  Probe.Let(B.Bounds.Left + 4, B.Bounds.Top + 2);
-  Check(Pos('the secret', Probe.PlainText) = 0, 'and another click shuts it again');
-  Check(Pos('on show', Probe.PlainText) > 0, '<details open> starts open');
-  { a browser shuts one with no summary too, and names it }
-  Check(Pos('no summary', Probe.PlainText) = 0, 'a <details> with no summary starts shut');
-  Check(Pos('a drawing', Plain) = 0, 'what is inside an <svg> is not read out');
-  Check(Pos('not a real paragraph', Plain) = 0, 'nor what is in a <template>');
-  Check(Pos('icon', Plain) > 0, 'the words either side of a drawing stay');
-  Check(Pos('last line', Plain) > 0, 'and so does the rest of the page');
-  Probe.SetBounds(0, 0, 400, 200);
-end;
-
-{ --- coloring code blocks --- }
-procedure CodeChecks;
-const
-  Pas =
-    '```pascal'#10 +
-    'procedure Go;'#10 +
-    'begin'#10 +
-    '  { a comment }'#10 +
-    '  S := ''text'';'#10 +
-    '  N := 42;'#10 +
-    'end;'#10 +
-    '```'#10;
-  Bare =
-    '```'#10 +
-    'function f(n) {'#10 +
-    '  // a line comment'#10 +
-    '  if (n > 7) return "big";'#10 +
-    '}'#10 +
-    '```'#10;
-var
-  Colors: TInkCodeColors; Markup, Code: string; I, Block: Integer;
-
-  function Lower(const S: string): string;
-  begin
-    Result := LowerCase(S);
+    Check(Pos(#$E2#$96#$B8, Probe.Block(Summary).Source) = 1, 'the summary points right while it is shut');
+    B := Probe.Block(Summary);
+    WasHigh := Probe.ContentHeight;
+    Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
+    Probe.Let(B.Bounds.Left + 4, B.Bounds.Top + 2);
+    B := FindBlock(Probe, '', 'the secret');
+    Check(B.Bounds.Bottom - B.Bounds.Top > 0, 'a click on the summary opens it');
+    Check(Probe.ContentHeight > WasHigh, 'so the page grows');
+    Check(Pos(#$E2#$96#$BE, Probe.Block(Summary).Source) = 1, 'and the summary points down');
+    B := Probe.Block(Summary);
+    Probe.Press(B.Bounds.Left + 4, B.Bounds.Top + 2);
+    Probe.Let(B.Bounds.Left + 4, B.Bounds.Top + 2);
+    Check(Pos('the secret', Probe.PlainText) = 0, 'and another click shuts it again');
+    Check(Pos('on show', Probe.PlainText) > 0, '<details open> starts open');
+    { a browser shuts one with no summary too, and names it }
+    Check(Pos('no summary', Probe.PlainText) = 0, 'a <details> with no summary starts shut');
+    Check(Pos('a drawing', Plain) = 0, 'what is inside an <svg> is not read out');
+    Check(Pos('not a real paragraph', Plain) = 0, 'nor what is in a <template>');
+    Check(Pos('icon', Plain) > 0, 'the words either side of a drawing stay');
+    Check(Pos('last line', Plain) > 0, 'and so does the rest of the page');
+    Probe.SetBounds(0, 0, 400, 200);
   end;
 
-  { the first <pre> block of the page }
-  function CodeBlock: Integer;
-  var K: Integer;
+  { --- coloring code blocks --- }
+  procedure CodeChecks;
+  const
+    Pas =
+      '```pascal'#10 + 'procedure Go;'#10 + 'begin'#10 + '  { a comment }'#10 + '  S := ''text'';'#10 + '  N := 42;'#10 + 'end;'#10 + '```'#10;
+    Bare =
+      '```'#10 + 'function f(n) {'#10 + '  // a line comment'#10 + '  if (n > 7) return "big";'#10 + '}'#10 + '```'#10;
+  var
+    Colors: TInkCodeColors;
+    Markup, Code: string;
+    I, Block: integer;
+
+    function Lower(const S: string): string;
+    begin
+      Result := LowerCase(S);
+    end;
+
+    { the first <pre> block of the page }
+    function CodeBlock: integer;
+    var
+      K: integer;
+    begin
+      Result := -1;
+      for K := 0 to Probe.BlockCount - 1 do
+        if Probe.Block(K).Tag = 'pre' then Exit(K);
+    end;
+
   begin
-    Result := -1;
-    for K := 0 to Probe.BlockCount - 1 do
-      if Probe.Block(K).Tag = 'pre' then Exit(K);
+    { --- the highlighter on its own --- }
+    Check(InkCodeLanguage('language-Pascal') = 'pascal', 'a class names the language');
+    Check(InkCodeLanguage('PY') = 'python', 'and so does a short name');
+    Check(InkCodeLanguage('pascal {.numberLines}') = 'pascal', 'a fence may say more than the language');
+    Check(InkCodeLanguage('') = '', 'nothing said is nothing');
+    Check(InkCodeKnown('pascal') and InkCodeKnown('go'), 'languages we have rules for');
+    Check(not InkCodeKnown(''), 'a block that names none is colored by the common rules');
+
+    Colors := InkCodeColors(clWhite);
+    Check(Colors.Comment <> Colors.Keyword, 'the colors differ from each other');
+    Check(InkCodeColors(clBlack).Comment <> Colors.Comment, 'and a dark page gets its own set');
+
+    Markup := Lower(InkHighlight('procedure Go; { why } S := ''text''; N := 42;' + #10 + 'Total := Total + 1;', 'pascal', Colors));
+    Check(Pos('<font color="' + Lower(ColorToString(Colors.Keyword)) + '">', Markup) = 0,
+      'colors are written as hex, not as names');
+    Check(Pos('>procedure</font>', Markup) > 0, 'a keyword is colored');
+    Check(Pos('>begin</font>', Markup) = 0, 'a word that is not there is not');
+    Check(Pos('>{ why }</font>', Markup) > 0, 'a Pascal comment in braces');
+    Check(Pos('>''text''</font>', Markup) > 0, 'a string in its quotes');
+    Check(Pos('>42</font>', Markup) > 0, 'a number');
+    Check(Pos('<br>', Markup) > 0, 'a line break stays a line break');
+    Check(Pos('go;', Markup) > 0, 'and everything else is left as it was');
+
+    { a comment runs to the end of its line, and a string does not swallow the line }
+    Markup := InkHighlight('x = 1; // set it' + #10 + 'y = 2;', 'c', Colors);
+    Check(Pos('>// set it</font>', Markup) > 0, 'a line comment stops at the line');
+    Check(Pos('>2</font>', Markup) > 0, 'the next line is code again');
+
+    { a block that says nothing still gets the words most languages share }
+    Markup := InkHighlight('if (n > 7) begin end // done', '', Colors);
+    Check(Pos('>if</font>', Markup) > 0, 'a common keyword is colored without a language');
+    Check(Pos('>begin</font>', Markup) > 0, 'begin counts as one of those');
+    Check(Pos('>// done</font>', Markup) > 0, 'and // is a comment everywhere');
+
+    { prose is not code }
+    Markup := InkHighlight('It is 42 degrees, and "quoted" text.', 'markdown', Colors);
+    Check(Pos('<font', Markup) = 0, 'a Markdown block is left alone');
+
+    { --- the things that used to color half a line by mistake --- }
+    Markup := InkHighlight('a { color: #fff; background: red }', '', Colors);
+    Check(Pos('#fff; background: red', Markup) > 0, 'a hex color is not a comment');
+    Markup := InkHighlight('# install it' + #10 + 'x = 1   # and a note', '', Colors);
+    Check(Pos('># install it</font>', Markup) > 0, 'but # at the start of a line is');
+    Check(Pos('># and a note</font>', Markup) > 0, 'and so is # spaced off the code');
+    Markup := InkHighlight('for (i = n; i > 0; i--) sum -= i;', '', Colors);
+    Check(Pos('<font color', Copy(Markup, Pos('i--', Markup), 40)) = 0,
+      'i-- is a decrement, not a comment');
+    Markup := InkHighlight('SELECT 1 -- how many', '', Colors);
+    Check(Pos('>-- how many</font>', Markup) > 0, 'a spaced -- still is one');
+    Markup := InkHighlight('echo it''s fine' + #10 + 'echo ''really''', '', Colors);
+    Check(Pos('>fine', Markup) = 0, 'an apostrophe in a word does not open a string');
+    Check(Pos('>''really''</font>', Markup) > 0, 'a quote that closes on the line does');
+    Markup := InkHighlight('let s = `a ${x} template`;', 'javascript', Colors);
+    Check(Pos('>`a ${x} template`</font>', Markup) > 0, 'a backtick string in JavaScript');
+    Markup := InkHighlight('<div class="card"><!-- a note --></div>', 'html', Colors);
+    Check(Pos('>&lt;div</font>', Markup) > 0, 'an HTML tag name is colored');
+    Check(Pos('>&lt;/div</font>', Markup) > 0, 'and so is a closing one');
+    Check(Pos('>&lt;!-- a note --&gt;</font>', Markup) > 0, 'with its comment');
+    Markup := InkHighlight('see section 1. it says', '', Colors);
+    Check(Pos('>1</font>', Markup) > 0, 'a number at the end of a sentence keeps its dot out');
+
+    { comments in the languages people put in documents }
+    Check(Pos('>-- note</font>', InkHighlight('x = 1 -- note', 'lua', Colors)) > 0, 'Lua --');
+    Check(Pos('>% note</font>', InkHighlight('x = 1 % note', 'matlab', Colors)) > 0, 'MATLAB %');
+    Check(Pos('>; note</font>', InkHighlight('mov ax, 1 ; note', 'asm', Colors)) > 0, 'assembler ;');
+    Check(Pos('>'' note</font>', InkHighlight('x = 1 '' note', 'vb', Colors)) > 0, 'Basic apostrophe');
+    Check(Pos('>(* note *)</font>', InkHighlight('let x = 1 (* note *)', 'ocaml', Colors)) > 0,
+      'OCaml (* *)');
+    Check(Pos('>#= note =#</font>', InkHighlight('x = 1 #= note =#', 'julia', Colors)) > 0,
+      'Julia #= =#');
+    Check(Pos('>{- note -}</font>', InkHighlight('x = 1 {- note -}', 'haskell', Colors)) > 0,
+      'Haskell {- -}');
+    Check(Pos('>{ note }</font>', InkHighlight('X := 1; { note }', 'pascal', Colors)) > 0,
+      'and Pascal braces, of course');
+
+    { Pascal's doubled quote is one string, not two }
+    Markup := InkHighlight('Reply := ''It''''s ready''; N := $FF;', 'pascal', Colors);
+    Check(Pos('>''It''''s ready''</font>', Markup) > 0, 'a doubled quote stays inside its string');
+    Check(Pos('>$FF</font>', Markup) > 0, 'and $FF is a number');
+
+    { Python, which has a few habits of its own }
+    Markup := InkHighlight('@property' + #10 + 'def go(self):' + #10 + '    """what it does"""' + #10 + '    return f"{self.n} left"', 'python', Colors);
+    Check(Pos('>@property</font>', Markup) > 0, 'a decorator reads as a keyword');
+    Check(Pos('>self</font>', Markup) > 0, 'and so does self');
+    Check(Pos('>"""what it does"""</font>', Markup) > 0, 'a docstring is one string');
+    Check(Pos('>f"{self.n} left"</font>', Markup) > 0, 'an f-string keeps its f');
+    Check(Pos('>def</font>', Markup) > 0, 'and def is still def');
+
+    { --- and through a page --- }
+    Probe.SetBounds(0, 0, 500, 400);
+    Probe.HighlightCode := True;
+    Probe.LoadMarkdown(Pas);
+    Block := CodeBlock;
+    Check(Block >= 0, 'the fence made a code block');
+    Check(Probe.Block(Block).CodeLanguage = 'pascal', 'which kept its language');
+    Check(Pos('<font color=', Probe.Block(Block).Source) > 0, 'and was colored');
+    Code := Probe.BlockText(Block);
+    Check(Pos('procedure Go;', Code) > 0, 'the code copies out as it was written');
+    Check(Pos('{ a comment }', Code) > 0, 'comment and all');
+    Check(Pos('<font', Code) = 0, 'with no markup in it');
+    Check(Probe.Block(Block).Code = Code, 'and the block keeps the same text');
+
+    Probe.HighlightCode := False;
+    Block := CodeBlock;
+    Check(Pos('<font color=', Probe.Block(Block).Source) = 0, 'HighlightCode off leaves it plain');
+    Check(Pos('procedure Go;', Probe.BlockText(Block)) > 0, 'and the code is still all there');
+    Probe.HighlightCode := True;
+
+    { a block with no language is colored by the common rules }
+    Probe.LoadMarkdown(Bare);
+    Block := CodeBlock;
+    Check(Probe.Block(Block).CodeLanguage = '', 'the fence named no language');
+    Check(Pos('<font color=', Probe.Block(Block).Source) > 0, 'it is colored anyway');
+
+    { a page that colored its own code keeps its colors }
+    Probe.LoadHTML('<html><body><pre><code class="language-pascal">' + '<span style="color: #ff00ff">begin</span> end;</code></pre></body></html>');
+    Block := CodeBlock;
+    Check(Pos('#FF00FF', UpperCase(Probe.Block(Block).Source)) > 0, 'the page''s own coloring is kept');
+    I := 0;
+    Code := Probe.Block(Block).Source;
+    while Pos('<font color=', Code) > 0 do
+    begin
+      Inc(I);
+      Delete(Code, 1, Pos('<font color=', Code) + 11);
+    end;
+    Check(I = 1, Format('and ours is not painted over the top of it (%d font tags)', [I]));
+
+    { a host highlighter answers first }
+    Probe.OnHighlightCode := @Probe.Highlight;
+    Probe.Clicked := '';
+    Probe.LoadMarkdown(Pas);
+    Block := CodeBlock;
+    Check(Probe.Clicked = 'pascal', 'the host is told which language it is');
+    Check(Pos('#123456', Probe.Block(Block).Source) > 0, 'and its markup is what gets drawn');
+    Probe.OnHighlightCode := nil;
+    Probe.SetBounds(0, 0, 400, 200);
   end;
 
-begin
-  { --- the highlighter on its own --- }
-  Check(InkCodeLanguage('language-Pascal') = 'pascal', 'a class names the language');
-  Check(InkCodeLanguage('PY') = 'python', 'and so does a short name');
-  Check(InkCodeLanguage('pascal {.numberLines}') = 'pascal', 'a fence may say more than the language');
-  Check(InkCodeLanguage('') = '', 'nothing said is nothing');
-  Check(InkCodeKnown('pascal') and InkCodeKnown('go'), 'languages we have rules for');
-  Check(not InkCodeKnown(''), 'a block that names none is colored by the common rules');
-
-  Colors := InkCodeColors(clWhite);
-  Check(Colors.Comment <> Colors.Keyword, 'the colors differ from each other');
-  Check(InkCodeColors(clBlack).Comment <> Colors.Comment, 'and a dark page gets its own set');
-
-  Markup := Lower(InkHighlight('procedure Go; { why } S := ''text''; N := 42;' + #10 +
-    'Total := Total + 1;', 'pascal', Colors));
-  Check(Pos('<font color="' + Lower(ColorToString(Colors.Keyword)) + '">', Markup) = 0,
-    'colors are written as hex, not as names');
-  Check(Pos('>procedure</font>', Markup) > 0, 'a keyword is colored');
-  Check(Pos('>begin</font>', Markup) = 0, 'a word that is not there is not');
-  Check(Pos('>{ why }</font>', Markup) > 0, 'a Pascal comment in braces');
-  Check(Pos('>''text''</font>', Markup) > 0, 'a string in its quotes');
-  Check(Pos('>42</font>', Markup) > 0, 'a number');
-  Check(Pos('<br>', Markup) > 0, 'a line break stays a line break');
-  Check(Pos('go;', Markup) > 0, 'and everything else is left as it was');
-
-  { a comment runs to the end of its line, and a string does not swallow the line }
-  Markup := InkHighlight('x = 1; // set it' + #10 + 'y = 2;', 'c', Colors);
-  Check(Pos('>// set it</font>', Markup) > 0, 'a line comment stops at the line');
-  Check(Pos('>2</font>', Markup) > 0, 'the next line is code again');
-
-  { a block that says nothing still gets the words most languages share }
-  Markup := InkHighlight('if (n > 7) begin end // done', '', Colors);
-  Check(Pos('>if</font>', Markup) > 0, 'a common keyword is colored without a language');
-  Check(Pos('>begin</font>', Markup) > 0, 'begin counts as one of those');
-  Check(Pos('>// done</font>', Markup) > 0, 'and // is a comment everywhere');
-
-  { prose is not code }
-  Markup := InkHighlight('It is 42 degrees, and "quoted" text.', 'markdown', Colors);
-  Check(Pos('<font', Markup) = 0, 'a Markdown block is left alone');
-
-  { --- the things that used to color half a line by mistake --- }
-  Markup := InkHighlight('a { color: #fff; background: red }', '', Colors);
-  Check(Pos('#fff; background: red', Markup) > 0, 'a hex color is not a comment');
-  Markup := InkHighlight('# install it' + #10 + 'x = 1   # and a note', '', Colors);
-  Check(Pos('># install it</font>', Markup) > 0, 'but # at the start of a line is');
-  Check(Pos('># and a note</font>', Markup) > 0, 'and so is # spaced off the code');
-  Markup := InkHighlight('for (i = n; i > 0; i--) sum -= i;', '', Colors);
-  Check(Pos('<font color', Copy(Markup, Pos('i--', Markup), 40)) = 0,
-    'i-- is a decrement, not a comment');
-  Markup := InkHighlight('SELECT 1 -- how many', '', Colors);
-  Check(Pos('>-- how many</font>', Markup) > 0, 'a spaced -- still is one');
-  Markup := InkHighlight('echo it''s fine' + #10 + 'echo ''really''', '', Colors);
-  Check(Pos('>fine', Markup) = 0, 'an apostrophe in a word does not open a string');
-  Check(Pos('>''really''</font>', Markup) > 0, 'a quote that closes on the line does');
-  Markup := InkHighlight('let s = `a ${x} template`;', 'javascript', Colors);
-  Check(Pos('>`a ${x} template`</font>', Markup) > 0, 'a backtick string in JavaScript');
-  Markup := InkHighlight('<div class="card"><!-- a note --></div>', 'html', Colors);
-  Check(Pos('>&lt;div</font>', Markup) > 0, 'an HTML tag name is colored');
-  Check(Pos('>&lt;/div</font>', Markup) > 0, 'and so is a closing one');
-  Check(Pos('>&lt;!-- a note --&gt;</font>', Markup) > 0, 'with its comment');
-  Markup := InkHighlight('see section 1. it says', '', Colors);
-  Check(Pos('>1</font>', Markup) > 0, 'a number at the end of a sentence keeps its dot out');
-
-  { comments in the languages people put in documents }
-  Check(Pos('>-- note</font>', InkHighlight('x = 1 -- note', 'lua', Colors)) > 0, 'Lua --');
-  Check(Pos('>% note</font>', InkHighlight('x = 1 % note', 'matlab', Colors)) > 0, 'MATLAB %');
-  Check(Pos('>; note</font>', InkHighlight('mov ax, 1 ; note', 'asm', Colors)) > 0, 'assembler ;');
-  Check(Pos('>'' note</font>', InkHighlight('x = 1 '' note', 'vb', Colors)) > 0, 'Basic apostrophe');
-  Check(Pos('>(* note *)</font>', InkHighlight('let x = 1 (* note *)', 'ocaml', Colors)) > 0,
-    'OCaml (* *)');
-  Check(Pos('>#= note =#</font>', InkHighlight('x = 1 #= note =#', 'julia', Colors)) > 0,
-    'Julia #= =#');
-  Check(Pos('>{- note -}</font>', InkHighlight('x = 1 {- note -}', 'haskell', Colors)) > 0,
-    'Haskell {- -}');
-  Check(Pos('>{ note }</font>', InkHighlight('X := 1; { note }', 'pascal', Colors)) > 0,
-    'and Pascal braces, of course');
-
-  { Pascal's doubled quote is one string, not two }
-  Markup := InkHighlight('Reply := ''It''''s ready''; N := $FF;', 'pascal', Colors);
-  Check(Pos('>''It''''s ready''</font>', Markup) > 0, 'a doubled quote stays inside its string');
-  Check(Pos('>$FF</font>', Markup) > 0, 'and $FF is a number');
-
-  { Python, which has a few habits of its own }
-  Markup := InkHighlight('@property' + #10 + 'def go(self):' + #10 +
-    '    """what it does"""' + #10 + '    return f"{self.n} left"', 'python', Colors);
-  Check(Pos('>@property</font>', Markup) > 0, 'a decorator reads as a keyword');
-  Check(Pos('>self</font>', Markup) > 0, 'and so does self');
-  Check(Pos('>"""what it does"""</font>', Markup) > 0, 'a docstring is one string');
-  Check(Pos('>f"{self.n} left"</font>', Markup) > 0, 'an f-string keeps its f');
-  Check(Pos('>def</font>', Markup) > 0, 'and def is still def');
-
-  { --- and through a page --- }
-  Probe.SetBounds(0, 0, 500, 400);
-  Probe.HighlightCode := True;
-  Probe.LoadMarkdown(Pas);
-  Block := CodeBlock;
-  Check(Block >= 0, 'the fence made a code block');
-  Check(Probe.Block(Block).CodeLanguage = 'pascal', 'which kept its language');
-  Check(Pos('<font color=', Probe.Block(Block).Source) > 0, 'and was colored');
-  Code := Probe.BlockText(Block);
-  Check(Pos('procedure Go;', Code) > 0, 'the code copies out as it was written');
-  Check(Pos('{ a comment }', Code) > 0, 'comment and all');
-  Check(Pos('<font', Code) = 0, 'with no markup in it');
-  Check(Probe.Block(Block).Code = Code, 'and the block keeps the same text');
-
-  Probe.HighlightCode := False;
-  Block := CodeBlock;
-  Check(Pos('<font color=', Probe.Block(Block).Source) = 0, 'HighlightCode off leaves it plain');
-  Check(Pos('procedure Go;', Probe.BlockText(Block)) > 0, 'and the code is still all there');
-  Probe.HighlightCode := True;
-
-  { a block with no language is colored by the common rules }
-  Probe.LoadMarkdown(Bare);
-  Block := CodeBlock;
-  Check(Probe.Block(Block).CodeLanguage = '', 'the fence named no language');
-  Check(Pos('<font color=', Probe.Block(Block).Source) > 0, 'it is colored anyway');
-
-  { a page that colored its own code keeps its colors }
-  Probe.LoadHTML('<html><body><pre><code class="language-pascal">' +
-    '<span style="color: #ff00ff">begin</span> end;</code></pre></body></html>');
-  Block := CodeBlock;
-  Check(Pos('#FF00FF', UpperCase(Probe.Block(Block).Source)) > 0, 'the page''s own coloring is kept');
-  I := 0; Code := Probe.Block(Block).Source;
-  while Pos('<font color=', Code) > 0 do
-  begin
-    Inc(I); Delete(Code, 1, Pos('<font color=', Code) + 11);
-  end;
-  Check(I = 1, Format('and ours is not painted over the top of it (%d font tags)', [I]));
-
-  { a host highlighter answers first }
-  Probe.OnHighlightCode := @Probe.Highlight;
-  Probe.Clicked := '';
-  Probe.LoadMarkdown(Pas);
-  Block := CodeBlock;
-  Check(Probe.Clicked = 'pascal', 'the host is told which language it is');
-  Check(Pos('#123456', Probe.Block(Block).Source) > 0, 'and its markup is what gets drawn');
-  Probe.OnHighlightCode := nil;
-  Probe.SetBounds(0, 0, 400, 200);
-end;
-
-{ --- WebP: synthetic container metadata (intentionally invalid compressed pixels) --- }
-procedure WebPChecks;
-var
-  Still, Anim: TMemoryStream; W: TInkWebP; F: TInkWebPFrame;
+  { --- WebP: synthetic container metadata (intentionally invalid compressed pixels) --- }
+  procedure WebPChecks;
+  var
+    Still, Anim: TMemoryStream;
+    W: TInkWebP;
+    F: TInkWebPFrame;
 
   { the pieces a WebP file is built from, written by hand so the test does
     not need an encoder - and so that what the reader reads is exactly what
     the test wrote }
-  procedure PutStr(S: TStream; const Text: string);
-  begin
-    if Text <> '' then S.WriteBuffer(Text[1], Length(Text));
-  end;
+    procedure PutStr(S: TStream; const Text: string);
+    begin
+      if Text <> '' then S.WriteBuffer(Text[1], Length(Text));
+    end;
 
-  procedure Put32(S: TStream; N: LongWord);
-  begin
-    S.WriteBuffer(N, 4);
-  end;
+    procedure Put32(S: TStream; N: longword);
+    begin
+      S.WriteBuffer(N, 4);
+    end;
 
-  procedure Put24(S: TStream; N: LongWord);
-  var B: array[0..2] of Byte;
-  begin
-    B[0] := N and $FF; B[1] := (N shr 8) and $FF; B[2] := (N shr 16) and $FF;
-    S.WriteBuffer(B, 3);
-  end;
+    procedure Put24(S: TStream; N: longword);
+    var
+      B: array[0..2] of byte;
+    begin
+      B[0] := N and $FF;
+      B[1] := (N shr 8) and $FF;
+      B[2] := (N shr 16) and $FF;
+      S.WriteBuffer(B, 3);
+    end;
 
-  procedure PutByte(S: TStream; N: Byte);
-  begin
-    S.WriteBuffer(N, 1);
-  end;
+    procedure PutByte(S: TStream; N: byte);
+    begin
+      S.WriteBuffer(N, 1);
+    end;
 
-  { RIFF....WEBP round whatever was written into Body }
-  function Wrap(Body: TMemoryStream): TMemoryStream;
-  begin
-    Result := TMemoryStream.Create;
-    PutStr(Result, 'RIFF');
-    Put32(Result, Body.Size + 4);
-    PutStr(Result, 'WEBP');
-    Body.Position := 0;
-    Result.CopyFrom(Body, Body.Size);
-    Result.Position := 0;
-  end;
+    { RIFF....WEBP round whatever was written into Body }
+    function Wrap(Body: TMemoryStream): TMemoryStream;
+    begin
+      Result := TMemoryStream.Create;
+      PutStr(Result, 'RIFF');
+      Put32(Result, Body.Size + 4);
+      PutStr(Result, 'WEBP');
+      Body.Position := 0;
+      Result.CopyFrom(Body, Body.Size);
+      Result.Position := 0;
+    end;
 
   { a lossless still, 40 x 30: VP8L's header packs width-1 and height-1 in
     14 bits each after a signature byte }
-  function BuildStill: TMemoryStream;
-  var Body: TMemoryStream; Bits: LongWord;
-  begin
-    Body := TMemoryStream.Create;
-    try
-      PutStr(Body, 'VP8L');
-      Put32(Body, 10);
-      PutByte(Body, $2F);
-      Bits := (40 - 1) or ((30 - 1) shl 14);
-      Put32(Body, Bits);
-      Put32(Body, 0);
-      PutByte(Body, 0);
-      Result := Wrap(Body);
-    finally Body.Free end;
-  end;
+    function BuildStill: TMemoryStream;
+    var
+      Body: TMemoryStream;
+      Bits: longword;
+    begin
+      Body := TMemoryStream.Create;
+      try
+        PutStr(Body, 'VP8L');
+        Put32(Body, 10);
+        PutByte(Body, $2F);
+        Bits := (40 - 1) or ((30 - 1) shl 14);
+        Put32(Body, Bits);
+        Put32(Body, 0);
+        PutByte(Body, 0);
+        Result := Wrap(Body);
+      finally
+        Body.Free
+      end;
+    end;
 
   { an animation: VP8X saying 64 x 48 and animated, ANIM with a background
     and a loop count, then two ANMF frames }
-  function BuildAnimation: TMemoryStream;
-  var Body, Frame: TMemoryStream;
+    function BuildAnimation: TMemoryStream;
+    var
+      Body, Frame: TMemoryStream;
 
-    procedure AddFrame(X, Y, W, H, Duration: Integer; Flags: Byte);
+      procedure AddFrame(X, Y, W, H, Duration: integer; Flags: byte);
+      begin
+        Frame := TMemoryStream.Create;
+        try
+          Put24(Frame, X div 2);
+          Put24(Frame, Y div 2);
+          Put24(Frame, W - 1);
+          Put24(Frame, H - 1);
+          Put24(Frame, Duration);
+          PutByte(Frame, Flags);
+          { the frame's pixels, as a lossless sub-chunk }
+          PutStr(Frame, 'VP8L');
+          Put32(Frame, 6);
+          PutByte(Frame, $2F);
+          Put32(Frame, 0);
+          PutByte(Frame, 0);
+          PutStr(Body, 'ANMF');
+          Put32(Body, Frame.Size);
+          Frame.Position := 0;
+          Body.CopyFrom(Frame, Frame.Size);
+        finally
+          Frame.Free
+        end;
+      end;
+
     begin
-      Frame := TMemoryStream.Create;
+      Body := TMemoryStream.Create;
       try
-        Put24(Frame, X div 2); Put24(Frame, Y div 2);
-        Put24(Frame, W - 1); Put24(Frame, H - 1);
-        Put24(Frame, Duration);
-        PutByte(Frame, Flags);
-        { the frame's pixels, as a lossless sub-chunk }
-        PutStr(Frame, 'VP8L'); Put32(Frame, 6);
-        PutByte(Frame, $2F); Put32(Frame, 0); PutByte(Frame, 0);
-        PutStr(Body, 'ANMF'); Put32(Body, Frame.Size);
-        Frame.Position := 0;
-        Body.CopyFrom(Frame, Frame.Size);
-      finally Frame.Free end;
+        PutStr(Body, 'VP8X');
+        Put32(Body, 10);
+        PutByte(Body, 2); { the animation flag }
+        Put24(Body, 0);
+        Put24(Body, 64 - 1);
+        Put24(Body, 48 - 1);
+        PutStr(Body, 'ANIM');
+        Put32(Body, 6);
+        { the background is written blue, green, red, alpha - BGRA }
+        PutByte(Body, $10);
+        PutByte(Body, $20);
+        PutByte(Body, $30);
+        PutByte(Body, $FF);
+        PutByte(Body, 3);
+        PutByte(Body, 0); { three loops }
+        AddFrame(0, 0, 64, 48, 120, 0);
+        AddFrame(8, 4, 32, 24, 80, 1);   { cleared to the background after it }
+        Result := Wrap(Body);
+      finally
+        Body.Free
+      end;
     end;
 
   begin
-    Body := TMemoryStream.Create;
+    { is it a WebP at all }
+    Check(not InkIsWebP('GIF89a stuff'), 'a GIF is not a WebP');
+    Check(not InkIsWebP('RIFF----WAVE'), 'nor is a WAV');
+
+    Still := BuildStill;
     try
-      PutStr(Body, 'VP8X'); Put32(Body, 10);
-      PutByte(Body, 2); { the animation flag }
-      Put24(Body, 0);
-      Put24(Body, 64 - 1); Put24(Body, 48 - 1);
-      PutStr(Body, 'ANIM'); Put32(Body, 6);
-      { the background is written blue, green, red, alpha - BGRA }
-      PutByte(Body, $10); PutByte(Body, $20); PutByte(Body, $30); PutByte(Body, $FF);
-      PutByte(Body, 3); PutByte(Body, 0); { three loops }
-      AddFrame(0, 0, 64, 48, 120, 0);
-      AddFrame(8, 4, 32, 24, 80, 1);   { cleared to the background after it }
-      Result := Wrap(Body);
-    finally Body.Free end;
+      W := TInkWebP.Create(Still);
+      try
+        Check(W.Valid, 'a lossless still reads');
+        Check((W.Width = 40) and (W.Height = 30),
+          Format('its size comes from VP8L (%dx%d)', [W.Width, W.Height]));
+        Check(W.Kind = wkLossless, 'and it knows it is lossless');
+        Check(not W.Animated, 'one frame is not an animation');
+        Check(W.FrameCount = 1, 'and there is one frame');
+        Check(W.Frame(0).Size > 0, 'whose bytes it can point at');
+        { Metadata-only fixture, not a decodable VP8L image. }
+        Check(not W.DecodeFrame(0), 'invalid synthetic compressed pixels are rejected');
+        Check(not W.Decoded, 'no fabricated pixels after a decoding failure');
+      finally
+        W.Free
+      end;
+    finally
+      Still.Free
+    end;
+
+    Anim := BuildAnimation;
+    try
+      W := TInkWebP.Create(Anim);
+      try
+        Check(W.Valid, 'an animation reads');
+        Check((W.Width = 64) and (W.Height = 48),
+          Format('its canvas comes from VP8X (%dx%d)', [W.Width, W.Height]));
+        Check(W.Kind = wkExtended, 'which makes it an extended file');
+        Check(W.Animated and (W.FrameCount = 2),
+          Format('with two frames (%d)', [W.FrameCount]));
+        Check(W.Loops = 3, Format('and a loop count (%d)', [W.Loops]));
+        Check(ColorToRGB(W.Background) = RGBToColor($30, $20, $10),
+          'the background it clears to, read back out of BGRA');
+        F := W.Frame(0);
+        Check((F.Width = 64) and (F.Height = 48) and (F.Duration = 120),
+          Format('frame one: %dx%d for %dms', [F.Width, F.Height, F.Duration]));
+        Check(F.Blend, 'blended onto what is there');
+        Check(F.Disposal = wdNone, 'and left in place');
+        F := W.Frame(1);
+        Check((F.X = 8) and (F.Y = 4) and (F.Width = 32) and (F.Height = 24),
+          Format('frame two sits at %d,%d and is %dx%d', [F.X, F.Y, F.Width, F.Height]));
+        Check(F.Duration = 80, 'for its own time');
+        Check(F.Disposal = wdBackground, 'and the canvas is cleared after it');
+        Check((F.Kind = wkLossless) and (F.Size > 0), 'its pixels are lossless, and located');
+        Check(not W.DecodeFrame(1), 'invalid synthetic animation pixels are rejected');
+      finally
+        W.Free
+      end;
+    finally
+      Anim.Free
+    end;
   end;
 
-begin
-  { is it a WebP at all }
-  Check(not InkIsWebP('GIF89a stuff'), 'a GIF is not a WebP');
-  Check(not InkIsWebP('RIFF----WAVE'), 'nor is a WAV');
-
-  Still := BuildStill;
-  try
-    W := TInkWebP.Create(Still);
-    try
-      Check(W.Valid, 'a lossless still reads');
-      Check((W.Width = 40) and (W.Height = 30),
-        Format('its size comes from VP8L (%dx%d)', [W.Width, W.Height]));
-      Check(W.Kind = wkLossless, 'and it knows it is lossless');
-      Check(not W.Animated, 'one frame is not an animation');
-      Check(W.FrameCount = 1, 'and there is one frame');
-      Check(W.Frame(0).Size > 0, 'whose bytes it can point at');
-      { Metadata-only fixture, not a decodable VP8L image. }
-      Check(not W.DecodeFrame(0), 'invalid synthetic compressed pixels are rejected');
-      Check(not W.Decoded, 'no fabricated pixels after a decoding failure');
-    finally W.Free end;
-  finally Still.Free end;
-
-  Anim := BuildAnimation;
-  try
-    W := TInkWebP.Create(Anim);
-    try
-      Check(W.Valid, 'an animation reads');
-      Check((W.Width = 64) and (W.Height = 48),
-        Format('its canvas comes from VP8X (%dx%d)', [W.Width, W.Height]));
-      Check(W.Kind = wkExtended, 'which makes it an extended file');
-      Check(W.Animated and (W.FrameCount = 2),
-        Format('with two frames (%d)', [W.FrameCount]));
-      Check(W.Loops = 3, Format('and a loop count (%d)', [W.Loops]));
-      Check(ColorToRGB(W.Background) = RGBToColor($30, $20, $10),
-        'the background it clears to, read back out of BGRA');
-      F := W.Frame(0);
-      Check((F.Width = 64) and (F.Height = 48) and (F.Duration = 120),
-        Format('frame one: %dx%d for %dms', [F.Width, F.Height, F.Duration]));
-      Check(F.Blend, 'blended onto what is there');
-      Check(F.Disposal = wdNone, 'and left in place');
-      F := W.Frame(1);
-      Check((F.X = 8) and (F.Y = 4) and (F.Width = 32) and (F.Height = 24),
-        Format('frame two sits at %d,%d and is %dx%d', [F.X, F.Y, F.Width, F.Height]));
-      Check(F.Duration = 80, 'for its own time');
-      Check(F.Disposal = wdBackground, 'and the canvas is cleared after it');
-      Check((F.Kind = wkLossless) and (F.Size > 0), 'its pixels are lossless, and located');
-      Check(not W.DecodeFrame(1), 'invalid synthetic animation pixels are rejected');
-    finally W.Free end;
-  finally Anim.Free end;
-end;
-
-{ --- a cell that reaches across columns --- }
+  { --- a cell that reaches across columns --- }
 { rowspan, line-height, image sizing, text-transform and white-space: the
   five things a help page asks for that LazInk used not to read }
-procedure AuthorChecks;
-var I, J, Plain, Airy, Tall, Short, Mid, Deep: Integer; B: TInkPageBlock; S: string;
-  Shot: TBitmap; Box: TInkBox;
-
-begin
-  { a cell that reaches down two rows is as tall as both of them }
-  Probe.SetBounds(0, 0, 500, 400);
-  Probe.LoadHTML('<html><body><table border="1">' +
-    '<tr><td rowspan="3">deep</td><td>one</td></tr>' +
-    '<tr><td>two</td></tr>' +
-    '<tr><td>middle</td></tr>' +
-    '<tr><td>three</td><td>four</td></tr>' +
-    '</table></body></html>');
-  Probe.ScrollTo(0);
-  Tall := FindBlock(Probe, 'td', 'deep').Bounds.Top; Deep := FindBlock(Probe, 'td', 'deep').Bounds.Left;
-  Short := FindBlock(Probe, 'td', 'two').Bounds.Top; Mid := FindBlock(Probe, 'td', 'two').Bounds.Left;
-  Plain := FindBlock(Probe, 'td', 'three').Bounds.Top;
+  procedure AuthorChecks;
+  var
+    I, J, Plain, Airy, Tall, Short, Mid, Deep: integer;
+    B: TInkPageBlock;
+    S: string;
+    Shot: TBitmap;
+    Box: TInkBox;
+  begin
+    { a cell that reaches down two rows is as tall as both of them }
+    Probe.SetBounds(0, 0, 500, 400);
+    Probe.LoadHTML('<html><body><table border="1">' + '<tr><td rowspan="3">deep</td><td>one</td></tr>' + '<tr><td>two</td></tr>' +
+      '<tr><td>middle</td></tr>' + '<tr><td>three</td><td>four</td></tr>' + '</table></body></html>');
+    Probe.ScrollTo(0);
+    Tall := FindBlock(Probe, 'td', 'deep').Bounds.Top;
+    Deep := FindBlock(Probe, 'td', 'deep').Bounds.Left;
+    Short := FindBlock(Probe, 'td', 'two').Bounds.Top;
+    Mid := FindBlock(Probe, 'td', 'two').Bounds.Left;
+    Plain := FindBlock(Probe, 'td', 'three').Bounds.Top;
   { every row a rowspan covers starts to the right of it, and the row after
     it starts back in the first column }
-  Check(Mid > Deep,
-    Format('a row under a rowspan starts past it (%d against %d)', [Mid, Deep]));
-  Check(FindBlock(Probe, 'td', 'middle').Bounds.Left > Deep, 'and so does the third row it covers');
-  Tall := UpTo(FindBlock(Probe, 'td', 'deep'), 'td').Y;
-  Short := UpTo(FindBlock(Probe, 'td', 'two'), 'td').Y;
-  Check(Short > Tall,
-    Format('the second row starts below the spanning cell''s top (%d against %d)', [Short, Tall]));
-  Check(Plain > Short,
-    Format('and the fourth row is below that (%d against %d)', [Plain, Short]));
-  Check(Abs(FindBlock(Probe, 'td', 'three').Bounds.Left - Deep) < 4,
-    'a row under a rowspan starts in the first column');
-  Check(UpTo(FindBlock(Probe, 'td', 'deep'), 'td').H > UpTo(FindBlock(Probe, 'td', 'two'), 'td').H * 2,
-    'the spanning cell is as tall as the rows it spans');
+    Check(Mid > Deep,
+      Format('a row under a rowspan starts past it (%d against %d)', [Mid, Deep]));
+    Check(FindBlock(Probe, 'td', 'middle').Bounds.Left > Deep, 'and so does the third row it covers');
+    Tall := UpTo(FindBlock(Probe, 'td', 'deep'), 'td').Y;
+    Short := UpTo(FindBlock(Probe, 'td', 'two'), 'td').Y;
+    Check(Short > Tall,
+      Format('the second row starts below the spanning cell''s top (%d against %d)', [Short, Tall]));
+    Check(Plain > Short,
+      Format('and the fourth row is below that (%d against %d)', [Plain, Short]));
+    Check(Abs(FindBlock(Probe, 'td', 'three').Bounds.Left - Deep) < 4,
+      'a row under a rowspan starts in the first column');
+    Check(UpTo(FindBlock(Probe, 'td', 'deep'), 'td').H > UpTo(FindBlock(Probe, 'td', 'two'), 'td').H * 2,
+      'the spanning cell is as tall as the rows it spans');
 
-  { line-height: the same words, further apart }
-  Probe.LoadHTML('<html><head><style>p.airy { line-height: 2.4 }</style></head>' +
-    '<body><p>one word and then enough more words that the line has to wrap ' +
-    'at least once in this narrow column</p>' +
-    '<p class="airy">one word and then enough more words that the line has to wrap ' +
-    'at least once in this narrow column</p></body></html>');
-  Probe.SetBounds(0, 0, 220, 400);
-  Probe.ScrollTo(0);
-  Plain := 0; Airy := 0;
-  for I := 0 to Probe.BlockCount - 1 do
-  begin
-    B := Probe.Block(I);
-    if B.Tag <> 'p' then Continue;
-    if Pos('airy', B.CSSClass) > 0 then Airy := B.Bounds.Bottom - B.Bounds.Top
-    else if Plain = 0 then Plain := B.Bounds.Bottom - B.Bounds.Top;
-  end;
-  Check((Plain > 0) and (Airy > 0),
-    Format('both paragraphs were laid out (%d and %d)', [Plain, Airy]));
-  Check(Airy > Plain + 8,
-    Format('line-height: 2.4 makes a paragraph taller (%d against %d)', [Airy, Plain]));
+    { line-height: the same words, further apart }
+    Probe.LoadHTML('<html><head><style>p.airy { line-height: 2.4 }</style></head>' + '<body><p>one word and then enough more words that the line has to wrap ' +
+      'at least once in this narrow column</p>' + '<p class="airy">one word and then enough more words that the line has to wrap ' +
+      'at least once in this narrow column</p></body></html>');
+    Probe.SetBounds(0, 0, 220, 400);
+    Probe.ScrollTo(0);
+    Plain := 0;
+    Airy := 0;
+    for I := 0 to Probe.BlockCount - 1 do
+    begin
+      B := Probe.Block(I);
+      if B.Tag <> 'p' then Continue;
+      if Pos('airy', B.CSSClass) > 0 then Airy := B.Bounds.Bottom - B.Bounds.Top
+      else if Plain = 0 then Plain := B.Bounds.Bottom - B.Bounds.Top;
+    end;
+    Check((Plain > 0) and (Airy > 0),
+      Format('both paragraphs were laid out (%d and %d)', [Plain, Airy]));
+    Check(Airy > Plain + 8,
+      Format('line-height: 2.4 makes a paragraph taller (%d against %d)', [Airy, Plain]));
 
-  { a picture at the size the page asked for }
-  Probe.SetBounds(0, 0, 500, 400);
-  Probe.LoadHTML('<html><body><p><img src="palette.png" alt="a"></p>' +
-    '<p><img src="palette.png" alt="b" width="60"></p>' +
-    '<p><img src="palette.png" alt="c" width="25%"></p></body></html>',
-    FilenameToURI(ExpandFileName('images/page.html')));
-  Probe.ScrollTo(0);
-  Plain := 0; Tall := 0; Short := 0;
-  for I := 0 to Probe.BlockCount - 1 do
-  begin
-    B := Probe.Block(I);
-    if (B.Tag <> 'img') or (B.TreeBox = nil) then Continue;
-    S := TInkBox(B.TreeBox).Node.GetAttribute('alt');
-    if S = 'b' then Tall := B.ImageRect.Right - B.ImageRect.Left
-    else if S = 'c' then Short := B.ImageRect.Right - B.ImageRect.Left
-    else if Plain = 0 then Plain := B.ImageRect.Right - B.ImageRect.Left;
-  end;
-  Check(Tall = 60, Format('width="60" draws the picture 60 wide (%d)', [Tall]));
-  Check((Short > 0) and (Short < 200),
-    Format('width="25%%" is a quarter of the column (%d)', [Short]));
+    { a picture at the size the page asked for }
+    Probe.SetBounds(0, 0, 500, 400);
+    Probe.LoadHTML('<html><body><p><img src="palette.png" alt="a"></p>' + '<p><img src="palette.png" alt="b" width="60"></p>' +
+      '<p><img src="palette.png" alt="c" width="25%"></p></body></html>',
+      FilenameToURI(ExpandFileName('images/page.html')));
+    Probe.ScrollTo(0);
+    Plain := 0;
+    Tall := 0;
+    Short := 0;
+    for I := 0 to Probe.BlockCount - 1 do
+    begin
+      B := Probe.Block(I);
+      if (B.Tag <> 'img') or (B.TreeBox = nil) then Continue;
+      S := TInkBox(B.TreeBox).Node.GetAttribute('alt');
+      if S = 'b' then Tall := B.ImageRect.Right - B.ImageRect.Left
+      else if S = 'c' then Short := B.ImageRect.Right - B.ImageRect.Left
+      else if Plain = 0 then Plain := B.ImageRect.Right - B.ImageRect.Left;
+    end;
+    Check(Tall = 60, Format('width="60" draws the picture 60 wide (%d)', [Tall]));
+    Check((Short > 0) and (Short < 200),
+      Format('width="25%%" is a quarter of the column (%d)', [Short]));
 
-  { the end of an inline tag is not a place to break a line }
-  Probe.SetBounds(0, 0, 220, 300);
-  Probe.LoadHTML('<html><body><p>one two three four five ' +
-    '<code>anchor</code>. And more words after it.</p></body></html>');
-  Probe.ScrollTo(0);
-  Probe.BlockText(0);
-  B := Probe.Block(0);
-  Plain := -1; Short := -1;
-  for J := 0 to B.RunCount - 1 do
-  begin
-    if Trim(B.Runs[J].Text) = 'anchor' then Plain := B.Runs[J].Line;
-    if (Trim(B.Runs[J].Text) = '.') and (Short < 0) then Short := B.Runs[J].Line;
-  end;
-  Check(Plain >= 0, 'the code span was laid out');
-  if Short >= 0 then
-    Check(Short = Plain,
-      Format('a full stop stays with the word before it (line %d against %d)',
-        [Short, Plain]));
+    { the end of an inline tag is not a place to break a line }
+    Probe.SetBounds(0, 0, 220, 300);
+    Probe.LoadHTML('<html><body><p>one two three four five ' + '<code>anchor</code>. And more words after it.</p></body></html>');
+    Probe.ScrollTo(0);
+    Probe.BlockText(0);
+    B := Probe.Block(0);
+    Plain := -1;
+    Short := -1;
+    for J := 0 to B.RunCount - 1 do
+    begin
+      if Trim(B.Runs[J].Text) = 'anchor' then Plain := B.Runs[J].Line;
+      if (Trim(B.Runs[J].Text) = '.') and (Short < 0) then Short := B.Runs[J].Line;
+    end;
+    Check(Plain >= 0, 'the code span was laid out');
+    if Short >= 0 then
+      Check(Short = Plain,
+        Format('a full stop stays with the word before it (line %d against %d)', [Short, Plain]));
 
   { a cell's own text-transform: a table is one block, so a th's uppercase
     cannot be done to the block as a whole }
-  Probe.SetBounds(0, 0, 500, 300);
-  Probe.LoadHTML('<html><head><style>' +
-    'table.span th { text-transform: uppercase }' +
-    '</style></head><body><table class="span">' +
-    '<tr><th>Release</th><th>Part</th></tr>' +
-    '<tr><td>quiet</td><td>also quiet</td></tr>' +
-    '</table></body></html>');
-  Probe.ScrollTo(0);
-  Check(Pos('RELEASE', FindBlock(Probe, 'th', 'RELEASE').Source) > 0, 'a th wears its uppercase');
-  Check(Pos('PART', FindBlock(Probe, 'th', 'PART').Source) > 0, 'and so does the next one');
-  Check(Pos('QUIET', UpperCase(Probe.PlainText)) > 0, 'and a td is there');
-  Check(Pos('QUIET', Probe.PlainText) = 0, 'and left alone: ' + Probe.PlainText);
+    Probe.SetBounds(0, 0, 500, 300);
+    Probe.LoadHTML('<html><head><style>' + 'table.span th { text-transform: uppercase }' + '</style></head><body><table class="span">' +
+      '<tr><th>Release</th><th>Part</th></tr>' + '<tr><td>quiet</td><td>also quiet</td></tr>' + '</table></body></html>');
+    Probe.ScrollTo(0);
+    Check(Pos('RELEASE', FindBlock(Probe, 'th', 'RELEASE').Source) > 0, 'a th wears its uppercase');
+    Check(Pos('PART', FindBlock(Probe, 'th', 'PART').Source) > 0, 'and so does the next one');
+    Check(Pos('QUIET', UpperCase(Probe.PlainText)) > 0, 'and a td is there');
+    Check(Pos('QUIET', Probe.PlainText) = 0, 'and left alone: ' + Probe.PlainText);
 
-  { border-left, which is how a documentation page draws a callout }
-  Probe.SetBounds(0, 0, 400, 300);
-  Probe.LoadHTML('<html><head><style>' +
-    '.note { background: #f4f6f8; border-left: 4px solid #176bbd; padding: 8px }' +
-    '.plain { background: #f4f6f8 }' +
-    '.gone { border-left: none }' +
-    '</style></head><body>' +
-    '<div class="note">a callout</div><div class="plain">no stripe</div>' +
-    '<div class="gone">nor here</div></body></html>');
-  Probe.ScrollTo(0);
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
-    Probe.RenderTo(Shot.Canvas);
-    Box := UpTo(FindBlock(Probe, '', 'a callout'), 'div');
-    Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + 1, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($17, $6B, $BD),
-      'border-left takes its color');
-    Check((ColorToRGB(Shot.Canvas.Pixels[Box.X + 3, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($17, $6B, $BD)) and
-      (ColorToRGB(Shot.Canvas.Pixels[Box.X + 4, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($F4, $F6, $F8)),
-      'and its width');
-    Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + Box.W - 1, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($F4, $F6, $F8),
-      'and leaves the other sides alone');
-    Box := UpTo(FindBlock(Probe, '', 'no stripe'), 'div');
-    Check(ColorToRGB(Shot.Canvas.Pixels[Box.X, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($F4, $F6, $F8),
-      'a block with no border-left has no stripe');
-    Box := UpTo(FindBlock(Probe, '', 'nor here'), 'div');
-    Check(Box.Border.Left = 0, 'border-left: none is no stripe');
-  finally Shot.Free end;
+    { border-left, which is how a documentation page draws a callout }
+    Probe.SetBounds(0, 0, 400, 300);
+    Probe.LoadHTML('<html><head><style>' + '.note { background: #f4f6f8; border-left: 4px solid #176bbd; padding: 8px }' +
+      '.plain { background: #f4f6f8 }' + '.gone { border-left: none }' + '</style></head><body>' + '<div class="note">a callout</div><div class="plain">no stripe</div>' +
+      '<div class="gone">nor here</div></body></html>');
+    Probe.ScrollTo(0);
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+      Probe.RenderTo(Shot.Canvas);
+      Box := UpTo(FindBlock(Probe, '', 'a callout'), 'div');
+      Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + 1, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($17, $6B, $BD),
+        'border-left takes its color');
+      Check((ColorToRGB(Shot.Canvas.Pixels[Box.X + 3, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($17, $6B, $BD)) and
+        (ColorToRGB(Shot.Canvas.Pixels[Box.X + 4, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($F4, $F6, $F8)),
+        'and its width');
+      Check(ColorToRGB(Shot.Canvas.Pixels[Box.X + Box.W - 1, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($F4, $F6, $F8),
+        'and leaves the other sides alone');
+      Box := UpTo(FindBlock(Probe, '', 'no stripe'), 'div');
+      Check(ColorToRGB(Shot.Canvas.Pixels[Box.X, Box.Y + 4 - Probe.ScrollY]) = RGBToColor($F4, $F6, $F8),
+        'a block with no border-left has no stripe');
+      Box := UpTo(FindBlock(Probe, '', 'nor here'), 'div');
+      Check(Box.Border.Left = 0, 'border-left: none is no stripe');
+    finally
+      Shot.Free
+    end;
 
-  { text-transform and white-space }
-  Probe.LoadHTML('<html><head><style>p.shout { text-transform: uppercase }' +
-    ' p.keep { white-space: nowrap }</style></head>' +
-    '<body><p class="shout">quiet words &amp; <b>bold</b> ones</p>' +
-    '<p class="keep">a line that is far too long to fit inside this ' +
-    'narrow column and would wrap several times if it were allowed to</p>' +
-    '<p>a line that is far too long to fit inside this ' +
-    'narrow column and would wrap several times if it were allowed to</p>' +
-    '</body></html>');
-  Probe.SetBounds(0, 0, 200, 400);
-  Probe.ScrollTo(0);
-  Plain := 0; Short := 0;
-  for I := 0 to Probe.BlockCount - 1 do
-  begin
-    B := Probe.Block(I);
-    if B.Tag <> 'p' then Continue;
-    S := B.Source;
-    if Pos('shout', B.CSSClass) > 0 then
+    { text-transform and white-space }
+    Probe.LoadHTML('<html><head><style>p.shout { text-transform: uppercase }' + ' p.keep { white-space: nowrap }</style></head>' +
+      '<body><p class="shout">quiet words &amp; <b>bold</b> ones</p>' + '<p class="keep">a line that is far too long to fit inside this ' +
+      'narrow column and would wrap several times if it were allowed to</p>' + '<p>a line that is far too long to fit inside this ' +
+      'narrow column and would wrap several times if it were allowed to</p>' + '</body></html>');
+    Probe.SetBounds(0, 0, 200, 400);
+    Probe.ScrollTo(0);
+    Plain := 0;
+    Short := 0;
+    for I := 0 to Probe.BlockCount - 1 do
     begin
-      Check(Pos('QUIET WORDS', S) > 0, 'text-transform: uppercase shouts: ' + Copy(S, 1, 60));
-      Check(Pos('<b>', S) > 0, 'and leaves the markup alone');
-      Check(Pos('&amp;', S) > 0, 'and the entities too');
-    end
-    else if Pos('keep', B.CSSClass) > 0 then Short := B.Bounds.Bottom - B.Bounds.Top
-    else if Plain = 0 then Plain := B.Bounds.Bottom - B.Bounds.Top;
+      B := Probe.Block(I);
+      if B.Tag <> 'p' then Continue;
+      S := B.Source;
+      if Pos('shout', B.CSSClass) > 0 then
+      begin
+        Check(Pos('QUIET WORDS', S) > 0, 'text-transform: uppercase shouts: ' + Copy(S, 1, 60));
+        Check(Pos('<b>', S) > 0, 'and leaves the markup alone');
+        Check(Pos('&amp;', S) > 0, 'and the entities too');
+      end
+      else if Pos('keep', B.CSSClass) > 0 then Short := B.Bounds.Bottom - B.Bounds.Top
+      else if Plain = 0 then Plain := B.Bounds.Bottom - B.Bounds.Top;
+    end;
+    Check((Short > 0) and (Plain > 0),
+      Format('both long lines were laid out (%d and %d)', [Short, Plain]));
+    Check(Short < Plain,
+      Format('white-space: nowrap keeps a line to one row (%d against %d)', [Short, Plain]));
+    Probe.SetBounds(0, 0, 400, 200);
   end;
-  Check((Short > 0) and (Plain > 0),
-    Format('both long lines were laid out (%d and %d)', [Short, Plain]));
-  Check(Short < Plain,
-    Format('white-space: nowrap keeps a line to one row (%d against %d)', [Short, Plain]));
-  Probe.SetBounds(0, 0, 400, 200);
-end;
 
-procedure ColspanChecks;
-var
-  Alpha, Beta, Spanned, Tail: TInkPageBlock;
-begin
-  Probe.SetBounds(0, 0, 500, 300);
-  Probe.LoadHTML('<html><body><table border="1">' +
-    '<tr><td>alpha</td><td>beta</td><td>gamma</td></tr>' +
-    '<tr><td colspan="2">spanned</td><td>tail</td></tr>' +
-    '<tr><td colspan="3">everything</td></tr>' +
-    '</table></body></html>');
-  Probe.ScrollTo(0);
-  Alpha := FindBlock(Probe, 'td', 'alpha'); Beta := FindBlock(Probe, 'td', 'beta');
-  Spanned := FindBlock(Probe, 'td', 'spanned'); Tail := FindBlock(Probe, 'td', 'tail');
+  procedure ColspanChecks;
+  var
+    Alpha, Beta, Spanned, Tail: TInkPageBlock;
+  begin
+    Probe.SetBounds(0, 0, 500, 300);
+    Probe.LoadHTML('<html><body><table border="1">' + '<tr><td>alpha</td><td>beta</td><td>gamma</td></tr>' + '<tr><td colspan="2">spanned</td><td>tail</td></tr>' +
+      '<tr><td colspan="3">everything</td></tr>' + '</table></body></html>');
+    Probe.ScrollTo(0);
+    Alpha := FindBlock(Probe, 'td', 'alpha');
+    Beta := FindBlock(Probe, 'td', 'beta');
+    Spanned := FindBlock(Probe, 'td', 'spanned');
+    Tail := FindBlock(Probe, 'td', 'tail');
   { the words of a spanning cell start where the first column starts, and
     the cell reaches past where the second one would end }
-  Check(Spanned.Bounds.Left = Alpha.Bounds.Left,
-    Format('a cell that spans two columns starts in the first (%d against %d)',
-      [Spanned.Bounds.Left, Alpha.Bounds.Left]));
-  Check(UpTo(Spanned, 'td').X + UpTo(Spanned, 'td').W >= UpTo(Beta, 'td').X + UpTo(Beta, 'td').W,
-    'and reaches past the second');
-  Check(Pos('everything', Probe.PlainText) > 0, 'and the three-column one is there');
-  { the cell beside a spanning one sits past the columns it covers }
-  Check(Tail.Bounds.Left > Beta.Bounds.Left,
-    Format('the cell after a spanning one sits after it (%d against %d)',
-      [Tail.Bounds.Left, Beta.Bounds.Left]));
-  Probe.SetBounds(0, 0, 400, 200);
-end;
+    Check(Spanned.Bounds.Left = Alpha.Bounds.Left,
+      Format('a cell that spans two columns starts in the first (%d against %d)', [Spanned.Bounds.Left, Alpha.Bounds.Left]));
+    Check(UpTo(Spanned, 'td').X + UpTo(Spanned, 'td').W >= UpTo(Beta, 'td').X + UpTo(Beta, 'td').W,
+      'and reaches past the second');
+    Check(Pos('everything', Probe.PlainText) > 0, 'and the three-column one is there');
+    { the cell beside a spanning one sits past the columns it covers }
+    Check(Tail.Bounds.Left > Beta.Bounds.Left,
+      Format('the cell after a spanning one sits after it (%d against %d)', [Tail.Bounds.Left, Beta.Bounds.Left]));
+    Probe.SetBounds(0, 0, 400, 200);
+  end;
 
-{ --- nothing a block paints may leak into the next one --- }
+  { --- nothing a block paints may leak into the next one --- }
 { bugs/2026-09-21-inline-code-shading-covers-neighbor-lines: the shading
   behind inline code must stay inside the line it is on.  The line-height
   here is tighter than the fixed face's own cell, which is the shape the
   fault takes on Windows, where Consolas stands taller than Segoe UI. }
-procedure InlineShadeChecks;
-const
-  CSS = 'body { background: #ffffff; color: #000000; font-size: 14px; ' +
-        'line-height: 1 } code { background: #ff0000 }';
+  procedure InlineShadeChecks;
+  const
+    CSS = 'body { background: #ffffff; color: #000000; font-size: 14px; ' + 'line-height: 1 } code { background: #ff0000 }';
   { one word of code, so it never wraps across two lines - where a font
     is wide enough to wrap it, two shaded lines touch and read as one band }
-  Doc = 'A plain paragraph with `code` in the middle of a line ' +
-        'that is long enough to wrap at least twice, so that there is a line ' +
-        'of ordinary text above the shaded piece and another below it, with ' +
-        'letters that hang down - g j p q y - above it and tall ones - ' +
-        'b d f h k l - below it.';
-var
-  Shot: TBitmap; X, Y, Top, Band, Worst, Bands, RedRows: Integer; SL: TStringList;
-  Row: Boolean; Para: TInkPageBlock; I, CodeLine, Pitch: Integer;
-begin
-  SL := TStringList.Create;
-  try
-    SL.Text := CSS;
-    Probe.StyleSheet := SL;
-  finally SL.Free end;
-  Probe.SetBounds(0, 0, 260, 400);
-  Probe.TextFormat := itfMarkdown;
-  Probe.LoadMarkdown(Doc);
-  Probe.ScrollTo(0);
-  Para := nil;
-  for I := 0 to Probe.BlockCount - 1 do
-    if Probe.Block(I).Tag = 'p' then begin Para := Probe.Block(I); Break end;
-  Check(Para <> nil, 'the paragraph is there');
-  if Para = nil then Exit;
-  Check(Para.LineHeight = 14, Format('line-height: 1 is fourteen pixels (%d)', [Para.LineHeight]));
-
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
-    Probe.RenderTo(Shot.Canvas);
-    { the shading, row by row: pure red comes only from the fill, never from
-      black text laid over it }
-    Worst := 0; Bands := 0; Band := 0; RedRows := 0; Top := -1;
-    for Y := 0 to Shot.Height - 1 do
-    begin
-      Row := False;
-      for X := 0 to Shot.Width - 1 do
-        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then
-        begin Row := True; Break end;
-      if Row then
-      begin
-        Inc(RedRows);
-        if Band = 0 then begin Inc(Bands); Top := Y end;
-        Inc(Band); Worst := Max(Worst, Band);
-      end
-      else Band := 0;
+    Doc = 'A plain paragraph with `code` in the middle of a line ' + 'that is long enough to wrap at least twice, so that there is a line ' +
+      'of ordinary text above the shaded piece and another below it, with ' + 'letters that hang down - g j p q y - above it and tall ones - ' +
+      'b d f h k l - below it.';
+  var
+    Shot: TBitmap;
+    X, Y, Top, Band, Worst, Bands, RedRows: integer;
+    SL: TStringList;
+    Row: boolean;
+    Para: TInkPageBlock;
+    I, CodeLine, Pitch: integer;
+  begin
+    SL := TStringList.Create;
+    try
+      SL.Text := CSS;
+      Probe.StyleSheet := SL;
+    finally
+      SL.Free
     end;
-    Check(RedRows > 0, 'the code is shaded at all');
-    { the line the code is on, from baseline to baseline: two faces on one
-      line may make it a pixel taller than line-height, as in a browser }
-    Probe.BlockText(Para.Index);
-    CodeLine := -1; Pitch := 0;
-    for I := 0 to Para.RunCount - 1 do
-      if Trim(Para.Runs[I].Text) = 'code' then CodeLine := Para.Runs[I].Line;
-    for I := 0 to Para.RunCount - 1 do
-      if (Para.Runs[I].Line = CodeLine + 1) and (Trim(Para.Runs[I].Text) <> '') then
+    Probe.SetBounds(0, 0, 260, 400);
+    Probe.TextFormat := itfMarkdown;
+    Probe.LoadMarkdown(Doc);
+    Probe.ScrollTo(0);
+    Para := nil;
+    for I := 0 to Probe.BlockCount - 1 do
+      if Probe.Block(I).Tag = 'p' then
       begin
-        for X := 0 to Para.RunCount - 1 do
-          if (Para.Runs[X].Line = CodeLine) and (Trim(Para.Runs[X].Text) <> '') and
-            (Para.Runs[X].FontName = Para.Runs[I].FontName) and (Pitch = 0) then
-            Pitch := Para.Runs[I].Top - Para.Runs[X].Top;
+        Para := Probe.Block(I);
         Break;
       end;
-    Check((Pitch >= Para.LineHeight) and (Pitch <= Para.LineHeight + 1),
-      Format('the line is line-height tall (%d against %d)', [Pitch, Para.LineHeight]));
-    Check(Worst <= Pitch,
-      Format('the shading is no taller than its line (%d rows against a %d-pixel line, ' +
-        'first band at %d)', [Worst, Pitch, Top]));
-  finally Shot.Free end;
-  Probe.TextFormat := itfHTML;
-  SL := TStringList.Create;
-  try Probe.StyleSheet := SL finally SL.Free end;
-  Probe.SetBounds(0, 0, 400, 200);
-end;
+    Check(Para <> nil, 'the paragraph is there');
+    if Para = nil then Exit;
+    Check(Para.LineHeight = 14, Format('line-height: 1 is fourteen pixels (%d)', [Para.LineHeight]));
 
-procedure BrushLeakChecks;
-const
-  { the rule's color is red only so a stray fill can be told from the text }
-  CSS = 'body { background: #eceef1; color: #5e6670; font-size: 14px } ' +
-        'hr { color: #ff0000 }';
-  Doc = 'Paragraph before the rule.' + LineEnding + LineEnding +
-        '---' + LineEnding + LineEnding +
-        'Paragraph after the rule.' + LineEnding + LineEnding +
-        '### A heading after the rule' + LineEnding + LineEnding +
-        '- a bullet after the rule' + LineEnding +
-        '- another bullet' + LineEnding + LineEnding +
-        'Another paragraph at the end.';
-var
-  Shot: TBitmap; I, X, Y, Red, Looked: Integer; B: TInkPageBlock; SL: TStringList;
-  Bullet, Para: TInkPageBlock; Rules: TList;
-begin
-  SL := TStringList.Create;
-  try
-    SL.Text := CSS;
-    Probe.StyleSheet := SL;
-  finally SL.Free end;
-  Probe.SetBounds(0, 0, 420, 400);
-  Probe.TextFormat := itfMarkdown;
-  Probe.LoadMarkdown(Doc);
-  Probe.ScrollTo(0);
-
-  Bullet := nil; Para := nil;
-  for I := 0 to Probe.BlockCount - 1 do
-  begin
-    B := Probe.Block(I);
-    if (Bullet = nil) and (B.Tag = 'li') then Bullet := B;
-    if (Para = nil) and (B.Tag = 'p') and (Pos('at the end', B.Source) > 0) then Para := B;
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+      Probe.RenderTo(Shot.Canvas);
+    { the shading, row by row: pure red comes only from the fill, never from
+      black text laid over it }
+      Worst := 0;
+      Bands := 0;
+      Band := 0;
+      RedRows := 0;
+      Top := -1;
+      for Y := 0 to Shot.Height - 1 do
+      begin
+        Row := False;
+        for X := 0 to Shot.Width - 1 do
+          if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then
+          begin
+            Row := True;
+            Break;
+          end;
+        if Row then
+        begin
+          Inc(RedRows);
+          if Band = 0 then
+          begin
+            Inc(Bands);
+            Top := Y;
+          end;
+          Inc(Band);
+          Worst := Max(Worst, Band);
+        end
+        else
+          Band := 0;
+      end;
+      Check(RedRows > 0, 'the code is shaded at all');
+    { the line the code is on, from baseline to baseline: two faces on one
+      line may make it a pixel taller than line-height, as in a browser }
+      Probe.BlockText(Para.Index);
+      CodeLine := -1;
+      Pitch := 0;
+      for I := 0 to Para.RunCount - 1 do
+        if Trim(Para.Runs[I].Text) = 'code' then CodeLine := Para.Runs[I].Line;
+      for I := 0 to Para.RunCount - 1 do
+        if (Para.Runs[I].Line = CodeLine + 1) and (Trim(Para.Runs[I].Text) <> '') then
+        begin
+          for X := 0 to Para.RunCount - 1 do
+            if (Para.Runs[X].Line = CodeLine) and (Trim(Para.Runs[X].Text) <> '') and (Para.Runs[X].FontName = Para.Runs[I].FontName) and (Pitch = 0) then
+              Pitch := Para.Runs[I].Top - Para.Runs[X].Top;
+          Break;
+        end;
+      Check((Pitch >= Para.LineHeight) and (Pitch <= Para.LineHeight + 1),
+        Format('the line is line-height tall (%d against %d)', [Pitch, Para.LineHeight]));
+      Check(Worst <= Pitch,
+        Format('the shading is no taller than its line (%d rows against a %d-pixel line, ' + 'first band at %d)', [Worst, Pitch, Top]));
+    finally
+      Shot.Free
+    end;
+    Probe.TextFormat := itfHTML;
+    SL := TStringList.Create;
+    try
+      Probe.StyleSheet := SL
+    finally
+      SL.Free
+    end;
+    Probe.SetBounds(0, 0, 400, 200);
   end;
-  Check(Bullet <> nil, 'there is a list item after the rule');
-  Check(Para <> nil, 'and a paragraph after that');
-  if (Bullet = nil) or (Para = nil) then Exit;
 
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
-    Probe.RenderTo(Shot.Canvas);
+  procedure BrushLeakChecks;
+  const
+    { the rule's color is red only so a stray fill can be told from the text }
+    CSS = 'body { background: #eceef1; color: #5e6670; font-size: 14px } ' + 'hr { color: #ff0000 }';
+    Doc = 'Paragraph before the rule.' + LineEnding + LineEnding + '---' + LineEnding + LineEnding + 'Paragraph after the rule.' +
+      LineEnding + LineEnding + '### A heading after the rule' + LineEnding + LineEnding + '- a bullet after the rule' + LineEnding +
+      '- another bullet' + LineEnding + LineEnding + 'Another paragraph at the end.';
+  var
+    Shot: TBitmap;
+    I, X, Y, Red, Looked: integer;
+    B: TInkPageBlock;
+    SL: TStringList;
+    Bullet, Para: TInkPageBlock;
+    Rules: TList;
+  begin
+    SL := TStringList.Create;
+    try
+      SL.Text := CSS;
+      Probe.StyleSheet := SL;
+    finally
+      SL.Free
+    end;
+    Probe.SetBounds(0, 0, 420, 400);
+    Probe.TextFormat := itfMarkdown;
+    Probe.LoadMarkdown(Doc);
+    Probe.ScrollTo(0);
+
+    Bullet := nil;
+    Para := nil;
+    for I := 0 to Probe.BlockCount - 1 do
+    begin
+      B := Probe.Block(I);
+      if (Bullet = nil) and (B.Tag = 'li') then Bullet := B;
+      if (Para = nil) and (B.Tag = 'p') and (Pos('at the end', B.Source) > 0) then Para := B;
+    end;
+    Check(Bullet <> nil, 'there is a list item after the rule');
+    Check(Para <> nil, 'and a paragraph after that');
+    if (Bullet = nil) or (Para = nil) then Exit;
+
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+      Probe.RenderTo(Shot.Canvas);
     { every pixel across the bullet's line, at a height where its text sits:
       the page's background may show, the text's color may show, the rule's
       red may not }
-    Red := 0; Looked := 0;
-    Y := Bullet.TextBounds.Top + (Bullet.TextBounds.Bottom - Bullet.TextBounds.Top) div 2
-      - Probe.ScrollY;
-    if (Y >= 0) and (Y < Shot.Height) then
-      for X := Bullet.TextBounds.Left to Min(Bullet.TextBounds.Right, Shot.Width - 1) do
-      begin
-        Inc(Looked);
-        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
+      Red := 0;
+      Looked := 0;
+      Y := Bullet.TextBounds.Top + (Bullet.TextBounds.Bottom - Bullet.TextBounds.Top) div 2 - Probe.ScrollY;
+      if (Y >= 0) and (Y < Shot.Height) then
+        for X := Bullet.TextBounds.Left to Min(Bullet.TextBounds.Right, Shot.Width - 1) do
+        begin
+          Inc(Looked);
+          if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
+        end;
+      Check(Looked > 0, 'the bullet is on screen');
+      Check(Red = 0, Format('a list item after a rule is not painted in the rule''s ' + 'color (%d of %d pixels were)', [Red, Looked]));
+
+      { and the same for the paragraph that follows the list }
+      Red := 0;
+      Y := Para.TextBounds.Top + (Para.TextBounds.Bottom - Para.TextBounds.Top) div 2 - Probe.ScrollY;
+      if (Y >= 0) and (Y < Shot.Height) then
+        for X := Para.TextBounds.Left to Min(Para.TextBounds.Right, Shot.Width - 1) do
+          if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
+      Check(Red = 0, Format('nor is the paragraph after it (%d)', [Red]));
+
+      { the rule itself is still red, or the test above proves nothing }
+      Red := 0;
+      Rules := BoxesNamed(Probe, 'hr');
+      try
+        for I := 0 to Rules.Count - 1 do
+        begin
+          Y := TInkBox(Rules[I]).Y + TInkBox(Rules[I]).H div 2 - Probe.ScrollY;
+          if (Y >= 0) and (Y < Shot.Height) then
+            for X := TInkBox(Rules[I]).X to Min(TInkBox(Rules[I]).X + TInkBox(Rules[I]).W - 1, Shot.Width - 1) do
+              if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
+        end;
+      finally
+        Rules.Free
       end;
-    Check(Looked > 0, 'the bullet is on screen');
-    Check(Red = 0, Format('a list item after a rule is not painted in the rule''s ' +
-      'color (%d of %d pixels were)', [Red, Looked]));
+      Check(Red > 0, 'and the rule is drawn in it');
+    finally
+      Shot.Free
+    end;
 
-    { and the same for the paragraph that follows the list }
-    Red := 0;
-    Y := Para.TextBounds.Top + (Para.TextBounds.Bottom - Para.TextBounds.Top) div 2
-      - Probe.ScrollY;
-    if (Y >= 0) and (Y < Shot.Height) then
-      for X := Para.TextBounds.Left to Min(Para.TextBounds.Right, Shot.Width - 1) do
-        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
-    Check(Red = 0, Format('nor is the paragraph after it (%d)', [Red]));
-
-    { the rule itself is still red, or the test above proves nothing }
-    Red := 0;
-    Rules := BoxesNamed(Probe, 'hr');
+    { the canvas a control was handed back is the canvas it lent out }
+    Shot := TBitmap.Create;
     try
-      for I := 0 to Rules.Count - 1 do
-      begin
-        Y := TInkBox(Rules[I]).Y + TInkBox(Rules[I]).H div 2 - Probe.ScrollY;
-        if (Y >= 0) and (Y < Shot.Height) then
-          for X := TInkBox(Rules[I]).X to Min(TInkBox(Rules[I]).X + TInkBox(Rules[I]).W - 1, Shot.Width - 1) do
-            if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = RGBToColor($FF, 0, 0) then Inc(Red);
-      end;
-    finally Rules.Free end;
-    Check(Red > 0, 'and the rule is drawn in it');
-  finally Shot.Free end;
+      Shot.SetSize(200, 60);
+      Shot.Canvas.Brush.Style := bsClear;
+      Shot.Canvas.Brush.Color := clLime;
+      Shot.Canvas.Brush.Style := bsClear;
+      HTMLDrawOpt(Shot.Canvas, Rect(0, 0, 200, 60), [], 'some words', DefaultHTMLOptions);
+      Check(Shot.Canvas.Brush.Style = bsClear,
+        'drawing leaves the brush style as it found it');
+    finally
+      Shot.Free
+    end;
 
-  { the canvas a control was handed back is the canvas it lent out }
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(200, 60);
-    Shot.Canvas.Brush.Style := bsClear;
-    Shot.Canvas.Brush.Color := clLime;
-    Shot.Canvas.Brush.Style := bsClear;
-    HTMLDrawOpt(Shot.Canvas, Rect(0, 0, 200, 60), [], 'some words', DefaultHTMLOptions);
-    Check(Shot.Canvas.Brush.Style = bsClear,
-      'drawing leaves the brush style as it found it');
-  finally Shot.Free end;
+    Probe.TextFormat := itfHTML;
+    SL := TStringList.Create;
+    try
+      Probe.StyleSheet := SL
+    finally
+      SL.Free
+    end;
+    Probe.SetBounds(0, 0, 400, 200);
+  end;
 
-  Probe.TextFormat := itfHTML;
-  SL := TStringList.Create;
-  try Probe.StyleSheet := SL finally SL.Free end;
-  Probe.SetBounds(0, 0, 400, 200);
-end;
-
-{ --- every link in a page, wherever it sits, answers a click --- }
-procedure LinkReachChecks;
-const
+  { --- every link in a page, wherever it sits, answers a click --- }
+  procedure LinkReachChecks;
+  const
   { each link's words are its own, so a run can be matched back to the href
     it should fire }
-  Doc =
-    '<html><head><style>.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}' +
-    '.card{background:#eef;padding:4px}</style></head><body>' +
-    '<p>in a paragraph: <a href="l1.html">Lone</a>, and <b><a href="l2.html">Ltwo</a></b> in bold</p>' +
-    '<ul><li><a href="l3.html">Lthree</a> in a list item</li></ul>' +
-    '<blockquote><a href="l4.html">Lfour</a> in a quote</blockquote>' +
-    '<table><tr><td><a href="l5.html">Lfive</a></td><td><a href="l6.html">Lsix</a></td>' +
-    '<td><a href="l7.html">Lseven</a></td></tr>' +
-    '<tr><td colspan="1"><a href="l8.html">Leight</a></td><td>plain</td>' +
-    '<td><table><tr><td><a href="l9.html">Lnine</a></td></tr></table></td></tr></table>' +
-    '<div class="grid"><a class="card" href="l10.html">Lten</a>' +
-    '<a class="card" href="l11.html">Leleven</a>' +
-    '<a class="card" href="l12.html">Ltwelve</a></div>' +
-    '<p>a link whose words <a href="l13.html">Lthirteen wraps across more than one line ' +
-    'because it is long enough to need a second line of its own</a> here</p>' +
-    '</body></html>';
-  Names: array[0..12] of string = ('Lone', 'Ltwo', 'Lthree', 'Lfour', 'Lfive', 'Lsix',
-    'Lseven', 'Leight', 'Lnine', 'Lten', 'Leleven', 'Ltwelve', 'Lthirteen');
-  Wanted: array[0..12] of string = ('l1.html', 'l2.html', 'l3.html', 'l4.html', 'l5.html',
-    'l6.html', 'l7.html', 'l8.html', 'l9.html', 'l10.html', 'l11.html', 'l12.html', 'l13.html');
-var
-  I, J, K, Reached, Missing: Integer; B: TInkPageBlock; Seen: array[0..12] of Boolean;
-  Report: string;
-begin
-  Report := '';
-  Probe.SetBounds(0, 0, 460, 400);
-  Probe.LoadHTML(Doc);
-  Probe.ScrollTo(0);
-  for K := 0 to High(Seen) do Seen[K] := False;
-  Reached := 0;
-
-  for I := 0 to Probe.BlockCount - 1 do
+    Doc =
+      '<html><head><style>.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}' + '.card{background:#eef;padding:4px}</style></head><body>' +
+      '<p>in a paragraph: <a href="l1.html">Lone</a>, and <b><a href="l2.html">Ltwo</a></b> in bold</p>' + '<ul><li><a href="l3.html">Lthree</a> in a list item</li></ul>' +
+      '<blockquote><a href="l4.html">Lfour</a> in a quote</blockquote>' + '<table><tr><td><a href="l5.html">Lfive</a></td><td><a href="l6.html">Lsix</a></td>' +
+      '<td><a href="l7.html">Lseven</a></td></tr>' + '<tr><td colspan="1"><a href="l8.html">Leight</a></td><td>plain</td>' +
+      '<td><table><tr><td><a href="l9.html">Lnine</a></td></tr></table></td></tr></table>' + '<div class="grid"><a class="card" href="l10.html">Lten</a>' +
+      '<a class="card" href="l11.html">Leleven</a>' + '<a class="card" href="l12.html">Ltwelve</a></div>' +
+      '<p>a link whose words <a href="l13.html">Lthirteen wraps across more than one line ' + 'because it is long enough to need a second line of its own</a> here</p>' +
+      '</body></html>';
+    Names: array[0..12] of string = ('Lone', 'Ltwo', 'Lthree', 'Lfour', 'Lfive', 'Lsix',
+      'Lseven', 'Leight', 'Lnine', 'Lten', 'Leleven', 'Ltwelve', 'Lthirteen');
+    Wanted: array[0..12] of string = ('l1.html', 'l2.html', 'l3.html', 'l4.html', 'l5.html',
+      'l6.html', 'l7.html', 'l8.html', 'l9.html', 'l10.html', 'l11.html', 'l12.html', 'l13.html');
+  var
+    I, J, K, Reached, Missing: integer;
+    B: TInkPageBlock;
+    Seen: array[0..12] of boolean;
+    Report: string;
   begin
-    B := Probe.Block(I);
-    Probe.BlockText(I);
-    for J := 0 to B.RunCount - 1 do
-      for K := 0 to High(Names) do
-        if (not Seen[K]) and (Trim(B.Runs[J].Text) = Names[K]) then
-        begin
-          Seen[K] := True;
-          Probe.ScrollTo(Max(0, B.Runs[J].Top - 40));
-          Probe.Clicked := '';
-          Probe.Press(B.Runs[J].Left + B.Runs[J].Width div 2,
-            B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
-          Probe.Let(B.Runs[J].Left + B.Runs[J].Width div 2,
-            B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
-          if Pos(Wanted[K], Probe.Clicked) > 0 then Inc(Reached)
-          else Report := Report + Format(' %s wanted %s got "%s";',
-            [Names[K], Wanted[K], Probe.Clicked]);
-        end;
-  end;
+    Report := '';
+    Probe.SetBounds(0, 0, 460, 400);
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(0);
+    for K := 0 to High(Seen) do Seen[K] := False;
+    Reached := 0;
 
-  Missing := 0;
-  for K := 0 to High(Seen) do
-    if not Seen[K] then
+    for I := 0 to Probe.BlockCount - 1 do
     begin
-      Inc(Missing);
-      Report := Report + ' ' + Names[K] + ' was never laid out;';
+      B := Probe.Block(I);
+      Probe.BlockText(I);
+      for J := 0 to B.RunCount - 1 do
+        for K := 0 to High(Names) do
+          if (not Seen[K]) and (Trim(B.Runs[J].Text) = Names[K]) then
+          begin
+            Seen[K] := True;
+            Probe.ScrollTo(Max(0, B.Runs[J].Top - 40));
+            Probe.Clicked := '';
+            Probe.Press(B.Runs[J].Left + B.Runs[J].Width div 2,
+              B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+            Probe.Let(B.Runs[J].Left + B.Runs[J].Width div 2,
+              B.Runs[J].Top + B.Runs[J].Height div 2 - Probe.ScrollY);
+            if Pos(Wanted[K], Probe.Clicked) > 0 then Inc(Reached)
+            else
+              Report := Report + Format(' %s wanted %s got "%s";', [Names[K], Wanted[K], Probe.Clicked]);
+          end;
     end;
-  Check(Missing = 0, 'every link is in the page:' + Report);
-  Check(Reached = Length(Names),
-    Format('every link answers a click (%d of %d):%s', [Reached, Length(Names), Report]));
-  Probe.SetBounds(0, 0, 400, 200);
-end;
 
-{ --- clicking where the page has been scrolled, and in awkward cells --- }
-procedure ScrolledLinkChecks;
-var
-  I: Integer; P: TPoint; Doc: string;
-
-  procedure ClickWord(const AWord, AWant, AWhat: string);
-  begin
-    Check(WordPoint(AWord, P), AWord + ' was laid out');
-    Probe.Clicked := '';
-    Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
-    Check(Pos(AWant, Probe.Clicked) > 0, Format('%s at y=%d ("%s")', [AWhat, P.Y, Probe.Clicked]));
+    Missing := 0;
+    for K := 0 to High(Seen) do
+      if not Seen[K] then
+      begin
+        Inc(Missing);
+        Report := Report + ' ' + Names[K] + ' was never laid out;';
+      end;
+    Check(Missing = 0, 'every link is in the page:' + Report);
+    Check(Reached = Length(Names),
+      Format('every link answers a click (%d of %d):%s', [Reached, Length(Names), Report]));
+    Probe.SetBounds(0, 0, 400, 200);
   end;
 
-begin
+  { --- clicking where the page has been scrolled, and in awkward cells --- }
+  procedure ScrolledLinkChecks;
+  var
+    I: integer;
+    P: TPoint;
+    Doc: string;
+
+    procedure ClickWord(const AWord, AWant, AWhat: string);
+    begin
+      Check(WordPoint(AWord, P), AWord + ' was laid out');
+      Probe.Clicked := '';
+      Probe.Press(P.X, P.Y);
+      Probe.Let(P.X, P.Y);
+      Check(Pos(AWant, Probe.Clicked) > 0, Format('%s at y=%d ("%s")', [AWhat, P.Y, Probe.Clicked]));
+    end;
+
+  begin
   { a long page with a link near the bottom: the reader scrolls to it and
     clicks it where it now is on the screen }
-  Doc := '<html><body>';
-  for I := 1 to 60 do Doc := Doc + '<p>paragraph number ' + IntToStr(I) + '</p>';
-  Doc := Doc + '<table><tr><td>left</td><td><a href="far.html">far away</a></td></tr></table>' +
-    '</body></html>';
-  Probe.SetBounds(0, 0, 500, 300);
-  Probe.LoadHTML(Doc);
-  Probe.ScrollTo(Max(0, FindBlock(Probe, 'td', 'left').Bounds.Top - 60));
-  ClickWord('far', 'far.html', 'a link in a scrolled table cell is clickable');
+    Doc := '<html><body>';
+    for I := 1 to 60 do Doc := Doc + '<p>paragraph number ' + IntToStr(I) + '</p>';
+    Doc := Doc + '<table><tr><td>left</td><td><a href="far.html">far away</a></td></tr></table>' + '</body></html>';
+    Probe.SetBounds(0, 0, 500, 300);
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(Max(0, FindBlock(Probe, 'td', 'left').Bounds.Top - 60));
+    ClickWord('far', 'far.html', 'a link in a scrolled table cell is clickable');
 
   { a cell whose words sit at its bottom - the run moved, so the click has
     to move with it }
-  Probe.LoadHTML('<html><head><style>td{vertical-align:bottom}</style></head><body>' +
-    '<table><tr><td>tall<br>cell<br>here</td>' +
-    '<td valign="bottom"><a href="low.html">low link</a></td></tr></table></body></html>');
-  Probe.ScrollTo(0);
-  ClickWord('low', 'low.html', 'a link in a cell that sits low is clickable');
-  Check(FindBlock(Probe, 'td', 'low').Bounds.Top > FindBlock(Probe, 'td', 'tall').Bounds.Top,
-    'and it sits low');
+    Probe.LoadHTML('<html><head><style>td{vertical-align:bottom}</style></head><body>' + '<table><tr><td>tall<br>cell<br>here</td>' +
+      '<td valign="bottom"><a href="low.html">low link</a></td></tr></table></body></html>');
+    Probe.ScrollTo(0);
+    ClickWord('low', 'low.html', 'a link in a cell that sits low is clickable');
+    Check(FindBlock(Probe, 'td', 'low').Bounds.Top > FindBlock(Probe, 'td', 'tall').Bounds.Top,
+      'and it sits low');
 
-  { a link inside a table inside a table }
-  Probe.LoadHTML('<html><body><table><tr><td>outer</td>' +
-    '<td><table><tr><td>inner</td><td><a href="nested.html">deep link</a></td></tr></table>' +
-    '</td></tr></table></body></html>');
-  Probe.ScrollTo(0);
-  ClickWord('deep', 'nested.html', 'a link in a table inside a table');
+    { a link inside a table inside a table }
+    Probe.LoadHTML('<html><body><table><tr><td>outer</td>' + '<td><table><tr><td>inner</td><td><a href="nested.html">deep link</a></td></tr></table>' +
+      '</td></tr></table></body></html>');
+    Probe.ScrollTo(0);
+    ClickWord('deep', 'nested.html', 'a link in a table inside a table');
   { and the same link after the control is made narrower, which lays the
     page out again }
-  Probe.SetBounds(0, 0, 320, 300);
-  Probe.ScrollTo(0);
-  ClickWord('deep', 'nested.html', 'and still clickable after a resize');
-  Probe.SetBounds(0, 0, 400, 200);
-end;
+    Probe.SetBounds(0, 0, 320, 300);
+    Probe.ScrollTo(0);
+    ClickWord('deep', 'nested.html', 'and still clickable after a resize');
+    Probe.SetBounds(0, 0, 400, 200);
+  end;
 
-{ --- Back and Forward over more than two pages --- }
-procedure HistoryChecks;
-var
-  Dir, P1, P2, P3: string; SL: TStringList; I, Deep: Integer; Spot: TPoint;
-begin
-  Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'lazink-hist-' + IntToStr(GetProcessID);
-  ForceDirectories(Dir);
-  P1 := Dir + PathDelim + 'one.html';
-  P2 := Dir + PathDelim + 'two.html';
-  P3 := Dir + PathDelim + 'three.html';
-  SL := TStringList.Create;
-  try
-    SL.Text := '<html><head><title>One</title></head><body>' +
-      '<p><a href="two.html">to two</a></p>' +
-      '<p id="far">a place further down</p></body></html>';
-    SL.SaveToFile(P1);
-    SL.Text := '<html><head><title>Two</title></head><body>' +
-      '<table><tr><td>plain</td><td><a href="three.html">to three</a></td></tr></table>' +
-      '</body></html>';
-    SL.SaveToFile(P2);
-    SL.Text := '<html><head><title>Three</title></head><body><p>the end</p></body></html>';
-    SL.SaveToFile(P3);
-  finally SL.Free end;
+  { --- Back and Forward over more than two pages --- }
+  procedure HistoryChecks;
+  var
+    Dir, P1, P2, P3: string;
+    SL: TStringList;
+    I, Deep: integer;
+    Spot: TPoint;
+  begin
+    Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'lazink-hist-' + IntToStr(GetProcessID);
+    ForceDirectories(Dir);
+    P1 := Dir + PathDelim + 'one.html';
+    P2 := Dir + PathDelim + 'two.html';
+    P3 := Dir + PathDelim + 'three.html';
+    SL := TStringList.Create;
+    try
+      SL.Text := '<html><head><title>One</title></head><body>' + '<p><a href="two.html">to two</a></p>' + '<p id="far">a place further down</p></body></html>';
+      SL.SaveToFile(P1);
+      SL.Text := '<html><head><title>Two</title></head><body>' + '<table><tr><td>plain</td><td><a href="three.html">to three</a></td></tr></table>' + '</body></html>';
+      SL.SaveToFile(P2);
+      SL.Text := '<html><head><title>Three</title></head><body><p>the end</p></body></html>';
+      SL.SaveToFile(P3);
+    finally
+      SL.Free
+    end;
 
-  Probe.OnLinkClick := nil;
-  Probe.ClearHistory;
-  Probe.LoadFromFile(P1);
-  Probe.ClearHistory;
-  Probe.LoadFromFile(P2);
-  Probe.LoadFromFile(P3);
-  Check(Probe.DocumentTitle = 'Three', 'three pages deep');
-  Check(Probe.CanGoBack and not Probe.CanGoForward, 'Back, and nothing forward');
+    Probe.OnLinkClick := nil;
+    Probe.ClearHistory;
+    Probe.LoadFromFile(P1);
+    Probe.ClearHistory;
+    Probe.LoadFromFile(P2);
+    Probe.LoadFromFile(P3);
+    Check(Probe.DocumentTitle = 'Three', 'three pages deep');
+    Check(Probe.CanGoBack and not Probe.CanGoForward, 'Back, and nothing forward');
 
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'Two', 'Back once');
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'One', 'Back twice');
-  Check(not Probe.CanGoBack, 'and that is the first page');
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'One', 'Back at the start does nothing');
-  Probe.Forward;
-  Check(Probe.DocumentTitle = 'Two', 'Forward once');
-  Probe.Forward;
-  Check(Probe.DocumentTitle = 'Three', 'Forward twice');
-  Check(not Probe.CanGoForward, 'and that is the last');
-  Probe.Forward;
-  Check(Probe.DocumentTitle = 'Three', 'Forward at the end does nothing');
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'Two', 'Back once');
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'One', 'Back twice');
+    Check(not Probe.CanGoBack, 'and that is the first page');
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'One', 'Back at the start does nothing');
+    Probe.Forward;
+    Check(Probe.DocumentTitle = 'Two', 'Forward once');
+    Probe.Forward;
+    Check(Probe.DocumentTitle = 'Three', 'Forward twice');
+    Check(not Probe.CanGoForward, 'and that is the last');
+    Probe.Forward;
+    Check(Probe.DocumentTitle = 'Three', 'Forward at the end does nothing');
 
   { going somewhere new from the middle throws the forward pages away, the
     way every browser does }
-  Probe.Back; Probe.Back;
-  Check(Probe.DocumentTitle = 'One', 'back to the start');
-  Probe.LoadFromFile(P3);
-  Check(Probe.DocumentTitle = 'Three', 'and off somewhere new');
-  Check(not Probe.CanGoForward, 'which clears Forward');
-  Check(Probe.CanGoBack, 'but not Back');
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'One', 'and Back returns where it came from');
+    Probe.Back;
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'One', 'back to the start');
+    Probe.LoadFromFile(P3);
+    Check(Probe.DocumentTitle = 'Three', 'and off somewhere new');
+    Check(not Probe.CanGoForward, 'which clears Forward');
+    Check(Probe.CanGoBack, 'but not Back');
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'One', 'and Back returns where it came from');
 
   { a link followed from a table cell - the second column, which is where
     clicking used to do nothing }
-  Probe.LoadFromFile(P2);
-  Probe.ClearHistory;
-  Probe.Clicked := '';
-  if WordPoint('three', Spot) then
-  begin
-    Probe.Press(Spot.X, Spot.Y); Probe.Let(Spot.X, Spot.Y);
-  end;
-  Check(Probe.DocumentTitle = 'Three', 'a link in a table cell navigates: ' + Probe.DocumentTitle);
-  Check(Probe.CanGoBack, 'and it can be gone back from');
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'Two', 'back to the page with the table');
-
-  { a page the program made, rather than one from a file, comes back too }
-  Probe.ClearHistory;
-  Probe.LoadHTML('<html><head><title>Made up</title></head><body><p>from the program</p></body></html>');
-  Probe.LoadFromFile(P1);
-  Check(Probe.CanGoBack, 'a generated page is in the history');
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'Made up',
-    'and Back shows it again: ' + Probe.DocumentTitle);
-  Check(Pos('from the program', Probe.PlainText) > 0, 'with its words');
-  Probe.Forward;
-  Check(Probe.DocumentTitle = 'One', 'and Forward returns to the file');
-
-  { a link to a place on another page: it goes there and lands on the place }
-  SL := TStringList.Create;
-  try
-    SL.Text := '<html><head><title>Long</title></head><body><p>top</p><p>' +
-      StringOfChar('e', 60) + ' ' + StringOfChar('f', 60) + '</p>';
-    for I := 1 to 60 do SL.Text := SL.Text + '<p>filler paragraph ' + IntToStr(I) + '</p>';
-    SL.Text := SL.Text + '<h2 id="deep">Deep</h2><p>the deep part</p></body></html>';
-    SL.SaveToFile(Dir + PathDelim + 'long.html');
-    SL.Text := '<html><head><title>Jumper</title></head><body>' +
-      '<p><a href="long.html#deep">to the deep part</a></p></body></html>';
-    SL.SaveToFile(Dir + PathDelim + 'jump.html');
-  finally SL.Free end;
-  Probe.ClearHistory;
-  Probe.LoadFromFile(Dir + PathDelim + 'jump.html');
-  for I := 0 to Probe.BlockCount - 1 do
-    if Pos('deep part', Probe.Block(I).Source) > 0 then
-    begin
-      Probe.BlockText(I);
-      Probe.Press(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4 - Probe.ScrollY);
-      Probe.Let(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4 - Probe.ScrollY);
-      Break;
-    end;
-  Check(Probe.DocumentTitle = 'Long', 'a link with #anchor loads the page: ' + Probe.DocumentTitle);
-  Check(Probe.ScrollY > 0, Format('and scrolls to the anchor (%d)', [Probe.ScrollY]));
-  Deep := Probe.ScrollY;
-  Probe.Back;
-  Check(Probe.DocumentTitle = 'Jumper', 'and Back returns to the page with the link');
-  Probe.Forward;
-  Check(Probe.DocumentTitle = 'Long', 'Forward returns to the page');
-  Check(Probe.ScrollY = Deep,
-    Format('at the anchor, not the top (%d, was %d)', [Probe.ScrollY, Deep]));
-
-  { a link to an anchor on the page already showing }
-  SL := TStringList.Create;
-  try
-    SL.Text := '<html><head><title>Same</title></head><body>' +
-      '<p><a href="#bottom">jump down</a></p>';
-    for I := 1 to 60 do SL.Text := SL.Text + '<p>filler paragraph ' + IntToStr(I) + '</p>';
-    SL.Text := SL.Text + '<h2 id="bottom">Bottom</h2></body></html>';
-    SL.SaveToFile(Dir + PathDelim + 'same.html');
-  finally SL.Free end;
-  Probe.ClearHistory;
-  Probe.LoadFromFile(Dir + PathDelim + 'same.html');
-  Probe.ScrollTo(0);
-  for I := 0 to Probe.BlockCount - 1 do
-    if Pos('jump down', Probe.Block(I).Source) > 0 then
-    begin
-      Probe.BlockText(I);
-      Probe.Press(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4);
-      Probe.Let(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4);
-      Break;
-    end;
-  Check(Probe.ScrollY > 0, Format('an anchor on this page scrolls to it (%d)', [Probe.ScrollY]));
-  Deep := Probe.ScrollY;
-  Probe.Back;
-  Check(Probe.ScrollY < Deep,
-    Format('and Back returns to where the reader was (%d, was %d)', [Probe.ScrollY, Deep]));
-
-  DeleteFile(Dir + PathDelim + 'long.html'); DeleteFile(Dir + PathDelim + 'jump.html');
-  DeleteFile(Dir + PathDelim + 'same.html');
-
-  DeleteFile(P1); DeleteFile(P2); DeleteFile(P3); RemoveDir(Dir);
-end;
-
-{ --- links everywhere in a table, not just the first column --- }
-procedure TableLinkChecks;
-var
-  K, Hits: Integer; P: TPoint; Wanted: string;
-const
-  Words: array[0..2] of string = ('alpha', 'beta', 'gamma');
-  Hrefs: array[0..2] of string = ('one.html', 'two.html', 'three.html');
-  Cards: array[0..2] of string = ('first', 'second', 'third');
-begin
-  Probe.SetBounds(0, 0, 500, 300);
-  Probe.LoadHTML('<html><body><table>' +
-    '<tr><td><a href="one.html">alpha</a></td>' +
-    '<td><a href="two.html">beta</a></td>' +
-    '<td><a href="three.html">gamma</a></td></tr>' +
-    '<tr><td>plain</td><td><a href="four.html">delta</a></td><td>plain</td></tr>' +
-    '</table></body></html>');
-  Probe.ScrollTo(0);
-  { clicked where the words actually are rather than where a guess says }
-  Hits := 0;
-  for K := 0 to 2 do
-  begin
-    Check(WordPoint(Words[K], P), Words[K] + ' was laid out');
+    Probe.LoadFromFile(P2);
+    Probe.ClearHistory;
     Probe.Clicked := '';
-    Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
-    Wanted := Hrefs[K];
-    Check(Pos(Wanted, Probe.Clicked) > 0,
-      Format('a link in column %d is clickable (wanted %s, got "%s")', [K + 1, Wanted, Probe.Clicked]));
-    if Pos(Wanted, Probe.Clicked) > 0 then Inc(Hits);
+    if WordPoint('three', Spot) then
+    begin
+      Probe.Press(Spot.X, Spot.Y);
+      Probe.Let(Spot.X, Spot.Y);
+    end;
+    Check(Probe.DocumentTitle = 'Three', 'a link in a table cell navigates: ' + Probe.DocumentTitle);
+    Check(Probe.CanGoBack, 'and it can be gone back from');
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'Two', 'back to the page with the table');
+
+    { a page the program made, rather than one from a file, comes back too }
+    Probe.ClearHistory;
+    Probe.LoadHTML('<html><head><title>Made up</title></head><body><p>from the program</p></body></html>');
+    Probe.LoadFromFile(P1);
+    Check(Probe.CanGoBack, 'a generated page is in the history');
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'Made up',
+      'and Back shows it again: ' + Probe.DocumentTitle);
+    Check(Pos('from the program', Probe.PlainText) > 0, 'with its words');
+    Probe.Forward;
+    Check(Probe.DocumentTitle = 'One', 'and Forward returns to the file');
+
+    { a link to a place on another page: it goes there and lands on the place }
+    SL := TStringList.Create;
+    try
+      SL.Text := '<html><head><title>Long</title></head><body><p>top</p><p>' + StringOfChar('e', 60) + ' ' + StringOfChar('f', 60) + '</p>';
+      for I := 1 to 60 do SL.Text := SL.Text + '<p>filler paragraph ' + IntToStr(I) + '</p>';
+      SL.Text := SL.Text + '<h2 id="deep">Deep</h2><p>the deep part</p></body></html>';
+      SL.SaveToFile(Dir + PathDelim + 'long.html');
+      SL.Text := '<html><head><title>Jumper</title></head><body>' + '<p><a href="long.html#deep">to the deep part</a></p></body></html>';
+      SL.SaveToFile(Dir + PathDelim + 'jump.html');
+    finally
+      SL.Free
+    end;
+    Probe.ClearHistory;
+    Probe.LoadFromFile(Dir + PathDelim + 'jump.html');
+    for I := 0 to Probe.BlockCount - 1 do
+      if Pos('deep part', Probe.Block(I).Source) > 0 then
+      begin
+        Probe.BlockText(I);
+        Probe.Press(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4 - Probe.ScrollY);
+        Probe.Let(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4 - Probe.ScrollY);
+        Break;
+      end;
+    Check(Probe.DocumentTitle = 'Long', 'a link with #anchor loads the page: ' + Probe.DocumentTitle);
+    Check(Probe.ScrollY > 0, Format('and scrolls to the anchor (%d)', [Probe.ScrollY]));
+    Deep := Probe.ScrollY;
+    Probe.Back;
+    Check(Probe.DocumentTitle = 'Jumper', 'and Back returns to the page with the link');
+    Probe.Forward;
+    Check(Probe.DocumentTitle = 'Long', 'Forward returns to the page');
+    Check(Probe.ScrollY = Deep,
+      Format('at the anchor, not the top (%d, was %d)', [Probe.ScrollY, Deep]));
+
+    { a link to an anchor on the page already showing }
+    SL := TStringList.Create;
+    try
+      SL.Text := '<html><head><title>Same</title></head><body>' + '<p><a href="#bottom">jump down</a></p>';
+      for I := 1 to 60 do SL.Text := SL.Text + '<p>filler paragraph ' + IntToStr(I) + '</p>';
+      SL.Text := SL.Text + '<h2 id="bottom">Bottom</h2></body></html>';
+      SL.SaveToFile(Dir + PathDelim + 'same.html');
+    finally
+      SL.Free
+    end;
+    Probe.ClearHistory;
+    Probe.LoadFromFile(Dir + PathDelim + 'same.html');
+    Probe.ScrollTo(0);
+    for I := 0 to Probe.BlockCount - 1 do
+      if Pos('jump down', Probe.Block(I).Source) > 0 then
+      begin
+        Probe.BlockText(I);
+        Probe.Press(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4);
+        Probe.Let(Probe.Block(I).Runs[0].Left + 4, Probe.Block(I).Runs[0].Top + 4);
+        Break;
+      end;
+    Check(Probe.ScrollY > 0, Format('an anchor on this page scrolls to it (%d)', [Probe.ScrollY]));
+    Deep := Probe.ScrollY;
+    Probe.Back;
+    Check(Probe.ScrollY < Deep,
+      Format('and Back returns to where the reader was (%d, was %d)', [Probe.ScrollY, Deep]));
+
+    DeleteFile(Dir + PathDelim + 'long.html');
+    DeleteFile(Dir + PathDelim + 'jump.html');
+    DeleteFile(Dir + PathDelim + 'same.html');
+
+    DeleteFile(P1);
+    DeleteFile(P2);
+    DeleteFile(P3);
+    RemoveDir(Dir);
   end;
-  Check(Hits = 3, Format('every column answered (%d of 3)', [Hits]));
+
+  { --- links everywhere in a table, not just the first column --- }
+  procedure TableLinkChecks;
+  var
+    K, Hits: integer;
+    P: TPoint;
+    Wanted: string;
+  const
+    Words: array[0..2] of string = ('alpha', 'beta', 'gamma');
+    Hrefs: array[0..2] of string = ('one.html', 'two.html', 'three.html');
+    Cards: array[0..2] of string = ('first', 'second', 'third');
+  begin
+    Probe.SetBounds(0, 0, 500, 300);
+    Probe.LoadHTML('<html><body><table>' + '<tr><td><a href="one.html">alpha</a></td>' + '<td><a href="two.html">beta</a></td>' +
+      '<td><a href="three.html">gamma</a></td></tr>' + '<tr><td>plain</td><td><a href="four.html">delta</a></td><td>plain</td></tr>' + '</table></body></html>');
+    Probe.ScrollTo(0);
+    { clicked where the words actually are rather than where a guess says }
+    Hits := 0;
+    for K := 0 to 2 do
+    begin
+      Check(WordPoint(Words[K], P), Words[K] + ' was laid out');
+      Probe.Clicked := '';
+      Probe.Press(P.X, P.Y);
+      Probe.Let(P.X, P.Y);
+      Wanted := Hrefs[K];
+      Check(Pos(Wanted, Probe.Clicked) > 0,
+        Format('a link in column %d is clickable (wanted %s, got "%s")', [K + 1, Wanted, Probe.Clicked]));
+      if Pos(Wanted, Probe.Clicked) > 0 then Inc(Hits);
+    end;
+    Check(Hits = 3, Format('every column answered (%d of 3)', [Hits]));
   { and the second row's middle cell, which is neither the first column nor
     the first row }
-  Check(WordPoint('delta', P), 'delta was laid out');
-  Probe.Clicked := '';
-  Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
-  Check(Pos('four.html', Probe.Clicked) > 0, 'a link in the second row, middle column: "' + Probe.Clicked + '"');
-  { hovering reads the same way clicking does }
-  Check(WordPoint('gamma', P), 'gamma was laid out');
-  Wanted := Probe.LinkAt(P.X, P.Y);
-  Check(Pos('three.html', Wanted) > 0, 'and the pointer over it knows: "' + Wanted + '"');
+    Check(WordPoint('delta', P), 'delta was laid out');
+    Probe.Clicked := '';
+    Probe.Press(P.X, P.Y);
+    Probe.Let(P.X, P.Y);
+    Check(Pos('four.html', Probe.Clicked) > 0, 'a link in the second row, middle column: "' + Probe.Clicked + '"');
+    { hovering reads the same way clicking does }
+    Check(WordPoint('gamma', P), 'gamma was laid out');
+    Wanted := Probe.LinkAt(P.X, P.Y);
+    Check(Pos('three.html', Wanted) > 0, 'and the pointer over it knows: "' + Wanted + '"');
 
-  { the card index: a link in the second or third card of a grid }
-  Probe.SetBounds(0, 0, 500, 300);
-  Probe.LoadHTML('<html><head><style>' +
-    '.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px } ' +
-    '.card { background: #eef; padding: 6px }' +
-    '</style></head><body><div class="grid">' +
-    '<a class="card" href="card1.html">first</a>' +
-    '<a class="card" href="card2.html">second</a>' +
-    '<a class="card" href="card3.html">third</a>' +
-    '</div></body></html>');
-  Probe.ScrollTo(0);
-  Hits := 0;
-  for K := 0 to 2 do
-    if WordPoint(Cards[K], P) then
-    begin
-      Probe.Clicked := '';
-      Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
-      Check(Pos('card' + IntToStr(K + 1), Probe.Clicked) > 0,
-        Format('card %d is clickable ("%s")', [K + 1, Probe.Clicked]));
-      if Pos('card' + IntToStr(K + 1), Probe.Clicked) > 0 then Inc(Hits);
-    end;
-  Check(Hits = 3, Format('every card answered (%d of 3)', [Hits]));
-  Probe.SetBounds(0, 0, 400, 200);
-end;
+    { the card index: a link in the second or third card of a grid }
+    Probe.SetBounds(0, 0, 500, 300);
+    Probe.LoadHTML('<html><head><style>' + '.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px } ' +
+      '.card { background: #eef; padding: 6px }' + '</style></head><body><div class="grid">' + '<a class="card" href="card1.html">first</a>' +
+      '<a class="card" href="card2.html">second</a>' + '<a class="card" href="card3.html">third</a>' + '</div></body></html>');
+    Probe.ScrollTo(0);
+    Hits := 0;
+    for K := 0 to 2 do
+      if WordPoint(Cards[K], P) then
+      begin
+        Probe.Clicked := '';
+        Probe.Press(P.X, P.Y);
+        Probe.Let(P.X, P.Y);
+        Check(Pos('card' + IntToStr(K + 1), Probe.Clicked) > 0,
+          Format('card %d is clickable ("%s")', [K + 1, Probe.Clicked]));
+        if Pos('card' + IntToStr(K + 1), Probe.Clicked) > 0 then Inc(Hits);
+      end;
+    Check(Hits = 3, Format('every card answered (%d of 3)', [Hits]));
+    Probe.SetBounds(0, 0, 400, 200);
+  end;
 
-{ --- the palette icons the IDE shows --- }
-{ a page with nothing moving on it does not run the animation tick }
+  { --- the palette icons the IDE shows --- }
+  { a page with nothing moving on it does not run the animation tick }
 { the page's own words about size and face reach the glyphs that are drawn.
   Every one of these was broken at once, and the total height of a document
   hid it: the sizes were computed correctly and then thrown away. }
-procedure InheritedTextChecks;
-var I, Base, H1, H2, P1, Small: Integer; B: TInkPageBlock;
-begin
-  Probe.SetBounds(0, 0, 500, 400);
-  Probe.LoadHTML('<html><head><style>' +
-    'body { font-size: 20px; font-family: monospace; line-height: 2 }' +
-    'h1 { font-size: 40px } h2 { font-size: 30px }' +
-    '</style></head><body>' +
-    '<h1>a heading</h1><p>a paragraph with <small>small print</small> in it</p>' +
-    '<h2>another heading</h2></body></html>');
-  Probe.ScrollTo(0);
-  Base := 0; H1 := 0; H2 := 0; P1 := 0;
-  for I := 0 to Probe.BlockCount - 1 do
+  procedure InheritedTextChecks;
+  var
+    I, Base, H1, H2, P1, Small: integer;
+    B: TInkPageBlock;
   begin
-    B := Probe.Block(I);
-    if B.Tag = 'h1' then H1 := B.PointSize
-    else if B.Tag = 'h2' then H2 := B.PointSize
-    else if (B.Tag = 'p') and (P1 = 0) then
+    Probe.SetBounds(0, 0, 500, 400);
+    Probe.LoadHTML('<html><head><style>' + 'body { font-size: 20px; font-family: monospace; line-height: 2 }' + 'h1 { font-size: 40px } h2 { font-size: 30px }' +
+      '</style></head><body>' + '<h1>a heading</h1><p>a paragraph with <small>small print</small> in it</p>' + '<h2>another heading</h2></body></html>');
+    Probe.ScrollTo(0);
+    Base := 0;
+    H1 := 0;
+    H2 := 0;
+    P1 := 0;
+    for I := 0 to Probe.BlockCount - 1 do
     begin
-      P1 := B.PointSize; Base := B.LineHeight;
+      B := Probe.Block(I);
+      if B.Tag = 'h1' then H1 := B.PointSize
+      else if B.Tag = 'h2' then H2 := B.PointSize
+      else if (B.Tag = 'p') and (P1 = 0) then
+      begin
+        P1 := B.PointSize;
+        Base := B.LineHeight;
       { <small> names its size in the markup the parser emits, and the
         parser runs before any layout: it used to read a base size that was
         still nought and ask for one pixel of text }
-      Small := Pos('size="-1"', B.Source);
-      Check(Small = 0, 'small print is not one pixel: ' + Copy(B.Source, 1, 90));
-      Check(Pos('size="-17"', B.Source) > 0,
-        'small is 0.83 of the body''s twenty pixels: ' + Copy(B.Source, 1, 90));
+        Small := Pos('size="-1"', B.Source);
+        Check(Small = 0, 'small print is not one pixel: ' + Copy(B.Source, 1, 90));
+        Check(Pos('size="-17"', B.Source) > 0,
+          'small is 0.83 of the body''s twenty pixels: ' + Copy(B.Source, 1, 90));
+      end;
     end;
-  end;
-  { body font-size is inherited - everything else is a multiple of it }
-  Check(P1 = -20, Format('body font-size: 20px reaches a paragraph (%d)', [P1]));
-  Check(H1 = -40, Format('and h1 keeps its own 40px (%d)', [H1]));
-  Check(H2 = -30, Format('and h2 its 30px (%d)', [H2]));
-  { line-height is inherited too }
-  Check(Base = 40, Format('line-height: 2 on the body reaches a paragraph (%d)', [Base]));
+    { body font-size is inherited - everything else is a multiple of it }
+    Check(P1 = -20, Format('body font-size: 20px reaches a paragraph (%d)', [P1]));
+    Check(H1 = -40, Format('and h1 keeps its own 40px (%d)', [H1]));
+    Check(H2 = -30, Format('and h2 its 30px (%d)', [H2]));
+    { line-height is inherited too }
+    Check(Base = 40, Format('line-height: 2 on the body reaches a paragraph (%d)', [Base]));
 
   { and the size survives into the runs that are actually drawn, which is
     where it used to be replaced by a flat ten points }
-  Probe.BlockText(0);   { asking for a block's words lays out its runs }
-  B := Probe.Block(0);
-  Check(B.RunCount > 0, 'the heading has runs');
-  Check(B.Runs[0].FontSize = -40,
-    Format('a drawn run carries the heading''s size (%d)', [B.Runs[0].FontSize]));
-  { a monospace family named on the body reaches the block }
-  Check(B.FaceName <> '', 'font-family on the body reaches a heading');
-  Probe.SetBounds(0, 0, 400, 200);
-end;
+    Probe.BlockText(0);   { asking for a block's words lays out its runs }
+    B := Probe.Block(0);
+    Check(B.RunCount > 0, 'the heading has runs');
+    Check(B.Runs[0].FontSize = -40,
+      Format('a drawn run carries the heading''s size (%d)', [B.Runs[0].FontSize]));
+    { a monospace family named on the body reaches the block }
+    Check(B.FaceName <> '', 'font-family on the body reaches a heading');
+    Probe.SetBounds(0, 0, 400, 200);
+  end;
 
-procedure AnimationTimerChecks;
-var Base: string;
-begin
-  Base := FilenameToURI(ExpandFileName('tests/fixtures/webp/page.html'));
-  Probe.LoadHTML('<html><body><p>just words</p>' +
-    '<p><img src="../../../images/palette.png" alt="a still picture"></p>' +
-    '</body></html>', Base);
-  Probe.ScrollTo(0);
-  Check(not Probe.Animating, 'a page of still pictures stops the tick');
-
-  Probe.LoadHTML('<html><body><p>and now one that moves</p>' +
-    '<p><img src="animation.webp" alt="an animated WebP"></p></body></html>', Base);
-  Probe.ScrollTo(0);
-  Check(Probe.Animating, 'a page with an animation runs the tick');
-
-  Probe.LoadHTML('<html><body><p>still again</p></body></html>', Base);
-  Probe.ScrollTo(0);
-  Check(not Probe.Animating, 'and it stops again when the page is replaced');
-end;
-
-procedure IconChecks;
-const
-  Components: array[0..5] of string =
-    ('TInkLabel', 'TInkEdit', 'TInkRichEdit', 'TInkMemo', 'TInkListBox', 'TInkPage');
-var
-  I: Integer; Res: TLResource; Stream: TStringStream; Png: TPortableNetworkGraphic;
-begin
-  for I := Low(Components) to High(Components) do
+  procedure AnimationTimerChecks;
+  var
+    Base: string;
   begin
+    Base := FilenameToURI(ExpandFileName('tests/fixtures/webp/page.html'));
+    Probe.LoadHTML('<html><body><p>just words</p>' + '<p><img src="../../../images/palette.png" alt="a still picture"></p>' + '</body></html>', Base);
+    Probe.ScrollTo(0);
+    Check(not Probe.Animating, 'a page of still pictures stops the tick');
+
+    Probe.LoadHTML('<html><body><p>and now one that moves</p>' + '<p><img src="animation.webp" alt="an animated WebP"></p></body></html>', Base);
+    Probe.ScrollTo(0);
+    Check(Probe.Animating, 'a page with an animation runs the tick');
+
+    Probe.LoadHTML('<html><body><p>still again</p></body></html>', Base);
+    Probe.ScrollTo(0);
+    Check(not Probe.Animating, 'and it stops again when the page is replaced');
+  end;
+
+  procedure IconChecks;
+  const
+    Components: array[0..5] of string =
+      ('TInkLabel', 'TInkEdit', 'TInkRichEdit', 'TInkMemo', 'TInkListBox', 'TInkPage');
+  var
+    I: integer;
+    Res: TLResource;
+    Stream: TStringStream;
+    Png: TPortableNetworkGraphic;
+  begin
+    for I := Low(Components) to High(Components) do
+    begin
     { a component with no resource of its own gets Lazarus's default icon,
       which is how TInkPage looked until its own was drawn }
-    Res := LazarusResources.Find(Components[I]);
-    Check(Res <> nil, Components[I] + ' has a palette icon');
-    if Res = nil then Continue;
-    Check(Res.ValueType = 'PNG', Components[I] + ': the icon is a PNG');
-    Stream := TStringStream.Create(Res.Value);
-    Png := TPortableNetworkGraphic.Create;
-    try
-      Png.LoadFromStream(Stream);
-      Check((Png.Width = 24) and (Png.Height = 24),
-        Format('%s: the icon is 24x24 (%dx%d)', [Components[I], Png.Width, Png.Height]));
-    finally Png.Free; Stream.Free end;
+      Res := LazarusResources.Find(Components[I]);
+      Check(Res <> nil, Components[I] + ' has a palette icon');
+      if Res = nil then Continue;
+      Check(Res.ValueType = 'PNG', Components[I] + ': the icon is a PNG');
+      Stream := TStringStream.Create(Res.Value);
+      Png := TPortableNetworkGraphic.Create;
+      try
+        Png.LoadFromStream(Stream);
+        Check((Png.Width = 24) and (Png.Height = 24),
+          Format('%s: the icon is 24x24 (%dx%d)', [Components[I], Png.Width, Png.Height]));
+      finally
+        Png.Free;
+        Stream.Free
+      end;
+    end;
   end;
-end;
 
-{ --- find in page --- }
-procedure FindChecks;
-var Current, Total, K: Integer; Key: Word; Doc: string;
-begin
-  Doc := '<html><body><p>The cat sat.</p>';
-  for K := 1 to 40 do Doc := Doc + '<p>filler ' + IntToStr(K) + '</p>';
-  Doc := Doc + '<p>Another CAT, and a cat.</p></body></html>';
-  Probe.LoadHTML(Doc);
-  Probe.ScrollTo(0);
-  Total := Probe.FindCount('cat', [], Current);
-  Check((Total = 3) and (Current = 0), Format('FindCount (%d, %d)', [Total, Current]));
-  Check(Probe.FindCount('cat', [ifoMatchCase], Current) = 2, 'FindCount matching case');
-  Check(Probe.Find('cat'), 'Find');
-  Check((Probe.SelectedText = 'cat') and (Probe.SelectionStart.Block = 0), 'finds the first');
-  Probe.FindCount('cat', [], Current);
-  Check(Current = 1, 'and it is the first of three');
-  Check(Probe.Find('cat') and (Probe.SelectedText = 'CAT'), 'the next, whatever its case');
-  Check(Probe.ScrollY > 0, 'scrolled to it');
-  Check(Probe.Find('cat') and (Probe.SelectionStart.Offset > 10), 'and the next in the same block');
-  Check(Probe.Find('cat') and (Probe.SelectionStart.Block = 0), 'round the end to the first');
-  Check(Probe.Find('cat', [ifoBackwards]) and (Probe.SelectionStart.Offset > 10), 'backwards round the start');
-  Check(Probe.Find('cat', [ifoBackwards]) and (Probe.SelectedText = 'CAT'), 'and back again');
-  Check(Probe.Find('cat', [ifoMatchCase]) and (Probe.SelectedText = 'cat'), 'matching case skips CAT');
-  Probe.ClearSelection;
-  Probe.ScrollTo(0);
-  Check(Probe.Find('cat') and (Probe.SelectionStart.Block = 0), 'from the top again');
-  Key := VK_F3; Probe.KeyDown(Key, []);
-  Check((Probe.SelectedText = 'CAT') and (Probe.SelectionStart.Block > 0), 'F3 finds the next');
-  Key := VK_F3; Probe.KeyDown(Key, [ssShift]);
-  Check(Probe.SelectionStart.Block = 0, 'Shift+F3 the one before');
-  Check(not Probe.Find('dog'), 'not found');
-  Check(Probe.SelectedText = 'cat', 'leaves the selection alone');
+  { --- find in page --- }
+  procedure FindChecks;
+  var
+    Current, Total, K: integer;
+    Key: word;
+    Doc: string;
+  begin
+    Doc := '<html><body><p>The cat sat.</p>';
+    for K := 1 to 40 do Doc := Doc + '<p>filler ' + IntToStr(K) + '</p>';
+    Doc := Doc + '<p>Another CAT, and a cat.</p></body></html>';
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(0);
+    Total := Probe.FindCount('cat', [], Current);
+    Check((Total = 3) and (Current = 0), Format('FindCount (%d, %d)', [Total, Current]));
+    Check(Probe.FindCount('cat', [ifoMatchCase], Current) = 2, 'FindCount matching case');
+    Check(Probe.Find('cat'), 'Find');
+    Check((Probe.SelectedText = 'cat') and (Probe.SelectionStart.Block = 0), 'finds the first');
+    Probe.FindCount('cat', [], Current);
+    Check(Current = 1, 'and it is the first of three');
+    Check(Probe.Find('cat') and (Probe.SelectedText = 'CAT'), 'the next, whatever its case');
+    Check(Probe.ScrollY > 0, 'scrolled to it');
+    Check(Probe.Find('cat') and (Probe.SelectionStart.Offset > 10), 'and the next in the same block');
+    Check(Probe.Find('cat') and (Probe.SelectionStart.Block = 0), 'round the end to the first');
+    Check(Probe.Find('cat', [ifoBackwards]) and (Probe.SelectionStart.Offset > 10), 'backwards round the start');
+    Check(Probe.Find('cat', [ifoBackwards]) and (Probe.SelectedText = 'CAT'), 'and back again');
+    Check(Probe.Find('cat', [ifoMatchCase]) and (Probe.SelectedText = 'cat'), 'matching case skips CAT');
+    Probe.ClearSelection;
+    Probe.ScrollTo(0);
+    Check(Probe.Find('cat') and (Probe.SelectionStart.Block = 0), 'from the top again');
+    Key := VK_F3;
+    Probe.KeyDown(Key, []);
+    Check((Probe.SelectedText = 'CAT') and (Probe.SelectionStart.Block > 0), 'F3 finds the next');
+    Key := VK_F3;
+    Probe.KeyDown(Key, [ssShift]);
+    Check(Probe.SelectionStart.Block = 0, 'Shift+F3 the one before');
+    Check(not Probe.Find('dog'), 'not found');
+    Check(Probe.SelectedText = 'cat', 'leaves the selection alone');
 
-  { the find bar }
-  Probe.ClearSelection;
-  Key := VK_F; Probe.KeyDown(Key, [ssCtrl]);
-  Check(Probe.FindBarVisible, 'Ctrl+F opens the find bar');
-  Probe.FindEdit.Text := 'fill';
-  Check(Probe.SelectedText = 'fill', 'typing finds: ' + Probe.SelectedText);
-  K := Probe.SelectionStart.Block;
-  Probe.FindEdit.Text := 'filler 2';
-  Check((Probe.SelectedText = 'filler 2') and (Probe.SelectionStart.Block = K + 1),
-    'and the match grows in place where it can, moving on where it must');
-  Probe.FindEdit.Text := 'filler';
-  Key := VK_RETURN;
-  TInkEditAccess(Probe.FindEdit).KeyDown(Key, []);
-  Check(Probe.SelectionStart.Block = K + 2, 'Enter goes to the next');
-  Key := VK_RETURN;
-  TInkEditAccess(Probe.FindEdit).KeyDown(Key, [ssShift]);
-  Check(Probe.SelectionStart.Block = K + 1, 'Shift+Enter to the one before');
-  Probe.FindEdit.Text := 'nowhere';
-  Check(Probe.SelectedText = 'filler', 'nothing found leaves the last match');
-  Key := VK_ESCAPE;
-  TInkEditAccess(Probe.FindEdit).KeyDown(Key, []);
-  Check(not Probe.FindBarVisible, 'Esc closes it');
-  Probe.Select(Pos2(0, 4), Pos2(0, 7));
-  Probe.ShowFindBar;
-  Check(Probe.FindEdit.Text = 'cat', 'the find bar starts with the selection');
-  Probe.HideFindBar;
-end;
+    { the find bar }
+    Probe.ClearSelection;
+    Key := VK_F;
+    Probe.KeyDown(Key, [ssCtrl]);
+    Check(Probe.FindBarVisible, 'Ctrl+F opens the find bar');
+    Probe.FindEdit.Text := 'fill';
+    Check(Probe.SelectedText = 'fill', 'typing finds: ' + Probe.SelectedText);
+    K := Probe.SelectionStart.Block;
+    Probe.FindEdit.Text := 'filler 2';
+    Check((Probe.SelectedText = 'filler 2') and (Probe.SelectionStart.Block = K + 1),
+      'and the match grows in place where it can, moving on where it must');
+    Probe.FindEdit.Text := 'filler';
+    Key := VK_RETURN;
+    TInkEditAccess(Probe.FindEdit).KeyDown(Key, []);
+    Check(Probe.SelectionStart.Block = K + 2, 'Enter goes to the next');
+    Key := VK_RETURN;
+    TInkEditAccess(Probe.FindEdit).KeyDown(Key, [ssShift]);
+    Check(Probe.SelectionStart.Block = K + 1, 'Shift+Enter to the one before');
+    Probe.FindEdit.Text := 'nowhere';
+    Check(Probe.SelectedText = 'filler', 'nothing found leaves the last match');
+    Key := VK_ESCAPE;
+    TInkEditAccess(Probe.FindEdit).KeyDown(Key, []);
+    Check(not Probe.FindBarVisible, 'Esc closes it');
+    Probe.Select(Pos2(0, 4), Pos2(0, 7));
+    Probe.ShowFindBar;
+    Check(Probe.FindEdit.Text = 'cat', 'the find bar starts with the selection');
+    Probe.HideFindBar;
+  end;
 
 { --- a finger on the page ---
   J is set by the mouse tap test before this: a release at (33, J + 3) is
   on Probe's first line, a link. }
 { a fine or free-spinning wheel sends fractions of a notch; each is that
   fraction of the way, not a whole notch }
-procedure WheelChecks;
-var Tall: string; K: Integer;
-begin
-  {$IFDEF LCLGTK3}
+  procedure WheelChecks;
+  var
+    Tall: string;
+    K: integer;
+  begin
+    {$IFDEF LCLGTK3}
   Tall := '';
   for K := 1 to 200 do Tall := Tall+'<p>line '+IntToStr(K)+'</p>';
   Probe.LoadHTML('<html><body>'+Tall+'</body></html>');
@@ -2634,92 +2798,106 @@ begin
   Check(Probe.ScrollY=140, Format('and slow turning still adds up (%d)',[Probe.ScrollY]));
   SendSmoothScroll(Probe, -0.5, 2);
   Check(Probe.ScrollY=100, Format('and back up (%d)',[Probe.ScrollY]));
-  {$ENDIF}
-end;
+    {$ENDIF}
+  end;
 
-procedure TouchChecks;
-var K, Before, LinkY: Integer;
-begin
-  LinkY := J;
-  Probe.ScrollTo(0);
-  Probe.Finger(itpBegin, 100, 150, 1000);
-  Probe.Finger(itpMove, 100, 120, 1300);
-  Probe.Finger(itpMove, 100, 50, 1600);
-  Probe.Finger(itpEnd, 100, 50, 1900);
-  Check(Probe.ScrollY = 100, Format('a finger dragged up 100 px scrolls down 100 px (%d)', [Probe.ScrollY]));
-  Check(not Probe.Flicking, 'a slow drag does not coast');
+  procedure TouchChecks;
+  var
+    K, Before, LinkY: integer;
+  begin
+    LinkY := J;
+    Probe.ScrollTo(0);
+    Probe.Finger(itpBegin, 100, 150, 1000);
+    Probe.Finger(itpMove, 100, 120, 1300);
+    Probe.Finger(itpMove, 100, 50, 1600);
+    Probe.Finger(itpEnd, 100, 50, 1900);
+    Check(Probe.ScrollY = 100, Format('a finger dragged up 100 px scrolls down 100 px (%d)', [Probe.ScrollY]));
+    Check(not Probe.Flicking, 'a slow drag does not coast');
   { some platforms send a touch again as mouse events; that copy must not
     move the page a second time }
-  Probe.Press(100, 50); Probe.MoveTo(100, 150); Probe.Let(100, 150);
-  Check(Probe.ScrollY = 100, 'the mouse copy of a touch is ignored');
+    Probe.Press(100, 50);
+    Probe.MoveTo(100, 150);
+    Probe.Let(100, 150);
+    Check(Probe.ScrollY = 100, 'the mouse copy of a touch is ignored');
 
-  Probe.ScrollTo(0);
-  Probe.Clicked := '';
-  Probe.Finger(itpBegin, 30, LinkY, 5000);
-  Probe.Finger(itpMove, 33, LinkY + 3, 5050);
-  Probe.Finger(itpEnd, 33, LinkY + 3, 5100);
-  Check(Probe.Clicked <> '', 'a tap with a finger follows a link');
-  Probe.Clicked := '';
-  Probe.Finger(itpBegin, 30, 180, 5200);
-  Probe.Finger(itpMove, 30, 100, 5500);
-  Probe.Finger(itpEnd, 30, LinkY, 6100);
-  Check(Probe.Clicked = '', 'a finger drag that ends on a link does not follow it');
-  Probe.ScrollTo(0);
-  Probe.Finger(itpBegin, 30, LinkY, 6200);
-  Probe.Finger(itpCancel, 30, LinkY, 6250);
-  Check(Probe.Clicked = '', 'a canceled touch is not a tap');
-  Probe.Finger(itpMove, 30, LinkY - 100, 6300);
-  Check(Probe.ScrollY = 0, 'nor is anything after it');
+    Probe.ScrollTo(0);
+    Probe.Clicked := '';
+    Probe.Finger(itpBegin, 30, LinkY, 5000);
+    Probe.Finger(itpMove, 33, LinkY + 3, 5050);
+    Probe.Finger(itpEnd, 33, LinkY + 3, 5100);
+    Check(Probe.Clicked <> '', 'a tap with a finger follows a link');
+    Probe.Clicked := '';
+    Probe.Finger(itpBegin, 30, 180, 5200);
+    Probe.Finger(itpMove, 30, 100, 5500);
+    Probe.Finger(itpEnd, 30, LinkY, 6100);
+    Check(Probe.Clicked = '', 'a finger drag that ends on a link does not follow it');
+    Probe.ScrollTo(0);
+    Probe.Finger(itpBegin, 30, LinkY, 6200);
+    Probe.Finger(itpCancel, 30, LinkY, 6250);
+    Check(Probe.Clicked = '', 'a canceled touch is not a tap');
+    Probe.Finger(itpMove, 30, LinkY - 100, 6300);
+    Check(Probe.ScrollY = 0, 'nor is anything after it');
 
-  { a flick: 70 px in 60 ms is over a thousand pixels a second }
-  Probe.ScrollTo(0);
-  Probe.Finger(itpBegin, 100, 190, 7000);
-  Probe.Finger(itpMove, 100, 170, 7020);
-  Probe.Finger(itpMove, 100, 140, 7040);
-  Probe.Finger(itpEnd, 100, 120, 7060);
-  Before := Probe.ScrollY;
-  Check(Before = 70, Format('the flick''s own drag (%d)', [Before]));
-  Check(Probe.Flicking, 'a quick flick coasts');
-  Probe.Coast(50);
-  Check(Probe.ScrollY > Before, 'onwards, the way the finger went');
-  K := 0;
-  while Probe.Flicking and (K < 1000) do begin Probe.Coast(16); Inc(K) end;
-  Check(not Probe.Flicking, 'and comes to a stop');
-  Check(Probe.ScrollY > Before + 100, Format('having gone a fair way (%d)', [Probe.ScrollY - Before]));
-  Check(Probe.ScrollY < Probe.ContentHeight - Probe.ClientHeight, 'but not to the end');
+    { a flick: 70 px in 60 ms is over a thousand pixels a second }
+    Probe.ScrollTo(0);
+    Probe.Finger(itpBegin, 100, 190, 7000);
+    Probe.Finger(itpMove, 100, 170, 7020);
+    Probe.Finger(itpMove, 100, 140, 7040);
+    Probe.Finger(itpEnd, 100, 120, 7060);
+    Before := Probe.ScrollY;
+    Check(Before = 70, Format('the flick''s own drag (%d)', [Before]));
+    Check(Probe.Flicking, 'a quick flick coasts');
+    Probe.Coast(50);
+    Check(Probe.ScrollY > Before, 'onwards, the way the finger went');
+    K := 0;
+    while Probe.Flicking and (K < 1000) do
+    begin
+      Probe.Coast(16);
+      Inc(K);
+    end;
+    Check(not Probe.Flicking, 'and comes to a stop');
+    Check(Probe.ScrollY > Before + 100, Format('having gone a fair way (%d)', [Probe.ScrollY - Before]));
+    Check(Probe.ScrollY < Probe.ContentHeight - Probe.ClientHeight, 'but not to the end');
 
-  { a flick up the page goes up, and stops at the top }
-  Probe.Finger(itpBegin, 100, 50, 8000);
-  Probe.Finger(itpMove, 100, 150, 8040);
-  Probe.Finger(itpEnd, 100, 180, 8060);
-  Check(Probe.Flicking, 'a flick the other way');
-  K := 0;
-  while Probe.Flicking and (K < 1000) do begin Probe.Coast(16); Inc(K) end;
-  Check(Probe.ScrollY = 0, 'stops at the top');
+    { a flick up the page goes up, and stops at the top }
+    Probe.Finger(itpBegin, 100, 50, 8000);
+    Probe.Finger(itpMove, 100, 150, 8040);
+    Probe.Finger(itpEnd, 100, 180, 8060);
+    Check(Probe.Flicking, 'a flick the other way');
+    K := 0;
+    while Probe.Flicking and (K < 1000) do
+    begin
+      Probe.Coast(16);
+      Inc(K);
+    end;
+    Check(Probe.ScrollY = 0, 'stops at the top');
 
-  { a finger on the page stops it coasting }
-  Probe.Finger(itpBegin, 100, 190, 9000);
-  Probe.Finger(itpEnd, 100, 120, 9050);
-  Check(Probe.Flicking, 'flicking again');
-  Probe.Finger(itpBegin, 100, 100, 9100);
-  Check(not Probe.Flicking, 'a touch catches the page');
-  Probe.Finger(itpEnd, 100, 100, 9150);
+    { a finger on the page stops it coasting }
+    Probe.Finger(itpBegin, 100, 190, 9000);
+    Probe.Finger(itpEnd, 100, 120, 9050);
+    Check(Probe.Flicking, 'flicking again');
+    Probe.Finger(itpBegin, 100, 100, 9100);
+    Check(not Probe.Flicking, 'a touch catches the page');
+    Probe.Finger(itpEnd, 100, 100, 9150);
 
-  Probe.FlickScroll := False;
-  Probe.Finger(itpBegin, 100, 190, 10000);
-  Probe.Finger(itpEnd, 100, 120, 10050);
-  Check(not Probe.Flicking, 'FlickScroll off: no coasting');
-  Probe.FlickScroll := True;
+    Probe.FlickScroll := False;
+    Probe.Finger(itpBegin, 100, 190, 10000);
+    Probe.Finger(itpEnd, 100, 120, 10050);
+    Check(not Probe.Flicking, 'FlickScroll off: no coasting');
+    Probe.FlickScroll := True;
 
   { a mouse is a mouse: once the touch is well over, it drags again, and a
     quick mouse drag does not coast }
-  Sleep(550);
-  Probe.ScrollTo(0);
-  Probe.Press(100, 190); Probe.MoveTo(100, 150); Probe.MoveTo(100, 100); Probe.Let(100, 100);
-  Check(Probe.ScrollY = 90, Format('the mouse drags after a touch (%d)', [Probe.ScrollY]));
-  Check(not Probe.Flicking, 'a mouse drag does not coast');
+    Sleep(550);
+    Probe.ScrollTo(0);
+    Probe.Press(100, 190);
+    Probe.MoveTo(100, 150);
+    Probe.MoveTo(100, 100);
+    Probe.Let(100, 100);
+    Check(Probe.ScrollY = 90, Format('the mouse drags after a touch (%d)', [Probe.ScrollY]));
+    Check(not Probe.Flicking, 'a mouse drag does not coast');
 
-  {$IFDEF LCLGTK3}
+    {$IFDEF LCLGTK3}
   { the real thing: GTK touch events, through the hook.  They carry the
     real time, so flicking is off to keep the page where the drag left it. }
   Probe.FlickScroll := False;
@@ -2740,1738 +2918,1900 @@ begin
   SendTouch(Probe, GDK_TOUCH_END, Pointer(3), 33, LinkY + 3);
   Check(Probe.Clicked <> '', 'a GTK3 tap follows a link');
   Probe.FlickScroll := True;
-  {$ENDIF}
-  Sleep(550);
-end;
+    {$ENDIF}
+    Sleep(550);
+  end;
 
-{ what the page's scrollbar comes out as, for a given style block }
-procedure StyledBar(const CSSText: string);
-begin
-  Probe.LoadHTML('<html><head><style>' + CSSText + '</style></head><body>' +
-    Tall + '</body></html>');
-  Probe.ScrollTo(0);
-end;
+  { what the page's scrollbar comes out as, for a given style block }
+  procedure StyledBar(const CSSText: string);
+  begin
+    Probe.LoadHTML('<html><head><style>' + CSSText + '</style></head><body>' + Tall + '</body></html>');
+    Probe.ScrollTo(0);
+  end;
 
 
-{ Markdown to HTML contains Wanted }
-procedure HasHTML(const MD, Wanted, What: string);
-var H: string;
-begin
-  H := MarkdownToHTML(MD);
-  if Pos(Wanted, H) = 0 then
-    raise Exception.Create('Markdown: ' + What + LineEnding + '  wanted: ' + Wanted +
-      LineEnding + '  got: ' + H);
-end;
+  { Markdown to HTML contains Wanted }
+  procedure HasHTML(const MD, Wanted, What: string);
+  var
+    H: string;
+  begin
+    H := MarkdownToHTML(MD);
+    if Pos(Wanted, H) = 0 then
+      raise Exception.Create('Markdown: ' + What + LineEnding + '  wanted: ' + Wanted + LineEnding + '  got: ' + H);
+  end;
 
-procedure LacksHTML(const MD, Unwanted, What: string);
-var H: string;
-begin
-  H := MarkdownToHTML(MD);
-  if Pos(Unwanted, H) > 0 then
-    raise Exception.Create('Markdown: ' + What + LineEnding + '  unwanted: ' + Unwanted +
-      LineEnding + '  got: ' + H);
-end;
+  procedure LacksHTML(const MD, Unwanted, What: string);
+  var
+    H: string;
+  begin
+    H := MarkdownToHTML(MD);
+    if Pos(Unwanted, H) > 0 then
+      raise Exception.Create('Markdown: ' + What + LineEnding + '  unwanted: ' + Unwanted + LineEnding + '  got: ' + H);
+  end;
 
-procedure MarkdownChecks;
-const
-  E = LineEnding;
-var H: string;
-begin
-  { headings, both forms, with GitHub's anchors }
-  HasHTML('# One', '<h1 id="one">One</h1>', 'ATX h1');
-  HasHTML('###### Six ###', '<h6 id="six">Six</h6>', 'ATX h6, closing hashes dropped');
-  HasHTML('#NoSpace', '<p>#NoSpace</p>', 'a hash without a space is text');
-  HasHTML('Big' + E + '===', '<h1 id="big">Big</h1>', 'setext h1');
-  HasHTML('Less' + E + '---', '<h2 id="less">Less</h2>', 'setext h2');
-  HasHTML('## Complete help pages', 'id="complete-help-pages"', 'slug');
-  HasHTML('## A' + E + '## A', 'id="a-1"', 'repeated headings get numbered anchors');
-  { paragraphs }
-  HasHTML('one' + E + 'two' + E + E + 'three', '<p>one' + #10 + 'two</p>', 'wrapped lines join');
-  HasHTML('one' + E + 'two' + E + E + 'three', '<p>three</p>', 'a blank line ends a paragraph');
-  HasHTML('hard  ' + E + 'break', 'hard<br>', 'two trailing spaces break a line');
-  HasHTML('hard\' + E + 'break', 'hard<br>', 'a trailing backslash breaks a line');
-  LacksHTML('no' + E + 'break', '<br>', 'a plain line end is not a break');
-  { emphasis }
-  HasHTML('**b** __b__', '<strong>b</strong> <strong>b</strong>', 'strong');
-  HasHTML('*i* _i_', '<em>i</em> <em>i</em>', 'emphasis');
-  HasHTML('***both***', '<strong><em>both</em></strong>', 'strong emphasis');
-  HasHTML('~~gone~~', '<del>gone</del>', 'strikethrough');
-  HasHTML('snake_case_name', 'snake_case_name', 'underscores inside words stay');
-  HasHTML('2 * 3 * 4', '2 * 3 * 4', 'spaced asterisks stay');
-  HasHTML('*a **b** c*', '<em>a <strong>b</strong> c</em>', 'nested emphasis');
-  HasHTML('\*not\*', '*not*', 'escaped asterisks');
-  { code }
-  HasHTML('`a<b`', '<code>a&lt;b</code>', 'code span escapes');
-  HasHTML('``a ` b``', '<code>a ` b</code>', 'double-backtick code span');
-  HasHTML('`**x**`', '<code>**x**</code>', 'no emphasis in code');
-  HasHTML('```pascal' + E + 'if a<b then' + E + '  x := 1;' + E + '```',
-    '<pre><code class="language-pascal">if a&lt;b then' + #10 + '  x := 1;' + #10 + '</code></pre>',
-    'fenced code keeps its language and indentation');
-  HasHTML('~~~' + E + '```' + E + '~~~', '<pre><code>```' + #10 + '</code></pre>', 'tilde fence');
-  HasHTML('```' + E + 'never closed', '<pre><code>never closed', 'an unclosed fence runs to the end');
-  HasHTML('para' + E + E + '    indented' + E + '    code', '<pre><code>indented' + #10 + 'code', 'indented code');
-  { lists }
-  H := '- **Lead.**  First line' + E + '  wraps here' + E + '  and here.' + E + '- Second';
-  HasHTML(H, '<li><strong>Lead.</strong>  First line' + #10 + 'wraps here' + #10 + 'and here.</li>',
-    'a bullet''s wrapped continuation lines stay in it');
-  HasHTML(H, '<li>Second</li>', 'second bullet');
-  HasHTML('* a' + E + '* b', '<ul>', 'star bullets');
-  HasHTML('+ a' + E + '+ b', '<li>b</li>', 'plus bullets');
-  HasHTML('- a' + E + 'lazy', '<li>a' + #10 + 'lazy</li>', 'lazy continuation');
-  HasHTML('- a' + E + '  - b' + E + '    - c' + E + '- d',
-    '<li>a' + #10 + '<ul>' + #10 + '<li>b' + #10 + '<ul>' + #10 + '<li>c</li>', 'nested lists');
-  HasHTML('1. one' + E + '2. two', '<ol>' + #10 + '<li>one</li>', 'numbered list');
-  HasHTML('3. three' + E + '4. four', '<ol start="3">', 'a numbered list keeps its start');
-  HasHTML('- a' + E + E + '- b', '<li><p>a</p></li>', 'a loose list has paragraphs');
-  HasHTML('- [ ] todo' + E + '- [x] done',
-    '<li class="task-list-item"><input type="checkbox" disabled=""> todo</li>', 'open task');
-  HasHTML('- [ ] todo' + E + '- [x] done', 'checked=""> done', 'finished task');
-  HasHTML('text' + E + '2. not a list', '<p>text' + #10 + '2. not a list</p>',
-    'only a list starting at 1 interrupts a paragraph');
-  HasHTML('- a' + E + '```' + E + 'code' + E + '```', '<pre><code>code', 'code after a list');
-  { links and images }
-  HasHTML('[text](http://x.org "Title")', '<a href="http://x.org" title="Title">text</a>', 'inline link');
-  HasHTML('[a](<b c>)', '<a href="b c">a</a>', 'angle-bracket destination');
-  HasHTML('[a](u(1))', '<a href="u(1)">a</a>', 'parentheses in a destination');
-  HasHTML('[ref][R]' + E + E + '[r]: http://r.org', '<a href="http://r.org">ref</a>', 'reference link');
-  HasHTML('[R]' + E + E + '[r]: http://r.org', '<a href="http://r.org">R</a>', 'shortcut reference');
-  LacksHTML('[r]: http://r.org', 'http://r.org', 'a definition is not shown');
-  HasHTML('<https://x.org/a?b&c>', '<a href="https://x.org/a?b&amp;c">', 'autolink');
-  HasHTML('<me@example.com>', 'href="mailto:me@example.com"', 'email autolink');
-  HasHTML('see https://x.org/p.', '<a href="https://x.org/p">https://x.org/p</a>.', 'bare URL');
-  HasHTML('(www.x.org)', '<a href="http://www.x.org">www.x.org</a>)', 'bare www address');
-  HasHTML('![shot](shots/a.png)', '<img src="shots/a.png" alt="shot">', 'image');
-  HasHTML('[![b](i.png)](http://x)', '<a href="http://x"><img src="i.png" alt="b"></a>', 'linked image');
-  LacksHTML('[a [b](c)](d)', 'href="c"></a', 'no link in a link''s text is made twice');
-  { quotes, rules }
-  HasHTML('> quoted' + E + 'lazy', '<blockquote>' + #10 + '<p>quoted' + #10 + 'lazy</p>', 'blockquote');
-  HasHTML('> a' + E + '> > b', '<blockquote>' + #10 + '<p>b</p>', 'nested blockquote');
-  HasHTML('> [!WARNING]' + E + '> Careful.', 'markdown-alert-warning', 'GitHub alert');
-  HasHTML('---', '<hr>', 'rule of dashes');
-  HasHTML('* * *', '<hr>', 'rule of spaced stars');
-  HasHTML('___', '<hr>', 'rule of underscores');
-  { tables }
-  H := '| L | C | R |' + E + '|:--|:-:|--:|' + E + '| a | b | c |';
-  HasHTML(H, '<th align="left">L</th><th align="center">C</th><th align="right">R</th>', 'header alignment');
-  HasHTML(H, '<td align="right">c</td>', 'cell alignment');
-  HasHTML('a | b' + E + '--- | ---' + E + 'only', '<td>only</td><td></td>', 'short rows are filled');
-  { HTML in Markdown }
-  HasHTML('<!-- note -->' + E + '# After', '<h1', 'a comment before a heading');
-  LacksHTML('<!--' + E + 'hidden' + E + '-->' + E + 'shown', 'hidden', 'multi-line comments are dropped');
-  LacksHTML('a <!-- x --> b', 'x', 'inline comments are dropped');
-  HasHTML('<b>x</b>', '&lt;b&gt;x&lt;/b&gt;', 'raw HTML is text by default');
-  Check(Pos('<b>x</b>', MarkdownToHTML('<b>x</b>', [imoRawHTML])) > 0, 'Markdown: raw HTML when trusted');
-  Check(Pos('<div>' + #10 + '<b>y</b>' + #10 + '</div>',
-    MarkdownToHTML('<div>' + E + '<b>y</b>' + E + '</div>', [imoRawHTML])) > 0, 'Markdown: raw HTML block');
-  HasHTML('&copy; & &#169;', '&copy; &amp; &#169;', 'entities kept, a lone ampersand escaped');
-  { flattened for the inline controls }
-  H := MarkdownToInk('- [x] done' + E + '- item' + E + '  - nested');
-  Check(Pos(InkCheckboxMarkup(True) + ' done', H) > 0,
-    'Ink: a finished task is ticked, Chromium-style');
-  Check(Pos('• item', H) > 0, 'Ink: bullets');
-  Check(Pos('<ind="20">', H) > 0, 'Ink: nested items are indented');
-  H := MarkdownToInk('```' + E + 'a  b' + E + 'c' + E + '```');
-  Check(Pos('a  b<br>c</font>', H) > 0, 'Ink: code keeps its spaces and lines: ' + H);
-  Check(Pos('&#169;', MarkdownToInk('&#169;')) = 0, 'Ink: numeric entities are decoded');
-  Check(Copy(MarkdownToInk('para'), 1, 4) = 'para', 'Ink: no break before the first line');
-  Check(Pos('<br><br>', MarkdownToInk('a' + E + E + 'b')) > 0, 'Ink: paragraphs are apart');
-  Check(Pos('<th><right>R', MarkdownToInk('| R |' + E + '| --: |' + E + '| 1 |')) > 0,
-    'Ink: cell alignment');
-end;
-procedure MarkdownPageChecks(APage: TInkPage);
-const
-  E = LineEnding;
-var
-  B, B2: TInkPageBlock;
-  K, J, Lines, Rules, SavedHeight: Integer;
-  Doc: string;
-  Styles: TStringList;
-  Shot: TBitmap;
-  R: TRect;
-begin
-  Doc :=
-    '<!--' + E + '  notes for whoever edits this' + E + '-->' + E +
-    '# What''s New' + E + E +
-    '## v1.2' + E + E +
-    '### Fixed' + E + E +
-    '- **Updates no longer fail.**  GitHub only answers so many update' + E +
-    '  checks an hour, and when that runs out the check was simply' + E +
-    '  refused.  It now falls back to the release page.' + E +
-    '- **`--offline`** starts with the network off.' + E +
-    '  - nested detail' + E + E +
-    '1. first' + E + '2. second' + E + E +
-    '- [x] shipped' + E + E +
-    '> quoted words' + E + '>' + E + '> > deeper' + E + E +
-    '---' + E + E +
-    '```pascal' + E + 'begin' + E + '  WriteLn(''a  b'');   // ' +
-      StringOfChar('x', 300) + E + 'end.' + E + '```' + E + E +
-    '## Section two' + E + E + '[back](#whats-new)' + E;
-  APage.LoadMarkdown(Doc);
-  Check(APage.TextFormat = itfMarkdown, 'LoadMarkdown sets the format');
-  Check(APage.DocumentTitle = 'What''s New', 'a Markdown page is named by its first heading');
-  Check(Pos('notes for whoever', APage.PlainText) = 0, 'the leading comment is not shown');
-  Check(APage.Block(0).Tag = 'h1', 'the first block is the heading');
-  Check(FindBlock(APage, 'h3', 'Fixed') <> nil, 'h3');
+  procedure MarkdownChecks;
+  const
+    E = LineEnding;
+  var
+    H: string;
+  begin
+    { headings, both forms, with GitHub's anchors }
+    HasHTML('# One', '<h1 id="one">One</h1>', 'ATX h1');
+    HasHTML('###### Six ###', '<h6 id="six">Six</h6>', 'ATX h6, closing hashes dropped');
+    HasHTML('#NoSpace', '<p>#NoSpace</p>', 'a hash without a space is text');
+    HasHTML('Big' + E + '===', '<h1 id="big">Big</h1>', 'setext h1');
+    HasHTML('Less' + E + '---', '<h2 id="less">Less</h2>', 'setext h2');
+    HasHTML('## Complete help pages', 'id="complete-help-pages"', 'slug');
+    HasHTML('## A' + E + '## A', 'id="a-1"', 'repeated headings get numbered anchors');
+    { paragraphs }
+    HasHTML('one' + E + 'two' + E + E + 'three', '<p>one' + #10 + 'two</p>', 'wrapped lines join');
+    HasHTML('one' + E + 'two' + E + E + 'three', '<p>three</p>', 'a blank line ends a paragraph');
+    HasHTML('hard  ' + E + 'break', 'hard<br>', 'two trailing spaces break a line');
+    HasHTML('hard\' + E + 'break', 'hard<br>', 'a trailing backslash breaks a line');
+    LacksHTML('no' + E + 'break', '<br>', 'a plain line end is not a break');
+    { emphasis }
+    HasHTML('**b** __b__', '<strong>b</strong> <strong>b</strong>', 'strong');
+    HasHTML('*i* _i_', '<em>i</em> <em>i</em>', 'emphasis');
+    HasHTML('***both***', '<strong><em>both</em></strong>', 'strong emphasis');
+    HasHTML('~~gone~~', '<del>gone</del>', 'strikethrough');
+    HasHTML('snake_case_name', 'snake_case_name', 'underscores inside words stay');
+    HasHTML('2 * 3 * 4', '2 * 3 * 4', 'spaced asterisks stay');
+    HasHTML('*a **b** c*', '<em>a <strong>b</strong> c</em>', 'nested emphasis');
+    HasHTML('\*not\*', '*not*', 'escaped asterisks');
+    { code }
+    HasHTML('`a<b`', '<code>a&lt;b</code>', 'code span escapes');
+    HasHTML('``a ` b``', '<code>a ` b</code>', 'double-backtick code span');
+    HasHTML('`**x**`', '<code>**x**</code>', 'no emphasis in code');
+    HasHTML('```pascal' + E + 'if a<b then' + E + '  x := 1;' + E + '```',
+      '<pre><code class="language-pascal">if a&lt;b then' + #10 + '  x := 1;' + #10 + '</code></pre>',
+      'fenced code keeps its language and indentation');
+    HasHTML('~~~' + E + '```' + E + '~~~', '<pre><code>```' + #10 + '</code></pre>', 'tilde fence');
+    HasHTML('```' + E + 'never closed', '<pre><code>never closed', 'an unclosed fence runs to the end');
+    HasHTML('para' + E + E + '    indented' + E + '    code', '<pre><code>indented' + #10 + 'code', 'indented code');
+    { lists }
+    H := '- **Lead.**  First line' + E + '  wraps here' + E + '  and here.' + E + '- Second';
+    HasHTML(H, '<li><strong>Lead.</strong>  First line' + #10 + 'wraps here' + #10 + 'and here.</li>',
+      'a bullet''s wrapped continuation lines stay in it');
+    HasHTML(H, '<li>Second</li>', 'second bullet');
+    HasHTML('* a' + E + '* b', '<ul>', 'star bullets');
+    HasHTML('+ a' + E + '+ b', '<li>b</li>', 'plus bullets');
+    HasHTML('- a' + E + 'lazy', '<li>a' + #10 + 'lazy</li>', 'lazy continuation');
+    HasHTML('- a' + E + '  - b' + E + '    - c' + E + '- d',
+      '<li>a' + #10 + '<ul>' + #10 + '<li>b' + #10 + '<ul>' + #10 + '<li>c</li>', 'nested lists');
+    HasHTML('1. one' + E + '2. two', '<ol>' + #10 + '<li>one</li>', 'numbered list');
+    HasHTML('3. three' + E + '4. four', '<ol start="3">', 'a numbered list keeps its start');
+    HasHTML('- a' + E + E + '- b', '<li><p>a</p></li>', 'a loose list has paragraphs');
+    HasHTML('- [ ] todo' + E + '- [x] done',
+      '<li class="task-list-item"><input type="checkbox" disabled=""> todo</li>', 'open task');
+    HasHTML('- [ ] todo' + E + '- [x] done', 'checked=""> done', 'finished task');
+    HasHTML('text' + E + '2. not a list', '<p>text' + #10 + '2. not a list</p>',
+      'only a list starting at 1 interrupts a paragraph');
+    HasHTML('- a' + E + '```' + E + 'code' + E + '```', '<pre><code>code', 'code after a list');
+    { links and images }
+    HasHTML('[text](http://x.org "Title")', '<a href="http://x.org" title="Title">text</a>', 'inline link');
+    HasHTML('[a](<b c>)', '<a href="b c">a</a>', 'angle-bracket destination');
+    HasHTML('[a](u(1))', '<a href="u(1)">a</a>', 'parentheses in a destination');
+    HasHTML('[ref][R]' + E + E + '[r]: http://r.org', '<a href="http://r.org">ref</a>', 'reference link');
+    HasHTML('[R]' + E + E + '[r]: http://r.org', '<a href="http://r.org">R</a>', 'shortcut reference');
+    LacksHTML('[r]: http://r.org', 'http://r.org', 'a definition is not shown');
+    HasHTML('<https://x.org/a?b&c>', '<a href="https://x.org/a?b&amp;c">', 'autolink');
+    HasHTML('<me@example.com>', 'href="mailto:me@example.com"', 'email autolink');
+    HasHTML('see https://x.org/p.', '<a href="https://x.org/p">https://x.org/p</a>.', 'bare URL');
+    HasHTML('(www.x.org)', '<a href="http://www.x.org">www.x.org</a>)', 'bare www address');
+    HasHTML('![shot](shots/a.png)', '<img src="shots/a.png" alt="shot">', 'image');
+    HasHTML('[![b](i.png)](http://x)', '<a href="http://x"><img src="i.png" alt="b"></a>', 'linked image');
+    LacksHTML('[a [b](c)](d)', 'href="c"></a', 'no link in a link''s text is made twice');
+    { quotes, rules }
+    HasHTML('> quoted' + E + 'lazy', '<blockquote>' + #10 + '<p>quoted' + #10 + 'lazy</p>', 'blockquote');
+    HasHTML('> a' + E + '> > b', '<blockquote>' + #10 + '<p>b</p>', 'nested blockquote');
+    HasHTML('> [!WARNING]' + E + '> Careful.', 'markdown-alert-warning', 'GitHub alert');
+    HasHTML('---', '<hr>', 'rule of dashes');
+    HasHTML('* * *', '<hr>', 'rule of spaced stars');
+    HasHTML('___', '<hr>', 'rule of underscores');
+    { tables }
+    H := '| L | C | R |' + E + '|:--|:-:|--:|' + E + '| a | b | c |';
+    HasHTML(H, '<th align="left">L</th><th align="center">C</th><th align="right">R</th>', 'header alignment');
+    HasHTML(H, '<td align="right">c</td>', 'cell alignment');
+    HasHTML('a | b' + E + '--- | ---' + E + 'only', '<td>only</td><td></td>', 'short rows are filled');
+    { HTML in Markdown }
+    HasHTML('<!-- note -->' + E + '# After', '<h1', 'a comment before a heading');
+    LacksHTML('<!--' + E + 'hidden' + E + '-->' + E + 'shown', 'hidden', 'multi-line comments are dropped');
+    LacksHTML('a <!-- x --> b', 'x', 'inline comments are dropped');
+    HasHTML('<b>x</b>', '&lt;b&gt;x&lt;/b&gt;', 'raw HTML is text by default');
+    Check(Pos('<b>x</b>', MarkdownToHTML('<b>x</b>', [imoRawHTML])) > 0, 'Markdown: raw HTML when trusted');
+    Check(Pos('<div>' + #10 + '<b>y</b>' + #10 + '</div>', MarkdownToHTML('<div>' + E + '<b>y</b>' + E + '</div>', [imoRawHTML])) > 0, 'Markdown: raw HTML block');
+    HasHTML('&copy; & &#169;', '&copy; &amp; &#169;', 'entities kept, a lone ampersand escaped');
+    { flattened for the inline controls }
+    H := MarkdownToInk('- [x] done' + E + '- item' + E + '  - nested');
+    Check(Pos(InkCheckboxMarkup(True) + ' done', H) > 0,
+      'Ink: a finished task is ticked, Chromium-style');
+    Check(Pos('• item', H) > 0, 'Ink: bullets');
+    Check(Pos('<ind="20">', H) > 0, 'Ink: nested items are indented');
+    H := MarkdownToInk('```' + E + 'a  b' + E + 'c' + E + '```');
+    Check(Pos('a  b<br>c</font>', H) > 0, 'Ink: code keeps its spaces and lines: ' + H);
+    Check(Pos('&#169;', MarkdownToInk('&#169;')) = 0, 'Ink: numeric entities are decoded');
+    Check(Copy(MarkdownToInk('para'), 1, 4) = 'para', 'Ink: no break before the first line');
+    Check(Pos('<br><br>', MarkdownToInk('a' + E + E + 'b')) > 0, 'Ink: paragraphs are apart');
+    Check(Pos('<th><right>R', MarkdownToInk('| R |' + E + '| --: |' + E + '| 1 |')) > 0,
+      'Ink: cell alignment');
+  end;
 
-  B := FindBlock(APage, 'li', 'Updates no longer fail');
-  Check(B.Marker = '•', 'a bullet is a marker, not part of the text');
-  Check(Pos('•', B.Source) = 0, 'and not in the words');
-  Check(Pos('simply refused', HTMLPlainText(B.Source)) > 0, 'wrapped continuation lines join the bullet');
-  Check(B.MarkerWidth > 0, 'the marker is measured');
-  Check(B.Bounds.Left > APage.Block(0).Bounds.Left, 'a list is indented');
+  procedure MarkdownPageChecks(APage: TInkPage);
+  const
+    E = LineEnding;
+  var
+    B, B2: TInkPageBlock;
+    K, J, Lines, Rules, SavedHeight: integer;
+    Doc: string;
+    Styles: TStringList;
+    Shot: TBitmap;
+    R: TRect;
+  begin
+    Doc :=
+      '<!--' + E + '  notes for whoever edits this' + E + '-->' + E + '# What''s New' + E + E + '## v1.2' + E + E + '### Fixed' +
+      E + E + '- **Updates no longer fail.**  GitHub only answers so many update' + E + '  checks an hour, and when that runs out the check was simply' +
+      E + '  refused.  It now falls back to the release page.' + E + '- **`--offline`** starts with the network off.' + E +
+      '  - nested detail' + E + E + '1. first' + E + '2. second' + E + E + '- [x] shipped' + E + E + '> quoted words' + E + '>' +
+      E + '> > deeper' + E + E + '---' + E + E + '```pascal' + E + 'begin' + E + '  WriteLn(''a  b'');   // ' + StringOfChar('x', 300) +
+      E + 'end.' + E + '```' + E + E + '## Section two' + E + E + '[back](#whats-new)' + E;
+    APage.LoadMarkdown(Doc);
+    Check(APage.TextFormat = itfMarkdown, 'LoadMarkdown sets the format');
+    Check(APage.DocumentTitle = 'What''s New', 'a Markdown page is named by its first heading');
+    Check(Pos('notes for whoever', APage.PlainText) = 0, 'the leading comment is not shown');
+    Check(APage.Block(0).Tag = 'h1', 'the first block is the heading');
+    Check(FindBlock(APage, 'h3', 'Fixed') <> nil, 'h3');
+
+    B := FindBlock(APage, 'li', 'Updates no longer fail');
+    Check(B.Marker = '•', 'a bullet is a marker, not part of the text');
+    Check(Pos('•', B.Source) = 0, 'and not in the words');
+    Check(Pos('simply refused', HTMLPlainText(B.Source)) > 0, 'wrapped continuation lines join the bullet');
+    Check(B.MarkerWidth > 0, 'the marker is measured');
+    Check(B.Bounds.Left > APage.Block(0).Bounds.Left, 'a list is indented');
   { the old engine wrapped by inserting <br> into the markup; this one wraps
     while it lays out, so the check is that the words really do land on more
     than one line, which is what a reader sees either way }
-  Lines := 0;
-  for K := 0 to APage.BlockCount - 1 do
-    if APage.Block(K) = B then
-    begin
-      APage.BlockText(K);
-      for J := 0 to B.RunCount - 1 do Lines := Max(Lines, B.Runs[J].Line);
-      Break;
+    Lines := 0;
+    for K := 0 to APage.BlockCount - 1 do
+      if APage.Block(K) = B then
+      begin
+        APage.BlockText(K);
+        for J := 0 to B.RunCount - 1 do Lines := Max(Lines, B.Runs[J].Line);
+        Break;
+      end;
+    Check(Lines > 0, Format('a long bullet wraps (%d lines)', [Lines + 1]));
+    B2 := FindBlock(APage, 'li', 'nested detail');
+    Check(B2.Marker = '◦', 'a nested bullet is a circle');
+    Check(B2.Bounds.Left > B.Bounds.Left, 'and indented further');
+    Check(FindBlock(APage, 'li', 'first').Marker = '1.', 'numbered item 1');
+    Check(FindBlock(APage, 'li', 'second').Marker = '2.', 'numbered item 2');
+    B2 := FindBlock(APage, 'li', 'shipped');
+    Check(Pos('<checkbox checked', B2.Source) > 0, 'a finished task carries the drawn box');
+
+    B := FindBlock(APage, '', 'quoted words');
+    B2 := FindBlock(APage, '', 'deeper');
+    APage.ScrollTo(B.Bounds.Top - 10);
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(APage.ClientWidth, APage.ClientHeight);
+      APage.RenderTo(Shot.Canvas);
+      K := (B.Bounds.Top + B.Bounds.Bottom) div 2 - APage.ScrollY;
+      Check(RunsLeftOf(Shot.Canvas, B.Bounds.Left, K) = 1, 'a quote has a bar');
+      K := (B2.Bounds.Top + B2.Bounds.Bottom) div 2 - APage.ScrollY;
+      Check(RunsLeftOf(Shot.Canvas, B2.Bounds.Left, K) = 2, 'a quote in a quote has two');
+    finally
+      Shot.Free
     end;
-  Check(Lines > 0, Format('a long bullet wraps (%d lines)', [Lines + 1]));
-  B2 := FindBlock(APage, 'li', 'nested detail');
-  Check(B2.Marker = '◦', 'a nested bullet is a circle');
-  Check(B2.Bounds.Left > B.Bounds.Left, 'and indented further');
-  Check(FindBlock(APage, 'li', 'first').Marker = '1.', 'numbered item 1');
-  Check(FindBlock(APage, 'li', 'second').Marker = '2.', 'numbered item 2');
-  B2 := FindBlock(APage, 'li', 'shipped');
-  Check(Pos('<checkbox checked', B2.Source) > 0, 'a finished task carries the drawn box');
+    Check(ColorToRGB(B.TextColor) <> ColorToRGB(APage.Block(0).TextColor), 'quoted text is dimmed');
 
-  B := FindBlock(APage, '', 'quoted words');
-  B2 := FindBlock(APage, '', 'deeper');
-  APage.ScrollTo(B.Bounds.Top - 10);
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(APage.ClientWidth, APage.ClientHeight);
-    APage.RenderTo(Shot.Canvas);
-    K := (B.Bounds.Top + B.Bounds.Bottom) div 2 - APage.ScrollY;
-    Check(RunsLeftOf(Shot.Canvas, B.Bounds.Left, K) = 1, 'a quote has a bar');
-    K := (B2.Bounds.Top + B2.Bounds.Bottom) div 2 - APage.ScrollY;
-    Check(RunsLeftOf(Shot.Canvas, B2.Bounds.Left, K) = 2, 'a quote in a quote has two');
-  finally Shot.Free end;
-  Check(ColorToRGB(B.TextColor) <> ColorToRGB(APage.Block(0).TextColor), 'quoted text is dimmed');
+    Rules := CountBoxes(APage, 'hr');
+    Check(Rules = 1, Format('one rule (%d)', [Rules]));
 
-  Rules := CountBoxes(APage, 'hr');
-  Check(Rules = 1, Format('one rule (%d)', [Rules]));
-
-  B := FindBlock(APage, 'pre', 'WriteLn');
-  Check(B.Pre, 'a fence is a code block');
-  Check(Pos('WriteLn(''a  b'')', HTMLPlainText(B.Source)) > 0, 'code keeps its spaces');
-  Check(Pos('  WriteLn', HTMLPlainText(B.Source)) > 0, 'and its indentation');
-  Check(B.Wrapped = B.Source, 'code is never wrapped');
-  Check(B.FaceName <> '', 'code is in the fixed face');
-  Check(B.BackColor <> clNone, 'code has a background');
-  Check(Pos('end.', HTMLPlainText(B.Source)) > 0, 'every line of code is kept');
+    B := FindBlock(APage, 'pre', 'WriteLn');
+    Check(B.Pre, 'a fence is a code block');
+    Check(Pos('WriteLn(''a  b'')', HTMLPlainText(B.Source)) > 0, 'code keeps its spaces');
+    Check(Pos('  WriteLn', HTMLPlainText(B.Source)) > 0, 'and its indentation');
+    Check(B.Wrapped = B.Source, 'code is never wrapped');
+    Check(B.FaceName <> '', 'code is in the fixed face');
+    Check(B.BackColor <> clNone, 'code has a background');
+    Check(Pos('end.', HTMLPlainText(B.Source)) > 0, 'every line of code is kept');
 
   { the code block's background is painted, and its long line is cut off
     at the block's edge }
-  APage.ScrollTo(B.Bounds.Top - 10);
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(APage.ClientWidth, APage.ClientHeight);
-    APage.RenderTo(Shot.Canvas);
-    R := B.Bounds; OffsetRect(R, 0, -APage.ScrollY);
-    { under its header (CodeHeader), which is a shade apart }
-    Check(ColorToRGB(Shot.Canvas.Pixels[R.Right - 2, R.Top + B.CodeHead + 2]) = ColorToRGB(B.BackColor),
-      'the code background is painted');
-    { beside the block is bare page, all the way down it }
-    Rules := 0;
-    for K := R.Top to R.Bottom - 1 do
-      if ColorToRGB(Shot.Canvas.Pixels[R.Right + 4, K]) <> ColorToRGB(Shot.Canvas.Pixels[2, K]) then
-        Inc(Rules);
-    Check(Rules = 0, Format('a long line of code does not run past the block (%d)', [Rules]));
-  finally Shot.Free end;
+    APage.ScrollTo(B.Bounds.Top - 10);
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(APage.ClientWidth, APage.ClientHeight);
+      APage.RenderTo(Shot.Canvas);
+      R := B.Bounds;
+      OffsetRect(R, 0, -APage.ScrollY);
+      { under its header (CodeHeader), which is a shade apart }
+      Check(ColorToRGB(Shot.Canvas.Pixels[R.Right - 2, R.Top + B.CodeHead + 2]) = ColorToRGB(B.BackColor),
+        'the code background is painted');
+      { beside the block is bare page, all the way down it }
+      Rules := 0;
+      for K := R.Top to R.Bottom - 1 do
+        if ColorToRGB(Shot.Canvas.Pixels[R.Right + 4, K]) <> ColorToRGB(Shot.Canvas.Pixels[2, K]) then
+          Inc(Rules);
+      Check(Rules = 0, Format('a long line of code does not run past the block (%d)', [Rules]));
+    finally
+      Shot.Free
+    end;
 
   { Font/layout changes can make this document fit the normal viewport.
     An anchor-scroll assertion needs an explicitly scrollable page. }
-  SavedHeight := APage.Height;
-  try
-    APage.Height := 200;
-    APage.ScrollTo(0);
-    Check(APage.ContentHeight > APage.ClientHeight, 'anchor fixture is scrollable');
-    APage.JumpToAnchor('section-two');
-    Check(APage.ScrollY > 0, 'a heading''s anchor can be jumped to');
-  finally APage.Height := SavedHeight end;
-  Check(FindBlock(APage, 'h2', 'Section two').Anchor = 'section-two',
-    'the anchor belongs to the heading, not to an empty block before it');
+    SavedHeight := APage.Height;
+    try
+      APage.Height := 200;
+      APage.ScrollTo(0);
+      Check(APage.ContentHeight > APage.ClientHeight, 'anchor fixture is scrollable');
+      APage.JumpToAnchor('section-two');
+      Check(APage.ScrollY > 0, 'a heading''s anchor can be jumped to');
+    finally
+      APage.Height := SavedHeight
+    end;
+    Check(FindBlock(APage, 'h2', 'Section two').Anchor = 'section-two',
+      'the anchor belongs to the heading, not to an empty block before it');
 
-  { the host dresses a Markdown page; a page's own rules still win }
-  Styles := TStringList.Create;
-  try
-    Styles.Text := 'h1 { color: #ff0000 } li { color: #00ff00 }';
-    APage.StyleSheet := Styles;
-    Check(ColorToRGB(FindBlock(APage, 'h1', 'New').TextColor) = RGBToColor(255, 0, 0),
-      'StyleSheet colors a Markdown heading');
-    Check(ColorToRGB(FindBlock(APage, 'li', 'first').TextColor) = RGBToColor(0, 255, 0),
-      'and its list items');
-    APage.LoadHTML('<html><head><style>h1 { color: #0000ff }</style></head><body><h1>Own</h1></body></html>');
-    Check(APage.TextFormat = itfHTML, 'LoadHTML sets the format');
-    Check(ColorToRGB(FindBlock(APage, 'h1', 'Own').TextColor) = RGBToColor(0, 0, 255),
-      'the page''s own style wins over the host''s');
-    APage.StyleSheet.Clear;
-  finally Styles.Free end;
+    { the host dresses a Markdown page; a page's own rules still win }
+    Styles := TStringList.Create;
+    try
+      Styles.Text := 'h1 { color: #ff0000 } li { color: #00ff00 }';
+      APage.StyleSheet := Styles;
+      Check(ColorToRGB(FindBlock(APage, 'h1', 'New').TextColor) = RGBToColor(255, 0, 0),
+        'StyleSheet colors a Markdown heading');
+      Check(ColorToRGB(FindBlock(APage, 'li', 'first').TextColor) = RGBToColor(0, 255, 0),
+        'and its list items');
+      APage.LoadHTML('<html><head><style>h1 { color: #0000ff }</style></head><body><h1>Own</h1></body></html>');
+      Check(APage.TextFormat = itfHTML, 'LoadHTML sets the format');
+      Check(ColorToRGB(FindBlock(APage, 'h1', 'Own').TextColor) = RGBToColor(0, 0, 255),
+        'the page''s own style wins over the host''s');
+      APage.StyleSheet.Clear;
+    finally
+      Styles.Free
+    end;
 
-  { HTML written inside Markdown }
-  APage.LoadMarkdown('a <b>b</b>');
-  Check(Pos('<b>', APage.PlainText) > 0, 'raw HTML is shown as text by default');
-  APage.MarkdownRawHTML := True;
-  Check(Pos('<b>', APage.PlainText) = 0, 'and drawn when MarkdownRawHTML is on');
-  APage.MarkdownRawHTML := False;
+    { HTML written inside Markdown }
+    APage.LoadMarkdown('a <b>b</b>');
+    Check(Pos('<b>', APage.PlainText) > 0, 'raw HTML is shown as text by default');
+    APage.MarkdownRawHTML := True;
+    Check(Pos('<b>', APage.PlainText) = 0, 'and drawn when MarkdownRawHTML is on');
+    APage.MarkdownRawHTML := False;
 
   { a document with images beside it, loaded from a file: run.sh runs the
     tests from the repository's root }
-  APage.LoadFromFile(ExpandFileName('README.md'));
-  Check(APage.TextFormat = itfMarkdown, 'a .md file is read as Markdown');
-  Check(APage.DocumentTitle = 'LazInk', 'README title');
+    APage.LoadFromFile(ExpandFileName('README.md'));
+    Check(APage.TextFormat = itfMarkdown, 'a .md file is read as Markdown');
+    Check(APage.DocumentTitle = 'LazInk', 'README title');
   { every picture on a line of its own - the ones in table cells show as
     their alt text - counted from the file, so a new picture needs no edit
     here }
-  Styles := TStringList.Create;
-  try
-    Styles.LoadFromFile('README.md');
-    Rules := 0;
-    for K := 0 to Styles.Count - 1 do
-      if Copy(Styles[K], 1, 2) = '![' then Inc(Rules);
-  finally Styles.Free end;
-  Check((Rules > 0) and (APage.ImageCount = Rules),
-    Format('README''s images load relative to it (%d of %d)', [APage.ImageCount, Rules]));
-  Check(Pos('BSD Zero Clause License', APage.PlainText) > 0, 'README text');
-  Check(Pos('```', APage.PlainText) = 0, 'no fence marks are left in the README');
-  Check((Pos('Status: 1.0.0.0.', APage.PlainText) > 0) and (Pos('**Status', APage.PlainText) = 0),
-    'README''s bold marks are read, not shown');
-  APage.JumpToAnchor('license');
-  Check(APage.ScrollY > 0, 'README''s own contents links lead somewhere');
-end;
+    Styles := TStringList.Create;
+    try
+      Styles.LoadFromFile('README.md');
+      Rules := 0;
+      for K := 0 to Styles.Count - 1 do
+        if Copy(Styles[K], 1, 2) = '![' then Inc(Rules);
+    finally
+      Styles.Free
+    end;
+    Check((Rules > 0) and (APage.ImageCount = Rules),
+      Format('README''s images load relative to it (%d of %d)', [APage.ImageCount, Rules]));
+    Check(Pos('BSD Zero Clause License', APage.PlainText) > 0, 'README text');
+    Check(Pos('```', APage.PlainText) = 0, 'no fence marks are left in the README');
+    Check((Pos('Status: 1.0.0.0.', APage.PlainText) > 0) and (Pos('**Status', APage.PlainText) = 0),
+      'README''s bold marks are read, not shown');
+    APage.JumpToAnchor('license');
+    Check(APage.ScrollY > 0, 'README''s own contents links lead somewhere');
+  end;
 
 { --- P8: ScrollBars as a property, the same entities in both engines, and
   the one-pixel frames GTK3 drew round a memo's lines --- }
-procedure ScrollBarAndEntityChecks;
-var MP: TInkMemo; Shot, BM: TBitmap; X, Y, Dark, Frames: Integer;
-  O: THTMLOptions; A, C, N: TSize; S: string;
-begin
-  { ScrollBars: issNone wins over a stylesheet that asks for a bar }
-  Probe.LoadHTML('<html><head><style>html { scrollbar-width: thin }</style>' +
-    '</head><body><p>words</p></body></html>');
-  Check(Probe.ScrollBar.Visible, 'a thin scrollbar is still a scrollbar');
-  Probe.ScrollBars := issNone;
-  Check(not Probe.ScrollBar.Visible, 'ScrollBars=issNone hides it');
+  procedure ScrollBarAndEntityChecks;
+  var
+    MP: TInkMemo;
+    Shot, BM: TBitmap;
+    X, Y, Dark, Frames: integer;
+    O: THTMLOptions;
+    A, C, N: TSize;
+    S: string;
+  begin
+    { ScrollBars: issNone wins over a stylesheet that asks for a bar }
+    Probe.LoadHTML('<html><head><style>html { scrollbar-width: thin }</style>' + '</head><body><p>words</p></body></html>');
+    Check(Probe.ScrollBar.Visible, 'a thin scrollbar is still a scrollbar');
+    Probe.ScrollBars := issNone;
+    Check(not Probe.ScrollBar.Visible, 'ScrollBars=issNone hides it');
   { LCL keeps an aligned control at least one pixel wide; hidden, it draws
     nothing and the page keeps all but that pixel }
-  Check(Probe.ScrollBar.Width <= 1, 'and gives the page its width back');
-  Probe.ScrollBars := issAuto;
-  Check(Probe.ScrollBar.Visible, 'issAuto hands the choice back to the stylesheet');
+    Check(Probe.ScrollBar.Width <= 1, 'and gives the page its width back');
+    Probe.ScrollBars := issAuto;
+    Check(Probe.ScrollBar.Visible, 'issAuto hands the choice back to the stylesheet');
 
-  MP := TInkMemo.Create(F); MP.Parent := F;
-  MP.SetBounds(0, 0, 400, 36);
-  MP.Color := clWhite; MP.Font.Color := clBlack;
-  MP.Lines.Add('press <b>Ctrl</b> to spin the <font color="#cc0000">block</font>');
-  MP.Lines.Add('a second line of <i>markup</i> under it');
-  Check(MP.ScrollBar.Visible, 'a memo starts with its scrollbar');
-  MP.ScrollBars := issNone;
-  Check(not MP.ScrollBar.Visible, 'and ScrollBars=issNone takes it away');
+    MP := TInkMemo.Create(F);
+    MP.Parent := F;
+    MP.SetBounds(0, 0, 400, 36);
+    MP.Color := clWhite;
+    MP.Font.Color := clBlack;
+    MP.Lines.Add('press <b>Ctrl</b> to spin the <font color="#cc0000">block</font>');
+    MP.Lines.Add('a second line of <i>markup</i> under it');
+    Check(MP.ScrollBar.Visible, 'a memo starts with its scrollbar');
+    MP.ScrollBars := issNone;
+    Check(not MP.ScrollBar.Visible, 'and ScrollBars=issNone takes it away');
   { the GTK3 frames: no block carries a border, so no row may be black from
     edge to edge }
-  Shot := TBitmap.Create;
-  try
-    Shot.SetSize(MP.ClientWidth, MP.ClientHeight);
-    MP.RenderTo(Shot.Canvas);
-    Frames := 0;
-    for Y := 0 to Shot.Height - 1 do
-    begin
-      Dark := 0;
-      for X := 0 to Shot.Width - 1 do
-        if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = clBlack then Inc(Dark);
-      if Dark > Shot.Width div 2 then Inc(Frames);
+    Shot := TBitmap.Create;
+    try
+      Shot.SetSize(MP.ClientWidth, MP.ClientHeight);
+      MP.RenderTo(Shot.Canvas);
+      Frames := 0;
+      for Y := 0 to Shot.Height - 1 do
+      begin
+        Dark := 0;
+        for X := 0 to Shot.Width - 1 do
+          if ColorToRGB(Shot.Canvas.Pixels[X, Y]) = clBlack then Inc(Dark);
+        if Dark > Shot.Width div 2 then Inc(Frames);
+      end;
+      Check(Frames = 0, Format('a memo''s lines wear no frame (%d black rows)', [Frames]));
+    finally
+      Shot.Free
     end;
-    Check(Frames = 0, Format('a memo''s lines wear no frame (%d black rows)', [Frames]));
-  finally Shot.Free end;
-  MP.Free;
+    MP.Free;
 
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(600, 200); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
-    O := DefaultHTMLOptions;
-    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], 'a&nbsp;b', O);
-    C := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], 'a b', O);
-    Check(Abs(A.cx - C.cx) <= 1, 'HTMLDrawOpt reads &nbsp; as one space, not six letters');
-    { and it is non-breaking: the joined pair wraps as one word }
-    S := 'onelongword&nbsp;andanother';
-    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], S, O);
-    N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, A.cx - 10, 0), [], S, O);
-    Check(N.cy = A.cy, 'words joined by &nbsp; stay on one line');
-    N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, A.cx - 10, 0), [], 'onelongword andanother', O);
-    Check(N.cy > A.cy, 'where a plain space wraps');
-    { the rest of the shared entity table reaches the inline engine too }
-    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], '&ldquo;x&rdquo;', O);
-    C := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], #$E2#$80#$9C'x'#$E2#$80#$9D, O);
-    Check(Abs(A.cx - C.cx) <= 1, 'the inline engine reads the named entities');
-    { NoWrap means what it says: one line however narrow the rectangle }
-    O.NoWrap := True;
-    S := 'several words that are far too wide for the rectangle';
-    A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 900, 0), [], S, O);
-    N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 120, 0), [], S, O);
-    Check(N.cy = A.cy, 'NoWrap does not break at spaces');
-  finally BM.Free end;
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(600, 200);
+      BM.Canvas.Font.Name := 'DejaVu Sans';
+      BM.Canvas.Font.Size := 11;
+      O := DefaultHTMLOptions;
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], 'a&nbsp;b', O);
+      C := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], 'a b', O);
+      Check(Abs(A.cx - C.cx) <= 1, 'HTMLDrawOpt reads &nbsp; as one space, not six letters');
+      { and it is non-breaking: the joined pair wraps as one word }
+      S := 'onelongword&nbsp;andanother';
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], S, O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, A.cx - 10, 0), [], S, O);
+      Check(N.cy = A.cy, 'words joined by &nbsp; stay on one line');
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, A.cx - 10, 0), [], 'onelongword andanother', O);
+      Check(N.cy > A.cy, 'where a plain space wraps');
+      { the rest of the shared entity table reaches the inline engine too }
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], '&ldquo;x&rdquo;', O);
+      C := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], #$E2#$80#$9C'x'#$E2#$80#$9D, O);
+      Check(Abs(A.cx - C.cx) <= 1, 'the inline engine reads the named entities');
+      { NoWrap means what it says: one line however narrow the rectangle }
+      O.NoWrap := True;
+      S := 'several words that are far too wide for the rectangle';
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 900, 0), [], S, O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 120, 0), [], S, O);
+      Check(N.cy = A.cy, 'NoWrap does not break at spaces');
+    finally
+      BM.Free
+    end;
 
   { navigating straight to a .webp is a page of that one picture, as it is
     for a .png - not the file read as text }
-  Probe.LoadFromFile('tests/fixtures/webp/alpha-filter-0.webp');
-  Check(Probe.ImageCount = 1, 'navigating to a .webp shows the picture');
-  Check(Probe.DocumentTitle = 'alpha-filter-0.webp', 'with its name as the title: ' + Probe.DocumentTitle);
-end;
+    Probe.LoadFromFile('tests/fixtures/webp/alpha-filter-0.webp');
+    Check(Probe.ImageCount = 1, 'navigating to a .webp shows the picture');
+    Check(Probe.DocumentTitle = 'alpha-filter-0.webp', 'with its name as the title: ' + Probe.DocumentTitle);
+  end;
 
 { --- the summary-page wants: cell text styling, nowrap columns, block
   children of a cell, and tables nested in cells and cards --- }
-procedure CellStyleChecks;
-var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string; B, B2: TInkPageBlock; Cell: TInkBox;
-begin
-  { the stylesheet's td rules reach the words in the cell }
-  Probe.LoadHTML('<html><head><style>'+
-    'td.small{font-size:11px;font-weight:bold;line-height:14px;white-space:nowrap}'+
-    '</style></head><body><table><tr>'+
-    '<td class="small">little</td><td>plain</td></tr></table></body></html>');
-  B := FindBlock(Probe,'td','little');
-  Check(B.PointSize=-11,Format('td font-size reaches the cell (%d)',[B.PointSize]));
-  Check(Pos('<b>',B.Source)>0,'and td font-weight');
-  Check(B.LineHeight=14,Format('and td line-height (%d)',[B.LineHeight]));
-  Check(B.NoWrap,'and white-space: nowrap');
+  procedure CellStyleChecks;
+  var
+    BM: TBitmap;
+    O: THTMLOptions;
+    A, N: TSize;
+    S: string;
+    B, B2: TInkPageBlock;
+    Cell: TInkBox;
+  begin
+    { the stylesheet's td rules reach the words in the cell }
+    Probe.LoadHTML('<html><head><style>' + 'td.small{font-size:11px;font-weight:bold;line-height:14px;white-space:nowrap}' +
+      '</style></head><body><table><tr>' + '<td class="small">little</td><td>plain</td></tr></table></body></html>');
+    B := FindBlock(Probe, 'td', 'little');
+    Check(B.PointSize = -11, Format('td font-size reaches the cell (%d)', [B.PointSize]));
+    Check(Pos('<b>', B.Source) > 0, 'and td font-weight');
+    Check(B.LineHeight = 14, Format('and td line-height (%d)', [B.LineHeight]));
+    Check(B.NoWrap, 'and white-space: nowrap');
 
-  { block children of a cell are lines of their own, in their own size }
-  Probe.LoadHTML('<html><head><style>'+
-    'div.title{font-size:20px;font-weight:bold}'+
-    '</style></head><body><table><tr><td>'+
-    '<div class="title">The machine</div><div>a line under it</div>'+
-    '</td><td><h3>Head</h3>after</td></tr></table></body></html>');
-  B := FindBlock(Probe,'','The machine'); B2 := FindBlock(Probe,'','a line under it');
-  Check((B.PointSize=-20) and (Pos('<b>',B.Source)>0),'a div in a cell is a styled line of its own: '+B.Source);
-  Check(B2.Bounds.Top>=B.Bounds.Bottom,'with the next under it');
-  B := FindBlock(Probe,'h3','Head'); B2 := FindBlock(Probe,'','after');
-  Check(B2.Bounds.Top>=B.Bounds.Bottom,'an h3 in a cell is a heading line');
+    { block children of a cell are lines of their own, in their own size }
+    Probe.LoadHTML('<html><head><style>' + 'div.title{font-size:20px;font-weight:bold}' + '</style></head><body><table><tr><td>' +
+      '<div class="title">The machine</div><div>a line under it</div>' + '</td><td><h3>Head</h3>after</td></tr></table></body></html>');
+    B := FindBlock(Probe, '', 'The machine');
+    B2 := FindBlock(Probe, '', 'a line under it');
+    Check((B.PointSize = -20) and (Pos('<b>', B.Source) > 0), 'a div in a cell is a styled line of its own: ' + B.Source);
+    Check(B2.Bounds.Top >= B.Bounds.Bottom, 'with the next under it');
+    B := FindBlock(Probe, 'h3', 'Head');
+    B2 := FindBlock(Probe, '', 'after');
+    Check(B2.Bounds.Top >= B.Bounds.Bottom, 'an h3 in a cell is a heading line');
 
-  { a table nested in a cell keeps its dress }
-  Probe.LoadHTML('<html><head><style>'+
-    'table.kv td{padding:3px 6px}'+
-    'table.kv td.key{background:#dde2ea}'+
-    '</style></head><body><table><tr><td>outer'+
-    '<table class="kv"><tr><td class="key">K</td><td>V</td></tr></table>'+
-    '</td></tr></table></body></html>');
-  B := FindBlock(Probe,'td','K'); Cell := UpTo(B,'td');
-  Check((Cell.Padding.Left=6) and (Cell.Padding.Top=3),'a nested table keeps its padding');
-  Check(InkToColor(Cell.Style.Color('background-color'),clWhite)=RGBToColor($DD,$E2,$EA),
-    'and its cells their backgrounds');
+    { a table nested in a cell keeps its dress }
+    Probe.LoadHTML('<html><head><style>' + 'table.kv td{padding:3px 6px}' + 'table.kv td.key{background:#dde2ea}' +
+      '</style></head><body><table><tr><td>outer' + '<table class="kv"><tr><td class="key">K</td><td>V</td></tr></table>' + '</td></tr></table></body></html>');
+    B := FindBlock(Probe, 'td', 'K');
+    Cell := UpTo(B, 'td');
+    Check((Cell.Padding.Left = 6) and (Cell.Padding.Top = 3), 'a nested table keeps its padding');
+    Check(InkToColor(Cell.Style.Color('background-color'), clWhite) = RGBToColor($DD, $E2, $EA),
+      'and its cells their backgrounds');
 
-  { a table inside a grid card is the card's table, not running text }
-  Probe.LoadHTML('<html><head><style>'+
-    '.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}'+
-    '.card{background:#eef0f4;padding:8px}'+
-    '</style></head><body><div class="cards">'+
-    '<div class="card"><h3>Machine</h3><table><tr><td>OS</td><td>Linux</td></tr></table></div>'+
-    '<div class="card">plain words</div>'+
-    '</div></body></html>');
-  B := FindBlock(Probe,'td','OS'); B2 := FindBlock(Probe,'td','Linux');
-  Check((B2.Bounds.Left>B.Bounds.Right) and (B2.Bounds.Top=B.Bounds.Top),'a card holds a real table');
-  Check(Pos('OSLinux',Probe.PlainText)=0,'whose cells are not run together');
-  Check((Pos('OS',Probe.PlainText)>0) and (Pos('Linux',Probe.PlainText)>0),
-    'and whose text is all there');
+    { a table inside a grid card is the card's table, not running text }
+    Probe.LoadHTML('<html><head><style>' + '.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}' + '.card{background:#eef0f4;padding:8px}' +
+      '</style></head><body><div class="cards">' + '<div class="card"><h3>Machine</h3><table><tr><td>OS</td><td>Linux</td></tr></table></div>' +
+      '<div class="card">plain words</div>' + '</div></body></html>');
+    B := FindBlock(Probe, 'td', 'OS');
+    B2 := FindBlock(Probe, 'td', 'Linux');
+    Check((B2.Bounds.Left > B.Bounds.Right) and (B2.Bounds.Top = B.Bounds.Top), 'a card holds a real table');
+    Check(Pos('OSLinux', Probe.PlainText) = 0, 'whose cells are not run together');
+    Check((Pos('OS', Probe.PlainText) > 0) and (Pos('Linux', Probe.PlainText) > 0),
+      'and whose text is all there');
 
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(700,300); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
-    O := DefaultHTMLOptions;
-    { a nowrap cell holds one line however narrow the table }
-    S := '<table><tr><td nowrap="1">eighty-five KB and more that stays together whatever the width</td></tr></table>';
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,650,0),[],S,O);
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,200,0),[],S,O);
-    Check(N.cy=A.cy,'a nowrap cell holds one line however narrow the table');
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,200,0),[],
-      StringReplace(S,' nowrap="1"','',[]),O);
-    Check(N.cy>A.cy,'where a plain cell folds');
-    { a cell's size attribute changes what is measured }
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,650,0),[],'<table><tr><td size="-30">Big</td></tr></table>',O);
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,650,0),[],'<table><tr><td size="-10">Big</td></tr></table>',O);
-    Check(A.cy>N.cy+10,'a cell size attribute reaches its words');
-  finally BM.Free end;
-end;
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(700, 300);
+      BM.Canvas.Font.Name := 'DejaVu Sans';
+      BM.Canvas.Font.Size := 11;
+      O := DefaultHTMLOptions;
+      { a nowrap cell holds one line however narrow the table }
+      S := '<table><tr><td nowrap="1">eighty-five KB and more that stays together whatever the width</td></tr></table>';
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 650, 0), [], S, O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 200, 0), [], S, O);
+      Check(N.cy = A.cy, 'a nowrap cell holds one line however narrow the table');
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 200, 0), [], StringReplace(S, ' nowrap="1"', '', []), O);
+      Check(N.cy > A.cy, 'where a plain cell folds');
+      { a cell's size attribute changes what is measured }
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 650, 0), [], '<table><tr><td size="-30">Big</td></tr></table>', O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 650, 0), [], '<table><tr><td size="-10">Big</td></tr></table>', O);
+      Check(A.cy > N.cy + 10, 'a cell size attribute reaches its words');
+    finally
+      BM.Free
+    end;
+  end;
 
-{ --- inline pills, span classes, and changing one element by its id --- }
-procedure PillChecks;
-var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string; X, Y: Integer;
-begin
-  { a span styled from the stylesheet, pill and plain }
-  Probe.LoadHTML('<html><head><style>'+
-    'span.ok{background:#1a7f37;color:#ffffff;padding:2px 8px;border-radius:9px}'+
-    'span.red{color:#cc0000}'+
-    '</style></head><body><p>the report <span class="ok">sent</span> and '+
-    '<span class="red">red words</span></p></body></html>');
-  S := Probe.Block(0).Source;
-  Check(Pos('pad="2 8"',S)>0,'a span class pill carries its padding');
-  Check(Pos('radius="9"',S)>0,'and its corners');
-  Check(Pos('bgcolor="#1A7F37"',S)>0,'and its background');
-  Check(Pos('<font color="#CC0000">red words</font>',S)>0,
-    'a span class colors its words from the stylesheet');
+  { --- inline pills, span classes, and changing one element by its id --- }
+  procedure PillChecks;
+  var
+    BM: TBitmap;
+    O: THTMLOptions;
+    A, N: TSize;
+    S: string;
+    X, Y: integer;
+  begin
+    { a span styled from the stylesheet, pill and plain }
+    Probe.LoadHTML('<html><head><style>' + 'span.ok{background:#1a7f37;color:#ffffff;padding:2px 8px;border-radius:9px}' + 'span.red{color:#cc0000}' +
+      '</style></head><body><p>the report <span class="ok">sent</span> and ' + '<span class="red">red words</span></p></body></html>');
+    S := Probe.Block(0).Source;
+    Check(Pos('pad="2 8"', S) > 0, 'a span class pill carries its padding');
+    Check(Pos('radius="9"', S) > 0, 'and its corners');
+    Check(Pos('bgcolor="#1A7F37"', S) > 0, 'and its background');
+    Check(Pos('<font color="#CC0000">red words</font>', S) > 0,
+      'a span class colors its words from the stylesheet');
 
-  { the pill through a style attribute, in a cell too }
-  Probe.LoadHTML('<html><body><table><tr><td bgcolor="#f0f0f0">'+
-    '<span style="background:#cff4fc;padding:2px 8px;border-radius:9px;border:1px solid #055160">85 KB</span>'+
-    '</td></tr></table></body></html>');
-  S := Probe.Block(0).Source;
-  { the border is drawn inside the pill's padding: 2 8 and a pixel more }
-  Check((Pos('pad="3 9"',S)>0) and (Pos('pillborder="#055160"',S)>0),
-    'a style attribute makes a bordered pill: '+S);
+    { the pill through a style attribute, in a cell too }
+    Probe.LoadHTML('<html><body><table><tr><td bgcolor="#f0f0f0">' + '<span style="background:#cff4fc;padding:2px 8px;border-radius:9px;border:1px solid #055160">85 KB</span>' +
+      '</td></tr></table></body></html>');
+    S := Probe.Block(0).Source;
+    { the border is drawn inside the pill's padding: 2 8 and a pixel more }
+    Check((Pos('pad="3 9"', S) > 0) and (Pos('pillborder="#055160"', S) > 0),
+      'a style attribute makes a bordered pill: ' + S);
 
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(600,200); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
-    O := DefaultHTMLOptions;
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,500,0),[],
-      '<font bgcolor="#1a7f37" pad="2 8" radius="9">sent</font>',O);
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,500,0),[],'sent',O);
-    Check(A.cx>=N.cx+16,'a pill is wider than its words by its padding');
-    Check(A.cy>=N.cy+4,'and taller');
-    { a pill does not wrap: its words are one thing }
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,70,0),[],
-      '<font bgcolor="#664d03" pad="2 8" radius="9">did not go</font>',O);
-    Check(A.cy<N.cy+30,'a pill holds one line in a narrow space');
-  finally BM.Free end;
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(600, 200);
+      BM.Canvas.Font.Name := 'DejaVu Sans';
+      BM.Canvas.Font.Size := 11;
+      O := DefaultHTMLOptions;
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], '<font bgcolor="#1a7f37" pad="2 8" radius="9">sent</font>', O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], 'sent', O);
+      Check(A.cx >= N.cx + 16, 'a pill is wider than its words by its padding');
+      Check(A.cy >= N.cy + 4, 'and taller');
+      { a pill does not wrap: its words are one thing }
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 70, 0), [], '<font bgcolor="#664d03" pad="2 8" radius="9">did not go</font>', O);
+      Check(A.cy < N.cy + 30, 'a pill holds one line in a narrow space');
+    finally
+      BM.Free
+    end;
 
   { radius: 999px is the pill idiom - fully round ends, clamped to the box
     the way a browser clamps it, never arcs that sweep across the page }
-  Probe.LoadHTML('<html><head><style>'+
-    'span.p{background:#1a7f37;color:#ffffff;padding:2px 8px;border-radius:999px}'+
-    '</style></head><body><p>a <span class="p">pill</span> here</p>'+
-    '<p>second line</p><p>third line</p><p>fourth line</p></body></html>');
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(Probe.ClientWidth,Probe.ClientHeight);
-    Probe.RenderTo(BM.Canvas);
-    N.cx := 0; N.cy := 0;
-    for Y := 0 to BM.Height-1 do
-      for X := 0 to BM.Width-1 do
-        if BM.Canvas.Pixels[X,Y]=RGBToColor($1a,$7f,$37) then
-        begin
-          Inc(N.cx);
-          if Y>=Probe.Block(0).Bounds.Bottom then Inc(N.cy);
-        end;
-    Check(N.cx>0,'a 999px-radius pill still paints');
-    Check(N.cy=0,Format('and stays inside its own line (%d stray pixels below)',[N.cy]));
-  finally BM.Free end;
+    Probe.LoadHTML('<html><head><style>' + 'span.p{background:#1a7f37;color:#ffffff;padding:2px 8px;border-radius:999px}' +
+      '</style></head><body><p>a <span class="p">pill</span> here</p>' + '<p>second line</p><p>third line</p><p>fourth line</p></body></html>');
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+      Probe.RenderTo(BM.Canvas);
+      N.cx := 0;
+      N.cy := 0;
+      for Y := 0 to BM.Height - 1 do
+        for X := 0 to BM.Width - 1 do
+          if BM.Canvas.Pixels[X, Y] = RGBToColor($1a, $7f, $37) then
+          begin
+            Inc(N.cx);
+            if Y >= Probe.Block(0).Bounds.Bottom then Inc(N.cy);
+          end;
+      Check(N.cx > 0, 'a 999px-radius pill still paints');
+      Check(N.cy = 0, Format('and stays inside its own line (%d stray pixels below)', [N.cy]));
+    finally
+      BM.Free
+    end;
 
-  { SetInnerHTML: one element changes, the rest of the page stays put }
-  Probe.LoadHTML('<html><body><p>before</p>'+
-    '<p id="status">waiting</p>'+
-    '<table><tr><td id="cell">old</td><td>stay</td></tr></table>'+
-    '<p style="margin-bottom:2000px">tall</p><p>after</p></body></html>');
-  Probe.ScrollTo(150); Y := Probe.ScrollY;
-  Check(Probe.SetInnerHTML('status','<b>sent</b> at 9:14'),'SetInnerHTML finds its element');
-  Check(Pos('sent at 9:14',Probe.PlainText)>0,'and the new words are in the page');
-  Check(Pos('waiting',Probe.PlainText)=0,'in place of the old');
-  Check(Pos('before',Probe.PlainText)>0,'the rest of the page stays');
-  Check(Probe.ScrollY=Y,'and the page does not jump');
-  Check(Probe.SetInnerHTML('cell','85 KB'),'a table cell changes by its id');
-  Check(Pos('85 KB',Probe.PlainText)>0,'to its new words');
-  Check(not Probe.SetInnerHTML('nothere','x'),'a missing id is said, not guessed');
-end;
+    { SetInnerHTML: one element changes, the rest of the page stays put }
+    Probe.LoadHTML('<html><body><p>before</p>' + '<p id="status">waiting</p>' + '<table><tr><td id="cell">old</td><td>stay</td></tr></table>' +
+      '<p style="margin-bottom:2000px">tall</p><p>after</p></body></html>');
+    Probe.ScrollTo(150);
+    Y := Probe.ScrollY;
+    Check(Probe.SetInnerHTML('status', '<b>sent</b> at 9:14'), 'SetInnerHTML finds its element');
+    Check(Pos('sent at 9:14', Probe.PlainText) > 0, 'and the new words are in the page');
+    Check(Pos('waiting', Probe.PlainText) = 0, 'in place of the old');
+    Check(Pos('before', Probe.PlainText) > 0, 'the rest of the page stays');
+    Check(Probe.ScrollY = Y, 'and the page does not jump');
+    Check(Probe.SetInnerHTML('cell', '85 KB'), 'a table cell changes by its id');
+    Check(Pos('85 KB', Probe.PlainText) > 0, 'to its new words');
+    Check(not Probe.SetInnerHTML('nothere', 'x'), 'a missing id is said, not guessed');
+  end;
 
 { --- text in a grid card takes the stylesheet, no band follows a grid, and
   a block's margins inside a cell are read --- }
-procedure CardTextChecks;
-var BM: TBitmap; O: THTMLOptions; A, N: TSize; B, B2: TInkPageBlock; I, K: Integer;
-  Heads, Tables: TList; Grid: TInkBox;
-begin
-  Probe.LoadHTML('<html><head><style>'+
-    'h3{font-size:12px;color:#64748b;text-transform:uppercase;margin:18px 0 6px 0}'+
-    '.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}'+
-    'div.cap{font-size:12px;font-weight:bold;color:#64748b;text-transform:uppercase}'+
-    'td.banner{background:#15803d;color:#fff}'+
-    'div.title{font-size:22px;font-weight:bold}'+
-    'div.sub{font-size:14px;margin-top:8px}'+
-    '</style></head><body>'+
-    '<table><tr><td class="banner"> <div class="title">Sent</div> '+
-    '<div class="sub">2 files</div> </td></tr></table>'+
-    '<div class="cards">'+
-    '<div><h3>This machine</h3> <table><tr><td>a</td></tr></table></div>'+
-    '<div><div class="cap">The program</div> <table><tr><td>b</td></tr></table></div>'+
-    '</div></body></html>');
+  procedure CardTextChecks;
+  var
+    BM: TBitmap;
+    O: THTMLOptions;
+    A, N: TSize;
+    B, B2: TInkPageBlock;
+    I, K: integer;
+    Heads, Tables: TList;
+    Grid: TInkBox;
+  begin
+    Probe.LoadHTML('<html><head><style>' + 'h3{font-size:12px;color:#64748b;text-transform:uppercase;margin:18px 0 6px 0}' +
+      '.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}' + 'div.cap{font-size:12px;font-weight:bold;color:#64748b;text-transform:uppercase}' +
+      'td.banner{background:#15803d;color:#fff}' + 'div.title{font-size:22px;font-weight:bold}' + 'div.sub{font-size:14px;margin-top:8px}' +
+      '</style></head><body>' + '<table><tr><td class="banner"> <div class="title">Sent</div> ' + '<div class="sub">2 files</div> </td></tr></table>' +
+      '<div class="cards">' + '<div><h3>This machine</h3> <table><tr><td>a</td></tr></table></div>' +
+      '<div><div class="cap">The program</div> <table><tr><td>b</td></tr></table></div>' + '</div></body></html>');
   { the banner: a styled title, the sub 8px under it, and no manufactured
     blank lines from the source''s own indentation }
-  B := FindBlock(Probe,'','Sent'); B2 := FindBlock(Probe,'','2 files');
-  Check((B.PointSize=-22) and (Pos('<b>',B.Source)>0),'the banner''s title is styled: '+B.Source);
-  Check(B2.Bounds.Top-B.Bounds.Bottom=8,Format('a div''s margin-top is a gap under the title (%d)',
-    [B2.Bounds.Top-B.Bounds.Bottom]));
-  K := 0;
-  for I := 0 to Probe.BlockCount-1 do
-    if UpTo(Probe.Block(I),'td')=UpTo(B,'td') then Inc(K);
-  Check(K=2,Format('the source''s whitespace makes no blank lines (%d lines)',[K]));
-  { the cards: an h3 and a div.cap styled from the stylesheet, in their case }
-  B := FindBlock(Probe,'h3','THIS MACHINE');
-  Check((B.PointSize=-12) and (Pos('<b>',B.Source)>0) and (ColorToRGB(B.TextColor)=RGBToColor($64,$74,$8B)),
-    'an h3 in a card is the h3 rule''s size, color and case: '+B.Source);
-  Check(UpTo(B,'h3').Y-UpTo(B,'div').Y=18,'and margin');
-  Check(Pos('<b>THE PROGRAM</b>',FindBlock(Probe,'','THE PROGRAM').Source)>0,'and a div by class the same');
+    B := FindBlock(Probe, '', 'Sent');
+    B2 := FindBlock(Probe, '', '2 files');
+    Check((B.PointSize = -22) and (Pos('<b>', B.Source) > 0), 'the banner''s title is styled: ' + B.Source);
+    Check(B2.Bounds.Top - B.Bounds.Bottom = 8, Format('a div''s margin-top is a gap under the title (%d)', [B2.Bounds.Top - B.Bounds.Bottom]));
+    K := 0;
+    for I := 0 to Probe.BlockCount - 1 do
+      if UpTo(Probe.Block(I), 'td') = UpTo(B, 'td') then Inc(K);
+    Check(K = 2, Format('the source''s whitespace makes no blank lines (%d lines)', [K]));
+    { the cards: an h3 and a div.cap styled from the stylesheet, in their case }
+    B := FindBlock(Probe, 'h3', 'THIS MACHINE');
+    Check((B.PointSize = -12) and (Pos('<b>', B.Source) > 0) and (ColorToRGB(B.TextColor) = RGBToColor($64, $74, $8B)),
+      'an h3 in a card is the h3 rule''s size, color and case: ' + B.Source);
+    Check(UpTo(B, 'h3').Y - UpTo(B, 'div').Y = 18, 'and margin');
+    Check(Pos('<b>THE PROGRAM</b>', FindBlock(Probe, '', 'THE PROGRAM').Source) > 0, 'and a div by class the same');
 
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(400,300); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
-    O := DefaultHTMLOptions;
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br>b</td></tr></table>',O);
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,300,0),[],'<table><tr><td>a<br><vgap=50>b</td></tr></table>',O);
-    Check(N.cy=A.cy+50,'a vgap in a cell is exactly its height');
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(400, 300);
+      BM.Canvas.Font.Name := 'DejaVu Sans';
+      BM.Canvas.Font.Size := 11;
+      O := DefaultHTMLOptions;
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 300, 0), [], '<table><tr><td>a<br>b</td></tr></table>', O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 300, 0), [], '<table><tr><td>a<br><vgap=50>b</td></tr></table>', O);
+      Check(N.cy = A.cy + 50, 'a vgap in a cell is exactly its height');
     { a cell that ends with a nested table is as tall as its content: the
       trailing empty line box collapses, as in a browser.  Words after the
       nested table add exactly their line back. }
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,360,0),[],
-      '<table><tr><td>a<table><tr><td>x</td></tr></table></td></tr></table>',O);
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,360,0),[],
-      '<table><tr><td>a<table><tr><td>x</td></tr></table>b</td></tr></table>',O);
-    Check(N.cy>A.cy+10,'a cell ending with a nested table has no phantom line');
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 360, 0), [], '<table><tr><td>a<table><tr><td>x</td></tr></table></td></tr></table>', O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 360, 0), [], '<table><tr><td>a<table><tr><td>x</td></tr></table>b</td></tr></table>', O);
+      Check(N.cy > A.cy + 10, 'a cell ending with a nested table has no phantom line');
     { a grid's gap goes between its items, never around its edges: the gap
       before a heading is the same whether a grid or a table came before it }
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,560,0),[],
-      '<table gaponly="1" cellspacing="16" cellpadding="0 0 0 0" border="none">'+
-      '<tr><td>one</td><td>two</td></tr></table>',O);
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,560,0),[],
-      '<table cellpadding="0 0 0 0" border="none"><tr><td>one</td><td>two</td></tr></table>',O);
-    Check(A.cy=N.cy,'gaponly adds nothing above or below a one-row grid');
-  finally BM.Free end;
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 560, 0), [], '<table gaponly="1" cellspacing="16" cellpadding="0 0 0 0" border="none">' +
+        '<tr><td>one</td><td>two</td></tr></table>', O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 560, 0), [], '<table cellpadding="0 0 0 0" border="none"><tr><td>one</td><td>two</td></tr></table>', O);
+      Check(A.cy = N.cy, 'gaponly adds nothing above or below a one-row grid');
+    finally
+      BM.Free
+    end;
 
-  { and on a page: three identical heading gaps round a two-card grid }
-  Probe.LoadHTML('<html><head><style>'+
-    'body{font-size:14px;margin:0}'+
-    'h3{font-size:12px;margin:18px 0 6px 0}'+
-    '.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}'+
-    '</style></head><body>'+
-    '<h3>one</h3><table><tr><td>a</td></tr></table>'+
-    '<div class="cards"><div><table><tr><td>b</td></tr></table></div>'+
-    '<div><table><tr><td>c</td></tr></table></div></div>'+
-    '<h3>two</h3><table><tr><td>d</td></tr></table></body></html>');
-  Heads := BoxesNamed(Probe,'h3'); Tables := BoxesNamed(Probe,'table');
-  try
-    Grid := UpTo(FindBlock(Probe,'td','b'),'div').Parent;
-    Check(TInkBox(Tables[0]).Y+TInkBox(Tables[0]).H=Grid.Y,'the grid follows the table with no band above');
-    Check(TInkBox(Heads[1]).Y-(Grid.Y+Grid.H)=TInkBox(Tables[0]).Y-(TInkBox(Heads[0]).Y+TInkBox(Heads[0]).H)+12,
-      'and the heading after the grid sits at its own margin, no band below');
-  finally Heads.Free; Tables.Free end;
-end;
+    { and on a page: three identical heading gaps round a two-card grid }
+    Probe.LoadHTML('<html><head><style>' + 'body{font-size:14px;margin:0}' + 'h3{font-size:12px;margin:18px 0 6px 0}' +
+      '.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}' + '</style></head><body>' + '<h3>one</h3><table><tr><td>a</td></tr></table>' +
+      '<div class="cards"><div><table><tr><td>b</td></tr></table></div>' + '<div><table><tr><td>c</td></tr></table></div></div>' +
+      '<h3>two</h3><table><tr><td>d</td></tr></table></body></html>');
+    Heads := BoxesNamed(Probe, 'h3');
+    Tables := BoxesNamed(Probe, 'table');
+    try
+      Grid := UpTo(FindBlock(Probe, 'td', 'b'), 'div').Parent;
+      Check(TInkBox(Tables[0]).Y + TInkBox(Tables[0]).H = Grid.Y, 'the grid follows the table with no band above');
+      Check(TInkBox(Heads[1]).Y - (Grid.Y + Grid.H) = TInkBox(Tables[0]).Y - (TInkBox(Heads[0]).Y + TInkBox(Heads[0]).H) + 12,
+        'and the heading after the grid sits at its own margin, no band below');
+    finally
+      Heads.Free;
+      Tables.Free
+    end;
+  end;
 
-{ --- the rich editor speaks Markdown: paragraph kinds, in and out --- }
-procedure RichEditMarkdownChecks;
-var E: TRichProbe; MD, Back: string;
-begin
-  E := TRichProbe.Create(F); E.Parent := F;
-  E.SetBounds(0, 0, 400, 300);
-  try
-    MD := '# The title'+LineEnding+LineEnding+
-      'Words with **bold**, *italic*, ~~gone~~ and a [link](https://x.y).'+LineEnding+LineEnding+
-      '## Steps'+LineEnding+LineEnding+
-      '1. first'+LineEnding+'2. second'+LineEnding+LineEnding+
-      '- a bullet'+LineEnding+'- another'+LineEnding+LineEnding+
-      '> quoted'+LineEnding+LineEnding+
-      '```'+LineEnding+'begin'+LineEnding+'  x := 1;'+LineEnding+'end.'+LineEnding+'```';
-    E.LoadMarkdown(MD);
-    { the kinds landed, and the markup carries them }
-    Check(E.Markup[0] = '<h1>The title</h1>', 'a # heading is an h1 paragraph');
-    Check(Pos('<oli>first</oli>', E.Markup.Text) > 0, 'a numbered item');
-    Check(Pos('<li>a bullet</li>', E.Markup.Text) > 0, 'a bullet item');
-    Check(Pos('<blockquote>quoted</blockquote>', E.Markup.Text) > 0, 'a quote line');
-    Check(Pos('<pre>  x := 1;</pre>', E.Markup.Text) > 0, 'a code line, spacing kept');
-    Check(Pos('<b>bold</b>', E.Markup.Text) > 0, 'inline bold survives the trip in');
-    { and back out again, the same document }
-    Back := E.AsMarkdown;
-    Check(Pos('# The title', Back) = 1, 'the heading comes back as #');
-    Check(Pos('**bold**', Back) > 0, 'bold comes back as **');
-    Check(Pos('[link](https://x.y)', Back) > 0, 'a link comes back whole');
-    Check(Pos('1. first', Back) > 0, 'numbering comes back');
-    Check(Pos('- a bullet', Back) > 0, 'bullets come back');
-    Check(Pos('> quoted', Back) > 0, 'quotes come back');
-    Check(Pos('```'+LineEnding+'begin', Back) > 0, 'the fence opens');
-    Check(Pos('end.'+LineEnding+'```', Back) > 0, 'and closes');
-    { a second trip is the same words - the shape is stable }
-    E.LoadMarkdown(Back);
-    Check(E.AsMarkdown = Back, 'the round trip is a fixed point');
+  { --- the rich editor speaks Markdown: paragraph kinds, in and out --- }
+  procedure RichEditMarkdownChecks;
+  var
+    E: TRichProbe;
+    MD, Back: string;
+  begin
+    E := TRichProbe.Create(F);
+    E.Parent := F;
+    E.SetBounds(0, 0, 400, 300);
+    try
+      MD := '# The title' + LineEnding + LineEnding + 'Words with **bold**, *italic*, ~~gone~~ and a [link](https://x.y).' + LineEnding + LineEnding +
+        '## Steps' + LineEnding + LineEnding + '1. first' + LineEnding + '2. second' + LineEnding + LineEnding + '- a bullet' + LineEnding + '- another' + LineEnding + LineEnding +
+        '> quoted' + LineEnding + LineEnding + '```' + LineEnding + 'begin' + LineEnding + '  x := 1;' + LineEnding + 'end.' + LineEnding + '```';
+      E.LoadMarkdown(MD);
+      { the kinds landed, and the markup carries them }
+      Check(E.Markup[0] = '<h1>The title</h1>', 'a # heading is an h1 paragraph');
+      Check(Pos('<oli>first</oli>', E.Markup.Text) > 0, 'a numbered item');
+      Check(Pos('<li>a bullet</li>', E.Markup.Text) > 0, 'a bullet item');
+      Check(Pos('<blockquote>quoted</blockquote>', E.Markup.Text) > 0, 'a quote line');
+      Check(Pos('<pre>  x := 1;</pre>', E.Markup.Text) > 0, 'a code line, spacing kept');
+      Check(Pos('<b>bold</b>', E.Markup.Text) > 0, 'inline bold survives the trip in');
+      { and back out again, the same document }
+      Back := E.AsMarkdown;
+      Check(Pos('# The title', Back) = 1, 'the heading comes back as #');
+      Check(Pos('**bold**', Back) > 0, 'bold comes back as **');
+      Check(Pos('[link](https://x.y)', Back) > 0, 'a link comes back whole');
+      Check(Pos('1. first', Back) > 0, 'numbering comes back');
+      Check(Pos('- a bullet', Back) > 0, 'bullets come back');
+      Check(Pos('> quoted', Back) > 0, 'quotes come back');
+      Check(Pos('```' + LineEnding + 'begin', Back) > 0, 'the fence opens');
+      Check(Pos('end.' + LineEnding + '```', Back) > 0, 'and closes');
+      { a second trip is the same words - the shape is stable }
+      E.LoadMarkdown(Back);
+      Check(E.AsMarkdown = Back, 'the round trip is a fixed point');
 
-    { nested lists and fence languages }
-    MD := '1. first'+LineEnding+
-      '   - sub one'+LineEnding+
-      '   - sub two'+LineEnding+
-      '2. second'+LineEnding+LineEnding+
-      '```pascal'+LineEnding+'begin end.'+LineEnding+'```';
-    E.LoadMarkdown(MD);
-    Check(Pos('<li level="1">sub one</li>', E.Markup.Text) > 0,
-      'a nested item knows its level');
-    Check(Pos('<pre lang="pascal">', E.Markup.Text) > 0,
-      'a fence keeps its language');
-    Back := E.AsMarkdown;
-    Check(Pos('   - sub one', Back) > 0, 'nesting comes back indented');
-    Check(Pos('2. second', Back) > 0,
-      'a sublist does not break its parent''s numbering');
-    Check(Pos('```pascal', Back) > 0, 'and the fence its language');
-    E.LoadMarkdown(Back);
-    Check(E.AsMarkdown = Back, 'the nested round trip is a fixed point too');
+      { nested lists and fence languages }
+      MD := '1. first' + LineEnding + '   - sub one' + LineEnding + '   - sub two' + LineEnding + '2. second' + LineEnding + LineEnding +
+        '```pascal' + LineEnding + 'begin end.' + LineEnding + '```';
+      E.LoadMarkdown(MD);
+      Check(Pos('<li level="1">sub one</li>', E.Markup.Text) > 0,
+        'a nested item knows its level');
+      Check(Pos('<pre lang="pascal">', E.Markup.Text) > 0,
+        'a fence keeps its language');
+      Back := E.AsMarkdown;
+      Check(Pos('   - sub one', Back) > 0, 'nesting comes back indented');
+      Check(Pos('2. second', Back) > 0,
+        'a sublist does not break its parent''s numbering');
+      Check(Pos('```pascal', Back) > 0, 'and the fence its language');
+      E.LoadMarkdown(Back);
+      Check(E.AsMarkdown = Back, 'the nested round trip is a fixed point too');
 
     { Tab nests a list item, Shift+Tab brings it back, and Enter on an
       empty nested item steps out a level before it leaves the list }
-    E.Markup.Text := '<li>one</li>';
-    E.SelStart := 1;
-    E.Key(VK_TAB, []);
-    Check(E.Markup[0] = '<li level="1">one</li>', 'Tab nests the item');
-    E.Key(VK_TAB, [ssShift]);
-    Check(E.Markup[0] = '<li>one</li>', 'Shift+Tab brings it back');
-    E.SelStart := 3;
-    E.Key(VK_TAB, []);
-    E.InsertParagraph;          { an empty nested item under it }
-    Check(E.SelParaKind = ipkBullet, 'the new item is still a bullet');
-    E.InsertParagraph;          { empty: steps out a level }
-    Check(E.SelParaKind = ipkBullet, 'Enter on it stays in the list');
-    E.InsertParagraph;          { empty at the top: leaves the list }
-    Check(E.SelParaKind = ipkText, 'and out only from the top level');
-
-    { paragraph kinds from code }
-    E.Markup.Text := 'plain words';
-    Check(E.SelParaKind = ipkText, 'plain is plain');
-    E.SelectAll;
-    E.ApplyParaKind(ipkH2);
-    Check(E.SelParaKind = ipkH2, 'ApplyParaKind makes a heading');
-    Check(E.Markup[0] = '<h2>plain words</h2>', 'and the markup says so');
-    E.ApplyParaKind(ipkBullet);
-    Check(E.Markup[0] = '<li>plain words</li>', 'and a bullet');
-    { Enter at a heading's end starts a plain paragraph }
-    E.ApplyParaKind(ipkH2);
-    E.SelStart := 11; E.SelLength := 0;
-    E.InsertParagraph;
-    E.SelStart := 11;
-    Check(E.SelParaKind = ipkH2, 'the heading is still a heading');
-    { Enter on the empty bullet under it ends the list }
-    E.Markup.Text := '<li>one</li>';
-    E.SelStart := 3; E.SelLength := 0;
-    E.InsertParagraph;        { a new, empty item }
-    E.InsertParagraph;        { enter again: the empty item turns plain }
-    Check(Pos('<li>one</li>', E.Markup.Text) > 0, 'the first item stays a bullet');
-    Check(E.SelParaKind = ipkText, 'and the empty one stepped back to text');
-  finally
-    E.Free;
-  end;
-end;
-
-{ --- tables in the rich editor: layout, keys, and the Markdown trip --- }
-procedure RichEditTableChecks;
-var E: TRichProbe; MD, Back: string; K: Integer;
-begin
-  E := TRichProbe.Create(F); E.Parent := F;
-  E.SetBounds(0, 0, 420, 300);
-  try
-    MD := '| Name | State |'+LineEnding+
-      '| --- | --- |'+LineEnding+
-      '| **Server** | Ready |'+LineEnding+
-      '| Drawing | pending |';
-    E.LoadMarkdown(MD);
-    Check(E.Markup[0] = '<th>Name|State</th>', 'the head row, cells joined by the grid');
-    Check(E.Markup[1] = '<tr><b>Server</b>|Ready</tr>', 'a body row keeps its styling');
-    Back := E.AsMarkdown;
-    Check(Pos('| Name | State |', Back) = 1, 'the head comes back first');
-    Check(Pos('| --- | --- |', Back) > 0, 'with its delimiter row');
-    Check(Pos('| **Server** | Ready |', Back) > 0, 'and the body rows');
-    E.LoadMarkdown(Back);
-    Check(E.AsMarkdown = Back, 'the table round trip is a fixed point');
-
-    { Tab hops cells, rows, and makes a new row past the end }
-    E.SelStart := 0;
-    Check(E.SelParaKind = ipkTableHead, 'the caret starts in the head');
-    E.Key(VK_TAB, []);
-    Check(E.SelStart = 5, 'Tab: the second cell');
-    E.Key(VK_TAB, []);
-    Check(E.SelParaKind = ipkTableRow, 'Tab at the row''s end: the next row');
-    E.Key(VK_TAB, [ssShift]);
-    Check(E.SelStart = 5, 'Shift+Tab goes back');
-    K := E.Markup.Count;
-    while E.SelParaKind in [ipkTableHead, ipkTableRow] do
-    begin
+      E.Markup.Text := '<li>one</li>';
+      E.SelStart := 1;
       E.Key(VK_TAB, []);
-      if E.Markup.Count > K then Break;
+      Check(E.Markup[0] = '<li level="1">one</li>', 'Tab nests the item');
+      E.Key(VK_TAB, [ssShift]);
+      Check(E.Markup[0] = '<li>one</li>', 'Shift+Tab brings it back');
+      E.SelStart := 3;
+      E.Key(VK_TAB, []);
+      E.InsertParagraph;          { an empty nested item under it }
+      Check(E.SelParaKind = ipkBullet, 'the new item is still a bullet');
+      E.InsertParagraph;          { empty: steps out a level }
+      Check(E.SelParaKind = ipkBullet, 'Enter on it stays in the list');
+      E.InsertParagraph;          { empty at the top: leaves the list }
+      Check(E.SelParaKind = ipkText, 'and out only from the top level');
+
+      { paragraph kinds from code }
+      E.Markup.Text := 'plain words';
+      Check(E.SelParaKind = ipkText, 'plain is plain');
+      E.SelectAll;
+      E.ApplyParaKind(ipkH2);
+      Check(E.SelParaKind = ipkH2, 'ApplyParaKind makes a heading');
+      Check(E.Markup[0] = '<h2>plain words</h2>', 'and the markup says so');
+      E.ApplyParaKind(ipkBullet);
+      Check(E.Markup[0] = '<li>plain words</li>', 'and a bullet');
+      { Enter at a heading's end starts a plain paragraph }
+      E.ApplyParaKind(ipkH2);
+      E.SelStart := 11;
+      E.SelLength := 0;
+      E.InsertParagraph;
+      E.SelStart := 11;
+      Check(E.SelParaKind = ipkH2, 'the heading is still a heading');
+      { Enter on the empty bullet under it ends the list }
+      E.Markup.Text := '<li>one</li>';
+      E.SelStart := 3;
+      E.SelLength := 0;
+      E.InsertParagraph;        { a new, empty item }
+      E.InsertParagraph;        { enter again: the empty item turns plain }
+      Check(Pos('<li>one</li>', E.Markup.Text) > 0, 'the first item stays a bullet');
+      Check(E.SelParaKind = ipkText, 'and the empty one stepped back to text');
+    finally
+      E.Free;
     end;
-    Check(E.Markup.Count = K + 1, 'Tab past the last cell adds a row');
-    Check(E.Markup[K] = '<tr>|</tr>', 'with the same columns, empty');
-
-    { Enter on the fresh empty row ends the table, leaving a plain line }
-    E.Key(VK_RETURN, []);
-    Check(E.Markup.Count = K + 1, 'Enter on an empty row keeps one line');
-    Check(E.Markup[K] = '', 'with nothing in it');
-    Check(E.SelParaKind = ipkText, 'and steps back to plain text');
-
-    { a table from nothing }
-    E.Markup.Text := '';
-    E.InsertTable(3, 2);
-    Check(E.Markup[0] = '<th>||</th>', 'InsertTable makes the head');
-    Check((E.Markup[1] = '<tr>||</tr>') and (E.Markup[2] = '<tr>||</tr>'),
-      'and the body rows');
-    Check(E.SelStart = 0, 'with the caret in the first cell');
-  finally
-    E.Free;
   end;
-end;
 
-{ --- the edit's hint and undo, the plain editor, and itfPlain --- }
-procedure EditAndPlainChecks;
-var E: TEditProbe; CM: TCodeProbe; MM: TInkMemo; i: Integer; S: string;
-  LF: TLoadForm; TS: TStringStream; BS: TMemoryStream; Rd: TReader;
-  Shot: TBitmap;
-begin
-  E := TEditProbe.Create(F); E.Parent := F; E.SetBounds(0, 0, 160, 28);
-  CM := TCodeProbe.Create(F); CM.Parent := F; CM.SetBounds(0, 40, 300, 100);
-  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 150, 300, 80);
-  try
-    { undo in the one-line edit: one step per typed run }
-    E.Text := 'base';
-    Check(not E.CanUndo, 'setting Text from code is not something to undo');
-    E.SelStart := 99;
-    for i := 1 to 3 do E.Press(Chr(Ord('0') + i));
-    E.Press(' '); E.Press('x'); E.Press('y');
-    Check(E.Text = 'base123 xy', 'typed through the keyboard');
-    E.Key(VK_Z, [ssCtrl]);
-    Check(E.Text = 'base123', 'Ctrl+Z takes back the word, not a letter');
-    E.Key(VK_Z, [ssCtrl]);
-    Check(E.Text = 'base', 'and the run before it');
-    E.Key(VK_Y, [ssCtrl]);
-    Check(E.Text = 'base123', 'Ctrl+Y brings it back');
-    Check(E.CanUndo and E.CanRedo, 'both directions open');
-    Check(E.TextHint = '', 'no hint by default');
-    E.TextHint := 'what goes here';
-    Check(E.Text = 'base123', 'the hint is never part of Text');
-
-    { the plain editor: Text and Lines agree, typing is plain, caps hold }
-    CM.Text := 'one'+LineEnding+'two';
-    Check((CM.Lines.Count = 2) and (CM.Lines[1] = 'two'), 'Lines mirrors Text');
-    CM.Lines.Add('three');
-    Check(Pos('three', CM.Text) > 0, 'and Text mirrors Lines');
-    CM.Text := '<b>x</b> & y';
-    Check(CM.PlainText = '<b>x</b> & y', 'what is set is what is shown, no markup read');
-    CM.SelStart := 999;
-    CM.Press('!');
-    Check(CM.Text = '<b>x</b> & y!', 'typing lands as plain text');
-    CM.Undo;
-    Check(CM.Text = '<b>x</b> & y', 'with undo behind it');
-    CM.MaxLength := 13;
-    CM.SelStart := 999;
-    CM.Press('A'); CM.Press('B');
-    Check(CM.Text = '<b>x</b> & yA', 'MaxLength holds the door');
-    CM.MaxLength := 0;
-
-    { reading a stored Text while a form loads is not a change }
-    RegisterClass(TInkEdit);
-    LF := TLoadForm.CreateNew(nil);
+  { --- tables in the rich editor: layout, keys, and the Markdown trip --- }
+  procedure RichEditTableChecks;
+  var
+    E: TRichProbe;
+    MD, Back: string;
+    K: integer;
+  begin
+    E := TRichProbe.Create(F);
+    E.Parent := F;
+    E.SetBounds(0, 0, 420, 300);
     try
-      TS := TStringStream.Create(
-        'object TestLoadForm: TLoadForm'+LineEnding+
-        '  object ed: TInkEdit'+LineEnding+
-        '    OnChange = EdChange'+LineEnding+
-        '    Text = ''loaded'''+LineEnding+
-        '  end'+LineEnding+
-        'end');
-      BS := TMemoryStream.Create;
-      try
-        LRSObjectTextToBinary(TS, BS);
-        BS.Position := 0;
-        Rd := TReader.Create(BS, 4096);
-        try
-          Rd.ReadRootComponent(LF);
-        finally
-          Rd.Free;
-        end;
-      finally
-        BS.Free;
-        TS.Free;
+      MD := '| Name | State |' + LineEnding + '| --- | --- |' + LineEnding + '| **Server** | Ready |' + LineEnding + '| Drawing | pending |';
+      E.LoadMarkdown(MD);
+      Check(E.Markup[0] = '<th>Name|State</th>', 'the head row, cells joined by the grid');
+      Check(E.Markup[1] = '<tr><b>Server</b>|Ready</tr>', 'a body row keeps its styling');
+      Back := E.AsMarkdown;
+      Check(Pos('| Name | State |', Back) = 1, 'the head comes back first');
+      Check(Pos('| --- | --- |', Back) > 0, 'with its delimiter row');
+      Check(Pos('| **Server** | Ready |', Back) > 0, 'and the body rows');
+      E.LoadMarkdown(Back);
+      Check(E.AsMarkdown = Back, 'the table round trip is a fixed point');
+
+      { Tab hops cells, rows, and makes a new row past the end }
+      E.SelStart := 0;
+      Check(E.SelParaKind = ipkTableHead, 'the caret starts in the head');
+      E.Key(VK_TAB, []);
+      Check(E.SelStart = 5, 'Tab: the second cell');
+      E.Key(VK_TAB, []);
+      Check(E.SelParaKind = ipkTableRow, 'Tab at the row''s end: the next row');
+      E.Key(VK_TAB, [ssShift]);
+      Check(E.SelStart = 5, 'Shift+Tab goes back');
+      K := E.Markup.Count;
+      while E.SelParaKind in [ipkTableHead, ipkTableRow] do
+      begin
+        E.Key(VK_TAB, []);
+        if E.Markup.Count > K then Break;
       end;
-      Check(LF.ed.Text = 'loaded', 'the stored Text was read');
-      Check(LoadFired = 0, 'without OnChange firing while the form loads');
-      LF.ed.Text := 'now';
-      Check(LoadFired = 1, 'and code setting Text later still fires it');
-    finally
-      LF.Free;
-    end;
+      Check(E.Markup.Count = K + 1, 'Tab past the last cell adds a row');
+      Check(E.Markup[K] = '<tr>|</tr>', 'with the same columns, empty');
 
-    { a memo's text is the size its font says, in pixels }
-    MM.Font.Height := -13;
-    MM.TextFormat := itfHTML;
-    MM.Lines.Clear;
-    MM.Lines.Add('Ag');
-    Shot := TBitmap.Create;
-    try
-      Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
-      MM.RenderTo(Shot.Canvas);
-      Check(MM.Block(0).PointSize = -13,
-        Format('a memo block''s size is its font''s pixels, negative (%d)',
-          [MM.Block(0).PointSize]));
-    finally
-      Shot.Free;
-    end;
-    MM.Font.Height := 0;
+      { Enter on the fresh empty row ends the table, leaving a plain line }
+      E.Key(VK_RETURN, []);
+      Check(E.Markup.Count = K + 1, 'Enter on an empty row keeps one line');
+      Check(E.Markup[K] = '', 'with nothing in it');
+      Check(E.SelParaKind = ipkText, 'and steps back to plain text');
 
-    { itfPlain: the display controls show text exactly as written }
-    Check(InkToHTML('a<b>&', itfPlain) = 'a&lt;b&gt;&amp;', 'itfPlain escapes the three');
-    MM.TextFormat := itfPlain;
-    MM.Lines.Add('width < 24" & square');
-    MM.Lines.Add('<b>not bold</b>');
-    S := MM.PlainText;
-    Check(Pos('width < 24" & square', S) > 0, 'a memo line comes back as written');
-    Check(Pos('<b>not bold</b>', S) > 0, 'tags stay visible text');
-  finally
-    MM.Free;
-    CM.Free;
-    E.Free;
+      { a table from nothing }
+      E.Markup.Text := '';
+      E.InsertTable(3, 2);
+      Check(E.Markup[0] = '<th>||</th>', 'InsertTable makes the head');
+      Check((E.Markup[1] = '<tr>||</tr>') and (E.Markup[2] = '<tr>||</tr>'),
+        'and the body rows');
+      Check(E.SelStart = 0, 'with the caret in the first cell');
+    finally
+      E.Free;
+    end;
   end;
-end;
 
-{ --- the chat window: whole-message entries, a growing question box --- }
+  { --- the edit's hint and undo, the plain editor, and itfPlain --- }
+  procedure EditAndPlainChecks;
+  var
+    E: TEditProbe;
+    CM: TCodeProbe;
+    MM: TInkMemo;
+    i: integer;
+    S: string;
+    LF: TLoadForm;
+    TS: TStringStream;
+    BS: TMemoryStream;
+    Rd: TReader;
+    Shot: TBitmap;
+  begin
+    E := TEditProbe.Create(F);
+    E.Parent := F;
+    E.SetBounds(0, 0, 160, 28);
+    CM := TCodeProbe.Create(F);
+    CM.Parent := F;
+    CM.SetBounds(0, 40, 300, 100);
+    MM := TInkMemo.Create(F);
+    MM.Parent := F;
+    MM.SetBounds(0, 150, 300, 80);
+    try
+      { undo in the one-line edit: one step per typed run }
+      E.Text := 'base';
+      Check(not E.CanUndo, 'setting Text from code is not something to undo');
+      E.SelStart := 99;
+      for i := 1 to 3 do E.Press(Chr(Ord('0') + i));
+      E.Press(' ');
+      E.Press('x');
+      E.Press('y');
+      Check(E.Text = 'base123 xy', 'typed through the keyboard');
+      E.Key(VK_Z, [ssCtrl]);
+      Check(E.Text = 'base123', 'Ctrl+Z takes back the word, not a letter');
+      E.Key(VK_Z, [ssCtrl]);
+      Check(E.Text = 'base', 'and the run before it');
+      E.Key(VK_Y, [ssCtrl]);
+      Check(E.Text = 'base123', 'Ctrl+Y brings it back');
+      Check(E.CanUndo and E.CanRedo, 'both directions open');
+      Check(E.TextHint = '', 'no hint by default');
+      E.TextHint := 'what goes here';
+      Check(E.Text = 'base123', 'the hint is never part of Text');
+
+      { the plain editor: Text and Lines agree, typing is plain, caps hold }
+      CM.Text := 'one' + LineEnding + 'two';
+      Check((CM.Lines.Count = 2) and (CM.Lines[1] = 'two'), 'Lines mirrors Text');
+      CM.Lines.Add('three');
+      Check(Pos('three', CM.Text) > 0, 'and Text mirrors Lines');
+      CM.Text := '<b>x</b> & y';
+      Check(CM.PlainText = '<b>x</b> & y', 'what is set is what is shown, no markup read');
+      CM.SelStart := 999;
+      CM.Press('!');
+      Check(CM.Text = '<b>x</b> & y!', 'typing lands as plain text');
+      CM.Undo;
+      Check(CM.Text = '<b>x</b> & y', 'with undo behind it');
+      CM.MaxLength := 13;
+      CM.SelStart := 999;
+      CM.Press('A');
+      CM.Press('B');
+      Check(CM.Text = '<b>x</b> & yA', 'MaxLength holds the door');
+      CM.MaxLength := 0;
+
+      { reading a stored Text while a form loads is not a change }
+      RegisterClass(TInkEdit);
+      LF := TLoadForm.CreateNew(nil);
+      try
+        TS := TStringStream.Create('object TestLoadForm: TLoadForm' + LineEnding + '  object ed: TInkEdit' + LineEnding +
+          '    OnChange = EdChange' + LineEnding + '    Text = ''loaded''' + LineEnding + '  end' + LineEnding + 'end');
+        BS := TMemoryStream.Create;
+        try
+          LRSObjectTextToBinary(TS, BS);
+          BS.Position := 0;
+          Rd := TReader.Create(BS, 4096);
+          try
+            Rd.ReadRootComponent(LF);
+          finally
+            Rd.Free;
+          end;
+        finally
+          BS.Free;
+          TS.Free;
+        end;
+        Check(LF.ed.Text = 'loaded', 'the stored Text was read');
+        Check(LoadFired = 0, 'without OnChange firing while the form loads');
+        LF.ed.Text := 'now';
+        Check(LoadFired = 1, 'and code setting Text later still fires it');
+      finally
+        LF.Free;
+      end;
+
+      { a memo's text is the size its font says, in pixels }
+      MM.Font.Height := -13;
+      MM.TextFormat := itfHTML;
+      MM.Lines.Clear;
+      MM.Lines.Add('Ag');
+      Shot := TBitmap.Create;
+      try
+        Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
+        MM.RenderTo(Shot.Canvas);
+        Check(MM.Block(0).PointSize = -13,
+          Format('a memo block''s size is its font''s pixels, negative (%d)', [MM.Block(0).PointSize]));
+      finally
+        Shot.Free;
+      end;
+      MM.Font.Height := 0;
+
+      { itfPlain: the display controls show text exactly as written }
+      Check(InkToHTML('a<b>&', itfPlain) = 'a&lt;b&gt;&amp;', 'itfPlain escapes the three');
+      MM.TextFormat := itfPlain;
+      MM.Lines.Add('width < 24" & square');
+      MM.Lines.Add('<b>not bold</b>');
+      S := MM.PlainText;
+      Check(Pos('width < 24" & square', S) > 0, 'a memo line comes back as written');
+      Check(Pos('<b>not bold</b>', S) > 0, 'tags stay visible text');
+    finally
+      MM.Free;
+      CM.Free;
+      E.Free;
+    end;
+  end;
+
+  { --- the chat window: whole-message entries, a growing question box --- }
 type
   TCodeActionSink = class
     Action, Code, Language: string;
-    Block: Integer;
-    procedure Pressed(Sender: TObject; ABlock: Integer; const AAction, ACode, ALanguage: string);
+    Block: integer;
+    procedure Pressed(Sender: TObject; ABlock: integer; const AAction, ACode, ALanguage: string);
   end;
 
-procedure TCodeActionSink.Pressed(Sender: TObject; ABlock: Integer; const AAction, ACode, ALanguage: string);
-begin
-  Block := ABlock; Action := AAction; Code := ACode; Language := ALanguage;
-end;
+  procedure TCodeActionSink.Pressed(Sender: TObject; ABlock: integer; const AAction, ACode, ALanguage: string);
+  begin
+    Block := ABlock;
+    Action := AAction;
+    Code := ACode;
+    Language := ALanguage;
+  end;
 
 { A code block's header: its language and size, Copy, the host's own
   buttons, and a long block folded to its first lines until asked. }
-procedure CodeHeaderChecks;
-var Doc: string; I, Pre, H1, H2: Integer; B: TInkPageBlock; Btns: TInkCodeButtons;
-  Sink: TCodeActionSink; P: TPoint; MM: TInkMemo; Shot: TBitmap; Before: string;
-  function Middle(const R: TRect): TPoint;
+  procedure CodeHeaderChecks;
+  var
+    Doc: string;
+    I, Pre, H1, H2: integer;
+    B: TInkPageBlock;
+    Btns: TInkCodeButtons;
+    Sink: TCodeActionSink;
+    P: TPoint;
+    MM: TInkMemo;
+    Shot: TBitmap;
+    Before: string;
+
+    function Middle(const R: TRect): TPoint;
+    begin
+      Result := Point((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2 - Probe.ScrollY);
+    end;
+
   begin
-    Result := Point((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2 - Probe.ScrollY);
-  end;
-begin
-  Doc := 'Before.' + LineEnding + LineEnding + '```pascal' + LineEnding;
-  for I := 1 to 30 do Doc := Doc + 'WriteLn(' + IntToStr(I) + ');' + LineEnding;
-  Doc := Doc + '```' + LineEnding + LineEnding + 'After.';
-  Probe.SetBounds(0, 0, 500, 400);
-  Probe.CodeFoldLines := 10;
-  Probe.TextFormat := itfMarkdown;
-  Probe.LoadMarkdown(Doc);
-  Probe.ScrollTo(0);
-  Pre := -1;
-  for I := 0 to Probe.BlockCount - 1 do
-    if Probe.Block(I).Code <> '' then begin Pre := I; Break end;
-  Check(Pre >= 0, 'code header: the fence is a code block');
-  if Pre < 0 then Exit;
-  B := Probe.Block(Pre);
-  Check(B.CodeHead > 0, 'code header: a code block has a header');
-  Check(B.TextBounds.Top >= B.Bounds.Top + B.CodeHead, 'code header: the code starts under it');
-  Check(B.CodeLines = 30, Format('code header: it counts the lines (%d)', [B.CodeLines]));
-  Check(B.CodeFolded, 'code header: a block over CodeFoldLines starts folded');
-  Check(Pos('WriteLn(10)', HTMLPlainText(B.Wrapped)) > 0, 'code header: folded, the first lines show');
-  Check(Pos('WriteLn(11)', HTMLPlainText(B.Wrapped)) = 0, 'code header: and not the rest');
-  Btns := Probe.CodeButtons(Pre);
-  Check(Length(Btns) = 2, Format('code header: Copy and Show all (%d buttons)', [Length(Btns)]));
-  if Length(Btns) <> 2 then Exit;
-  Check((Btns[0].Kind = 2) and (Btns[0].Caption = 'Copy'), 'code header: Copy on the right');
-  Check((Btns[1].Kind = 0) and (Btns[1].Caption = 'Show all 30 lines'),
-    'code header: Show all names the size: ' + Btns[1].Caption);
-  Check(Btns[1].R.Right < Btns[0].R.Left, 'code header: the buttons do not overlap');
-
-  { Show all, then Show less }
-  H1 := B.Bounds.Bottom - B.Bounds.Top;
-  Before := Probe.SelectedText;
-  P := Middle(Btns[1].R);
-  Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
-  B := Probe.Block(Pre);
-  H2 := B.Bounds.Bottom - B.Bounds.Top;
-  Check(not B.CodeFolded, 'code header: Show all opens it');
-  Check(H2 > H1, Format('code header: and the block grows (%d to %d)', [H1, H2]));
-  Check(Pos('WriteLn(30)', HTMLPlainText(B.Wrapped)) > 0, 'code header: to its last line');
-  Check(Probe.CodeButtons(Pre)[1].Caption = 'Show less', 'code header: the button says Show less');
-  Check(Probe.SelectedText = Before, 'code header: pressing a button selects nothing');
-  Probe.FoldCode(Pre, True);
-  Check(Probe.Block(Pre).CodeFolded, 'code header: FoldCode folds it again');
-
-  { Copy takes the code itself, whole, folded or not }
-  Clipboard.AsText := '';
-  P := Middle(Probe.CodeButtons(Pre)[0].R);
-  Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
-  Check(Clipboard.AsText = Probe.Block(Pre).Code, 'code header: Copy puts the whole code on the clipboard');
-  Check(Probe.CodeButtons(Pre)[0].Caption = 'Copied', 'code header: and says Copied');
-
-  { the host's own button }
-  Sink := TCodeActionSink.Create;
-  try
-    Probe.OnCodeAction := @Sink.Pressed;
-    Probe.CodeActions.Add('Use this');
+    Doc := 'Before.' + LineEnding + LineEnding + '```pascal' + LineEnding;
+    for I := 1 to 30 do Doc := Doc + 'WriteLn(' + IntToStr(I) + ');' + LineEnding;
+    Doc := Doc + '```' + LineEnding + LineEnding + 'After.';
+    Probe.SetBounds(0, 0, 500, 400);
+    Probe.CodeFoldLines := 10;
+    Probe.TextFormat := itfMarkdown;
+    Probe.LoadMarkdown(Doc);
+    Probe.ScrollTo(0);
+    Pre := -1;
+    for I := 0 to Probe.BlockCount - 1 do
+      if Probe.Block(I).Code <> '' then
+      begin
+        Pre := I;
+        Break;
+      end;
+    Check(Pre >= 0, 'code header: the fence is a code block');
+    if Pre < 0 then Exit;
+    B := Probe.Block(Pre);
+    Check(B.CodeHead > 0, 'code header: a code block has a header');
+    Check(B.TextBounds.Top >= B.Bounds.Top + B.CodeHead, 'code header: the code starts under it');
+    Check(B.CodeLines = 30, Format('code header: it counts the lines (%d)', [B.CodeLines]));
+    Check(B.CodeFolded, 'code header: a block over CodeFoldLines starts folded');
+    Check(Pos('WriteLn(10)', HTMLPlainText(B.Wrapped)) > 0, 'code header: folded, the first lines show');
+    Check(Pos('WriteLn(11)', HTMLPlainText(B.Wrapped)) = 0, 'code header: and not the rest');
     Btns := Probe.CodeButtons(Pre);
-    Check(Length(Btns) = 3, Format('code header: a host button joins them (%d)', [Length(Btns)]));
-    Check((Btns[1].Kind = 1) and (Btns[1].Caption = 'Use this'), 'code header: beside Copy');
+    Check(Length(Btns) = 2, Format('code header: Copy and Show all (%d buttons)', [Length(Btns)]));
+    if Length(Btns) <> 2 then Exit;
+    Check((Btns[0].Kind = 2) and (Btns[0].Caption = 'Copy'), 'code header: Copy on the right');
+    Check((Btns[1].Kind = 0) and (Btns[1].Caption = 'Show all 30 lines'),
+      'code header: Show all names the size: ' + Btns[1].Caption);
+    Check(Btns[1].R.Right < Btns[0].R.Left, 'code header: the buttons do not overlap');
+
+    { Show all, then Show less }
+    H1 := B.Bounds.Bottom - B.Bounds.Top;
+    Before := Probe.SelectedText;
     P := Middle(Btns[1].R);
-    Probe.Press(P.X, P.Y); Probe.Let(P.X, P.Y);
-    Check(Sink.Action = 'Use this', 'code header: OnCodeAction says which: ' + Sink.Action);
-    Check((Sink.Block = Pre) and (Sink.Language = 'pascal') and (Pos('WriteLn(30);', Sink.Code) > 0),
-      'code header: with the block, its language and all its code');
-  finally
-    Probe.OnCodeAction := nil;
-    Probe.CodeActions.Clear;
-    Sink.Free;
+    Probe.Press(P.X, P.Y);
+    Probe.Let(P.X, P.Y);
+    B := Probe.Block(Pre);
+    H2 := B.Bounds.Bottom - B.Bounds.Top;
+    Check(not B.CodeFolded, 'code header: Show all opens it');
+    Check(H2 > H1, Format('code header: and the block grows (%d to %d)', [H1, H2]));
+    Check(Pos('WriteLn(30)', HTMLPlainText(B.Wrapped)) > 0, 'code header: to its last line');
+    Check(Probe.CodeButtons(Pre)[1].Caption = 'Show less', 'code header: the button says Show less');
+    Check(Probe.SelectedText = Before, 'code header: pressing a button selects nothing');
+    Probe.FoldCode(Pre, True);
+    Check(Probe.Block(Pre).CodeFolded, 'code header: FoldCode folds it again');
+
+    { Copy takes the code itself, whole, folded or not }
+    Clipboard.AsText := '';
+    P := Middle(Probe.CodeButtons(Pre)[0].R);
+    Probe.Press(P.X, P.Y);
+    Probe.Let(P.X, P.Y);
+    Check(Clipboard.AsText = Probe.Block(Pre).Code, 'code header: Copy puts the whole code on the clipboard');
+    Check(Probe.CodeButtons(Pre)[0].Caption = 'Copied', 'code header: and says Copied');
+
+    { the host's own button }
+    Sink := TCodeActionSink.Create;
+    try
+      Probe.OnCodeAction := @Sink.Pressed;
+      Probe.CodeActions.Add('Use this');
+      Btns := Probe.CodeButtons(Pre);
+      Check(Length(Btns) = 3, Format('code header: a host button joins them (%d)', [Length(Btns)]));
+      Check((Btns[1].Kind = 1) and (Btns[1].Caption = 'Use this'), 'code header: beside Copy');
+      P := Middle(Btns[1].R);
+      Probe.Press(P.X, P.Y);
+      Probe.Let(P.X, P.Y);
+      Check(Sink.Action = 'Use this', 'code header: OnCodeAction says which: ' + Sink.Action);
+      Check((Sink.Block = Pre) and (Sink.Language = 'pascal') and (Pos('WriteLn(30);', Sink.Code) > 0),
+        'code header: with the block, its language and all its code');
+    finally
+      Probe.OnCodeAction := nil;
+      Probe.CodeActions.Clear;
+      Sink.Free;
+    end;
+
+    { off: no header, and the code starts at the block's top again }
+    Probe.CodeHeader := False;
+    B := Probe.Block(Pre);
+    Probe.Layout;
+    Check(B.CodeHead = 0, 'code header: CodeHeader off takes it away');
+    Check(Length(Probe.CodeButtons(Pre)) = 0, 'code header: and its buttons');
+    Probe.CodeHeader := True;
+    Probe.CodeFoldLines := 0;
+    Probe.Layout;
+    Check(not Probe.Block(Pre).CodeFolded, 'code header: CodeFoldLines 0 never folds');
+
+    { a memo's entry gets one too }
+    MM := TInkMemo.Create(F);
+    MM.Parent := F;
+    MM.SetBounds(0, 0, 400, 300);
+    try
+      MM.AppendBlock('Here:' + LineEnding + LineEnding + '```heck' + LineEnding + 'box = 0 east, 0 north, 0 up; 1'' east, 1'' north, 1'' up' + LineEnding + '```', itfMarkdown);
+      Shot := TBitmap.Create;
+      try
+        Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
+        MM.RenderTo(Shot.Canvas);
+      finally
+        Shot.Free
+      end;
+      Pre := -1;
+      for I := 0 to MM.BlockCount - 1 do
+        if MM.Block(I).Code <> '' then Pre := I;
+      Check((Pre >= 0) and (MM.Block(Pre).CodeHead > 0), 'code header: a memo''s code block has one');
+      Check((Pre >= 0) and (MM.Block(Pre).CodeLanguage = 'heck'), 'code header: with the fence''s language');
+    finally
+      MM.Free;
+    end;
   end;
 
-  { off: no header, and the code starts at the block's top again }
-  Probe.CodeHeader := False;
-  B := Probe.Block(Pre);
-  Probe.Layout;
-  Check(B.CodeHead = 0, 'code header: CodeHeader off takes it away');
-  Check(Length(Probe.CodeButtons(Pre)) = 0, 'code header: and its buttons');
-  Probe.CodeHeader := True;
-  Probe.CodeFoldLines := 0;
-  Probe.Layout;
-  Check(not Probe.Block(Pre).CodeFolded, 'code header: CodeFoldLines 0 never folds');
-
-  { a memo's entry gets one too }
-  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 0, 400, 300);
-  try
-    MM.AppendBlock('Here:' + LineEnding + LineEnding + '```heck' + LineEnding +
-      'box = 0 east, 0 north, 0 up; 1'' east, 1'' north, 1'' up' + LineEnding + '```', itfMarkdown);
+  procedure ChatWindowChecks;
+  var
+    MM: TInkMemo;
+    E: TEditProbe;
+    CM: TInkCodeMemo;
+    Shot: TBitmap;
+    Kept: string;
+    N, H1, H3, H4, H8: integer;
+    Menu: TPopupMenu;
+    P: TPoint;
+    Found: boolean;
+    i: integer;
+  const
+    EL = LineEnding;
+  begin
+    MM := TInkMemo.Create(F);
+    MM.Parent := F;
+    MM.SetBounds(0, 0, 400, 300);
+    E := TEditProbe.Create(F);
+    E.Parent := F;
+    E.SetBounds(0, 310, 160, 28);
+    CM := TInkCodeMemo.Create(F);
+    CM.Parent := F;
+    CM.SetBounds(0, 350, 300, 60);
     Shot := TBitmap.Create;
     try
+      { a whole message as one entry, beside ordinary lines }
+      MM.Append('a plain <b>line</b> entry');
+      MM.AppendBlock('A **question** with a list:' + EL + EL + '- first' + EL + '- second' + EL + EL + '```pascal' + EL + 'begin end.' + EL + '```',
+        itfMarkdown, $00F4EFEA, 0);
+      MM.AppendPlain('a model wrote <b>this</b> & more');
+      Check(MM.Count = 3, Format('chat: three entries (%d)', [MM.Count]));
+      Check(MM.BlockCount > 4, Format('chat: the block entry brought its paragraphs (%d blocks)', [MM.BlockCount]));
+      Check(Pos('A question with a list:', MM.GetPlainText(1)) = 1,
+        'chat: the entry''s text, markup stripped: ' + MM.GetPlainText(1));
+      Check(Pos('begin end.', MM.GetPlainText(1)) > 0, 'chat: through to the code');
+      Check(MM.GetPlainText(2) = 'a model wrote <b>this</b> & more',
+        'chat: AppendPlain stays literal: ' + MM.GetPlainText(2));
+
+      { the band, and which entry each block belongs to }
       Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
       MM.RenderTo(Shot.Canvas);
-    finally Shot.Free end;
-    Pre := -1;
-    for I := 0 to MM.BlockCount - 1 do
-      if MM.Block(I).Code <> '' then Pre := I;
-    Check((Pre >= 0) and (MM.Block(Pre).CodeHead > 0), 'code header: a memo''s code block has one');
-    Check((Pre >= 0) and (MM.Block(Pre).CodeLanguage = 'heck'), 'code header: with the fence''s language');
-  finally
-    MM.Free;
+      Check(MM.Block(0).Entry = 0, 'chat: the first block is entry 0');
+      Check(MM.Block(1).Entry = 1, 'chat: the message''s first block is entry 1');
+      Check(MM.Block(MM.BlockCount - 1).Entry = 2, 'chat: the last block is entry 2');
+      { the band is behind the whole entry, words and the gaps between them }
+      Found := False;
+      for i := 0 to MM.BlockCount - 1 do
+        if (MM.Block(i).Entry = 1) and (MM.Block(i).Bounds.Bottom - MM.ScrollY < Shot.Height) and
+          (ColorToRGB(Shot.Canvas.Pixels[MM.ClientWidth - MM.ScrollBar.Width - 4, MM.Block(i).Bounds.Bottom - MM.ScrollY]) = $00F4EFEA) then Found := True;
+      Check(Found, 'chat: the entry''s band color is painted behind it');
+
+      { the entry under a point, and its copy menu }
+      P := MM.PositionPoint(Pos2(1, 1));
+      Check(MM.EntryAt(P.X, P.Y + 2) = 1, 'chat: EntryAt finds the message');
+      Check(MM.EntryAt(5, MM.ClientHeight - 1) = -1, 'chat: and nothing below the last block');
+      Menu := MM.BuildCopyMenu(P.X, P.Y + 2);
+      Found := False;
+      for i := 0 to Menu.Items.Count - 1 do
+        if Menu.Items[i].Caption = SInkCopyMessage then Found := True;
+      Check(Found, 'chat: the menu offers the whole message');
+      Menu.Free;
+
+      { the answer grows in place; a selection elsewhere stays put }
+      MM.Select(Pos2(0, 2), Pos2(0, 7));
+      Kept := MM.SelectedText;
+      Check(Kept <> '', 'chat: something is selected in the first entry');
+      N := MM.Count;
+      MM.ReplaceLast('grown, a word at a time');
+      MM.ReplaceLast('grown, a word at a time, and longer');
+      Check(MM.Count = N, 'chat: ReplaceLast makes no new entry');
+      Check(MM.GetPlainText(2) = 'grown, a word at a time, and longer',
+        'chat: the last entry holds the latest text');
+      Check(MM.SelectedText = Kept, 'chat: the selection above it did not move');
+
+      { PasswordChar: dots on the screen, nothing to the clipboard }
+      E.PasswordChar := '*';
+      E.Text := 'secret';
+      E.SelectAll;
+      Clipboard.AsText := 'sentinel';
+      E.CopyToClipboard;
+      Check(Clipboard.AsText = 'sentinel', 'password: Copy hands over nothing');
+      E.CutToClipboard;
+      Check((Clipboard.AsText = 'sentinel') and (E.Text = 'secret'),
+        'password: Cut neither copies nor deletes');
+      E.PasswordChar := #0;
+      E.CopyToClipboard;
+      Check(Clipboard.AsText = 'secret', 'password: cleared, the edit copies again');
+
+      { the question box grows with its text, between MinLines and MaxLines }
+      CM.MinLines := 1;
+      CM.MaxLines := 4;
+      CM.AutoHeight := True;
+      CM.Text := 'one';
+      Application.ProcessMessages;
+      H1 := CM.Height;
+      CM.Text := 'one' + EL + 'two' + EL + 'three';
+      Application.ProcessMessages;
+      H3 := CM.Height;
+      CM.Text := 'one' + EL + 'two' + EL + 'three' + EL + 'four';
+      Application.ProcessMessages;
+      H4 := CM.Height;
+      CM.Text := 'one' + EL + 'two' + EL + 'three' + EL + 'four' + EL + 'five' + EL + 'six' + EL + 'seven' + EL + 'eight';
+      Application.ProcessMessages;
+      H8 := CM.Height;
+      Check(H3 > H1, Format('autoheight: three lines are taller than one (%d > %d)', [H3, H1]));
+      Check(H4 > H3, Format('autoheight: four taller still (%d > %d)', [H4, H3]));
+      Check(H8 = H4, Format('autoheight: MaxLines caps it there (%d = %d)', [H8, H4]));
+      CM.Text := 'one';
+      Application.ProcessMessages;
+      Check(CM.Height = H1, 'autoheight: and it shrinks back down');
+    finally
+      Shot.Free;
+      CM.Free;
+      E.Free;
+      MM.Free;
+    end;
   end;
-end;
 
-procedure ChatWindowChecks;
-var MM: TInkMemo; E: TEditProbe; CM: TInkCodeMemo;
-  Shot: TBitmap; Kept: string; N, H1, H3, H4, H8: Integer;
-  Menu: TPopupMenu; P: TPoint; Found: Boolean; i: Integer;
-const EL = LineEnding;
-begin
-  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 0, 400, 300);
-  E := TEditProbe.Create(F); E.Parent := F; E.SetBounds(0, 310, 160, 28);
-  CM := TInkCodeMemo.Create(F); CM.Parent := F; CM.SetBounds(0, 350, 300, 60);
-  Shot := TBitmap.Create;
-  try
-    { a whole message as one entry, beside ordinary lines }
-    MM.Append('a plain <b>line</b> entry');
-    MM.AppendBlock('A **question** with a list:' + EL + EL +
-      '- first' + EL + '- second' + EL + EL +
-      '```pascal' + EL + 'begin end.' + EL + '```',
-      itfMarkdown, $00F4EFEA, 0);
-    MM.AppendPlain('a model wrote <b>this</b> & more');
-    Check(MM.Count = 3, Format('chat: three entries (%d)', [MM.Count]));
-    Check(MM.BlockCount > 4, Format('chat: the block entry brought its paragraphs (%d blocks)',
-      [MM.BlockCount]));
-    Check(Pos('A question with a list:', MM.GetPlainText(1)) = 1,
-      'chat: the entry''s text, markup stripped: ' + MM.GetPlainText(1));
-    Check(Pos('begin end.', MM.GetPlainText(1)) > 0, 'chat: through to the code');
-    Check(MM.GetPlainText(2) = 'a model wrote <b>this</b> & more',
-      'chat: AppendPlain stays literal: ' + MM.GetPlainText(2));
-
-    { the band, and which entry each block belongs to }
-    Shot.SetSize(MM.ClientWidth, MM.ClientHeight);
-    MM.RenderTo(Shot.Canvas);
-    Check(MM.Block(0).Entry = 0, 'chat: the first block is entry 0');
-    Check(MM.Block(1).Entry = 1, 'chat: the message''s first block is entry 1');
-    Check(MM.Block(MM.BlockCount - 1).Entry = 2, 'chat: the last block is entry 2');
-    { the band is behind the whole entry, words and the gaps between them }
-    Found := False;
-    for i := 0 to MM.BlockCount - 1 do
-      if (MM.Block(i).Entry = 1) and (MM.Block(i).Bounds.Bottom - MM.ScrollY < Shot.Height) and
-        (ColorToRGB(Shot.Canvas.Pixels[MM.ClientWidth - MM.ScrollBar.Width - 4,
-          MM.Block(i).Bounds.Bottom - MM.ScrollY]) = $00F4EFEA) then Found := True;
-    Check(Found, 'chat: the entry''s band color is painted behind it');
-
-    { the entry under a point, and its copy menu }
-    P := MM.PositionPoint(Pos2(1, 1));
-    Check(MM.EntryAt(P.X, P.Y + 2) = 1, 'chat: EntryAt finds the message');
-    Check(MM.EntryAt(5, MM.ClientHeight - 1) = -1, 'chat: and nothing below the last block');
-    Menu := MM.BuildCopyMenu(P.X, P.Y + 2);
-    Found := False;
-    for i := 0 to Menu.Items.Count - 1 do
-      if Menu.Items[i].Caption = SInkCopyMessage then Found := True;
-    Check(Found, 'chat: the menu offers the whole message');
-    Menu.Free;
-
-    { the answer grows in place; a selection elsewhere stays put }
-    MM.Select(Pos2(0, 2), Pos2(0, 7));
-    Kept := MM.SelectedText;
-    Check(Kept <> '', 'chat: something is selected in the first entry');
-    N := MM.Count;
-    MM.ReplaceLast('grown, a word at a time');
-    MM.ReplaceLast('grown, a word at a time, and longer');
-    Check(MM.Count = N, 'chat: ReplaceLast makes no new entry');
-    Check(MM.GetPlainText(2) = 'grown, a word at a time, and longer',
-      'chat: the last entry holds the latest text');
-    Check(MM.SelectedText = Kept, 'chat: the selection above it did not move');
-
-    { PasswordChar: dots on the screen, nothing to the clipboard }
-    E.PasswordChar := '*';
-    E.Text := 'secret';
-    E.SelectAll;
-    Clipboard.AsText := 'sentinel';
-    E.CopyToClipboard;
-    Check(Clipboard.AsText = 'sentinel', 'password: Copy hands over nothing');
-    E.CutToClipboard;
-    Check((Clipboard.AsText = 'sentinel') and (E.Text = 'secret'),
-      'password: Cut neither copies nor deletes');
-    E.PasswordChar := #0;
-    E.CopyToClipboard;
-    Check(Clipboard.AsText = 'secret', 'password: cleared, the edit copies again');
-
-    { the question box grows with its text, between MinLines and MaxLines }
-    CM.MinLines := 1; CM.MaxLines := 4; CM.AutoHeight := True;
-    CM.Text := 'one';
-    Application.ProcessMessages;
-    H1 := CM.Height;
-    CM.Text := 'one' + EL + 'two' + EL + 'three';
-    Application.ProcessMessages;
-    H3 := CM.Height;
-    CM.Text := 'one' + EL + 'two' + EL + 'three' + EL + 'four';
-    Application.ProcessMessages;
-    H4 := CM.Height;
-    CM.Text := 'one' + EL + 'two' + EL + 'three' + EL + 'four' + EL +
-      'five' + EL + 'six' + EL + 'seven' + EL + 'eight';
-    Application.ProcessMessages;
-    H8 := CM.Height;
-    Check(H3 > H1, Format('autoheight: three lines are taller than one (%d > %d)', [H3, H1]));
-    Check(H4 > H3, Format('autoheight: four taller still (%d > %d)', [H4, H3]));
-    Check(H8 = H4, Format('autoheight: MaxLines caps it there (%d = %d)', [H8, H4]));
-    CM.Text := 'one';
-    Application.ProcessMessages;
-    Check(CM.Height = H1, 'autoheight: and it shrinks back down');
-  finally
-    Shot.Free;
-    CM.Free;
-    E.Free;
-    MM.Free;
-  end;
-end;
-
-{ --- character selection in the label and the list box, and the keyboard --- }
-procedure SelectionBChecks;
-var L: TInkLabel; LB: TInkListBox; MM: TInkMemo; Menu: TPopupMenu;
-  R: TRect; S: string; i: Integer; Found: Boolean; K: Word;
-const EL = LineEnding;
-begin
-  L := TInkLabel.Create(F); L.Parent := F; L.SetBounds(0, 0, 400, 24);
-  L.AutoSize := False;
-  LB := TInkListBox.Create(F); LB.Parent := F; LB.SetBounds(0, 30, 400, 120);
-  MM := TInkMemo.Create(F); MM.Parent := F; MM.SetBounds(0, 160, 400, 150);
-  try
+  { --- character selection in the label and the list box, and the keyboard --- }
+  procedure SelectionBChecks;
+  var
+    L: TInkLabel;
+    LB: TInkListBox;
+    MM: TInkMemo;
+    Menu: TPopupMenu;
+    R: TRect;
+    S: string;
+    i: integer;
+    Found: boolean;
+    K: word;
+  const
+    EL = LineEnding;
+  begin
+    L := TInkLabel.Create(F);
+    L.Parent := F;
+    L.SetBounds(0, 0, 400, 24);
+    L.AutoSize := False;
+    LB := TInkListBox.Create(F);
+    LB.Parent := F;
+    LB.SetBounds(0, 30, 400, 120);
+    MM := TInkMemo.Create(F);
+    MM.Parent := F;
+    MM.SetBounds(0, 160, 400, 150);
+    try
     { the label: a drag selects characters, styled text and all - but only
       once Selectable is on; a plain label ignores the mouse like any other }
-    L.Caption := 'brave <b>new</b> world of <i>selectable</i> labels';
-    Application.ProcessMessages;
-    TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 2, 8);
-    TLabelAccess(L).MouseMove([ssLeft], 90, 8);
-    TLabelAccess(L).MouseUp(mbLeft, [], 90, 8);
-    Check(not L.HasSelection, 'label: a drag selects nothing by default');
-    TLabelAccess(L).MouseDown(mbLeft, [ssLeft, ssDouble], 12, 8);
-    TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
-    Check(not L.HasSelection, 'label: nor does a double click');
-    L.Selectable := True;
-    TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 2, 8);
-    TLabelAccess(L).MouseMove([ssLeft], 90, 8);
-    TLabelAccess(L).MouseUp(mbLeft, [], 90, 8);
-    Check(L.HasSelection, 'label: a drag selects');
-    S := L.SelectedText;
-    Check((Pos('brave', S) = 1) and (Pos('new', S) > 0),
-      'label: through the bold word: "' + S + '"');
-    { a double click takes the word under it }
-    TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 12, 8);
-    TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
-    TLabelAccess(L).MouseDown(mbLeft, [ssLeft, ssDouble], 12, 8);
-    TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
-    Check(L.SelectedText = 'brave', 'label: a double click takes a word: "' + L.SelectedText + '"');
-    L.SelectAll;
-    Check(L.SelectedText = 'brave new world of selectable labels',
-      'label: select all, markup stripped: "' + L.SelectedText + '"');
-    Menu := L.BuildCopyMenu(12, 8);
-    Check(Menu.Items[0].Caption = SInkCopy, 'label menu: Copy leads when something is selected');
-    Found := False;
-    for i := 0 to Menu.Items.Count - 1 do
-      if Menu.Items[i].Caption = SInkSelectAll then Found := True;
-    Check(Found, 'label menu: and Select all is offered');
-    L.ClearSelection;
-    Check(not L.HasSelection, 'label: cleared');
-    L.SelectAll;
-    L.Selectable := False;
-    Check(not L.HasSelection, 'label: turning Selectable off lets go of the selection');
+      L.Caption := 'brave <b>new</b> world of <i>selectable</i> labels';
+      Application.ProcessMessages;
+      TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 2, 8);
+      TLabelAccess(L).MouseMove([ssLeft], 90, 8);
+      TLabelAccess(L).MouseUp(mbLeft, [], 90, 8);
+      Check(not L.HasSelection, 'label: a drag selects nothing by default');
+      TLabelAccess(L).MouseDown(mbLeft, [ssLeft, ssDouble], 12, 8);
+      TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
+      Check(not L.HasSelection, 'label: nor does a double click');
+      L.Selectable := True;
+      TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 2, 8);
+      TLabelAccess(L).MouseMove([ssLeft], 90, 8);
+      TLabelAccess(L).MouseUp(mbLeft, [], 90, 8);
+      Check(L.HasSelection, 'label: a drag selects');
+      S := L.SelectedText;
+      Check((Pos('brave', S) = 1) and (Pos('new', S) > 0),
+        'label: through the bold word: "' + S + '"');
+      { a double click takes the word under it }
+      TLabelAccess(L).MouseDown(mbLeft, [ssLeft], 12, 8);
+      TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
+      TLabelAccess(L).MouseDown(mbLeft, [ssLeft, ssDouble], 12, 8);
+      TLabelAccess(L).MouseUp(mbLeft, [], 12, 8);
+      Check(L.SelectedText = 'brave', 'label: a double click takes a word: "' + L.SelectedText + '"');
+      L.SelectAll;
+      Check(L.SelectedText = 'brave new world of selectable labels',
+        'label: select all, markup stripped: "' + L.SelectedText + '"');
+      Menu := L.BuildCopyMenu(12, 8);
+      Check(Menu.Items[0].Caption = SInkCopy, 'label menu: Copy leads when something is selected');
+      Found := False;
+      for i := 0 to Menu.Items.Count - 1 do
+        if Menu.Items[i].Caption = SInkSelectAll then Found := True;
+      Check(Found, 'label menu: and Select all is offered');
+      L.ClearSelection;
+      Check(not L.HasSelection, 'label: cleared');
+      L.SelectAll;
+      L.Selectable := False;
+      Check(not L.HasSelection, 'label: turning Selectable off lets go of the selection');
 
     { the list box: a drag inside one item selects its characters and stays
       clamped to that item; the item selection is untouched by the clamp }
-    LB.EditMode := emNone;
-    LB.Items.Add('first item with <b>bold</b> words');
-    LB.Items.Add('second item entirely plain');
-    Application.ProcessMessages;
-    R := LB.ItemRect(0);
-    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
-    TListAccess(LB).MouseMove([ssLeft], 80, R.Top + 4);
-    TListAccess(LB).MouseUp(mbLeft, [], 80, R.Top + 4);
-    Check(LB.HasTextSelection, 'list: a drag over text selects characters');
-    Check(Pos('first', LB.SelectedText) = 1, 'list: from the start: "' + LB.SelectedText + '"');
-    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
-    TListAccess(LB).MouseMove([ssLeft], 390, R.Top + 4);
-    TListAccess(LB).MouseUp(mbLeft, [], 390, R.Top + 4);
-    Check(LB.SelectedText = 'first item with bold words',
-      'list: a drag past the words takes them all: "' + LB.SelectedText + '"');
-    Clipboard.AsText := '';
-    LB.CopyToClipboard;
-    Check(Clipboard.AsText = 'first item with bold words', 'list: Ctrl+C copies the characters');
-    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
-    TListAccess(LB).MouseUp(mbLeft, [], 2, R.Top + 4);
-    Check(not LB.HasTextSelection, 'list: a plain click clears it');
-    { and a drag that leaves the row goes back to dragging the highlight }
-    TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
-    TListAccess(LB).MouseMove([ssLeft], 40, R.Top + 4);
-    TListAccess(LB).MouseMove([ssLeft], 40, LB.ItemRect(1).Top + 4);
-    TListAccess(LB).MouseUp(mbLeft, [], 40, LB.ItemRect(1).Top + 4);
-    Check(not LB.HasTextSelection, 'list: leaving the row lets the characters go');
-    Check(LB.ItemIndex = 1, Format('list: and the highlight followed (%d)', [LB.ItemIndex]));
+      LB.EditMode := emNone;
+      LB.Items.Add('first item with <b>bold</b> words');
+      LB.Items.Add('second item entirely plain');
+      Application.ProcessMessages;
+      R := LB.ItemRect(0);
+      TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+      TListAccess(LB).MouseMove([ssLeft], 80, R.Top + 4);
+      TListAccess(LB).MouseUp(mbLeft, [], 80, R.Top + 4);
+      Check(LB.HasTextSelection, 'list: a drag over text selects characters');
+      Check(Pos('first', LB.SelectedText) = 1, 'list: from the start: "' + LB.SelectedText + '"');
+      TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+      TListAccess(LB).MouseMove([ssLeft], 390, R.Top + 4);
+      TListAccess(LB).MouseUp(mbLeft, [], 390, R.Top + 4);
+      Check(LB.SelectedText = 'first item with bold words',
+        'list: a drag past the words takes them all: "' + LB.SelectedText + '"');
+      Clipboard.AsText := '';
+      LB.CopyToClipboard;
+      Check(Clipboard.AsText = 'first item with bold words', 'list: Ctrl+C copies the characters');
+      TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+      TListAccess(LB).MouseUp(mbLeft, [], 2, R.Top + 4);
+      Check(not LB.HasTextSelection, 'list: a plain click clears it');
+      { and a drag that leaves the row goes back to dragging the highlight }
+      TListAccess(LB).MouseDown(mbLeft, [ssLeft], 2, R.Top + 4);
+      TListAccess(LB).MouseMove([ssLeft], 40, R.Top + 4);
+      TListAccess(LB).MouseMove([ssLeft], 40, LB.ItemRect(1).Top + 4);
+      TListAccess(LB).MouseUp(mbLeft, [], 40, LB.ItemRect(1).Top + 4);
+      Check(not LB.HasTextSelection, 'list: leaving the row lets the characters go');
+      Check(LB.ItemIndex = 1, Format('list: and the highlight followed (%d)', [LB.ItemIndex]));
 
-    { the page controls: Shift and an arrow extend the selection }
-    MM.TextFormat := itfHTML;
-    MM.Lines.Add('alpha beta gamma');
-    MM.Lines.Add('delta epsilon zeta');
-    Application.ProcessMessages;
-    MM.Select(Pos2(0, 0), Pos2(0, 0));
-    for i := 1 to 5 do
-    begin
-      K := VK_RIGHT; TMemoAccess(MM).KeyDown(K, [ssShift]);
+      { the page controls: Shift and an arrow extend the selection }
+      MM.TextFormat := itfHTML;
+      MM.Lines.Add('alpha beta gamma');
+      MM.Lines.Add('delta epsilon zeta');
+      Application.ProcessMessages;
+      MM.Select(Pos2(0, 0), Pos2(0, 0));
+      for i := 1 to 5 do
+      begin
+        K := VK_RIGHT;
+        TMemoAccess(MM).KeyDown(K, [ssShift]);
+      end;
+      Check(MM.SelectedText = 'alpha', 'keyboard: five Shift+Rights take the first word: "' + MM.SelectedText + '"');
+      K := VK_DOWN;
+      TMemoAccess(MM).KeyDown(K, [ssShift]);
+      { the caret keeps its X, so it lands at the nearest boundary in 'delta' }
+      Check(Pos('alpha beta gamma' + EL + 'delta', MM.SelectedText) = 1,
+        'keyboard: Shift+Down goes on through the line below: "' + MM.SelectedText + '"');
+      K := VK_END;
+      TMemoAccess(MM).KeyDown(K, [ssShift]);
+      Check(MM.SelectedText = 'alpha beta gamma' + EL + 'delta epsilon zeta',
+        'keyboard: Shift+End reaches the line''s end');
+      K := VK_UP;
+      TMemoAccess(MM).KeyDown(K, [ssShift]);
+      K := VK_HOME;
+      TMemoAccess(MM).KeyDown(K, [ssShift]);
+      Check(not MM.HasSelection, 'keyboard: back up and Shift+Home collapses it');
+      K := VK_LEFT;
+      TMemoAccess(MM).KeyDown(K, [ssShift]);
+      Check(not MM.HasSelection, 'keyboard: Shift+Left at the very start stays put');
+      for i := 1 to 3 do
+      begin
+        K := VK_RIGHT;
+        TMemoAccess(MM).KeyDown(K, [ssShift]);
+      end;
+      Clipboard.AsText := '';
+      K := VK_C;
+      TMemoAccess(MM).KeyDown(K, [ssCtrl]);
+      Check(Clipboard.AsText = 'alp', 'keyboard: and Ctrl+C copies what Shift selected');
+    finally
+      MM.Free;
+      LB.Free;
+      L.Free;
     end;
-    Check(MM.SelectedText = 'alpha', 'keyboard: five Shift+Rights take the first word: "'
-      + MM.SelectedText + '"');
-    K := VK_DOWN; TMemoAccess(MM).KeyDown(K, [ssShift]);
-    { the caret keeps its X, so it lands at the nearest boundary in 'delta' }
-    Check(Pos('alpha beta gamma' + EL + 'delta', MM.SelectedText) = 1,
-      'keyboard: Shift+Down goes on through the line below: "' + MM.SelectedText + '"');
-    K := VK_END; TMemoAccess(MM).KeyDown(K, [ssShift]);
-    Check(MM.SelectedText = 'alpha beta gamma' + EL + 'delta epsilon zeta',
-      'keyboard: Shift+End reaches the line''s end');
-    K := VK_UP; TMemoAccess(MM).KeyDown(K, [ssShift]);
-    K := VK_HOME; TMemoAccess(MM).KeyDown(K, [ssShift]);
-    Check(not MM.HasSelection, 'keyboard: back up and Shift+Home collapses it');
-    K := VK_LEFT; TMemoAccess(MM).KeyDown(K, [ssShift]);
-    Check(not MM.HasSelection, 'keyboard: Shift+Left at the very start stays put');
-    for i := 1 to 3 do
-    begin
-      K := VK_RIGHT; TMemoAccess(MM).KeyDown(K, [ssShift]);
-    end;
-    Clipboard.AsText := '';
-    K := VK_C; TMemoAccess(MM).KeyDown(K, [ssCtrl]);
-    Check(Clipboard.AsText = 'alp', 'keyboard: and Ctrl+C copies what Shift selected');
-  finally
-    MM.Free;
-    LB.Free;
-    L.Free;
   end;
-end;
 
-{ --- old-school HTML: the font size ladder and a table's width attribute --- }
-{ every page is read through the tree a browser would build from it }
-procedure DocumentTreeChecks;
-var FileName: string; Bytes: TFileStream; Raw: RawByteString; N: TInkNode; Rules: TStringList;
-begin
-  { an element's computed style, from the page's own sheet }
-  Probe.LoadHTML('<style>p.x { color: #102030; margin-top: 2em }</style><p class=x id=s>styled</p>');
-  N := Probe.Document.GetElementById('s');
-  Check((Probe.ComputedStyle(N)<>nil) and (Probe.ComputedStyle(N).Color('color')=$FF302010),
-    'ComputedStyle reads the page''s sheet');
-  Check(Abs(Probe.ComputedStyle(N).Px('margin-top')-2*Probe.ComputedStyle(N).FontSize)<0.01,
-    'and works out its ems');
-  Rules := Probe.ExplainStyle(N);
-  try Check(Pos('p.x',Rules.Text)>0,'ExplainStyle lists the rule') finally Rules.Free end;
-  N.SetAttribute('class','');
-  Probe.DocumentChanged;
-  Check(Probe.ComputedStyle(N).Color('color')<>$FF302010,'a changed document is styled again');
-  N.Remove; N.Free;
-  Probe.DocumentChanged;
-  Check(Probe.ComputedStyle(Probe.Document.Body)<>nil,'and one that lost an element too');
-  Probe.LoadHTML('<p><b>one<p>two');
-  Check((Probe.BlockCount=2) and (Pos('<b>',Probe.Block(1).Source)>0),
-    'bold left open when a paragraph closes is still bold in the next');
-  Probe.LoadHTML('<table>stray<tr><td>cell</table>');
-  Check((Probe.Block(0).Tag<>'table') and (Pos('stray',Probe.Block(0).Source)>0),
-    'words a table has no place for come out in front of it');
-  Probe.LoadHTML('<p id=a>first</p><p>second</p>');
-  N := Probe.Document.GetElementById('a');
-  Check(N<>nil,'Document finds an element by its id');
-  N.TextContent := 'changed';
-  Probe.DocumentChanged;
-  Check(Pos('changed',Probe.PlainText)>0,'DocumentChanged shows the change');
-  Check(Probe.Document.GetElementById('a')=N,'and the nodes a program holds are still the page''s');
-  Check(Probe.SetInnerHTML('a','<i>again</i>') and (Pos('again',Probe.PlainText)>0) and
-    (Pos('changed',Probe.PlainText)=0),'SetInnerHTML works through the tree');
-  Check(not Probe.SetInnerHTML('nowhere','x'),'and says so when there is no such id');
-  FileName := GetTempDir+'lazink-1252.html';
-  Raw := '<html><body><p>caf'#$E9' '#$93'quoted'#$94'</p></body></html>';
-  Bytes := TFileStream.Create(FileName,fmCreate);
-  try Bytes.WriteBuffer(Raw[1],Length(Raw)) finally Bytes.Free end;
-  Probe.LoadFromFile(FileName);
-  Check(Pos('café “quoted”',Probe.PlainText)>0,'an old page in Windows-1252 reads right: '+Probe.PlainText);
-  DeleteFile(FileName);
+  { --- old-school HTML: the font size ladder and a table's width attribute --- }
+  { every page is read through the tree a browser would build from it }
+  procedure DocumentTreeChecks;
+  var
+    FileName: string;
+    Bytes: TFileStream;
+    Raw: rawbytestring;
+    N: TInkNode;
+    Rules: TStringList;
+  begin
+    { an element's computed style, from the page's own sheet }
+    Probe.LoadHTML('<style>p.x { color: #102030; margin-top: 2em }</style><p class=x id=s>styled</p>');
+    N := Probe.Document.GetElementById('s');
+    Check((Probe.ComputedStyle(N) <> nil) and (Probe.ComputedStyle(N).Color('color') = $FF302010),
+      'ComputedStyle reads the page''s sheet');
+    Check(Abs(Probe.ComputedStyle(N).Px('margin-top') - 2 * Probe.ComputedStyle(N).FontSize) < 0.01,
+      'and works out its ems');
+    Rules := Probe.ExplainStyle(N);
+    try
+      Check(Pos('p.x', Rules.Text) > 0, 'ExplainStyle lists the rule')
+    finally
+      Rules.Free
+    end;
+    N.SetAttribute('class', '');
+    Probe.DocumentChanged;
+    Check(Probe.ComputedStyle(N).Color('color') <> $FF302010, 'a changed document is styled again');
+    N.Remove;
+    N.Free;
+    Probe.DocumentChanged;
+    Check(Probe.ComputedStyle(Probe.Document.Body) <> nil, 'and one that lost an element too');
+    Probe.LoadHTML('<p><b>one<p>two');
+    Check((Probe.BlockCount = 2) and (Pos('<b>', Probe.Block(1).Source) > 0),
+      'bold left open when a paragraph closes is still bold in the next');
+    Probe.LoadHTML('<table>stray<tr><td>cell</table>');
+    Check((Probe.Block(0).Tag <> 'table') and (Pos('stray', Probe.Block(0).Source) > 0),
+      'words a table has no place for come out in front of it');
+    Probe.LoadHTML('<p id=a>first</p><p>second</p>');
+    N := Probe.Document.GetElementById('a');
+    Check(N <> nil, 'Document finds an element by its id');
+    N.TextContent := 'changed';
+    Probe.DocumentChanged;
+    Check(Pos('changed', Probe.PlainText) > 0, 'DocumentChanged shows the change');
+    Check(Probe.Document.GetElementById('a') = N, 'and the nodes a program holds are still the page''s');
+    Check(Probe.SetInnerHTML('a', '<i>again</i>') and (Pos('again', Probe.PlainText) > 0) and (Pos('changed', Probe.PlainText) = 0), 'SetInnerHTML works through the tree');
+    Check(not Probe.SetInnerHTML('nowhere', 'x'), 'and says so when there is no such id');
+    FileName := GetTempDir + 'lazink-1252.html';
+    Raw := '<html><body><p>caf'#$E9' '#$93'quoted'#$94'</p></body></html>';
+    Bytes := TFileStream.Create(FileName, fmCreate);
+    try
+      Bytes.WriteBuffer(Raw[1], Length(Raw))
+    finally
+      Bytes.Free
+    end;
+    Probe.LoadFromFile(FileName);
+    Check(Pos('café “quoted”', Probe.PlainText) > 0, 'an old page in Windows-1252 reads right: ' + Probe.PlainText);
+    DeleteFile(FileName);
   { the same picture three times is read and decoded once, and not again
     when the page is shown afresh }
-  Probe.Reads := 0; Probe.OnResource := @Probe.CountRead;
-  Probe.LoadHTML('<p id=s>x</p><img src="TInkLabel.png"><img src="TInkLabel.png" width=40>'+
-    '<img src="TInkLabel.png" width=20>',FilenameToURI(ExpandFileName('images'))+'/');
-  Check((Probe.ImageCount=3) and (Probe.Reads=1),Format('a picture used three times is read once (%d reads, %d shown)',
-    [Probe.Reads,Probe.ImageCount]));
-  Probe.SetInnerHTML('s','y');
-  Check((Probe.ImageCount=3) and (Probe.Reads=1),'and not read again when the page is shown afresh');
-  Probe.OnResource := nil;
-  Probe.LoadHTML('<p>&frac78; &hookleftarrow; &NotEqualTilde;</p>');
-  Check(Pos('⅞ ↩ ≂̸',Probe.PlainText)>0,'every character the standard names');
-end;
+    Probe.Reads := 0;
+    Probe.OnResource := @Probe.CountRead;
+    Probe.LoadHTML('<p id=s>x</p><img src="TInkLabel.png"><img src="TInkLabel.png" width=40>' + '<img src="TInkLabel.png" width=20>', FilenameToURI(ExpandFileName('images')) + '/');
+    Check((Probe.ImageCount = 3) and (Probe.Reads = 1), Format('a picture used three times is read once (%d reads, %d shown)', [Probe.Reads, Probe.ImageCount]));
+    Probe.SetInnerHTML('s', 'y');
+    Check((Probe.ImageCount = 3) and (Probe.Reads = 1), 'and not read again when the page is shown afresh');
+    Probe.OnResource := nil;
+    Probe.LoadHTML('<p>&frac78; &hookleftarrow; &NotEqualTilde;</p>');
+    Check(Pos('⅞ ↩ ≂̸', Probe.PlainText) > 0, 'every character the standard names');
+  end;
 
 { the page laid out from the document tree: boxes from CSS, and the same
   links, find, selection and folds as ever }
-procedure TreeLayoutChecks;
-var I, A, B, Current: Integer; R: TRect; Doc: string;
-begin
+  procedure TreeLayoutChecks;
+  var
+    I, A, B, Current: integer;
+    R: TRect;
+    Doc: string;
   begin
-    Doc := '<style>body{margin:0;font:15px/1.6 sans-serif} .row{display:flex;gap:10px}' +
-      '.card{flex:1;padding:8px;border:1px solid #ccc} .note::before{content:"Note: "}' +
-      '.menu{visibility:hidden} .gone{opacity:0}</style>' +
-      '<div class=row><div class=card id=a>first card</div><div class=card id=b>second card ' +
-      '<a href="https://example.com/x">a link</a></div></div>' +
-      '<p class=note>this is the needle</p><p class=menu>hidden needle</p><p class=gone>faded needle</p>' +
-      '<details><summary>More</summary><p>folded needle</p></details>' +
-      '<pre><code class="language-pascal">begin end;</code></pre>';
-    Probe.LoadHTML(Doc);
-    Probe.ScrollTo(0);
-    A := -1; B := -1;
-    for I := 0 to Probe.BlockCount - 1 do
     begin
-      if Pos('first card', Probe.Block(I).Source) > 0 then A := I;
-      if Pos('second card', Probe.Block(I).Source) > 0 then B := I;
-    end;
-    Check((A >= 0) and (B >= 0), 'both cards have their words');
-    if (A >= 0) and (B >= 0) then
-    begin
-      Check((Probe.Block(A).Bounds.Top = Probe.Block(B).Bounds.Top) and
-        (Probe.Block(B).Bounds.Left > Probe.Block(A).Bounds.Right),
-        'flex items side by side');
-      R := Probe.Block(B).TextBounds;
+      Doc := '<style>body{margin:0;font:15px/1.6 sans-serif} .row{display:flex;gap:10px}' + '.card{flex:1;padding:8px;border:1px solid #ccc} .note::before{content:"Note: "}' +
+        '.menu{visibility:hidden} .gone{opacity:0}</style>' + '<div class=row><div class=card id=a>first card</div><div class=card id=b>second card ' +
+        '<a href="https://example.com/x">a link</a></div></div>' + '<p class=note>this is the needle</p><p class=menu>hidden needle</p><p class=gone>faded needle</p>' +
+        '<details><summary>More</summary><p>folded needle</p></details>' + '<pre><code class="language-pascal">begin end;</code></pre>';
+      Probe.LoadHTML(Doc);
       Probe.ScrollTo(0);
-      Current := 0;
-      for I := R.Left to R.Right do
-        if Probe.LinkAt(I, (R.Top + R.Bottom) div 2) <> '' then begin Current := I; Break end;
-      Check((Current > 0) and (Probe.LinkAt(Current + 2, (R.Top + R.Bottom) div 2) = 'https://example.com/x'),
-        'a link in a flex item is hit where it is drawn');
+      A := -1;
+      B := -1;
+      for I := 0 to Probe.BlockCount - 1 do
+      begin
+        if Pos('first card', Probe.Block(I).Source) > 0 then A := I;
+        if Pos('second card', Probe.Block(I).Source) > 0 then B := I;
+      end;
+      Check((A >= 0) and (B >= 0), 'both cards have their words');
+      if (A >= 0) and (B >= 0) then
+      begin
+        Check((Probe.Block(A).Bounds.Top = Probe.Block(B).Bounds.Top) and (Probe.Block(B).Bounds.Left > Probe.Block(A).Bounds.Right),
+          'flex items side by side');
+        R := Probe.Block(B).TextBounds;
+        Probe.ScrollTo(0);
+        Current := 0;
+        for I := R.Left to R.Right do
+          if Probe.LinkAt(I, (R.Top + R.Bottom) div 2) <> '' then
+          begin
+            Current := I;
+            Break;
+          end;
+        Check((Current > 0) and (Probe.LinkAt(Current + 2, (R.Top + R.Bottom) div 2) = 'https://example.com/x'),
+          'a link in a flex item is hit where it is drawn');
+      end;
+      Check(Pos('Note: this is the needle', Probe.PlainText) > 0, 'a ::before is in the words');
+      Check((Pos('hidden needle', Probe.PlainText) = 0) and (Pos('faded needle', Probe.PlainText) = 0),
+        'hidden and see-through words are left out');
+      Check(Probe.FindCount('needle', [], Current) = 1, 'find sees only what is shown');
+      Check(Probe.Find('needle') and (Probe.SelectedText = 'needle'), 'and selects it');
+      for I := 0 to Probe.BlockCount - 1 do
+        if Pos('More', Probe.Block(I).Source) > 0 then A := I;
+      Check(not Probe.FoldOpen(A) and (Pos('folded needle', Probe.PlainText) = 0), 'a shut <details> shows its summary');
+      Probe.ToggleFold(A);
+      Check(Pos('folded needle', Probe.PlainText) > 0, 'and opens');
+      B := -1;
+      for I := 0 to Probe.BlockCount - 1 do
+        if Probe.Block(I).Code <> '' then B := I;
+      Check((B >= 0) and (Probe.Block(B).CodeHead > 0) and (Probe.Block(B).CodeLanguage = 'pascal'),
+        'a code block keeps its header and language');
+      { <center> lines up the table inside it }
+      Probe.LoadHTML('<style>body{margin:0}</style><center><table width="50%"><tr><td>centred</td></tr></table></center>');
+      Check(Probe.Block(0).Bounds.Left > 50, Format('a table in <center> is centred (%d)', [Probe.Block(0).Bounds.Left]));
     end;
-    Check(Pos('Note: this is the needle', Probe.PlainText) > 0, 'a ::before is in the words');
-    Check((Pos('hidden needle', Probe.PlainText) = 0) and (Pos('faded needle', Probe.PlainText) = 0),
-      'hidden and see-through words are left out');
-    Check(Probe.FindCount('needle', [], Current) = 1, 'find sees only what is shown');
-    Check(Probe.Find('needle') and (Probe.SelectedText = 'needle'), 'and selects it');
-    for I := 0 to Probe.BlockCount - 1 do
-      if Pos('More', Probe.Block(I).Source) > 0 then A := I;
-    Check(not Probe.FoldOpen(A) and (Pos('folded needle', Probe.PlainText) = 0), 'a shut <details> shows its summary');
-    Probe.ToggleFold(A);
-    Check(Pos('folded needle', Probe.PlainText) > 0, 'and opens');
-    B := -1;
-    for I := 0 to Probe.BlockCount - 1 do
-      if Probe.Block(I).Code <> '' then B := I;
-    Check((B >= 0) and (Probe.Block(B).CodeHead > 0) and (Probe.Block(B).CodeLanguage = 'pascal'),
-      'a code block keeps its header and language');
-    { <center> lines up the table inside it }
-    Probe.LoadHTML('<style>body{margin:0}</style><center><table width="50%"><tr><td>centred</td></tr></table></center>');
-    Check(Probe.Block(0).Bounds.Left > 50, Format('a table in <center> is centred (%d)', [Probe.Block(0).Bounds.Left]));
   end;
-end;
 
-procedure OldSchoolChecks;
-var BM: TBitmap; O: THTMLOptions; Five, One, Plus, Twelve, Plain: TSize;
-  X, Y, MinX, MaxX, MinY, MaxY: Integer;
-  Rules: TList;
-begin
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(400,120); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
-    O := DefaultHTMLOptions;
-    Plain := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'word',O);
-    Five := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="5">word</font>',O);
-    One := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="1">word</font>',O);
-    Plus := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="+2">word</font>',O);
-    Twelve := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,380,0),[],'<font size="12">word</font>',O);
-    Check(Five.cy>Plain.cy+4,Format('font size="5" is the old ladder''s large (%d > %d)',
-      [Five.cy,Plain.cy]));
-    Check(One.cy<Plain.cy,'and size="1" its small');
-    Check(Plus.cy=Five.cy,'size="+2" steps up from 3 to the same rung');
-    Check((Twelve.cy>One.cy) and (Twelve.cy<Five.cy),
-      'while size="12" stays twelve points, as LazInk''s own markup means it');
-  finally BM.Free end;
+  procedure OldSchoolChecks;
+  var
+    BM: TBitmap;
+    O: THTMLOptions;
+    Five, One, Plus, Twelve, Plain: TSize;
+    X, Y, MinX, MaxX, MinY, MaxY: integer;
+    Rules: TList;
+  begin
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(400, 120);
+      BM.Canvas.Font.Name := 'DejaVu Sans';
+      BM.Canvas.Font.Size := 11;
+      O := DefaultHTMLOptions;
+      Plain := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 380, 0), [], 'word', O);
+      Five := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 380, 0), [], '<font size="5">word</font>', O);
+      One := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 380, 0), [], '<font size="1">word</font>', O);
+      Plus := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 380, 0), [], '<font size="+2">word</font>', O);
+      Twelve := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 380, 0), [], '<font size="12">word</font>', O);
+      Check(Five.cy > Plain.cy + 4, Format('font size="5" is the old ladder''s large (%d > %d)', [Five.cy, Plain.cy]));
+      Check(One.cy < Plain.cy, 'and size="1" its small');
+      Check(Plus.cy = Five.cy, 'size="+2" steps up from 3 to the same rung');
+      Check((Twelve.cy > One.cy) and (Twelve.cy < Five.cy),
+        'while size="12" stays twelve points, as LazInk''s own markup means it');
+    finally
+      BM.Free
+    end;
 
-  { a <pre> that never said <code> is preformatted prose: uncolored }
-  Probe.LoadHTML('<html><body><pre>if and this 16</pre></body></html>');
-  Check(Pos('<font color',Probe.Block(0).Source)=0,
-    'a plain pre is not run through the highlighter');
-  Probe.LoadHTML('<html><body><pre><code>if and this 16</code></pre></body></html>');
-  Check(Pos('<font color',Probe.Block(0).Source)>0,
-    'while pre-code still is');
+    { a <pre> that never said <code> is preformatted prose: uncolored }
+    Probe.LoadHTML('<html><body><pre>if and this 16</pre></body></html>');
+    Check(Pos('<font color', Probe.Block(0).Source) = 0,
+      'a plain pre is not run through the highlighter');
+    Probe.LoadHTML('<html><body><pre><code>if and this 16</code></pre></body></html>');
+    Check(Pos('<font color', Probe.Block(0).Source) > 0,
+      'while pre-code still is');
 
-  { a rule reads its height, color and dots from the stylesheet }
-  Probe.LoadHTML('<html><head><style>'+
-    'hr.thick{height:4px;background:#176bbd}'+
-    'hr.dot{border:none;border-top:2px dotted #b45309}'+
-    '</style></head><body><hr class="thick"><hr class="dot"></body></html>');
-  Rules := BoxesNamed(Probe,'hr');
-  try
-    Check(Rules.Count=2,Format('hr: both rules are there (%d)',[Rules.Count]));
-    Check((TInkBox(Rules[0]).ContentH=4) and
-      (InkToColor(TInkBox(Rules[0]).Style.Color('background-color'),clWhite)=RGBToColor($17,$6B,$BD)),
-      Format('hr: height and background from the stylesheet (%d, %s, H=%d bt=%d bb=%d pt=%d)',[TInkBox(Rules[0]).ContentH,
-        TInkBox(Rules[0]).Style.Value('background-color'),TInkBox(Rules[0]).H,TInkBox(Rules[0]).Border.Top,
-        TInkBox(Rules[0]).Border.Bottom,TInkBox(Rules[0]).Padding.Top]));
-    Check((TInkBox(Rules[1]).Border.Top=2) and (TInkBox(Rules[1]).Style.Keyword('border-top-style')='dotted') and
-      (InkToColor(TInkBox(Rules[1]).Style.Color('border-top-color'),clWhite)=RGBToColor($B4,$53,$09)),
-      'hr: a dotted border-top, in its color');
-    Check(TInkBox(Rules[1]).Border.Bottom=0,'hr: a styled rule draws exactly as asked');
-  finally Rules.Free end;
-  Probe.LoadHTML('<html><body><hr></body></html>');
-  Rules := BoxesNamed(Probe,'hr');
-  try
-    Check((Rules.Count=1) and (TInkBox(Rules[0]).H=2) and
-      (TInkBox(Rules[0]).Style.Keyword('border-top-style')='inset'),
-      'hr: an unstyled rule is the browser''s two-row inset pair');
-  finally Rules.Free end;
+    { a rule reads its height, color and dots from the stylesheet }
+    Probe.LoadHTML('<html><head><style>' + 'hr.thick{height:4px;background:#176bbd}' + 'hr.dot{border:none;border-top:2px dotted #b45309}' +
+      '</style></head><body><hr class="thick"><hr class="dot"></body></html>');
+    Rules := BoxesNamed(Probe, 'hr');
+    try
+      Check(Rules.Count = 2, Format('hr: both rules are there (%d)', [Rules.Count]));
+      Check((TInkBox(Rules[0]).ContentH = 4) and (InkToColor(TInkBox(Rules[0]).Style.Color('background-color'), clWhite) = RGBToColor($17, $6B, $BD)),
+        Format('hr: height and background from the stylesheet (%d, %s, H=%d bt=%d bb=%d pt=%d)', [TInkBox(Rules[0]).ContentH,
+        TInkBox(Rules[0]).Style.Value('background-color'), TInkBox(Rules[0]).H, TInkBox(Rules[0]).Border.Top, TInkBox(Rules[0]).Border.Bottom, TInkBox(Rules[0]).Padding.Top]));
+      Check((TInkBox(Rules[1]).Border.Top = 2) and (TInkBox(Rules[1]).Style.Keyword('border-top-style') = 'dotted') and
+        (InkToColor(TInkBox(Rules[1]).Style.Color('border-top-color'), clWhite) = RGBToColor($B4, $53, $09)),
+        'hr: a dotted border-top, in its color');
+      Check(TInkBox(Rules[1]).Border.Bottom = 0, 'hr: a styled rule draws exactly as asked');
+    finally
+      Rules.Free
+    end;
+    Probe.LoadHTML('<html><body><hr></body></html>');
+    Rules := BoxesNamed(Probe, 'hr');
+    try
+      Check((Rules.Count = 1) and (TInkBox(Rules[0]).H = 2) and (TInkBox(Rules[0]).Style.Keyword('border-top-style') = 'inset'),
+        'hr: an unstyled rule is the browser''s two-row inset pair');
+    finally
+      Rules.Free
+    end;
 
   { the drawn checkbox: Chromium's 13px square, blue when checked, and
     the same square whatever the line-height around it }
-  Probe.LoadHTML('<html><head><style>body{line-height:1.45}</style></head>'+
-    '<body><ul><li><input type="checkbox" checked> done</li>'+
-    '<li><input type="checkbox"> open</li></ul></body></html>');
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(Probe.ClientWidth,Probe.ClientHeight);
-    Probe.RenderTo(BM.Canvas);
-    MinX := MaxInt; MaxX := -1; MinY := MaxInt; MaxY := -1;
-    for Y := 0 to BM.Height-1 do
-      for X := 0 to BM.Width-1 do
-        if BM.Canvas.Pixels[X,Y]=RGBToColor($00,$75,$FF) then
-        begin
-          if X<MinX then MinX := X; if X>MaxX then MaxX := X;
-          if Y<MinY then MinY := Y; if Y>MaxY then MaxY := Y;
-        end;
-    Check(MaxX>=0,'checkbox: the checked box paints in Chromium''s blue');
-    Check(Abs((MaxX-MinX)-(MaxY-MinY))<=1,
-      Format('checkbox: and it is square (%dx%d)',[MaxX-MinX+1,MaxY-MinY+1]));
-    Check((MaxY-MinY+1)<=15,
-      Format('checkbox: 13px, not the line''s height (%d)',[MaxY-MinY+1]));
-  finally BM.Free end;
+    Probe.LoadHTML('<html><head><style>body{line-height:1.45}</style></head>' + '<body><ul><li><input type="checkbox" checked> done</li>' +
+      '<li><input type="checkbox"> open</li></ul></body></html>');
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+      Probe.RenderTo(BM.Canvas);
+      MinX := MaxInt;
+      MaxX := -1;
+      MinY := MaxInt;
+      MaxY := -1;
+      for Y := 0 to BM.Height - 1 do
+        for X := 0 to BM.Width - 1 do
+          if BM.Canvas.Pixels[X, Y] = RGBToColor($00, $75, $FF) then
+          begin
+            if X < MinX then MinX := X;
+            if X > MaxX then MaxX := X;
+            if Y < MinY then MinY := Y;
+            if Y > MaxY then MaxY := Y;
+          end;
+      Check(MaxX >= 0, 'checkbox: the checked box paints in Chromium''s blue');
+      Check(Abs((MaxX - MinX) - (MaxY - MinY)) <= 1,
+        Format('checkbox: and it is square (%dx%d)', [MaxX - MinX + 1, MaxY - MinY + 1]));
+      Check((MaxY - MinY + 1) <= 15,
+        Format('checkbox: 13px, not the line''s height (%d)', [MaxY - MinY + 1]));
+    finally
+      BM.Free
+    end;
 
-  { the table's own width attribute spreads it, CSS or no CSS }
-  Probe.LoadHTML('<html><body><table width="100%"><tr>'+
-    '<td>left</td><td><center>middle</center></td><td><right>edge</right></td>'+
-    '</tr></table></body></html>');
-  Rules := BoxesNamed(Probe,'table');
-  try
-    Check((Rules.Count=1) and (TInkBox(Rules[0]).W=UpTo(Probe.Block(0),'body').ContentW),
-      'a table''s width attribute spreads it');
-  finally Rules.Free end;
-end;
+    { the table's own width attribute spreads it, CSS or no CSS }
+    Probe.LoadHTML('<html><body><table width="100%"><tr>' + '<td>left</td><td><center>middle</center></td><td><right>edge</right></td>' + '</tr></table></body></html>');
+    Rules := BoxesNamed(Probe, 'table');
+    try
+      Check((Rules.Count = 1) and (TInkBox(Rules[0]).W = UpTo(Probe.Block(0), 'body').ContentW),
+        'a table''s width attribute spreads it');
+    finally
+      Rules.Free
+    end;
+  end;
 
 { a pill's box hugs its words - the font's height plus the padding - and
   is centered on the line, however roomy the line-height around it.  A
   browser sizes an inline box to its content; LazInk used to size it to
   the line box, so a line-height of 2 puffed every pill up. }
-procedure PillBoxChecks;
-  function PillHeight(const ALineHeight: string): Integer;
-  var BM: TBitmap; X, Y, MinY, MaxY: Integer; C: TColor;
-  begin
-    Probe.LoadHTML('<html><head><style>body{line-height:'+ALineHeight+'}'+
-      '.pill{background:#eef0f3;border:1px solid #c8ccd2;'+
-      'border-radius:999px;padding:1px 10px}</style></head>'+
-      '<body><p>word <span class="pill">neutral</span> word</p></body></html>');
-    BM := TBitmap.Create;
-    try
-      BM.SetSize(Probe.ClientWidth,Probe.ClientHeight);
-      Probe.RenderTo(BM.Canvas);
-      MinY := MaxInt; MaxY := -1;
-      for Y := 0 to BM.Height-1 do
-        for X := 0 to BM.Width-1 do
-        begin
-          C := BM.Canvas.Pixels[X,Y];
-          if (C=RGBToColor($EE,$F0,$F3)) or (C=RGBToColor($C8,$CC,$D2)) then
+  procedure PillBoxChecks;
+
+    function PillHeight(const ALineHeight: string): integer;
+    var
+      BM: TBitmap;
+      X, Y, MinY, MaxY: integer;
+      C: TColor;
+    begin
+      Probe.LoadHTML('<html><head><style>body{line-height:' + ALineHeight + '}' + '.pill{background:#eef0f3;border:1px solid #c8ccd2;' +
+        'border-radius:999px;padding:1px 10px}</style></head>' + '<body><p>word <span class="pill">neutral</span> word</p></body></html>');
+      BM := TBitmap.Create;
+      try
+        BM.SetSize(Probe.ClientWidth, Probe.ClientHeight);
+        Probe.RenderTo(BM.Canvas);
+        MinY := MaxInt;
+        MaxY := -1;
+        for Y := 0 to BM.Height - 1 do
+          for X := 0 to BM.Width - 1 do
           begin
-            if Y<MinY then MinY := Y; if Y>MaxY then MaxY := Y;
+            C := BM.Canvas.Pixels[X, Y];
+            if (C = RGBToColor($EE, $F0, $F3)) or (C = RGBToColor($C8, $CC, $D2)) then
+            begin
+              if Y < MinY then MinY := Y;
+              if Y > MaxY then MaxY := Y;
+            end;
           end;
-        end;
-      Check(MaxY>=0,'pill: the box paints at line-height '+ALineHeight);
-      Result := MaxY-MinY+1;
-    finally BM.Free end;
+        Check(MaxY >= 0, 'pill: the box paints at line-height ' + ALineHeight);
+        Result := MaxY - MinY + 1;
+      finally
+        BM.Free
+      end;
+    end;
+
+  var
+    Snug, Airy: integer;
+  begin
+    Snug := PillHeight('1');
+    Airy := PillHeight('2.2');
+    Check(Snug = Airy,
+      Format('pill: the box hugs its words whatever the line-height (%d at 1, %d at 2.2)', [Snug, Airy]));
   end;
-var Snug, Airy: Integer;
-begin
-  Snug := PillHeight('1');
-  Airy := PillHeight('2.2');
-  Check(Snug=Airy,
-    Format('pill: the box hugs its words whatever the line-height (%d at 1, %d at 2.2)',
-    [Snug,Airy]));
-end;
 
 { <wbr> is a break opportunity inside a word, and text-overflow: ellipsis
   ends a clipped nowrap line in "..." - the last two of roadmap I's small
   CSS round }
-procedure WbrEllipsisChecks;
-var P: TInkPageBlock; I, FirstLine, SecondLine: Integer; Found: Boolean;
-const Long = 'averylongidentifier_thatnoline_couldhold';
-begin
-  { the word fits only in halves: without the marker it stays one piece }
-  Probe.LoadHTML('<html><body><p>'+Long+Long+'</p></body></html>');
-  P := FindBlock(Probe,'p','averylong');
-  Probe.BlockText(P.Index);
-  for I := 0 to P.RunCount-1 do
-    Check(P.Runs[I].Line=0,'wbr: without it the word is one unbroken line');
-  Probe.LoadHTML('<html><body><p>'+Long+'<wbr>'+Long+'</p></body></html>');
-  P := FindBlock(Probe,'p','averylong');
-  Probe.BlockText(P.Index);
-  FirstLine := -1; SecondLine := -1;
-  for I := 0 to P.RunCount-1 do
-    if Trim(P.Runs[I].Text)<>'' then
-      if FirstLine<0 then FirstLine := P.Runs[I].Line
-      else SecondLine := P.Runs[I].Line;
-  Check((FirstLine=0) and (SecondLine=1),
-    Format('wbr: the word parts at the marker (lines %d and %d)',
-    [FirstLine,SecondLine]));
+  procedure WbrEllipsisChecks;
+  var
+    P: TInkPageBlock;
+    I, FirstLine, SecondLine: integer;
+    Found: boolean;
+  const
+    Long = 'averylongidentifier_thatnoline_couldhold';
+  begin
+    { the word fits only in halves: without the marker it stays one piece }
+    Probe.LoadHTML('<html><body><p>' + Long + Long + '</p></body></html>');
+    P := FindBlock(Probe, 'p', 'averylong');
+    Probe.BlockText(P.Index);
+    for I := 0 to P.RunCount - 1 do
+      Check(P.Runs[I].Line = 0, 'wbr: without it the word is one unbroken line');
+    Probe.LoadHTML('<html><body><p>' + Long + '<wbr>' + Long + '</p></body></html>');
+    P := FindBlock(Probe, 'p', 'averylong');
+    Probe.BlockText(P.Index);
+    FirstLine := -1;
+    SecondLine := -1;
+    for I := 0 to P.RunCount - 1 do
+      if Trim(P.Runs[I].Text) <> '' then
+        if FirstLine < 0 then FirstLine := P.Runs[I].Line
+        else
+          SecondLine := P.Runs[I].Line;
+    Check((FirstLine = 0) and (SecondLine = 1),
+      Format('wbr: the word parts at the marker (lines %d and %d)', [FirstLine, SecondLine]));
 
   { the ellipsis asks for all three: nowrap, a clipping box, and the
     text-overflow itself }
-  Probe.LoadHTML('<html><head><style>p{white-space:nowrap;overflow:hidden;'+
-    'text-overflow:ellipsis}</style></head><body><p>'+Long+Long+
-    '</p></body></html>');
-  P := FindBlock(Probe,'p','averylong');
-  Probe.BlockText(P.Index);
-  Found := False;
-  for I := 0 to P.RunCount-1 do
-    if Pos(#$E2#$80#$A6,P.Runs[I].Text)>0 then Found := True;
-  Check(Found,'text-overflow: the cut line ends in an ellipsis');
-  Probe.LoadHTML('<html><head><style>p{white-space:nowrap;overflow:hidden}'+
-    '</style></head><body><p>'+Long+Long+'</p></body></html>');
-  P := FindBlock(Probe,'p','averylong');
-  Probe.BlockText(P.Index);
-  for I := 0 to P.RunCount-1 do
-    Check(Pos(#$E2#$80#$A6,P.Runs[I].Text)=0,
-      'text-overflow: without it the line is cut plain');
-end;
-
-{ --- the underline, drawn like a browser's text-decoration --- }
-procedure UnderlineChecks;
-var BM: TBitmap; O: THTMLOptions; Y, GlyphBot, LineBot, Rows: Integer;
-  function RowInk(AY: Integer): Boolean;
-  var AX: Integer; C: TColor;
-  begin
-    Result := False;
-    for AX := 0 to BM.Width-1 do
-    begin
-      C := BM.Canvas.Pixels[AX,AY];
-      if (Abs(Red(C)-$CC)<40) and (Abs(Green(C)-$22)<40) and (Abs(Blue(C)-$44)<40) then
-        Exit(True);
-    end;
+    Probe.LoadHTML('<html><head><style>p{white-space:nowrap;overflow:hidden;' + 'text-overflow:ellipsis}</style></head><body><p>' + Long + Long + '</p></body></html>');
+    P := FindBlock(Probe, 'p', 'averylong');
+    Probe.BlockText(P.Index);
+    Found := False;
+    for I := 0 to P.RunCount - 1 do
+      if Pos(#$E2#$80#$A6, P.Runs[I].Text) > 0 then Found := True;
+    Check(Found, 'text-overflow: the cut line ends in an ellipsis');
+    Probe.LoadHTML('<html><head><style>p{white-space:nowrap;overflow:hidden}' + '</style></head><body><p>' + Long + Long + '</p></body></html>');
+    P := FindBlock(Probe, 'p', 'averylong');
+    Probe.BlockText(P.Index);
+    for I := 0 to P.RunCount - 1 do
+      Check(Pos(#$E2#$80#$A6, P.Runs[I].Text) = 0,
+        'text-overflow: without it the line is cut plain');
   end;
-begin
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(120,40);
-    O := DefaultHTMLOptions;
-    BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Height := -15;
-    BM.Canvas.Brush.Style := bsSolid; BM.Canvas.Brush.Color := clWhite;
-    BM.Canvas.FillRect(0,0,120,40);
-    HTMLDrawOpt(BM.Canvas,Rect(2,2,118,38),[],'<font color="#CC2244">ooo</font>',O);
-    GlyphBot := -1;
-    for Y := BM.Height-1 downto 0 do if RowInk(Y) then begin GlyphBot := Y; Break end;
-    Check(GlyphBot > 0,'underline: the plain word is there');
-    BM.Canvas.Brush.Style := bsSolid; BM.Canvas.Brush.Color := clWhite;
-    BM.Canvas.FillRect(0,0,120,40);
-    HTMLDrawOpt(BM.Canvas,Rect(2,2,118,38),[],'<font color="#CC2244"><u>ooo</u></font>',O);
-    LineBot := -1;
-    for Y := BM.Height-1 downto 0 do if RowInk(Y) then begin LineBot := Y; Break end;
-    Rows := 0;
-    for Y := GlyphBot+1 to BM.Height-1 do if RowInk(Y) then Inc(Rows);
-    Check(LineBot > GlyphBot,'underline: a line is drawn under the word');
-    Check(Rows = 1,Format('underline: one pixel thin at reading size (%d rows)',[Rows]));
+
+  { --- the underline, drawn like a browser's text-decoration --- }
+  procedure UnderlineChecks;
+  var
+    BM: TBitmap;
+    O: THTMLOptions;
+    Y, GlyphBot, LineBot, Rows: integer;
+
+    function RowInk(AY: integer): boolean;
+    var
+      AX: integer;
+      C: TColor;
+    begin
+      Result := False;
+      for AX := 0 to BM.Width - 1 do
+      begin
+        C := BM.Canvas.Pixels[AX, AY];
+        if (Abs(Red(C) - $CC) < 40) and (Abs(Green(C) - $22) < 40) and (Abs(Blue(C) - $44) < 40) then
+          Exit(True);
+      end;
+    end;
+
+  begin
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(120, 40);
+      O := DefaultHTMLOptions;
+      BM.Canvas.Font.Name := 'DejaVu Sans';
+      BM.Canvas.Font.Height := -15;
+      BM.Canvas.Brush.Style := bsSolid;
+      BM.Canvas.Brush.Color := clWhite;
+      BM.Canvas.FillRect(0, 0, 120, 40);
+      HTMLDrawOpt(BM.Canvas, Rect(2, 2, 118, 38), [], '<font color="#CC2244">ooo</font>', O);
+      GlyphBot := -1;
+      for Y := BM.Height - 1 downto 0 do if RowInk(Y) then
+        begin
+          GlyphBot := Y;
+          Break;
+        end;
+      Check(GlyphBot > 0, 'underline: the plain word is there');
+      BM.Canvas.Brush.Style := bsSolid;
+      BM.Canvas.Brush.Color := clWhite;
+      BM.Canvas.FillRect(0, 0, 120, 40);
+      HTMLDrawOpt(BM.Canvas, Rect(2, 2, 118, 38), [], '<font color="#CC2244"><u>ooo</u></font>', O);
+      LineBot := -1;
+      for Y := BM.Height - 1 downto 0 do if RowInk(Y) then
+        begin
+          LineBot := Y;
+          Break;
+        end;
+      Rows := 0;
+      for Y := GlyphBot + 1 to BM.Height - 1 do if RowInk(Y) then Inc(Rows);
+      Check(LineBot > GlyphBot, 'underline: a line is drawn under the word');
+      Check(Rows = 1, Format('underline: one pixel thin at reading size (%d rows)', [Rows]));
     { 'o' sits on the baseline and the line starts two below it - the gap
       a browser leaves.  The font engine's own underline hugged the
       letters (one row down) and ran two rows thick. }
-    Check(LineBot-GlyphBot >= 3,Format('underline: clear of the letters (glyphs to %d, line to %d)',
-      [GlyphBot,LineBot]));
-  finally BM.Free end;
-end;
+      Check(LineBot - GlyphBot >= 3, Format('underline: clear of the letters (glyphs to %d, line to %d)', [GlyphBot, LineBot]));
+    finally
+      BM.Free
+    end;
+  end;
 
-{ --- an inline-block is an atomic box: sized, bordered, standing empty --- }
-procedure InlineBoxChecks;
-const Doc = '<html><head><style>body{margin:0;font:15px/1.5 "DejaVu Sans"}'+
-  '.c{display:inline-block;width:110px;border:2px dashed #555555;padding:2px 6px;text-align:center}'+
-  '.d{display:inline-block;width:46px;height:46px;background:#2e86de;border-radius:50%;margin:5px 0 3px}'+
-  '</style></head><body><p><span class=c>chip</span> word</p>'+
-  '<p>a <span class=d></span> dot</p></body></html>';
-var P: TInkPageBlock; I, Seg, X, ChipW, ChipL, ChipT, DotW, DotH: Integer;
-  BM: TBitmap; InDash, Was: Boolean; C: TColor;
-begin
-  Probe.LoadHTML(Doc);
-  Probe.ScrollTo(0);
-  P := FindBlock(Probe,'p','chip');
-  Probe.BlockText(P.Index);
-  ChipW := 0; ChipL := 0; ChipT := 0;
-  for I := 0 to P.RunCount-1 do
-    if Pos('chip',P.Runs[I].Text)>0 then
-    begin
-      ChipW := P.Runs[I].Width; ChipL := P.Runs[I].Left; ChipT := P.Runs[I].Top;
-    end;
-  { 110 of CSS width and 8 each side of padding-plus-border }
-  Check(ChipW = 126,Format('inline-block: the width is law (126 wanted, %d got)',[ChipW]));
-  P := FindBlock(Probe,'p','dot');
-  Probe.BlockText(P.Index);
-  DotW := 0; DotH := 0;
-  for I := 0 to P.RunCount-1 do
-    if P.Runs[I].Text = #$E2#$80#$8B then
-    begin
-      DotW := P.Runs[I].Width; DotH := P.Runs[I].Height;
-    end;
+  { --- an inline-block is an atomic box: sized, bordered, standing empty --- }
+  procedure InlineBoxChecks;
+  const
+    Doc = '<html><head><style>body{margin:0;font:15px/1.5 "DejaVu Sans"}' + '.c{display:inline-block;width:110px;border:2px dashed #555555;padding:2px 6px;text-align:center}' +
+      '.d{display:inline-block;width:46px;height:46px;background:#2e86de;border-radius:50%;margin:5px 0 3px}' + '</style></head><body><p><span class=c>chip</span> word</p>' +
+      '<p>a <span class=d></span> dot</p></body></html>';
+  var
+    P: TInkPageBlock;
+    I, Seg, X, ChipW, ChipL, ChipT, DotW, DotH: integer;
+    BM: TBitmap;
+    InDash, Was: boolean;
+    C: TColor;
+  begin
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(0);
+    P := FindBlock(Probe, 'p', 'chip');
+    Probe.BlockText(P.Index);
+    ChipW := 0;
+    ChipL := 0;
+    ChipT := 0;
+    for I := 0 to P.RunCount - 1 do
+      if Pos('chip', P.Runs[I].Text) > 0 then
+      begin
+        ChipW := P.Runs[I].Width;
+        ChipL := P.Runs[I].Left;
+        ChipT := P.Runs[I].Top;
+      end;
+    { 110 of CSS width and 8 each side of padding-plus-border }
+    Check(ChipW = 126, Format('inline-block: the width is law (126 wanted, %d got)', [ChipW]));
+    P := FindBlock(Probe, 'p', 'dot');
+    Probe.BlockText(P.Index);
+    DotW := 0;
+    DotH := 0;
+    for I := 0 to P.RunCount - 1 do
+      if P.Runs[I].Text = #$E2#$80#$8B then
+      begin
+        DotW := P.Runs[I].Width;
+        DotH := P.Runs[I].Height;
+      end;
   { 46 of box and 5 above, 3 below of margin, counted into the line the
     way a browser counts an atomic inline's margin box }
-  Check((DotW = 46) and (DotH = 54),
-    Format('inline-block: an empty dot stands with its margins, 46 by 54 (%d by %d)',[DotW,DotH]));
-  { the dashed border really dashes: the top edge is segments, not a line }
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(Probe.ClientWidth,Max(60,ChipT+40));
-    Probe.RenderTo(BM.Canvas);
-    Seg := 0; Was := False;
-    for X := ChipL to ChipL+ChipW-1 do
-    begin
-      C := BM.Canvas.Pixels[X,ChipT+1];
-      InDash := (Abs(Red(C)-$55)<48) and (Abs(Green(C)-$55)<48) and (Abs(Blue(C)-$55)<48);
-      if InDash and not Was then Inc(Seg);
-      Was := InDash;
+    Check((DotW = 46) and (DotH = 54),
+      Format('inline-block: an empty dot stands with its margins, 46 by 54 (%d by %d)', [DotW, DotH]));
+    { the dashed border really dashes: the top edge is segments, not a line }
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(Probe.ClientWidth, Max(60, ChipT + 40));
+      Probe.RenderTo(BM.Canvas);
+      Seg := 0;
+      Was := False;
+      for X := ChipL to ChipL + ChipW - 1 do
+      begin
+        C := BM.Canvas.Pixels[X, ChipT + 1];
+        InDash := (Abs(Red(C) - $55) < 48) and (Abs(Green(C) - $55) < 48) and (Abs(Blue(C) - $55) < 48);
+        if InDash and not Was then Inc(Seg);
+        Was := InDash;
+      end;
+      Check(Seg >= 4, Format('inline-block: a dashed border has dashes (%d segments)', [Seg]));
+    finally
+      BM.Free
     end;
-    Check(Seg >= 4,Format('inline-block: a dashed border has dashes (%d segments)',[Seg]));
-  finally BM.Free end;
-end;
+  end;
 
-{ --- font stacks resolved the way the platform would --- }
-procedure FaceChecks;
-begin
-  Check(InkResolveFace('"DejaVu Sans", Arial, sans-serif') = 'DejaVu Sans',
-    'an installed family wins the stack');
+  { --- font stacks resolved the way the platform would --- }
+  procedure FaceChecks;
+  begin
+    Check(InkResolveFace('"DejaVu Sans", Arial, sans-serif') = 'DejaVu Sans',
+      'an installed family wins the stack');
   { not in Screen.Fonts on Linux, but fontconfig aliases it to its metric
     twin - the same substitution a browser gets, so the name is handed on }
-  Check(InkResolveFace('Arial, sans-serif') = 'Arial',
-    'a famous name is handed to the font backend: ' +
-    InkResolveFace('Arial, sans-serif'));
-  Check(InkResolveFace('NoSuchFaceAnywhere, sans-serif') = '',
-    'an unknown name still falls through to the generic');
-end;
+    Check(InkResolveFace('Arial, sans-serif') = 'Arial',
+      'a famous name is handed to the font backend: ' + InkResolveFace('Arial, sans-serif'));
+    Check(InkResolveFace('NoSuchFaceAnywhere, sans-serif') = '',
+      'an unknown name still falls through to the generic');
+  end;
 
-{ --- the element under the mouse, and the events that carry it --- }
-procedure ElementEventChecks;
-const Doc = '<html><head><style>body{margin:0;font:15px/1.5 sans-serif}</style></head><body>'+
-  '<div id=top style="height:50px;background:#eee">first words</div>'+
-  '<p id=para style="margin:0;height:30px">plain words</p>'+
-  '<div id=hole style="height:60px"></div>'+
-  '<div id=over style="position:absolute;left:0;top:100px;width:80px;height:30px;background:#ddd">over</div>'+
-  '</body></html>';
-var N: TInkNode;
-begin
-  Probe.OnElementClick := @Probe.ElementClicked;
-  Probe.OnElementHover := @Probe.ElementHovered;
-  Probe.LastClick := ''; Probe.LastHover := ''; Probe.ClickFires := 0; Probe.HoverFires := 0;
-  Probe.LoadHTML(Doc);
-  Probe.ScrollTo(0);
+  { --- the element under the mouse, and the events that carry it --- }
+  procedure ElementEventChecks;
+  const
+    Doc = '<html><head><style>body{margin:0;font:15px/1.5 sans-serif}</style></head><body>' + '<div id=top style="height:50px;background:#eee">first words</div>' +
+      '<p id=para style="margin:0;height:30px">plain words</p>' + '<div id=hole style="height:60px"></div>' +
+      '<div id=over style="position:absolute;left:0;top:100px;width:80px;height:30px;background:#ddd">over</div>' + '</body></html>';
+  var
+    N: TInkNode;
+  begin
+    Probe.OnElementClick := @Probe.ElementClicked;
+    Probe.OnElementHover := @Probe.ElementHovered;
+    Probe.LastClick := '';
+    Probe.LastHover := '';
+    Probe.ClickFires := 0;
+    Probe.HoverFires := 0;
+    Probe.LoadHTML(Doc);
+    Probe.ScrollTo(0);
   { the page is laid out with #top at 0..50, #para at 50..80, #hole at
     80..140 and #over absolute over #hole's left end, 100..130 }
-  N := Probe.ElementAt(10,25);
-  Check((N<>nil) and (N.GetAttribute('id')='top'),
-    'ElementAt: words answer their element ('+ElementLabel(N)+')');
-  N := Probe.ElementAt(300,110);
-  Check((N<>nil) and (N.GetAttribute('id')='hole'),
-    'ElementAt: an empty box answers itself ('+ElementLabel(N)+')');
-  N := Probe.ElementAt(10,110);
-  Check((N<>nil) and (N.GetAttribute('id')='over'),
-    'ElementAt: the positioned box on top wins ('+ElementLabel(N)+')');
-  Probe.Glide(10,25);
-  Check((Probe.LastHover='div#top') and (Probe.HoverFires=1),
-    'hover: entering an element fires, and carries it ('+Probe.LastHover+')');
-  Probe.Glide(12,26);
-  Check(Probe.HoverFires=1,'hover: moving within it is quiet');
-  Probe.Glide(10,65);
-  Check((Probe.LastHover='p#para') and (Probe.HoverFires=2),
-    'hover: crossing into the next fires once ('+Probe.LastHover+')');
-  Probe.Gone;
-  Check((Probe.LastHover='(nil)') and (Probe.HoverFires=3),'hover: leaving answers nil');
-  Probe.Press(10,65); Probe.Let(10,65);
-  Check((Probe.LastClick='p#para') and (Probe.ClickFires=1),
-    'click: carries the element under it ('+Probe.LastClick+')');
-  Probe.Press(10,110); Probe.Let(10,110);
-  Check(Probe.LastClick='div#over','click: the box on top takes it ('+Probe.LastClick+')');
-  Probe.OnElementClick := nil; Probe.OnElementHover := nil;
-end;
+    N := Probe.ElementAt(10, 25);
+    Check((N <> nil) and (N.GetAttribute('id') = 'top'),
+      'ElementAt: words answer their element (' + ElementLabel(N) + ')');
+    N := Probe.ElementAt(300, 110);
+    Check((N <> nil) and (N.GetAttribute('id') = 'hole'),
+      'ElementAt: an empty box answers itself (' + ElementLabel(N) + ')');
+    N := Probe.ElementAt(10, 110);
+    Check((N <> nil) and (N.GetAttribute('id') = 'over'),
+      'ElementAt: the positioned box on top wins (' + ElementLabel(N) + ')');
+    Probe.Glide(10, 25);
+    Check((Probe.LastHover = 'div#top') and (Probe.HoverFires = 1),
+      'hover: entering an element fires, and carries it (' + Probe.LastHover + ')');
+    Probe.Glide(12, 26);
+    Check(Probe.HoverFires = 1, 'hover: moving within it is quiet');
+    Probe.Glide(10, 65);
+    Check((Probe.LastHover = 'p#para') and (Probe.HoverFires = 2),
+      'hover: crossing into the next fires once (' + Probe.LastHover + ')');
+    Probe.Gone;
+    Check((Probe.LastHover = '(nil)') and (Probe.HoverFires = 3), 'hover: leaving answers nil');
+    Probe.Press(10, 65);
+    Probe.Let(10, 65);
+    Check((Probe.LastClick = 'p#para') and (Probe.ClickFires = 1),
+      'click: carries the element under it (' + Probe.LastClick + ')');
+    Probe.Press(10, 110);
+    Probe.Let(10, 110);
+    Check(Probe.LastClick = 'div#over', 'click: the box on top takes it (' + Probe.LastClick + ')');
+    Probe.OnElementClick := nil;
+    Probe.OnElementHover := nil;
+  end;
 
-{ --- light and dark, inline HTML in Markdown, and the ellipsis --- }
-procedure SchemeAndMoreChecks;
-const SchemeDoc = '<html><head><style>'+
-  ':root { --bg: #23262c; --text: #e6e6e6 }'+
-  '@media (prefers-color-scheme: light) { :root { --bg: #f4f5f6; --text: #1d2027 } }'+
-  'body { background: var(--bg); color: var(--text) }'+
-  '@media (prefers-color-scheme: light) and (max-width: 300px) { body { color: #ff0000 } }'+
-  'p { margin-bottom: 600px }'+
-  '</style></head><body><p>one</p><p>two</p><p>three</p></body></html>';
-var BM: TBitmap; O: THTMLOptions; A, N: TSize; S: string; Y: Integer; Cut: Boolean;
-begin
-  { prefers-color-scheme, judged by the control's ColorScheme }
-  Probe.Color := clWhite; Probe.ColorScheme := icsAuto;
-  Probe.LoadHTML(SchemeDoc);
-  Check(Probe.ActiveColorScheme=icsLight,'icsAuto on a white control answers light');
-  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($1D,$20,$27),
-    'and the light palette''s variables hold');
-  Probe.ScrollTo(200); Y := Probe.ScrollY;
-  Probe.ColorScheme := icsDark;
-  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($E6,$E6,$E6),
-    'icsDark picks the dark palette');
-  Check(Probe.ScrollY=Y,'and the page does not jump');
-  Probe.ColorScheme := icsLight;
-  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($1D,$20,$27),
-    'a width query combines: wide stays the palette text');
-  InkAppColorScheme := icsDark;
-  Probe.ColorScheme := icsAuto; InkColorSchemeChanged;
-  Check(Probe.ActiveColorScheme=icsDark,'the application''s say beats the background');
-  Check(ColorToRGB(Probe.Block(0).TextColor)=RGBToColor($E6,$E6,$E6),
-    'and the page follows it');
-  InkAppColorScheme := icsAuto; Probe.RecheckColorScheme;
-  Probe.ScrollTo(0);
+  { --- light and dark, inline HTML in Markdown, and the ellipsis --- }
+  procedure SchemeAndMoreChecks;
+  const
+    SchemeDoc = '<html><head><style>' + ':root { --bg: #23262c; --text: #e6e6e6 }' + '@media (prefers-color-scheme: light) { :root { --bg: #f4f5f6; --text: #1d2027 } }' +
+      'body { background: var(--bg); color: var(--text) }' + '@media (prefers-color-scheme: light) and (max-width: 300px) { body { color: #ff0000 } }' +
+      'p { margin-bottom: 600px }' + '</style></head><body><p>one</p><p>two</p><p>three</p></body></html>';
+  var
+    BM: TBitmap;
+    O: THTMLOptions;
+    A, N: TSize;
+    S: string;
+    Y: integer;
+    Cut: boolean;
+  begin
+    { prefers-color-scheme, judged by the control's ColorScheme }
+    Probe.Color := clWhite;
+    Probe.ColorScheme := icsAuto;
+    Probe.LoadHTML(SchemeDoc);
+    Check(Probe.ActiveColorScheme = icsLight, 'icsAuto on a white control answers light');
+    Check(ColorToRGB(Probe.Block(0).TextColor) = RGBToColor($1D, $20, $27),
+      'and the light palette''s variables hold');
+    Probe.ScrollTo(200);
+    Y := Probe.ScrollY;
+    Probe.ColorScheme := icsDark;
+    Check(ColorToRGB(Probe.Block(0).TextColor) = RGBToColor($E6, $E6, $E6),
+      'icsDark picks the dark palette');
+    Check(Probe.ScrollY = Y, 'and the page does not jump');
+    Probe.ColorScheme := icsLight;
+    Check(ColorToRGB(Probe.Block(0).TextColor) = RGBToColor($1D, $20, $27),
+      'a width query combines: wide stays the palette text');
+    InkAppColorScheme := icsDark;
+    Probe.ColorScheme := icsAuto;
+    InkColorSchemeChanged;
+    Check(Probe.ActiveColorScheme = icsDark, 'the application''s say beats the background');
+    Check(ColorToRGB(Probe.Block(0).TextColor) = RGBToColor($E6, $E6, $E6),
+      'and the page follows it');
+    InkAppColorScheme := icsAuto;
+    Probe.RecheckColorScheme;
+    Probe.ScrollTo(0);
 
-  { inline HTML in Markdown: known inline tags pass, everything else is text }
-  S := MarkdownToHTML('press <kbd>G</kbd> then /tiles <folder> and <div>x</div> '+
-    '<span onclick="evil()" class="k" title="t">ok</span> `<kbd>` stays',[imoInlineHTML]);
-  Check(Pos('<kbd>G</kbd>',S)>0,'a kbd passes through');
-  Check(Pos('&lt;folder&gt;',S)>0,'a placeholder stays visible text');
-  Check(Pos('&lt;div&gt;',S)>0,'a block tag stays visible text');
-  Check((Pos('onclick',S)=0) and (Pos('class="k"',S)>0) and (Pos('title="t"',S)>0),
-    'a handler is dropped, class and title kept');
-  Check(Pos('<code>&lt;kbd&gt;</code>',S)>0,'nothing inside backticks changes');
-  Check(Pos('<kbd>',MarkdownToHTML('a <kbd>G</kbd>'))=0,'off by default');
+    { inline HTML in Markdown: known inline tags pass, everything else is text }
+    S := MarkdownToHTML('press <kbd>G</kbd> then /tiles <folder> and <div>x</div> ' + '<span onclick="evil()" class="k" title="t">ok</span> `<kbd>` stays', [imoInlineHTML]);
+    Check(Pos('<kbd>G</kbd>', S) > 0, 'a kbd passes through');
+    Check(Pos('&lt;folder&gt;', S) > 0, 'a placeholder stays visible text');
+    Check(Pos('&lt;div&gt;', S) > 0, 'a block tag stays visible text');
+    Check((Pos('onclick', S) = 0) and (Pos('class="k"', S) > 0) and (Pos('title="t"', S) > 0),
+      'a handler is dropped, class and title kept');
+    Check(Pos('<code>&lt;kbd&gt;</code>', S) > 0, 'nothing inside backticks changes');
+    Check(Pos('<kbd>', MarkdownToHTML('a <kbd>G</kbd>')) = 0, 'off by default');
 
-  BM := TBitmap.Create;
-  try
-    BM.SetSize(600,100); BM.Canvas.Font.Name := 'DejaVu Sans'; BM.Canvas.Font.Size := 11;
-    O := DefaultHTMLOptions; O.NoWrap := True; O.Ellipsis := True;
-    S := 'a long status line with <b>bold words</b> that cannot fit';
-    A := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,500,0),[],S,O);
-    N := HTMLTextExtentOpt(BM.Canvas,Rect(0,0,120,0),[],S,O);
-    Check(N.cx<=120,'the cut line fits the rectangle');
-    Check(N.cy=A.cy,'and stays one line');
-    HTMLDrawOpt(BM.Canvas,Rect(0,0,120,30),[],S,O,Cut);
-    Check(Cut,'the draw says it cut');
-    HTMLDrawOpt(BM.Canvas,Rect(0,0,500,30),[],S,O,Cut);
-    Check(not Cut,'and that it did not');
-  finally BM.Free end;
-end;
+    BM := TBitmap.Create;
+    try
+      BM.SetSize(600, 100);
+      BM.Canvas.Font.Name := 'DejaVu Sans';
+      BM.Canvas.Font.Size := 11;
+      O := DefaultHTMLOptions;
+      O.NoWrap := True;
+      O.Ellipsis := True;
+      S := 'a long status line with <b>bold words</b> that cannot fit';
+      A := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 500, 0), [], S, O);
+      N := HTMLTextExtentOpt(BM.Canvas, Rect(0, 0, 120, 0), [], S, O);
+      Check(N.cx <= 120, 'the cut line fits the rectangle');
+      Check(N.cy = A.cy, 'and stays one line');
+      HTMLDrawOpt(BM.Canvas, Rect(0, 0, 120, 30), [], S, O, Cut);
+      Check(Cut, 'the draw says it cut');
+      HTMLDrawOpt(BM.Canvas, Rect(0, 0, 500, 30), [], S, O, Cut);
+      Check(not Cut, 'and that it did not');
+    finally
+      BM.Free
+    end;
+  end;
 
 begin
   Application.Initialize;
@@ -4481,33 +4821,33 @@ begin
   { a failed check ends the run with its message and stack trace, instead of
     waiting behind LCL's exception dialog once the test form is showing }
   Application.CaptureExceptions := False;
-  S := MarkdownToInk('# Heading'+LineEnding+'| Name | Value |'+LineEnding+
-    '| --- | --- |'+LineEnding+'| **bold** | `a|b` |');
-  Check(Pos('<table>',S)>0,'Markdown table');
-  Check(Pos('<th>Name</th>',S)>0,'Header cells');
-  Check(Pos('<b>bold</b>',S)>0,'Cell emphasis');
-  Check(Pos('a|b</font>',S)>0,'Code pipes must not split cells');
-  Check(Pos('&lt;script&gt;',MarkdownToInk('<script>'))>0,'Escape raw HTML');
-  Check(Pos('<a href="x&amp;y">label</a>',MarkdownToInk('[label](x&y)'))>0,'Link escaping');
+  S := MarkdownToInk('# Heading' + LineEnding + '| Name | Value |' + LineEnding + '| --- | --- |' + LineEnding + '| **bold** | `a|b` |');
+  Check(Pos('<table>', S) > 0, 'Markdown table');
+  Check(Pos('<th>Name</th>', S) > 0, 'Header cells');
+  Check(Pos('<b>bold</b>', S) > 0, 'Cell emphasis');
+  Check(Pos('a|b</font>', S) > 0, 'Code pipes must not split cells');
+  Check(Pos('&lt;script&gt;', MarkdownToInk('<script>')) > 0, 'Escape raw HTML');
+  Check(Pos('<a href="x&amp;y">label</a>', MarkdownToInk('[label](x&y)')) > 0, 'Link escaping');
   { GitHub takes a single dash as a delimiter; letters are not one }
-  Check(Pos('<table>',MarkdownToInk('a | b'+LineEnding+'-- | x'))=0,'Invalid delimiter row');
-  Check(Pos('<table>',MarkdownToInk('a | b'+LineEnding+'- | -'))>0,'One dash is a delimiter');
-  Check(Pos('a|b</td>',MarkdownToInk('a | b'+LineEnding+'--- | ---'+LineEnding+'a\|b | c'))>0,'Escaped pipes');
-  Check(InkToHTML('<b>hello</b>',itfHTML)='<b>hello</b>','HTML passthrough');
+  Check(Pos('<table>', MarkdownToInk('a | b' + LineEnding + '-- | x')) = 0, 'Invalid delimiter row');
+  Check(Pos('<table>', MarkdownToInk('a | b' + LineEnding + '- | -')) > 0, 'One dash is a delimiter');
+  Check(Pos('a|b</td>', MarkdownToInk('a | b' + LineEnding + '--- | ---' + LineEnding + 'a\|b | c')) > 0, 'Escaped pipes');
+  Check(InkToHTML('<b>hello</b>', itfHTML) = '<b>hello</b>', 'HTML passthrough');
   MarkdownChecks;
   B := TBitmap.Create;
   F := TForm.Create(nil);
   try
-    B.SetSize(700,700); B.Canvas.Font.Name := 'DejaVu Sans'; B.Canvas.Font.Size := 11;
+    B.SetSize(700, 700);
+    B.Canvas.Font.Name := 'DejaVu Sans';
+    B.Canvas.Font.Size := 11;
     O := DefaultHTMLOptions;
-    S := '<a href="before">Before</a><table><tr><th>Heading</th><th>Description</th></tr>'+ 
-      '<tr><td><a href="cell">Cell</a></td><td>A long sentence with several words that should wrap in a narrow column.</td></tr></table>'+ 
-      '<a href="after">After</a>';
-    Wide := HTMLTextExtentOpt(B.Canvas,Rect(0,0,650,0),[],S,O);
-    Narrow := HTMLTextExtentOpt(B.Canvas,Rect(0,0,180,0),[],S,O);
-    Check(Narrow.cy>Wide.cy,'Narrow tables grow vertically');
-    Check(Narrow.cx<=180,'Columns fit available width');
-    HTMLDrawOpt(B.Canvas,Rect(0,0,180,700),[],S,O);
+    S := '<a href="before">Before</a><table><tr><th>Heading</th><th>Description</th></tr>' +
+      '<tr><td><a href="cell">Cell</a></td><td>A long sentence with several words that should wrap in a narrow column.</td></tr></table>' + '<a href="after">After</a>';
+    Wide := HTMLTextExtentOpt(B.Canvas, Rect(0, 0, 650, 0), [], S, O);
+    Narrow := HTMLTextExtentOpt(B.Canvas, Rect(0, 0, 180, 0), [], S, O);
+    Check(Narrow.cy > Wide.cy, 'Narrow tables grow vertically');
+    Check(Narrow.cx <= 180, 'Columns fit available width');
+    HTMLDrawOpt(B.Canvas, Rect(0, 0, 180, 700), [], S, O);
     Found := 0;
     Y := 0;
     while Y <= Narrow.cy do
@@ -4515,34 +4855,58 @@ begin
       X := 0;
       while X <= 180 do
       begin
-        Hit := HTMLHitTest(B.Canvas,Rect(0,0,180,700),S,O,X,Y);
+        Hit := HTMLHitTest(B.Canvas, Rect(0, 0, 180, 700), S, O, X, Y);
         if Hit.OnLink then
         begin
-          if Hit.LinkName='before' then begin Check(Hit.LinkIndex=1,'First link ordinal'); Found := Found or 1 end;
-          if Hit.LinkName='cell' then begin Check(Hit.LinkIndex=2,'Cell link ordinal'); Found := Found or 2 end;
-          if Hit.LinkName='after' then begin Check(Hit.LinkIndex=3,'Last link ordinal'); Found := Found or 4 end;
+          if Hit.LinkName = 'before' then
+          begin
+            Check(Hit.LinkIndex = 1, 'First link ordinal');
+            Found := Found or 1;
+          end;
+          if Hit.LinkName = 'cell' then
+          begin
+            Check(Hit.LinkIndex = 2, 'Cell link ordinal');
+            Found := Found or 2;
+          end;
+          if Hit.LinkName = 'after' then
+          begin
+            Check(Hit.LinkIndex = 3, 'Last link ordinal');
+            Found := Found or 4;
+          end;
         end;
-        Inc(X,6);
+        Inc(X, 6);
       end;
-      Inc(Y,6);
+      Inc(Y, 6);
     end;
-    Check(Found=7,'All table/document links are hit-testable');
-    HTMLDrawOpt(B.Canvas,Rect(0,0,100,700),[],'<table><tr><td>unfinished',O);
-    HTMLDrawOpt(B.Canvas,Rect(0,0,100,700),[],'<table></table>',O);
-    HTMLDrawOpt(B.Canvas,Rect(0,0,100,700),[],'<table><tr><td>A</td><td>B</td></tr><tr><td>C</td></tr></table>',O);
-    M := TMemoProbe.Create(F); M.Parent := F; M.TextFormat := itfMarkdown;
-    M.LoadDocument('| A | B |'+LineEnding+'| --- | --- |'+LineEnding+'| C | D |');
-    Check(M.Lines.Count=1,'Whole document remains one memo entry');
-    M.TextFormat := itfHTML; M.TextFormat := itfMarkdown;
-    L := TInkLabel.Create(F); L.Parent := F; L.TextFormat := itfMarkdown; L.Caption := '**hello**';
-    List := TInkListBox.Create(F); List.Parent := F; List.TextFormat := itfMarkdown; List.Items.Add('**hello**');
-    Check(Trim(List.GetPlainText(0))='hello','Markdown plain-text export');
-    Page := TInkPage.Create(F); Page.Parent := F; Page.SetBounds(0,0,700,500);
+    Check(Found = 7, 'All table/document links are hit-testable');
+    HTMLDrawOpt(B.Canvas, Rect(0, 0, 100, 700), [], '<table><tr><td>unfinished', O);
+    HTMLDrawOpt(B.Canvas, Rect(0, 0, 100, 700), [], '<table></table>', O);
+    HTMLDrawOpt(B.Canvas, Rect(0, 0, 100, 700), [], '<table><tr><td>A</td><td>B</td></tr><tr><td>C</td></tr></table>', O);
+    M := TMemoProbe.Create(F);
+    M.Parent := F;
+    M.TextFormat := itfMarkdown;
+    M.LoadDocument('| A | B |' + LineEnding + '| --- | --- |' + LineEnding + '| C | D |');
+    Check(M.Lines.Count = 1, 'Whole document remains one memo entry');
+    M.TextFormat := itfHTML;
+    M.TextFormat := itfMarkdown;
+    L := TInkLabel.Create(F);
+    L.Parent := F;
+    L.TextFormat := itfMarkdown;
+    L.Caption := '**hello**';
+    List := TInkListBox.Create(F);
+    List.Parent := F;
+    List.TextFormat := itfMarkdown;
+    List.Items.Add('**hello**');
+    Check(Trim(List.GetPlainText(0)) = 'hello', 'Markdown plain-text export');
+    Page := TInkPage.Create(F);
+    Page.Parent := F;
+    Page.SetBounds(0, 0, 700, 500);
     Page.LoadHTML('<html><head><title>Test</title></head><body><h1>Heading</h1><p id="target">A&#x27;s &rsaquo; B</p><script>hidden</script></body></html>');
-    Check(Page.DocumentTitle='Test','Document title');
-    Check(Pos('A''s › B',Page.PlainText)>0,'HTML numeric and named entities');
-    Check(Pos('hidden',Page.PlainText)=0,'Scripts do not paint');
-    F.Show; Application.ProcessMessages;
+    Check(Page.DocumentTitle = 'Test', 'Document title');
+    Check(Pos('A''s › B', Page.PlainText) > 0, 'HTML numeric and named entities');
+    Check(Pos('hidden', Page.PlainText) = 0, 'Scripts do not paint');
+    F.Show;
+    Application.ProcessMessages;
     ListCopyChecks(TMemoProbe(M), List, L);
     Page.JumpToAnchor('target');
     MarkdownPageChecks(Page);
@@ -4550,21 +4914,31 @@ begin
     { Dragging the page scrolls it - a touch screen has no wheel, and on
       Windows a finger arrives as a press, moves and a release.  A press
       that barely moves is still a click; a drag that ends on a link is not. }
-    Probe := TPageProbe.Create(F); Probe.Parent := F; Probe.SetBounds(0,0,400,200);
+    Probe := TPageProbe.Create(F);
+    Probe.Parent := F;
+    Probe.SetBounds(0, 0, 400, 200);
     Probe.OnLinkClick := @Probe.LinkHit;
     { the mouse scrolls in these; it selects by default, tested further on }
     Probe.MouseDrag := imdScroll;
     Tall := '<html><body><p><a href="top">top link</a></p>';
     for J := 1 to 80 do Tall := Tall + '<p>Line ' + IntToStr(J) + '</p>';
     Tall := Tall + '</body></html>';
-    Probe.LoadHTML(Tall); Probe.ScrollTo(0);  { lays the page out }
+    Probe.LoadHTML(Tall);
+    Probe.ScrollTo(0);  { lays the page out }
     Check(Probe.ContentHeight > 600, 'A page long enough to scroll');
     Check(Probe.ScrollY = 0, 'Starts at the top');
-    Probe.Press(100,150); Probe.MoveTo(100,120); Probe.MoveTo(100,50); Probe.Let(100,50);
+    Probe.Press(100, 150);
+    Probe.MoveTo(100, 120);
+    Probe.MoveTo(100, 50);
+    Probe.Let(100, 50);
     Check(Probe.ScrollY = 100, Format('Dragging up 100 px scrolls down 100 px (%d)', [Probe.ScrollY]));
-    Probe.Press(100,50); Probe.MoveTo(100,150); Probe.Let(100,150);
+    Probe.Press(100, 50);
+    Probe.MoveTo(100, 150);
+    Probe.Let(100, 150);
     Check(Probe.ScrollY = 0, 'Dragging back down scrolls back');
-    Probe.Press(100,150); Probe.MoveTo(100,-5000); Probe.Let(100,-5000);
+    Probe.Press(100, 150);
+    Probe.MoveTo(100, -5000);
+    Probe.Let(100, -5000);
     Check(Probe.ScrollY = Probe.ContentHeight - Probe.ClientHeight,
       'A long drag stops at the bottom');
     Probe.ScrollTo(0);
@@ -4572,18 +4946,25 @@ begin
     Probe.Clicked := '';
     for J := 0 to 60 do
     begin
-      Probe.Press(30, J); Probe.MoveTo(33, J + 3); Probe.Let(33, J + 3);
+      Probe.Press(30, J);
+      Probe.MoveTo(33, J + 3);
+      Probe.Let(33, J + 3);
       if Probe.Clicked <> '' then Break;
     end;
     Check(Probe.Clicked <> '', 'A tap that wobbles a few pixels still follows the link');
     Check(Probe.ScrollY = 0, 'and does not scroll');
     { a drag that happens to finish on the link is a scroll, not a click }
     Probe.Clicked := '';
-    Probe.Press(30, 180); Probe.MoveTo(30, 100); Probe.MoveTo(30, J + 3); Probe.Let(30, J + 3);
+    Probe.Press(30, 180);
+    Probe.MoveTo(30, 100);
+    Probe.MoveTo(30, J + 3);
+    Probe.Let(30, J + 3);
     Check(Probe.Clicked = '', 'A drag that ends on a link does not follow it');
     Probe.DragScroll := False;
     Probe.ScrollTo(0);
-    Probe.Press(100,150); Probe.MoveTo(100,50); Probe.Let(100,50);
+    Probe.Press(100, 150);
+    Probe.MoveTo(100, 50);
+    Probe.Let(100, 50);
     Check(Probe.ScrollY = 0, 'DragScroll off leaves the page where it is');
     Probe.DragScroll := True;
     TouchChecks;
@@ -4599,9 +4980,9 @@ begin
     AnimationTimerChecks;
     InheritedTextChecks;
     BrushLeakChecks;
-  InlineShadeChecks;
+    InlineShadeChecks;
     ColspanChecks;
-  AuthorChecks;
+    AuthorChecks;
     TableLinkChecks;
     LinkReachChecks;
     ScrolledLinkChecks;
@@ -4635,36 +5016,37 @@ begin
     for J := 1 to 80 do Tall := Tall + '<p>Line ' + IntToStr(J) + '</p>';
 
     StyledBar('html { scrollbar-color: #ff0000 #00ff00 }');
-    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(255,0,0), 'scrollbar-color sets the thumb');
-    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(0,255,0), 'and the track');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(255, 0, 0), 'scrollbar-color sets the thumb');
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(0, 255, 0), 'and the track');
     Check(Probe.ScrollBar.Visible and (Probe.ScrollBar.Width = Probe.Scale96ToFont(18)),
       'auto width is the full bar');
 
-    StyledBar(':root { --t: #123; --k: rgb(10, 20, 30) } ' +
-      'html { scrollbar-color: var(--t) var(--k); scrollbar-width: thin }');
-    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor($11,$22,$33),
+    StyledBar(':root { --t: #123; --k: rgb(10, 20, 30) } ' + 'html { scrollbar-color: var(--t) var(--k); scrollbar-width: thin }');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor($11, $22, $33),
       'short hex, through a variable');
-    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(10,20,30),
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(10, 20, 30),
       'rgb() with commas, through a variable');
     Check(Probe.ScrollBar.Width = Probe.Scale96ToFont(10), 'scrollbar-width: thin is narrower');
 
     StyledBar('body { color: #0000ff; scrollbar-color: currentcolor rgba(1 2 3 / 50%) }');
-    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(0,0,255),
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(0, 0, 255),
       'currentcolor is the text color, and body is read when html says nothing');
-    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(1,2,3), 'rgba() with spaces');
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(1, 2, 3), 'rgba() with spaces');
 
     StyledBar('html { scrollbar-color: #ff0000 #00ff00 } body { scrollbar-color: #0000ff #0000ff }');
-    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(255,0,0), 'html wins over body');
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(255, 0, 0), 'html wins over body');
 
     StyledBar('body { background: #000000; color: #ffffff; scrollbar-color: bogus #00ff00 }');
-    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(0,0,0),
+    Check(ColorToRGB(Probe.ScrollBar.TrackColor) = RGBToColor(0, 0, 0),
       'an unreadable pair is ignored: the track is the page background');
-    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(127,127,127),
+    Check(ColorToRGB(Probe.ScrollBar.ThumbColor) = RGBToColor(127, 127, 127),
       'and the thumb is halfway to the text color');
 
     StyledBar('html { scrollbar-width: none }');
     Check(not Probe.ScrollBar.Visible, 'scrollbar-width: none hides it');
-    Probe.Press(100,150); Probe.MoveTo(100,50); Probe.Let(100,50);
+    Probe.Press(100, 150);
+    Probe.MoveTo(100, 50);
+    Probe.Let(100, 50);
     Check(Probe.ScrollY = 100, 'and the page still scrolls without it');
 
     { the bar is drawn in its colors, where it says it is }
@@ -4675,14 +5057,17 @@ begin
       Probe.RenderTo(Shot.Canvas);
       TR := Probe.ScrollBar.ThumbRect;
       J := Probe.ClientWidth - Probe.ScrollBar.Width;
-      Check(ColorToRGB(Shot.Canvas.Pixels[J + (TR.Left + TR.Right) div 2,
-        (TR.Top + TR.Bottom) div 2]) = RGBToColor(255,0,0), 'the thumb is painted in its color');
-      Check(ColorToRGB(Shot.Canvas.Pixels[J + 1, Probe.ClientHeight - 3]) = RGBToColor(0,255,0),
+      Check(ColorToRGB(Shot.Canvas.Pixels[J + (TR.Left + TR.Right) div 2, (TR.Top + TR.Bottom) div 2]) = RGBToColor(255, 0, 0), 'the thumb is painted in its color');
+      Check(ColorToRGB(Shot.Canvas.Pixels[J + 1, Probe.ClientHeight - 3]) = RGBToColor(0, 255, 0),
         'the track is painted in its color');
-    finally Shot.Free end;
+    finally
+      Shot.Free
+    end;
 
     { --- the scrollbar on its own --- }
-    Bar := TBarProbe.Create(F); Bar.Parent := F; Bar.SetBounds(500, 0, 18, 200);
+    Bar := TBarProbe.Create(F);
+    Bar.Parent := F;
+    Bar.SetBounds(500, 0, 18, 200);
     Bar.OnChange := @Bar.Changed;
     Bar.SetParams(0, 0, 1000, 200);
     Check(Bar.Position = 0, 'starts at the top');
@@ -4694,24 +5079,33 @@ begin
     Check((TR.Bottom - TR.Top) = (200 - 4) * 200 div 1000,
       Format('the thumb is the visible share of the track (%d)', [TR.Bottom - TR.Top]));
     Before := Bar.Changes;
-    Bar.Press(9, TR.Bottom + 20); Bar.Let(9, TR.Bottom + 20);
+    Bar.Press(9, TR.Bottom + 20);
+    Bar.Let(9, TR.Bottom + 20);
     Check(Bar.Position = 200, 'a click below the thumb pages down');
     Check(Bar.Changes = Before + 1, 'and says so once');
     TR := Bar.ThumbRect;
-    Bar.Press(9, TR.Top - 5); Bar.Let(9, TR.Top - 5);
+    Bar.Press(9, TR.Top - 5);
+    Bar.Let(9, TR.Top - 5);
     Check(Bar.Position = 0, 'a click above it pages up');
     TR := Bar.ThumbRect;
-    Bar.Press(9, TR.Top + 5); Bar.MoveTo(9, TR.Top + 5 + (200 - 4 - (TR.Bottom - TR.Top)));
+    Bar.Press(9, TR.Top + 5);
+    Bar.MoveTo(9, TR.Top + 5 + (200 - 4 - (TR.Bottom - TR.Top)));
     Bar.Let(9, TR.Top + 5 + (200 - 4 - (TR.Bottom - TR.Top)));
     Check(Bar.Position = 800, Format('dragging the thumb the length of the track reaches the end (%d)', [Bar.Position]));
-    Bar.Key(VK_HOME); Check(Bar.Position = 0, 'Home');
-    Bar.Key(VK_NEXT); Check(Bar.Position = 200, 'Page Down');
-    Bar.Key(VK_DOWN); Check(Bar.Position = 232, 'Down');
-    Bar.Key(VK_END); Check(Bar.Position = 800, 'End');
-    Bar.Wheel(120); Check(Bar.Position = 760, 'the wheel');
+    Bar.Key(VK_HOME);
+    Check(Bar.Position = 0, 'Home');
+    Bar.Key(VK_NEXT);
+    Check(Bar.Position = 200, 'Page Down');
+    Bar.Key(VK_DOWN);
+    Check(Bar.Position = 232, 'Down');
+    Bar.Key(VK_END);
+    Check(Bar.Position = 800, 'End');
+    Bar.Wheel(120);
+    Check(Bar.Position = 760, 'the wheel');
     Bar.SetParams(0, 0, 100, 200);
     Check(Bar.Position = 0, 'nothing to scroll: stays at the top');
-    Bar.Press(9, 150); Bar.Let(9, 150);
+    Bar.Press(9, 150);
+    Bar.Let(9, 150);
     Check(Bar.Position = 0, 'and a click does nothing');
     {$IFDEF LCLGTK3}
     { a finger on the bar is a click, through InkHookTouchAsMouse }
@@ -4720,31 +5114,36 @@ begin
     SendTouch(Bar, GDK_TOUCH_END, Pointer(4), 9, 190);
     Check(Bar.Position = 200, Format('a tap below the thumb pages down (%d)', [Bar.Position]));
     {$ENDIF}
-    if ParamCount>0 then
+    if ParamCount > 0 then
     begin
-      Files := TStringList.Create; Images := 0; Wanted := 0;
+      Files := TStringList.Create;
+      Images := 0;
+      Wanted := 0;
       try
         Files.LoadFromFile(ParamStr(1));
-        for I := 0 to Files.Count-1 do
+        for I := 0 to Files.Count - 1 do
         begin
-          Page.LoadFromFile(Files[I]); Page.Repaint;
-          Check(Page.DocumentTitle<>'','Missing title: '+Files[I]);
-          Check(Page.ContentHeight>100,'Missing layout: '+Files[I]);
+          Page.LoadFromFile(Files[I]);
+          Page.Repaint;
+          Check(Page.DocumentTitle <> '', 'Missing title: ' + Files[I]);
+          Check(Page.ContentHeight > 100, 'Missing layout: ' + Files[I]);
           { the page's own heading made it into the rendered text - checked
             by the title's first words, which is what the h1 carries, so a
             page that never says the program's name still has a check }
           S := Page.DocumentTitle;
-          if Pos(' - ',S)>0 then S := Copy(S,1,Pos(' - ',S)-1);
-          Check(Pos(Trim(S),Page.PlainText)>0,'Missing page text: '+Files[I]);
-          if ParamCount>1 then
+          if Pos(' - ', S) > 0 then S := Copy(S, 1, Pos(' - ', S) - 1);
+          Check(Pos(Trim(S), Page.PlainText) > 0, 'Missing page text: ' + Files[I]);
+          if ParamCount > 1 then
           begin
             TextOutput := TStringList.Create;
             try
               TextOutput.Text := Page.PlainText;
-              TextOutput.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2))+ExtractFileName(Files[I])+'.txt');
-            finally TextOutput.Free end;
+              TextOutput.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2)) + ExtractFileName(Files[I]) + '.txt');
+            finally
+              TextOutput.Free
+            end;
           end;
-          Inc(Images,Page.ImageCount);
+          Inc(Images, Page.ImageCount);
           { what the page itself asks for, so the total is checked against
             the pages given rather than against a count that was true of the
             site on the day the test was written }
@@ -4758,50 +5157,65 @@ begin
               Inc(Wanted);
               K := Pos('<img', Tags, K + 4);
             end;
-          finally Source.Free end;
-          Check((Pos('&uarr;',Page.PlainText)=0) and (Pos('&darr;',Page.PlainText)=0), 'Arrow entities decode');
+          finally
+            Source.Free
+          end;
+          Check((Pos('&uarr;', Page.PlainText) = 0) and (Pos('&darr;', Page.PlainText) = 0), 'Arrow entities decode');
           for Pass := 0 to 1 do
           begin
-            if Pass=0 then Page.Width := 360 else Page.Width := 1100;
+            if Pass = 0 then Page.Width := 360
+            else
+              Page.Width := 1100;
             Page.RenderTo(B.Canvas);
-            Check(Page.ContentHeight>100,'Layout survives resizing');
+            Check(Page.ContentHeight > 100, 'Layout survives resizing');
           end;
           Page.Width := 700;
           { a real page's animated GIF, when the folder still has one - the
             Heckers Sketch manual has moved its animations to WebP }
-          if (ExtractFileName(Files[I])='index.html') and
-            (FindFirst(ExtractFilePath(Files[I])+'shots/*.gif',faAnyFile,SR)=0) then
+          if (ExtractFileName(Files[I]) = 'index.html') and (FindFirst(ExtractFilePath(Files[I]) + 'shots/*.gif', faAnyFile, SR) = 0) then
           begin
-            S := ExtractFilePath(Files[I])+'shots/'+SR.Name;
+            S := ExtractFilePath(Files[I]) + 'shots/' + SR.Name;
             FindClose(SR);
-            GIFStream := TFileStream.Create(S,fmOpenRead);
+            GIFStream := TFileStream.Create(S, fmOpenRead);
             try
               GIF := TInkGIF.Create(GIFStream);
               try
-                Check((GIF.FrameCount>1) and (GIF.FrameCount=GIFFrames(GIFStream)),
-                  Format('Decode all animation frames (%d)',[GIF.FrameCount]));
-                if ParamCount>1 then GIF.Bitmap.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2))+'gif-0.bmp');
+                Check((GIF.FrameCount > 1) and (GIF.FrameCount = GIFFrames(GIFStream)),
+                  Format('Decode all animation frames (%d)', [GIF.FrameCount]));
+                if ParamCount > 1 then GIF.Bitmap.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2)) + 'gif-0.bmp');
                 Sleep(2000);
-                Check(GIF.Advance,'Animation advances');
-                if ParamCount>1 then GIF.Bitmap.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2))+'gif-1.bmp');
-              finally GIF.Free end;
-            finally GIFStream.Free end;
+                Check(GIF.Advance, 'Animation advances');
+                if ParamCount > 1 then GIF.Bitmap.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2)) + 'gif-1.bmp');
+              finally
+                GIF.Free
+              end;
+            finally
+              GIFStream.Free
+            end;
           end;
-          if (ParamCount>1) and ((ExtractFileName(Files[I])='commands.html') or
-            (ExtractFileName(Files[I])='index.html') or (ExtractFileName(Files[I])='line.html') or (ExtractFileName(Files[I])='keys.html')) then
+          if (ParamCount > 1) and ((ExtractFileName(Files[I]) = 'commands.html') or (ExtractFileName(Files[I]) = 'index.html') or
+            (ExtractFileName(Files[I]) = 'line.html') or (ExtractFileName(Files[I]) = 'keys.html')) then
           begin
             Page.ScrollTo(0);
-            if ExtractFileName(Files[I])='keys.html' then Page.ScrollTo(300);
-            B.SetSize(Page.Width,Page.Height); Page.RenderTo(B.Canvas);
-            B.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2))+ExtractFileName(Files[I])+'.bmp');
+            if ExtractFileName(Files[I]) = 'keys.html' then Page.ScrollTo(300);
+            B.SetSize(Page.Width, Page.Height);
+            Page.RenderTo(B.Canvas);
+            B.SaveToFile(IncludeTrailingPathDelimiter(ParamStr(2)) + ExtractFileName(Files[I]) + '.bmp');
           end;
         end;
-        Check(Images=Wanted,Format('Every image decodes (%d of %d)',[Images,Wanted]));
-        WriteLn('Rendered ',Files.Count,' help pages and ',Images,' images.');
-        Page.Back; Page.Forward;
-      finally Files.Free end;
+        Check(Images = Wanted, Format('Every image decodes (%d of %d)', [Images, Wanted]));
+        WriteLn('Rendered ', Files.Count, ' help pages and ', Images, ' images.');
+        Page.Back;
+        Page.Forward;
+      finally
+        Files.Free
+      end;
     end;
     WriteLn('All renderer and Markdown tests passed.');
-  finally F.Free; B.Free end;
-  Application.OnException := nil; TestExceptions.Free;
+  finally
+    F.Free;
+    B.Free
+  end;
+  Application.OnException := nil;
+  TestExceptions.Free;
 end.

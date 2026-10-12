@@ -30,19 +30,19 @@ type
   TInkCodeMemo = class(TInkRichEdit)
   private
     FLines: TStringList;
-    FSettingLines: Boolean;
+    FSettingLines: boolean;
     FOnGetCharAttrs: TInkGetCharAttrsEvent;
     FTextHint: string;
     FTextHintColor: TColor;
-    FMaxLength: Integer;
-    FWantReturns: Boolean;
-    FWantTabs: Boolean;
-    FAutoHeight: Boolean;
-    FMinLines, FMaxLines: Integer;
-    FAdjusting: Boolean;
-    procedure SetAutoHeight(AValue: Boolean);
-    procedure SetMinLines(AValue: Integer);
-    procedure SetMaxLines(AValue: Integer);
+    FMaxLength: integer;
+    FWantReturns: boolean;
+    FWantTabs: boolean;
+    FAutoHeight: boolean;
+    FMinLines, FMaxLines: integer;
+    FAdjusting: boolean;
+    procedure SetAutoHeight(AValue: boolean);
+    procedure SetMinLines(AValue: integer);
+    procedure SetMaxLines(AValue: integer);
     procedure AdjustHeight;
     function GetText: string;
     procedure SetText(const AValue: string);
@@ -52,12 +52,12 @@ type
     procedure SetTextHint(const AValue: string);
     procedure SetTextHintColor(AValue: TColor);
     procedure SelfChanged(Sender: TObject);
-    function Room: Integer;
+    function Room: integer;
   protected
     FOnChangePlain: TNotifyEvent;
-    procedure AdjustAttr(AIndex: Integer; var A: TInkAttr); override;
+    procedure AdjustAttr(AIndex: integer; var A: TInkAttr); override;
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
-    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure KeyDown(var Key: word; Shift: TShiftState); override;
     procedure Paint; override;
     procedure Resize; override;
     procedure FontChanged(Sender: TObject); override;
@@ -74,17 +74,17 @@ type
     property TextHint: string read FTextHint write SetTextHint;
     property TextHintColor: TColor read FTextHintColor write SetTextHintColor default clDefault;
     { at most this many characters, counted over the whole text; 0 is no cap }
-    property MaxLength: Integer read FMaxLength write FMaxLength default 0;
+    property MaxLength: integer read FMaxLength write FMaxLength default 0;
     { with WantReturns off, Enter goes to the form (a dialog's default
       button); with WantTabs on, Tab indents instead of leaving the box }
-    property WantReturns: Boolean read FWantReturns write FWantReturns default True;
-    property WantTabs: Boolean read FWantTabs write FWantTabs default False;
+    property WantReturns: boolean read FWantReturns write FWantReturns default True;
+    property WantTabs: boolean read FWantTabs write FWantTabs default False;
     { the box grows with its text, between MinLines and MaxLines of the
       control's font, then scrolls - a question box that starts as one
       line and opens up as it is written }
-    property AutoHeight: Boolean read FAutoHeight write SetAutoHeight default False;
-    property MinLines: Integer read FMinLines write SetMinLines default 1;
-    property MaxLines: Integer read FMaxLines write SetMaxLines default 8;
+    property AutoHeight: boolean read FAutoHeight write SetAutoHeight default False;
+    property MinLines: integer read FMinLines write SetMinLines default 1;
+    property MaxLines: integer read FMaxLines write SetMaxLines default 8;
     { every character's color and style, asked as it is drawn and measured -
       AIndex counts from 1 over the whole text, line breaks included }
     property OnGetCharAttrs: TInkGetCharAttrsEvent read FOnGetCharAttrs write FOnGetCharAttrs;
@@ -130,14 +130,14 @@ begin
   if Assigned(FOnChangePlain) then FOnChangePlain(Self);
 end;
 
-procedure TInkCodeMemo.SetAutoHeight(AValue: Boolean);
+procedure TInkCodeMemo.SetAutoHeight(AValue: boolean);
 begin
   if FAutoHeight = AValue then Exit;
   FAutoHeight := AValue;
   AdjustHeight;
 end;
 
-procedure TInkCodeMemo.SetMinLines(AValue: Integer);
+procedure TInkCodeMemo.SetMinLines(AValue: integer);
 begin
   AValue := Max(1, AValue);
   if FMinLines = AValue then Exit;
@@ -145,7 +145,7 @@ begin
   AdjustHeight;
 end;
 
-procedure TInkCodeMemo.SetMaxLines(AValue: Integer);
+procedure TInkCodeMemo.SetMaxLines(AValue: integer);
 begin
   AValue := Max(1, AValue);
   if FMaxLines = AValue then Exit;
@@ -168,7 +168,7 @@ end;
 
 procedure TInkCodeMemo.AdjustHeight;
 var
-  TH, Frame, Want: Integer;
+  TH, Frame, Want: integer;
 begin
   if not FAutoHeight or FAdjusting or not HandleAllocated then Exit;
   FAdjusting := True;
@@ -176,8 +176,7 @@ begin
     Canvas.Font := Font;
     TH := Canvas.TextHeight('Ag') + 1;
     Frame := Height - ClientHeight + 6;   // the border, and the margins
-    Want := EnsureRange(DocumentHeight,
-      Max(1, FMinLines) * TH, Max(FMinLines, FMaxLines) * TH) + Frame;
+    Want := EnsureRange(DocumentHeight, Max(1, FMinLines) * TH, Max(FMinLines, FMaxLines) * TH) + Frame;
     if Want <> Height then Height := Want;
   finally
     FAdjusting := False;
@@ -256,7 +255,7 @@ begin
   Invalidate;
 end;
 
-procedure TInkCodeMemo.AdjustAttr(AIndex: Integer; var A: TInkAttr);
+procedure TInkCodeMemo.AdjustAttr(AIndex: integer; var A: TInkAttr);
 var
   C: TColor;
   St: TFontStyles;
@@ -274,7 +273,7 @@ begin
   A.Style := St;
 end;
 
-function TInkCodeMemo.Room: Integer;
+function TInkCodeMemo.Room: integer;
 begin
   if FMaxLength <= 0 then Exit(MaxInt);
   Result := Max(0, FMaxLength - UTF8Length(PlainText) + SelLength);
@@ -290,7 +289,7 @@ begin
   inherited UTF8KeyPress(UTF8Key);
 end;
 
-procedure TInkCodeMemo.KeyDown(var Key: Word; Shift: TShiftState);
+procedure TInkCodeMemo.KeyDown(var Key: word; Shift: TShiftState);
 begin
   if (Key = VK_RETURN) and (Room < 1) then
   begin
@@ -319,15 +318,15 @@ begin
         Message.Result := 1
       else
         Message.Result := 0;    // Tab leaves the box, as a form expects
-  else
-    inherited;
+    else
+      inherited;
   end;
 end;
 
 procedure TInkCodeMemo.PasteFromClipboard;
 var
   S: string;
-  N: Integer;
+  N: integer;
 begin
   { pasting puts in plain text only, and no more than fits }
   if ReadOnly or not Clipboard.HasFormat(CF_TEXT) then Exit;
@@ -340,7 +339,7 @@ end;
 
 procedure TInkCodeMemo.Paint;
 var
-  W, X, TH: Integer;
+  W, X, TH: integer;
   AHint: string;
   tm: TLCLTextMetric;
 begin
@@ -349,14 +348,14 @@ begin
   { the hint in the empty box, dimmed, under the caret }
   Canvas.Font := Font;
   if FTextHintColor = clDefault then
-    Canvas.Font.Color := RGBToColor(
-      (Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2,
-      (Green(ColorToRGB(Font.Color)) + Green(ColorToRGB(Color))) div 2,
-      (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)
+    Canvas.Font.Color := RGBToColor((Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2, (Green(ColorToRGB(Font.Color)) +
+      Green(ColorToRGB(Color))) div 2, (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)
   else
     Canvas.Font.Color := FTextHintColor;
   Canvas.Brush.Style := bsClear;
-  if Canvas.GetTextMetrics(tm) then TH := tm.Height else TH := Canvas.TextHeight('Ag');
+  if Canvas.GetTextMetrics(tm) then TH := tm.Height
+  else
+    TH := Canvas.TextHeight('Ag');
   W := ClientWidth - 8;
   AHint := FTextHint;
   if Canvas.TextWidth(AHint) > W then

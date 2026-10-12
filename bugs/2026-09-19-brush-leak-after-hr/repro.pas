@@ -13,14 +13,21 @@ program repro;
 {$mode objfpc}{$H+}
 
 uses
-  Interfaces, Forms, Controls, Classes, SysUtils, Graphics, Types,
-  InkPage, InkMarkdown;
+  Interfaces,
+  Forms,
+  Controls,
+  Classes,
+  SysUtils,
+  Graphics,
+  Types,
+  InkPage,
+  InkMarkdown;
 
 var
   F: TForm;
   P: TInkPage;
   L: TStringList;
-  I: Integer;
+  I: integer;
 begin
   Application.Initialize;
   F := TForm.CreateNew(nil);

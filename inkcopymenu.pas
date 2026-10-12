@@ -12,6 +12,7 @@
 unit InkCopyMenu;
 {$mode objfpc}{$H+}
 interface
+
 uses Classes, SysUtils, Controls, StdCtrls, Menus;
 
 resourcestring
@@ -27,14 +28,14 @@ resourcestring
 type
   { Menu has the standard items in it already; X, Y is where it opens, in
     the control's client coordinates }
-  TInkCopyMenuEvent = procedure(Sender: TObject; Menu: TPopupMenu; X, Y: Integer) of object;
-  TInkItemTextFunc = function(Index: Integer): string of object;
+  TInkCopyMenuEvent = procedure(Sender: TObject; Menu: TPopupMenu; X, Y: integer) of object;
+  TInkItemTextFunc = function(Index: integer): string of object;
 
   { What the menu shows and copies.  An empty text leaves its item out,
     except Selection, whose item is shown grayed when CanSelect is set. }
   TInkCopyTexts = record
     Selection, SelectionHTML, Block, BlockCaption, Link, All: string;
-    CanSelect: Boolean;
+    CanSelect: boolean;
     SelectAll: TNotifyEvent;
   end;
 
@@ -51,11 +52,9 @@ type
   public
     constructor Create(AOwner: TComponent); override;
     { fills the menu for Texts and lets the program add to it }
-    procedure Build(ASender: TObject; const ATexts: TInkCopyTexts; X, Y: Integer;
-      AOnMenu: TInkCopyMenuEvent);
+    procedure Build(ASender: TObject; const ATexts: TInkCopyTexts; X, Y: integer; AOnMenu: TInkCopyMenuEvent);
     { Build, then open it beside the pointer }
-    procedure Show(AControl: TControl; const ATexts: TInkCopyTexts; X, Y: Integer;
-      AOnMenu: TInkCopyMenuEvent);
+    procedure Show(AControl: TControl; const ATexts: TInkCopyTexts; X, Y: integer; AOnMenu: TInkCopyMenuEvent);
     property Menu: TPopupMenu read FMenu;
   end;
 
@@ -67,16 +66,20 @@ procedure InkCopyText(const AText: string; const AHTML: string = '');
 function InkListSelection(AList: TCustomListBox; AText: TInkItemTextFunc): string;
 
 implementation
+
 uses Clipbrd;
 
 procedure InkCopyText(const AText: string; const AHTML: string);
 begin
   if AHTML <> '' then Clipboard.SetAsHtml(AHTML, AText)
-  else Clipboard.AsText := AText;
+  else
+    Clipboard.AsText := AText;
 end;
 
 function InkListSelection(AList: TCustomListBox; AText: TInkItemTextFunc): string;
-var I: Integer; Lines: TStringList;
+var
+  I: integer;
+  Lines: TStringList;
 begin
   Result := '';
   Lines := TStringList.Create;
@@ -93,7 +96,9 @@ begin
       if I > 0 then Result := Result + LineEnding;
       Result := Result + Lines[I];
     end;
-  finally Lines.Free end;
+  finally
+    Lines.Free
+  end;
 end;
 
 constructor TInkCopyMenu.Create(AOwner: TComponent);
@@ -110,9 +115,9 @@ begin
   FMenu.Items.Add(Result);
 end;
 
-procedure TInkCopyMenu.Build(ASender: TObject; const ATexts: TInkCopyTexts;
-  X, Y: Integer; AOnMenu: TInkCopyMenuEvent);
-var Item: TMenuItem;
+procedure TInkCopyMenu.Build(ASender: TObject; const ATexts: TInkCopyTexts; X, Y: integer; AOnMenu: TInkCopyMenuEvent);
+var
+  Item: TMenuItem;
 begin
   FTexts := ATexts;
   FMenu.Items.Clear;
@@ -125,7 +130,8 @@ begin
   if ATexts.Block <> '' then
   begin
     if ATexts.BlockCaption <> '' then Add(ATexts.BlockCaption, @CopyBlock)
-    else Add(SInkCopyParagraph, @CopyBlock);
+    else
+      Add(SInkCopyParagraph, @CopyBlock);
   end;
   if ATexts.All <> '' then Add(SInkCopyAll, @CopyAll);
   if Assigned(ATexts.SelectAll) then
@@ -136,9 +142,9 @@ begin
   if Assigned(AOnMenu) then AOnMenu(ASender, FMenu, X, Y);
 end;
 
-procedure TInkCopyMenu.Show(AControl: TControl; const ATexts: TInkCopyTexts;
-  X, Y: Integer; AOnMenu: TInkCopyMenuEvent);
-var P: TPoint;
+procedure TInkCopyMenu.Show(AControl: TControl; const ATexts: TInkCopyTexts; X, Y: integer; AOnMenu: TInkCopyMenuEvent);
+var
+  P: TPoint;
 begin
   Build(AControl, ATexts, X, Y, AOnMenu);
   if FMenu.Items.Count = 0 then Exit;

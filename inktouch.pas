@@ -24,36 +24,38 @@
 unit InkTouch;
 {$mode objfpc}{$H+}
 interface
+
 uses Classes, Controls;
+
 type
   TInkTouchPhase = (itpBegin, itpMove, itpEnd, itpCancel);
   { X, Y are in the control's client coordinates }
-  TInkTouchEvent = procedure(Phase: TInkTouchPhase; X, Y: Integer) of object;
+  TInkTouchEvent = procedure(Phase: TInkTouchPhase; X, Y: integer) of object;
 
 { Starts delivering touches on AControl's window to AHandler, and the
   mouse's back and forward buttons as mbExtra1 / mbExtra2.  Call it from
   the control's CreateWnd: a recreated handle is a new window.  False where
   the platform already delivers both, or cannot hook. }
-function InkHookTouch(AControl: TWinControl; AHandler: TInkTouchEvent): Boolean;
+function InkHookTouch(AControl: TWinControl; AHandler: TInkTouchEvent): boolean;
 
 { For a control that only needs a finger to act like the left mouse button
   (an edit box, a scrollbar): touches on its window arrive as ordinary
   LCL mouse messages.  Call it from CreateWnd, as above. }
-function InkHookTouchAsMouse(AControl: TWinControl): Boolean;
+function InkHookTouchAsMouse(AControl: TWinControl): boolean;
 
 { True while the mouse event being handled was made from a finger or a pen
   by the platform (Windows marks them).  Lets a control scroll for a finger
   and select for a mouse.  False where it cannot be told. }
-function InkMouseIsTouch: Boolean;
+function InkMouseIsTouch: boolean;
 { How far the wheel turned in the wheel event being handled, in notches,
   down positive - with the fraction a high-resolution or free-spinning wheel
   or a touchpad sends.  The GTK3 backend rounds each such event up to a
   whole notch of 120, so a fast wheel raced; elsewhere this is
   -WheelDelta / 120. }
-function InkWheelNotches(WheelDelta: Integer): Double;
+function InkWheelNotches(WheelDelta: integer): double;
 { The same as pixels, PerNotch to a notch; Rest carries the part of a
   pixel left over to the next event, so slow turning still moves. }
-function InkWheelPixels(WheelDelta, PerNotch: Integer; var Rest: Double): Integer;
+function InkWheelPixels(WheelDelta, PerNotch: integer; var Rest: double): integer;
 
 implementation
 
@@ -74,7 +76,8 @@ begin
   Result := (GetMessageExtraInfo and SIGNATURE_MASK) = MI_WP_SIGNATURE;
 end;
 {$ELSE}
-function InkMouseIsTouch: Boolean;
+
+function InkMouseIsTouch: boolean;
 begin
   Result := False;
 end;
@@ -99,13 +102,14 @@ begin
   end;
 end;
 {$ELSE}
-function InkWheelNotches(WheelDelta: Integer): Double;
+
+function InkWheelNotches(WheelDelta: integer): double;
 begin
   Result := -WheelDelta / 120;
 end;
 {$ENDIF}
 
-function InkWheelPixels(WheelDelta, PerNotch: Integer; var Rest: Double): Integer;
+function InkWheelPixels(WheelDelta, PerNotch: integer; var Rest: double): integer;
 begin
   Rest := Rest + InkWheelNotches(WheelDelta) * PerNotch;
   Result := Trunc(Rest);
@@ -113,22 +117,22 @@ begin
 end;
 
 { what the left mouse button would have sent }
-procedure SendAsMouse(AControl: TWinControl; Phase: TInkTouchPhase; X, Y: Integer);
+procedure SendAsMouse(AControl: TWinControl; Phase: TInkTouchPhase; X, Y: integer);
 var
-  Msg: Cardinal;
+  Msg: cardinal;
   Keys: PtrInt;
 begin
   Keys := MK_LBUTTON;
   case Phase of
     itpBegin: Msg := LM_LBUTTONDOWN;
     itpMove: Msg := LM_MOUSEMOVE;
-  else
+    else
     begin
       Msg := LM_LBUTTONUP;
       Keys := 0;
     end;
   end;
-  AControl.Perform(Msg, Keys, PtrInt(Word(SmallInt(X))) or (PtrInt(Word(SmallInt(Y))) shl 16));
+  AControl.Perform(Msg, Keys, PtrInt(word(smallint(X))) or (PtrInt(word(smallint(Y))) shl 16));
 end;
 
 {$IFDEF LCLGTK3}
@@ -251,12 +255,13 @@ begin
   Result := AddHook(AControl, nil, True);
 end;
 {$ELSE}
-function InkHookTouch(AControl: TWinControl; AHandler: TInkTouchEvent): Boolean;
+
+function InkHookTouch(AControl: TWinControl; AHandler: TInkTouchEvent): boolean;
 begin
   Result := False;
 end;
 
-function InkHookTouchAsMouse(AControl: TWinControl): Boolean;
+function InkHookTouchAsMouse(AControl: TWinControl): boolean;
 begin
   Result := False;
 end;

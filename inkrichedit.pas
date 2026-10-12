@@ -51,27 +51,27 @@ type
   TInkAttr = record
     Color: TColor;        // clDefault -> Font.Color
     BackColor: TColor;    // clNone    -> transparent
-    Size: Integer;        // 0         -> Font.Size
+    Size: integer;        // 0         -> Font.Size
     Face: string;         // ''        -> Font.Name
     Style: TFontStyles;
     Script: TInkScript;
     Link: string;         // ''        -> not a link
     Align: TAlignment;    // paragraph property, held per character
     Kind: TInkParaKind;   // paragraph property, held per character
-    Level: Byte;          // a list item's nesting depth, 0 for the first
+    Level: byte;          // a list item's nesting depth, 0 for the first
     Lang: string;         // a code line's fence language, '' unsaid
   end;
 
   { One visual line: a run of characters that share a baseline. A paragraph is
     one line plus one more for every wrap point inside it. }
   TInkVisLine = record
-    First: Integer;       // index of the first character
-    Count: Integer;       // how many characters, including a trailing #10
-    Top: Integer;         // y of the line's top, in document space
-    Height: Integer;
-    Ascent: Integer;      // baseline offset from Top
-    Width: Integer;
-    Left: Integer;        // x of the line's start, after alignment
+    First: integer;       // index of the first character
+    Count: integer;       // how many characters, including a trailing #10
+    Top: integer;         // y of the line's top, in document space
+    Height: integer;
+    Ascent: integer;      // baseline offset from Top
+    Width: integer;
+    Left: integer;        // x of the line's start, after alignment
   end;
 
   TInkRichLinkEvent = procedure(Sender: TObject; const LinkName: string) of object;
@@ -82,82 +82,82 @@ type
   private
     FChars: array of string;      // one UTF-8 codepoint each; #10 = paragraph
     FAttrs: array of TInkAttr;
-    FCaret: Integer;              // 0..CharCount, a gap between characters
-    FAnchor: Integer;             // selection anchor; = FCaret when none
+    FCaret: integer;              // 0..CharCount, a gap between characters
+    FAnchor: integer;             // selection anchor; = FCaret when none
     FLines: array of TInkVisLine;
-    FCharX: array of Integer;     // x of each character within its own line
-    FCharW: array of Integer;
-    FLayoutValid: Boolean;
-    FDocHeight: Integer;
-    FScrollY: Integer;
-    FWheelRest: Double;
+    FCharX: array of integer;     // x of each character within its own line
+    FCharW: array of integer;
+    FLayoutValid: boolean;
+    FDocHeight: integer;
+    FScrollY: integer;
+    FWheelRest: double;
     FVScroll: TScrollBar;
     FTypingAttr: TInkAttr;        // what the next typed character will wear
-    FHasTypingAttr: Boolean;
+    FHasTypingAttr: boolean;
     FMarkup: TStrings;            // one paragraph per line
-    FMarkupDirty: Boolean;
-    FSettingMarkup: Boolean;
+    FMarkupDirty: boolean;
+    FSettingMarkup: boolean;
     FCaretTimer: TTimer;
-    FCaretOn: Boolean;
-    FGoalX: Integer;              // remembered column for up/down
+    FCaretOn: boolean;
+    FGoalX: integer;              // remembered column for up/down
     FUndo: TFPList;
     FRedo: TFPList;
     FLastUndoTick: QWord;
-    FReadOnly: Boolean;
-    FWordWrap: Boolean;
-    FSuperSubScriptRatio: Double;
-    FModified: Boolean;
-    FMouseOnLink: Boolean;
+    FReadOnly: boolean;
+    FWordWrap: boolean;
+    FSuperSubScriptRatio: double;
+    FModified: boolean;
+    FMouseOnLink: boolean;
     FHoverLink: string;
     FOnChange: TNotifyEvent;
     FOnSelectionChange: TNotifyEvent;
     FOnLinkClick: TInkRichLinkEvent;
-    FEditMenu: Boolean;
+    FEditMenu: boolean;
     FMenu: TPopupMenu;
     procedure MenuClick(Sender: TObject);
-    function CharCount: Integer;
-    function GetSelStart: Integer;
-    function GetSelLength: Integer;
-    procedure SetSelStart(AValue: Integer);
-    procedure SetSelLength(AValue: Integer);
+    function CharCount: integer;
+    function GetSelStart: integer;
+    function GetSelLength: integer;
+    procedure SetSelStart(AValue: integer);
+    procedure SetSelLength(AValue: integer);
     function GetSelText: string;
     procedure SetMarkup(AValue: TStrings);
     function GetMarkup: TStrings;
     procedure MarkupChanged(Sender: TObject);
     procedure RebuildFromMarkup;
-    procedure SetReadOnly(AValue: Boolean);
-    procedure SetWordWrap(AValue: Boolean);
+    procedure SetReadOnly(AValue: boolean);
+    procedure SetWordWrap(AValue: boolean);
     { layout }
     procedure InvalidateLayout;
     procedure Relayout;
     procedure NeedLayout;
     procedure ApplyAttrToCanvas(const A: TInkAttr);
-    function ParaKindAt(AIndex: Integer): TInkParaKind;
-    function ParaLevelAt(AIndex: Integer): Integer;
-    function ParaIndent(AKind: TInkParaKind; ALevel: Integer): Integer;
-    function ParaNumber(AFirst: Integer): Integer;
-    function MeasureChar(AIndex: Integer): Integer;
-    function LineOfChar(AIndex: Integer): Integer;
-    function CaretLine(ACaret: Integer): Integer;
-    function LineTextWidth: Integer;
+    function ParaKindAt(AIndex: integer): TInkParaKind;
+    function ParaLevelAt(AIndex: integer): integer;
+    function ParaIndent(AKind: TInkParaKind; ALevel: integer): integer;
+    function ParaNumber(AFirst: integer): integer;
+    function MeasureChar(AIndex: integer): integer;
+    function LineOfChar(AIndex: integer): integer;
+    function CaretLine(ACaret: integer): integer;
+    function LineTextWidth: integer;
     procedure UpdateScrollBar;
     procedure ScrollBarChange(Sender: TObject);
     procedure ScrollToCaret;
-    function CaretPoint(ACaret: Integer): TPoint;   // document space
-    function PointToCaret(X, Y: Integer): Integer;  // client space
+    function CaretPoint(ACaret: integer): TPoint;   // document space
+    function PointToCaret(X, Y: integer): integer;  // client space
     { document }
     procedure DoInsert(const AText: string; const AAttr: TInkAttr);
-    procedure DoDelete(AFrom, ATo: Integer);
+    procedure DoDelete(AFrom, ATo: integer);
     procedure DeleteSelection;
     function AttrAtCaret: TInkAttr;
     procedure Changed;
     procedure SelectionChanged;
-    procedure MoveCaret(ANew: Integer; AExtend: Boolean);
+    procedure MoveCaret(ANew: integer; AExtend: boolean);
     { markup }
-    procedure ParseInto(const AMarkup: string; AParaBreakFirst: Boolean);
+    procedure ParseInto(const AMarkup: string; AParaBreakFirst: boolean);
     procedure SyncMarkupFromDoc;
     { undo }
-    procedure PushUndo(ACoalesce: Boolean);
+    procedure PushUndo(ACoalesce: boolean);
     procedure ClearUndoList(AList: TFPList);
     procedure RestoreSnapshot(ASnap: TObject);
     function TakeSnapshot: TObject;
@@ -165,29 +165,28 @@ type
     procedure RestartCaretBlink;
   protected
     procedure CMWantSpecialKey(var Message: TCMWantSpecialKey); message CM_WANTSPECIALKEY;
-    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: boolean); override;
     { What a character is drawn and measured as: FAttrs[AIndex], passed
       through AdjustAttr, which a descendant overrides to color characters
       on the fly - the plain editor's OnGetCharAttrs rides on this. }
-    function EffAttr(AIndex: Integer): TInkAttr;
-    function CharAt(AIndex: Integer): string;
-    procedure AdjustAttr(AIndex: Integer; var A: TInkAttr); virtual;
+    function EffAttr(AIndex: integer): TInkAttr;
+    function CharAt(AIndex: integer): string;
+    procedure AdjustAttr(AIndex: integer; var A: TInkAttr); virtual;
     { inserts plain text (line breaks kept) in the attributes at the caret }
     procedure InsertPlainText(const AText: string);
     { the laid-out document's height in pixels, for a box that grows }
-    function DocumentHeight: Integer;
+    function DocumentHeight: integer;
     procedure CreateWnd; override;
     procedure Paint; override;
     procedure Resize; override;
     procedure FontChanged(Sender: TObject); override;
-    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure KeyDown(var Key: word; Shift: TShiftState); override;
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
-    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
     procedure Click; override;
     procedure DblClick; override;
-    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
-      MousePos: TPoint): Boolean; override;
+    function DoMouseWheel(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean; override;
     procedure DoEnter; override;
     procedure DoExit; override;
     class function GetControlClassDefaultSize: TSize; override;
@@ -202,16 +201,16 @@ type
     procedure PasteFromClipboard; virtual;
     procedure Undo;
     procedure Redo;
-    function CanUndo: Boolean;
-    function CanRedo: Boolean;
+    function CanUndo: boolean;
+    function CanRedo: boolean;
 
     { Formatting. With a selection they change it; with none they set what the
       next typed character will wear, the way every editor behaves. }
-    procedure ApplyStyle(AStyle: TFontStyle; AOn: Boolean);
+    procedure ApplyStyle(AStyle: TFontStyle; AOn: boolean);
     procedure ToggleStyle(AStyle: TFontStyle);
     procedure ApplyColor(AColor: TColor);
     procedure ApplyBackColor(AColor: TColor);
-    procedure ApplySize(ASize: Integer);
+    procedure ApplySize(ASize: integer);
     procedure ApplyFace(const AFace: string);
     procedure ApplyScript(AScript: TInkScript);
     procedure ApplyLink(const AHref: string);
@@ -221,10 +220,10 @@ type
     procedure ApplyParaKind(AKind: TInkParaKind);
     { the list items the selection touches step ADelta levels deeper or
       back out - what Tab and Shift+Tab do on a list item }
-    procedure ApplyParaLevel(ADelta: Integer);
+    procedure ApplyParaLevel(ADelta: integer);
     { a fresh table at the caret: a head row and ARows body rows of ACols
       empty cells, the caret in the head's first cell }
-    procedure InsertTable(ACols, ARows: Integer);
+    procedure InsertTable(ACols, ARows: integer);
     procedure ClearFormatting;
     procedure InsertParagraph;
 
@@ -233,7 +232,7 @@ type
     function SelStyle: TFontStyles;
     function SelColor: TColor;
     function SelBackColor: TColor;
-    function SelSize: Integer;
+    function SelSize: integer;
     function SelFace: string;
     function SelScript: TInkScript;
     function SelAlignment: TAlignment;
@@ -250,20 +249,20 @@ type
     function AsMarkdown: string;
     procedure LoadMarkdown(const S: string);
     property SelText: string read GetSelText;
-    property Modified: Boolean read FModified write FModified;
+    property Modified: boolean read FModified write FModified;
     { runtime only - a stored caret position would be meaningless in a .lfm }
-    property SelStart: Integer read GetSelStart write SetSelStart;
-    property SelLength: Integer read GetSelLength write SetSelLength;
+    property SelStart: integer read GetSelStart write SetSelStart;
+    property SelLength: integer read GetSelLength write SetSelLength;
   published
     { One paragraph per line. Editable in the Object Inspector, so a design-time
       document is real markup in the .lfm and renders in the form designer. }
     property Markup: TStrings read GetMarkup write SetMarkup;
-    property ReadOnly: Boolean read FReadOnly write SetReadOnly default False;
-    property WordWrap: Boolean read FWordWrap write SetWordWrap default True;
-    property SuperSubScriptRatio: Double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    property ReadOnly: boolean read FReadOnly write SetReadOnly default False;
+    property WordWrap: boolean read FWordWrap write SetWordWrap default True;
+    property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
     { the editor's own right-click menu - Undo, Redo, Cut, Copy, Paste,
       Delete, Select All; a PopupMenu of the host's own still wins }
-    property EditMenu: Boolean read FEditMenu write FEditMenu default True;
+    property EditMenu: boolean read FEditMenu write FEditMenu default True;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
     property OnLinkClick: TInkRichLinkEvent read FOnLinkClick write FOnLinkClick;
@@ -299,7 +298,7 @@ type
   end;
 
 function DefaultInkAttr: TInkAttr;
-function SameInkAttr(const A, B: TInkAttr): Boolean;
+function SameInkAttr(const A, B: TInkAttr): boolean;
 
 implementation
 
@@ -320,8 +319,8 @@ type
   TInkSnapshot = class
     Chars: array of string;
     Attrs: array of TInkAttr;
-    Caret: Integer;
-    Anchor: Integer;
+    Caret: integer;
+    Anchor: integer;
   end;
 
 var
@@ -347,18 +346,16 @@ begin
   Result.Lang := '';
 end;
 
-function SameInkAttr(const A, B: TInkAttr): Boolean;
+function SameInkAttr(const A, B: TInkAttr): boolean;
 begin
-  Result := (A.Color = B.Color) and (A.BackColor = B.BackColor) and
-    (A.Size = B.Size) and (A.Face = B.Face) and (A.Style = B.Style) and
-    (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align) and
-    (A.Kind = B.Kind) and (A.Level = B.Level) and (A.Lang = B.Lang);
+  Result := (A.Color = B.Color) and (A.BackColor = B.BackColor) and (A.Size = B.Size) and (A.Face = B.Face) and (A.Style = B.Style) and
+    (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align) and (A.Kind = B.Kind) and (A.Level = B.Level) and (A.Lang = B.Lang);
 end;
 
 { '#RRGGBB' for a real color, '' for the sentinels }
 function InkColorToHTML(C: TColor): string;
 var
-  RGB: LongInt;
+  RGB: longint;
 begin
   if (C = clDefault) or (C = clNone) then
     Exit('');
@@ -379,8 +376,7 @@ constructor TInkRichEdit.Create(AOwner: TComponent);
 begin
   FEditMenu := True;
   inherited Create(AOwner);
-  ControlStyle := ControlStyle + [csCaptureMouse, csOpaque, csRequiresKeyboardInput]
-    - [csSetCaption];
+  ControlStyle := ControlStyle + [csCaptureMouse, csOpaque, csRequiresKeyboardInput] - [csSetCaption];
   BorderStyle := bsSingle;
   TabStop := True;
   Cursor := crIBeam;
@@ -435,24 +431,26 @@ begin
   Result.cy := 200;
 end;
 
-function TInkRichEdit.CharCount: Integer;
+function TInkRichEdit.CharCount: integer;
 begin
   Result := Length(FChars);
 end;
 
 { ---------------------------------------------------------------- selection }
 
-function TInkRichEdit.GetSelStart: Integer;
+function TInkRichEdit.GetSelStart: integer;
 begin
-  if FCaret < FAnchor then Result := FCaret else Result := FAnchor;
+  if FCaret < FAnchor then Result := FCaret
+  else
+    Result := FAnchor;
 end;
 
-function TInkRichEdit.GetSelLength: Integer;
+function TInkRichEdit.GetSelLength: integer;
 begin
   Result := Abs(FCaret - FAnchor);
 end;
 
-procedure TInkRichEdit.SetSelStart(AValue: Integer);
+procedure TInkRichEdit.SetSelStart(AValue: integer);
 begin
   if AValue < 0 then AValue := 0;
   if AValue > CharCount then AValue := CharCount;
@@ -465,7 +463,7 @@ begin
   SelectionChanged;
 end;
 
-procedure TInkRichEdit.SetSelLength(AValue: Integer);
+procedure TInkRichEdit.SetSelLength(AValue: integer);
 begin
   if AValue < 0 then AValue := 0;
   FAnchor := GetSelStart;
@@ -478,7 +476,7 @@ end;
 
 function TInkRichEdit.GetSelText: string;
 var
-  i: Integer;
+  i: integer;
 begin
   Result := '';
   for i := GetSelStart to GetSelStart + GetSelLength - 1 do
@@ -488,7 +486,7 @@ begin
       Result := Result + FChars[i];
 end;
 
-procedure TInkRichEdit.MoveCaret(ANew: Integer; AExtend: Boolean);
+procedure TInkRichEdit.MoveCaret(ANew: integer; AExtend: boolean);
 begin
   if ANew < 0 then ANew := 0;
   if ANew > CharCount then ANew := CharCount;
@@ -525,9 +523,9 @@ end;
 procedure TInkRichEdit.ApplyAttrToCanvas(const A: TInkAttr);
 const
   { a browser's own heading factors }
-  cHeadFactor: array[ipkH1..ipkH6] of Double = (2.0, 1.5, 1.17, 1.0, 0.83, 0.67);
+  cHeadFactor: array[ipkH1..ipkH6] of double = (2.0, 1.5, 1.17, 1.0, 0.83, 0.67);
 var
-  Sz: Integer;
+  Sz: integer;
 begin
   if A.Face <> '' then
     Canvas.Font.Name := A.Face
@@ -535,7 +533,9 @@ begin
     Canvas.Font.Name := InkMonoFace
   else
     Canvas.Font.Name := Font.Name;
-  if A.Size > 0 then Sz := A.Size else Sz := Font.Size;
+  if A.Size > 0 then Sz := A.Size
+  else
+    Sz := Font.Size;
   if Sz = 0 then Sz := Screen.SystemFont.Size;
   { a heading's size and weight come from its kind, unless the character
     picked its own size }
@@ -569,7 +569,7 @@ begin
 end;
 
 { the paragraph kind at a character; the gap past the end is plain text }
-function TInkRichEdit.ParaKindAt(AIndex: Integer): TInkParaKind;
+function TInkRichEdit.ParaKindAt(AIndex: integer): TInkParaKind;
 begin
   if (AIndex >= 0) and (AIndex < CharCount) then
     Result := FAttrs[AIndex].Kind
@@ -577,7 +577,7 @@ begin
     Result := ipkText;
 end;
 
-function TInkRichEdit.ParaLevelAt(AIndex: Integer): Integer;
+function TInkRichEdit.ParaLevelAt(AIndex: integer): integer;
 begin
   if (AIndex >= 0) and (AIndex < CharCount) then
     Result := FAttrs[AIndex].Level
@@ -588,15 +588,15 @@ end;
 { a list marker's gutter - one more gutter per nesting level - a quote's
   bar and inset, a code line's inset.  Measured in the control's font,
   which it leaves on the canvas. }
-function TInkRichEdit.ParaIndent(AKind: TInkParaKind; ALevel: Integer): Integer;
+function TInkRichEdit.ParaIndent(AKind: TInkParaKind; ALevel: integer): integer;
 begin
   Canvas.Font := Font;
   case AKind of
     ipkBullet, ipkNumber: Result := Canvas.TextWidth('99. ') * (ALevel + 1);
     ipkQuote: Result := Canvas.TextWidth('AB');
     ipkCode: Result := Canvas.TextWidth('A') div 2 + 4;
-  else
-    Result := 0;
+    else
+      Result := 0;
   end;
 end;
 
@@ -605,9 +605,9 @@ end;
   two items does not break their numbering; a shallower item or anything
   else does.  The #10 that ends a paragraph carries the paragraph's own
   kind and level, which is what makes this walk cheap. }
-function TInkRichEdit.ParaNumber(AFirst: Integer): Integer;
+function TInkRichEdit.ParaNumber(AFirst: integer): integer;
 var
-  i, j, MyLevel: Integer;
+  i, j, MyLevel: integer;
 begin
   Result := 1;
   MyLevel := ParaLevelAt(AFirst);
@@ -616,8 +616,7 @@ begin
   begin
     if (FAttrs[i].Kind = ipkNumber) and (FAttrs[i].Level = MyLevel) then
       Inc(Result)
-    else if not ((FAttrs[i].Kind in [ipkBullet, ipkNumber]) and
-      (FAttrs[i].Level > MyLevel)) then
+    else if not ((FAttrs[i].Kind in [ipkBullet, ipkNumber]) and (FAttrs[i].Level > MyLevel)) then
       Break;
     j := i - 1;
     while (j >= 0) and (FChars[j] <> #10) do Dec(j);
@@ -625,7 +624,7 @@ begin
   end;
 end;
 
-function TInkRichEdit.MeasureChar(AIndex: Integer): Integer;
+function TInkRichEdit.MeasureChar(AIndex: integer): integer;
 begin
   if FChars[AIndex] = #10 then
     Result := 0
@@ -633,7 +632,7 @@ begin
     Result := Canvas.TextWidth(FChars[AIndex]);
 end;
 
-function TInkRichEdit.LineTextWidth: Integer;
+function TInkRichEdit.LineTextWidth: integer;
 begin
   Result := ClientWidth - 2 * cMargin;
   if FVScroll.Visible then Dec(Result, FVScroll.Width);
@@ -642,20 +641,20 @@ end;
 
 procedure TInkRichEdit.Relayout;
 var
-  N, i, k, X, W, Avail, AvailP, Y, LineStart, LastSpace, BreakAt: Integer;
-  LineCount: Integer;
+  N, i, k, X, W, Avail, AvailP, Y, LineStart, LastSpace, BreakAt: integer;
+  LineCount: integer;
   LastAttr: TInkAttr;
-  HasLast: Boolean;
+  HasLast: boolean;
   CurKind: TInkParaKind;
-  CurInd: Integer;
+  CurInd: integer;
   { the full width a table row's line reports, while one is being laid }
-  TableRowW: Integer;
+  TableRowW: integer;
 
   { Height and baseline of the characters [AFirst, AFirst+ACount). An empty
     paragraph still needs a line box, so fall back to the control font. }
-  procedure EmitLine(AFirst, ACount: Integer);
+  procedure EmitLine(AFirst, ACount: integer);
   var
-    j, H, Asc, MaxH, MaxAsc, Rise: Integer;
+    j, H, Asc, MaxH, MaxAsc, Rise: integer;
     tm: TLCLTextMetric;
     L: TInkVisLine;
     Al: TAlignment;
@@ -722,8 +721,8 @@ var
     case Al of
       taCenter: L.Left := cMargin + CurInd + Max(0, (Avail - CurInd - L.Width) div 2);
       taRightJustify: L.Left := cMargin + CurInd + Max(0, Avail - CurInd - L.Width);
-    else
-      L.Left := cMargin + CurInd;
+      else
+        L.Left := cMargin + CurInd;
     end;
     if TableRowW > 0 then L.Left := cMargin;
 
@@ -741,8 +740,8 @@ var
     - the caret, clicks, selection - keeps working through FCharX/FCharW. }
   procedure LayTableGroup;
   var
-    GEnd, j, c, NCols, RowStart, CellW, ColCount: Integer;
-    ColW, ColX: array of Integer;
+    GEnd, j, c, NCols, RowStart, CellW, ColCount: integer;
+    ColW, ColX: array of integer;
 
     procedure CloseCell;
     begin
@@ -761,8 +760,7 @@ var
     while GEnd < N do
     begin
       if FChars[GEnd] = #10 then
-        if (GEnd + 1 >= N) or
-          not (FAttrs[GEnd + 1].Kind in [ipkTableHead, ipkTableRow]) then
+        if (GEnd + 1 >= N) or not (FAttrs[GEnd + 1].Kind in [ipkTableHead, ipkTableRow]) then
         begin
           Inc(GEnd);
           Break;
@@ -779,7 +777,9 @@ var
       begin
         FCharW[j] := 0;
         CloseCell;
-        if FChars[j] = '|' then Inc(c) else c := 0;
+        if FChars[j] = '|' then Inc(c)
+        else
+          c := 0;
         Continue;
       end;
       ApplyAttrToCanvas(EffAttr(j));
@@ -929,23 +929,22 @@ begin
   UpdateScrollBar;
 end;
 
-function TInkRichEdit.LineOfChar(AIndex: Integer): Integer;
+function TInkRichEdit.LineOfChar(AIndex: integer): integer;
 var
-  i: Integer;
+  i: integer;
 begin
   Result := 0;
   for i := 0 to High(FLines) do
-    if (AIndex >= FLines[i].First) and
-       (AIndex < FLines[i].First + FLines[i].Count) then
+    if (AIndex >= FLines[i].First) and (AIndex < FLines[i].First + FLines[i].Count) then
       Exit(i);
   if Length(FLines) > 0 then Result := High(FLines);
 end;
 
 { A caret on a wrap boundary could be claimed by either line; it goes to the
   start of the next one, except at the very end where there is no next one. }
-function TInkRichEdit.CaretLine(ACaret: Integer): Integer;
+function TInkRichEdit.CaretLine(ACaret: integer): integer;
 var
-  Idx: Integer;
+  Idx: integer;
 begin
   NeedLayout;
   Result := High(FLines);
@@ -956,9 +955,9 @@ begin
       Exit(Idx);
 end;
 
-function TInkRichEdit.CaretPoint(ACaret: Integer): TPoint;
+function TInkRichEdit.CaretPoint(ACaret: integer): TPoint;
 var
-  L: Integer;
+  L: integer;
 begin
   NeedLayout;
   Result := Point(cMargin, 0);
@@ -974,9 +973,9 @@ begin
     Result.X := FLines[L].Left + FCharX[ACaret];
 end;
 
-function TInkRichEdit.PointToCaret(X, Y: Integer): Integer;
+function TInkRichEdit.PointToCaret(X, Y: integer): integer;
 var
-  L, i, DocY, CX, Last: Integer;
+  L, i, DocY, CX, Last: integer;
 begin
   NeedLayout;
   if Length(FLines) = 0 then Exit(0);
@@ -1009,7 +1008,7 @@ end;
 
 procedure TInkRichEdit.UpdateScrollBar;
 var
-  NeedBar: Boolean;
+  NeedBar: boolean;
 begin
   if FVScroll = nil then Exit;
   NeedBar := FDocHeight > ClientHeight;
@@ -1048,7 +1047,7 @@ end;
 procedure TInkRichEdit.ScrollToCaret;
 var
   P: TPoint;
-  L, H: Integer;
+  L, H: integer;
 begin
   if not HandleAllocated then Exit;
   NeedLayout;
@@ -1068,8 +1067,7 @@ begin
     FVScroll.Position := FScrollY;
 end;
 
-function TInkRichEdit.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
-  MousePos: TPoint): Boolean;
+function TInkRichEdit.DoMouseWheel(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean;
 begin
   Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);
   if Result then Exit;
@@ -1087,26 +1085,25 @@ end;
 
 procedure TInkRichEdit.Paint;
 var
-  Li, i, RunEnd, SelA, SelB, LineEndIdx, BaseY, RunTop: Integer;
+  Li, i, RunEnd, SelA, SelB, LineEndIdx, BaseY, RunTop: integer;
   S: string;
-  Sel, RunSel: Boolean;
+  Sel, RunSel: boolean;
   L: TInkVisLine;
   tm: TLCLTextMetric;
-  RunAsc, RunH, Rise, X: Integer;
+  RunAsc, RunH, Rise, X: integer;
   GridC: TColor;
-  BX, LT, LB: Integer;
-  IsTbl: Boolean;
+  BX, LT, LB: integer;
+  IsTbl: boolean;
 
-  { the grid's color: the background mixed a sixth toward the text }
-  function BlendToText(ANum, ADen: Integer): TColor;
+{ the grid's color: the background mixed a sixth toward the text }
+  function BlendToText(ANum, ADen: integer): TColor;
   begin
-    Result := RGBToColor(
-      Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) * ANum div ADen,
-      Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) * ANum div ADen,
-      Blue(ColorToRGB(Color)) + (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) * ANum div ADen);
+    Result := RGBToColor(Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) * ANum div ADen,
+      Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) * ANum div ADen, Blue(ColorToRGB(Color)) +
+      (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) * ANum div ADen);
   end;
 
-  function IsSel(AIdx: Integer): Boolean;
+  function IsSel(AIdx: integer): boolean;
   begin
     Result := (AIdx >= SelA) and (AIdx < SelB);
   end;
@@ -1134,57 +1131,52 @@ begin
       bar, and a marker on a list item's first line }
     case ParaKindAt(L.First) of
       ipkCode:
-        begin
+      begin
           { the background mixed a twelfth toward the text color, so the
             band shows on a light editor and a dark one alike }
-          Canvas.Brush.Color := RGBToColor(
-            Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) div 12,
-            Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) div 12,
-            Blue(ColorToRGB(Color)) + (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) div 12);
-          Canvas.Brush.Style := bsSolid;
-          Canvas.FillRect(cMargin, L.Top - FScrollY,
-            cMargin + LineTextWidth, L.Top - FScrollY + L.Height);
-        end;
+        Canvas.Brush.Color := RGBToColor(Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) div
+          12, Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) div 12, Blue(ColorToRGB(Color)) +
+          (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) div 12);
+        Canvas.Brush.Style := bsSolid;
+        Canvas.FillRect(cMargin, L.Top - FScrollY,
+          cMargin + LineTextWidth, L.Top - FScrollY + L.Height);
+      end;
       ipkQuote:
-        begin
-          Canvas.Brush.Color := RGBToColor(
-            (Red(ColorToRGB(Color)) + Red(ColorToRGB(Font.Color))) div 2,
-            (Green(ColorToRGB(Color)) + Green(ColorToRGB(Font.Color))) div 2,
-            (Blue(ColorToRGB(Color)) + Blue(ColorToRGB(Font.Color))) div 2);
-          Canvas.Brush.Style := bsSolid;
-          Canvas.FillRect(cMargin, L.Top - FScrollY,
-            cMargin + 3, L.Top - FScrollY + L.Height);
-        end;
+      begin
+        Canvas.Brush.Color := RGBToColor((Red(ColorToRGB(Color)) + Red(ColorToRGB(Font.Color))) div 2,
+          (Green(ColorToRGB(Color)) + Green(ColorToRGB(Font.Color))) div 2, (Blue(ColorToRGB(Color)) + Blue(ColorToRGB(Font.Color))) div 2);
+        Canvas.Brush.Style := bsSolid;
+        Canvas.FillRect(cMargin, L.Top - FScrollY,
+          cMargin + 3, L.Top - FScrollY + L.Height);
+      end;
       ipkTableHead, ipkTableRow:
+      begin
+        LT := L.Top - FScrollY;
+        LB := LT + L.Height;
+        GridC := BlendToText(1, 6);
+        if ParaKindAt(L.First) = ipkTableHead then
         begin
-          LT := L.Top - FScrollY;
-          LB := LT + L.Height;
-          GridC := BlendToText(1, 6);
-          if ParaKindAt(L.First) = ipkTableHead then
-          begin
-            Canvas.Brush.Color := BlendToText(1, 14);
-            Canvas.Brush.Style := bsSolid;
-            Canvas.FillRect(L.Left, LT, L.Left + L.Width, LB);
-          end;
-          Canvas.Pen.Color := GridC;
-          Canvas.Pen.Style := psSolid;
+          Canvas.Brush.Color := BlendToText(1, 14);
+          Canvas.Brush.Style := bsSolid;
+          Canvas.FillRect(L.Left, LT, L.Left + L.Width, LB);
+        end;
+        Canvas.Pen.Color := GridC;
+        Canvas.Pen.Style := psSolid;
           { the frame: a top edge on the table's first row, a bottom edge
             and the two sides on every row }
-          if (L.First = 0) or ((L.First > 0) and
-            not (FAttrs[L.First - 1].Kind in [ipkTableHead, ipkTableRow])) then
-            Canvas.Line(L.Left, LT, L.Left + L.Width, LT);
-          Canvas.Line(L.Left, LB - 1, L.Left + L.Width, LB - 1);
-          Canvas.Line(L.Left, LT, L.Left, LB);
-          Canvas.Line(L.Left + L.Width - 1, LT, L.Left + L.Width - 1, LB);
-          { and a line where each '|' hands one cell to the next }
-          for BX := L.First to L.First + L.Count - 1 do
-            if (BX < CharCount) and (FChars[BX] = '|') then
-              Canvas.Line(L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LT,
-                L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LB);
-        end;
+        if (L.First = 0) or ((L.First > 0) and not (FAttrs[L.First - 1].Kind in [ipkTableHead, ipkTableRow])) then
+          Canvas.Line(L.Left, LT, L.Left + L.Width, LT);
+        Canvas.Line(L.Left, LB - 1, L.Left + L.Width, LB - 1);
+        Canvas.Line(L.Left, LT, L.Left, LB);
+        Canvas.Line(L.Left + L.Width - 1, LT, L.Left + L.Width - 1, LB);
+        { and a line where each '|' hands one cell to the next }
+        for BX := L.First to L.First + L.Count - 1 do
+          if (BX < CharCount) and (FChars[BX] = '|') then
+            Canvas.Line(L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LT,
+              L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LB);
+      end;
       ipkBullet, ipkNumber:
-        if (L.First = 0) or ((L.First > 0) and (L.First <= CharCount) and
-          (FChars[L.First - 1] = #10)) then
+        if (L.First = 0) or ((L.First > 0) and (L.First <= CharCount) and (FChars[L.First - 1] = #10)) then
         begin
           Canvas.Font := Font;
           Canvas.Font.Color := Font.Color;
@@ -1223,10 +1215,8 @@ begin
 
       RunSel := IsSel(i);
       RunEnd := i;
-      while (RunEnd + 1 < LineEndIdx) and (FChars[RunEnd + 1] <> #10) and
-        not (IsTbl and (FChars[RunEnd + 1] = '|')) and
-        SameInkAttr(EffAttr(RunEnd + 1), EffAttr(i)) and
-        (IsSel(RunEnd + 1) = RunSel) do
+      while (RunEnd + 1 < LineEndIdx) and (FChars[RunEnd + 1] <> #10) and not (IsTbl and (FChars[RunEnd + 1] = '|')) and
+        SameInkAttr(EffAttr(RunEnd + 1), EffAttr(i)) and (IsSel(RunEnd + 1) = RunSel) do
         Inc(RunEnd);
 
       S := '';
@@ -1341,18 +1331,18 @@ end;
 
 { ------------------------------------------------------------------ document }
 
-function TInkRichEdit.EffAttr(AIndex: Integer): TInkAttr;
+function TInkRichEdit.EffAttr(AIndex: integer): TInkAttr;
 begin
   Result := FAttrs[AIndex];
   AdjustAttr(AIndex, Result);
 end;
 
-procedure TInkRichEdit.AdjustAttr(AIndex: Integer; var A: TInkAttr);
+procedure TInkRichEdit.AdjustAttr(AIndex: integer; var A: TInkAttr);
 begin
   { the base editor draws what the document says }
 end;
 
-function TInkRichEdit.CharAt(AIndex: Integer): string;
+function TInkRichEdit.CharAt(AIndex: integer): string;
 begin
   if (AIndex >= 0) and (AIndex < CharCount) then
     Result := FChars[AIndex]
@@ -1360,7 +1350,7 @@ begin
     Result := '';
 end;
 
-function TInkRichEdit.DocumentHeight: Integer;
+function TInkRichEdit.DocumentHeight: integer;
 begin
   NeedLayout;
   Result := FDocHeight;
@@ -1402,7 +1392,7 @@ procedure TInkRichEdit.DoInsert(const AText: string; const AAttr: TInkAttr);
 var
   Incoming: array of string;
   P: PChar;
-  CharLen, N, i, Old: Integer;
+  CharLen, N, i, Old: integer;
 begin
   if AText = '' then Exit;
   N := 0;
@@ -1435,9 +1425,9 @@ begin
   Changed;
 end;
 
-procedure TInkRichEdit.DoDelete(AFrom, ATo: Integer);
+procedure TInkRichEdit.DoDelete(AFrom, ATo: integer);
 var
-  i, N: Integer;
+  i, N: integer;
 begin
   if ATo <= AFrom then Exit;
   if AFrom < 0 then AFrom := 0;
@@ -1493,7 +1483,7 @@ end;
 procedure TInkRichEdit.InsertParagraph;
 var
   A: TInkAttr;
-  PS, PE, i, K: Integer;
+  PS, PE, i, K: integer;
 begin
   if FReadOnly then Exit;
   PushUndo(False);
@@ -1587,10 +1577,10 @@ begin
   end;
 end;
 
-procedure TInkRichEdit.InsertTable(ACols, ARows: Integer);
+procedure TInkRichEdit.InsertTable(ACols, ARows: integer);
 var
   A, TA: TInkAttr;
-  r, Home: Integer;
+  r, Home: integer;
   RowTxt: string;
 begin
   if FReadOnly then Exit;
@@ -1621,9 +1611,9 @@ end;
 
 { -------------------------------------------------------------- formatting  }
 
-procedure TInkRichEdit.ApplyStyle(AStyle: TFontStyle; AOn: Boolean);
+procedure TInkRichEdit.ApplyStyle(AStyle: TFontStyle; AOn: boolean);
 var
-  i: Integer;
+  i: integer;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
@@ -1658,7 +1648,7 @@ end;
 { The four value-setters below all do the same dance, so they share it. }
 procedure TInkRichEdit.ApplyColor(AColor: TColor);
 var
-  i: Integer;
+  i: integer;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
@@ -1681,7 +1671,7 @@ end;
 
 procedure TInkRichEdit.ApplyBackColor(AColor: TColor);
 var
-  i: Integer;
+  i: integer;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
@@ -1702,9 +1692,9 @@ begin
   SelectionChanged;
 end;
 
-procedure TInkRichEdit.ApplySize(ASize: Integer);
+procedure TInkRichEdit.ApplySize(ASize: integer);
 var
-  i: Integer;
+  i: integer;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
@@ -1727,7 +1717,7 @@ end;
 
 procedure TInkRichEdit.ApplyFace(const AFace: string);
 var
-  i: Integer;
+  i: integer;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
@@ -1750,7 +1740,7 @@ end;
 
 procedure TInkRichEdit.ApplyScript(AScript: TInkScript);
 var
-  i: Integer;
+  i: integer;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
@@ -1773,7 +1763,7 @@ end;
 
 procedure TInkRichEdit.ApplyLink(const AHref: string);
 var
-  i: Integer;
+  i: integer;
 begin
   if FReadOnly or (GetSelLength = 0) then Exit;
   PushUndo(False);
@@ -1790,7 +1780,7 @@ end;
   paragraph boundaries before it is applied. }
 procedure TInkRichEdit.ApplyAlignment(AAlign: TAlignment);
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FReadOnly or (CharCount = 0) then Exit;
   PushUndo(False);
@@ -1809,7 +1799,7 @@ end;
 
 procedure TInkRichEdit.ApplyParaKind(AKind: TInkParaKind);
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FReadOnly then Exit;
   if CharCount = 0 then
@@ -1840,9 +1830,9 @@ end;
 
 { the list items the selection touches step ADelta levels deeper (or back
   out); five levels is as deep as anyone can read }
-procedure TInkRichEdit.ApplyParaLevel(ADelta: Integer);
+procedure TInkRichEdit.ApplyParaLevel(ADelta: integer);
 var
-  i, A, B, L: Integer;
+  i, A, B, L: integer;
 begin
   if FReadOnly or (CharCount = 0) then Exit;
   PushUndo(False);
@@ -1854,11 +1844,11 @@ begin
   for i := A to B - 1 do
     if FAttrs[i].Kind in [ipkBullet, ipkNumber] then
     begin
-      L := EnsureRange(Integer(FAttrs[i].Level) + ADelta, 0, 5);
+      L := EnsureRange(integer(FAttrs[i].Level) + ADelta, 0, 5);
       FAttrs[i].Level := L;
     end;
   if FHasTypingAttr then
-    FTypingAttr.Level := EnsureRange(Integer(FTypingAttr.Level) + ADelta, 0, 5);
+    FTypingAttr.Level := EnsureRange(integer(FTypingAttr.Level) + ADelta, 0, 5);
   FModified := True;
   FMarkupDirty := True;
   InvalidateLayout;
@@ -1868,7 +1858,7 @@ end;
 
 procedure TInkRichEdit.ClearFormatting;
 var
-  i: Integer;
+  i: integer;
   Keep: TAlignment;
   KeepKind: TInkParaKind;
 begin
@@ -1900,7 +1890,7 @@ end;
 
 function TInkRichEdit.SelStyle: TFontStyles;
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FHasTypingAttr then Exit(FTypingAttr.Style);
   A := GetSelStart;
@@ -1913,7 +1903,7 @@ end;
 
 function TInkRichEdit.SelColor: TColor;
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FHasTypingAttr then Exit(FTypingAttr.Color);
   A := GetSelStart;
@@ -1926,7 +1916,7 @@ end;
 
 function TInkRichEdit.SelBackColor: TColor;
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FHasTypingAttr then Exit(FTypingAttr.BackColor);
   A := GetSelStart;
@@ -1937,9 +1927,9 @@ begin
     if FAttrs[i].BackColor <> Result then Exit(clNone);
 end;
 
-function TInkRichEdit.SelSize: Integer;
+function TInkRichEdit.SelSize: integer;
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FHasTypingAttr then Exit(FTypingAttr.Size);
   A := GetSelStart;
@@ -1952,7 +1942,7 @@ end;
 
 function TInkRichEdit.SelFace: string;
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FHasTypingAttr then Exit(FTypingAttr.Face);
   A := GetSelStart;
@@ -1965,7 +1955,7 @@ end;
 
 function TInkRichEdit.SelScript: TInkScript;
 var
-  i, A, B: Integer;
+  i, A, B: integer;
 begin
   if FHasTypingAttr then Exit(FTypingAttr.Script);
   A := GetSelStart;
@@ -2010,24 +2000,24 @@ begin
         Message.Result := 1
       else
         inherited;
-  else
-    inherited;
+    else
+      inherited;
   end;
 end;
 
-procedure TInkRichEdit.KeyDown(var Key: Word; Shift: TShiftState);
+procedure TInkRichEdit.KeyDown(var Key: word; Shift: TShiftState);
 var
-  Ext: Boolean;
-  L, Target, i, Best, BestDX, DX: Integer;
+  Ext: boolean;
+  L, Target, i, Best, BestDX, DX: integer;
   P: TPoint;
 
-  { Home/End within the visual line the caret sits on }
-  function LineHome(ALine: Integer): Integer;
+{ Home/End within the visual line the caret sits on }
+  function LineHome(ALine: integer): integer;
   begin
     Result := FLines[ALine].First;
   end;
 
-  function LineEnd(ALine: Integer): Integer;
+  function LineEnd(ALine: integer): integer;
   begin
     Result := FLines[ALine].First + FLines[ALine].Count;
     if (FLines[ALine].Count > 0) and (FChars[Result - 1] = #10) then Dec(Result);
@@ -2036,9 +2026,9 @@ var
   { Tab in a table: the caret to the start of the next cell, into the next
     row's first cell past the last one, and a new row past the table's end.
     Shift takes it back the same way. }
-  procedure TableHop(ABack: Boolean);
+  procedure TableHop(ABack: boolean);
   var
-    RS, RE, C: Integer;
+    RS, RE, C: integer;
   begin
     RS := FCaret;
     while (RS > 0) and (FChars[RS - 1] <> #10) do Dec(RS);
@@ -2050,9 +2040,7 @@ var
       while (C < RE) and (FChars[C] <> '|') do Inc(C);
       if C < RE then
         MoveCaret(C + 1, False)
-      else if (RE + 1 < CharCount) and
-        (FAttrs[RE + 1].Kind in [ipkTableHead, ipkTableRow]) and
-        (FChars[RE] = #10) then
+      else if (RE + 1 < CharCount) and (FAttrs[RE + 1].Kind in [ipkTableHead, ipkTableRow]) and (FChars[RE] = #10) then
         MoveCaret(RE + 1, False)
       else
       begin
@@ -2074,7 +2062,9 @@ var
           Dec(C);
           while (C >= RS) and (FChars[C] <> '|') do Dec(C);
         end;
-        if C >= RS then MoveCaret(C + 1, False) else MoveCaret(RS, False);
+        if C >= RS then MoveCaret(C + 1, False)
+        else
+          MoveCaret(RS, False);
       end
       else if FCaret > RS then
         MoveCaret(RS, False)
@@ -2112,129 +2102,163 @@ begin
         Key := 0;
       end;
     VK_LEFT:
-      begin
-        if (GetSelLength > 0) and not Ext then
-          MoveCaret(GetSelStart, False)
-        else
-          MoveCaret(FCaret - 1, Ext);
-        FGoalX := -1;
-        Key := 0;
-      end;
+    begin
+      if (GetSelLength > 0) and not Ext then
+        MoveCaret(GetSelStart, False)
+      else
+        MoveCaret(FCaret - 1, Ext);
+      FGoalX := -1;
+      Key := 0;
+    end;
     VK_RIGHT:
-      begin
-        if (GetSelLength > 0) and not Ext then
-          MoveCaret(GetSelStart + GetSelLength, False)
-        else
-          MoveCaret(FCaret + 1, Ext);
-        FGoalX := -1;
-        Key := 0;
-      end;
+    begin
+      if (GetSelLength > 0) and not Ext then
+        MoveCaret(GetSelStart + GetSelLength, False)
+      else
+        MoveCaret(FCaret + 1, Ext);
+      FGoalX := -1;
+      Key := 0;
+    end;
     VK_UP, VK_DOWN, VK_PRIOR, VK_NEXT:
+    begin
+      if Length(FLines) > 0 then
       begin
-        if Length(FLines) > 0 then
-        begin
-          P := CaretPoint(FCaret);
-          if FGoalX < 0 then FGoalX := P.X;
-          L := CaretLine(FCaret);
-          case Key of
-            VK_UP: Target := L - 1;
-            VK_DOWN: Target := L + 1;
-            VK_PRIOR: Target := L - Max(1, ClientHeight div Max(FLines[L].Height, 1));
+        P := CaretPoint(FCaret);
+        if FGoalX < 0 then FGoalX := P.X;
+        L := CaretLine(FCaret);
+        case Key of
+          VK_UP: Target := L - 1;
+          VK_DOWN: Target := L + 1;
+          VK_PRIOR: Target := L - Max(1, ClientHeight div Max(FLines[L].Height, 1));
           else
             Target := L + Max(1, ClientHeight div Max(FLines[L].Height, 1));
-          end;
-          if Target < 0 then Target := 0;
-          if Target > High(FLines) then Target := High(FLines);
+        end;
+        if Target < 0 then Target := 0;
+        if Target > High(FLines) then Target := High(FLines);
 
-          // land on whichever character on the target line is nearest the
-          // column we set out from, so up-then-down comes back where it began
-          Best := LineHome(Target);
-          BestDX := MaxInt;
-          for i := LineHome(Target) to LineEnd(Target) do
+        // land on whichever character on the target line is nearest the
+        // column we set out from, so up-then-down comes back where it began
+        Best := LineHome(Target);
+        BestDX := MaxInt;
+        for i := LineHome(Target) to LineEnd(Target) do
+        begin
+          if i < FLines[Target].First + FLines[Target].Count then
+            DX := Abs(FLines[Target].Left + FCharX[i] - FGoalX)
+          else
+            DX := Abs(FLines[Target].Left + FLines[Target].Width - FGoalX);
+          if i = LineEnd(Target) then
+            DX := Abs(FLines[Target].Left + FLines[Target].Width - FGoalX);
+          if DX < BestDX then
           begin
-            if i < FLines[Target].First + FLines[Target].Count then
-              DX := Abs(FLines[Target].Left + FCharX[i] - FGoalX)
-            else
-              DX := Abs(FLines[Target].Left + FLines[Target].Width - FGoalX);
-            if i = LineEnd(Target) then
-              DX := Abs(FLines[Target].Left + FLines[Target].Width - FGoalX);
-            if DX < BestDX then
-            begin
-              BestDX := DX;
-              Best := i;
-            end;
+            BestDX := DX;
+            Best := i;
           end;
-          L := FGoalX;
-          MoveCaret(Best, Ext);
-          FGoalX := L;              // MoveCaret must not forget the column
         end;
-        Key := 0;
+        L := FGoalX;
+        MoveCaret(Best, Ext);
+        FGoalX := L;              // MoveCaret must not forget the column
       end;
+      Key := 0;
+    end;
     VK_HOME:
-      begin
-        if ssCtrl in Shift then
-          MoveCaret(0, Ext)
-        else
-          MoveCaret(LineHome(CaretLine(FCaret)), Ext);
-        FGoalX := -1;
-        Key := 0;
-      end;
+    begin
+      if ssCtrl in Shift then
+        MoveCaret(0, Ext)
+      else
+        MoveCaret(LineHome(CaretLine(FCaret)), Ext);
+      FGoalX := -1;
+      Key := 0;
+    end;
     VK_END:
+    begin
+      if ssCtrl in Shift then
+        MoveCaret(CharCount, Ext)
+      else
       begin
-        if ssCtrl in Shift then
-          MoveCaret(CharCount, Ext)
-        else
-        begin
-          MoveCaret(LineEnd(CaretLine(FCaret)), Ext);
-        end;
-        FGoalX := -1;
-        Key := 0;
+        MoveCaret(LineEnd(CaretLine(FCaret)), Ext);
       end;
+      FGoalX := -1;
+      Key := 0;
+    end;
     VK_RETURN:
-      begin
-        if not FReadOnly then InsertParagraph;
-        FGoalX := -1;
-        Key := 0;
-      end;
+    begin
+      if not FReadOnly then InsertParagraph;
+      FGoalX := -1;
+      Key := 0;
+    end;
     VK_BACK:
+    begin
+      if not FReadOnly then
       begin
-        if not FReadOnly then
-        begin
-          PushUndo(True);
-          if GetSelLength > 0 then
-            DeleteSelection
-          else if FCaret > 0 then
-            DoDelete(FCaret - 1, FCaret);
-        end;
-        FGoalX := -1;
-        Key := 0;
+        PushUndo(True);
+        if GetSelLength > 0 then
+          DeleteSelection
+        else if FCaret > 0 then
+          DoDelete(FCaret - 1, FCaret);
       end;
+      FGoalX := -1;
+      Key := 0;
+    end;
     VK_DELETE:
+    begin
+      if not FReadOnly then
       begin
-        if not FReadOnly then
-        begin
-          PushUndo(True);
-          if GetSelLength > 0 then
-            DeleteSelection
-          else if FCaret < CharCount then
-            DoDelete(FCaret, FCaret + 1);
-        end;
-        FGoalX := -1;
+        PushUndo(True);
+        if GetSelLength > 0 then
+          DeleteSelection
+        else if FCaret < CharCount then
+          DoDelete(FCaret, FCaret + 1);
+      end;
+      FGoalX := -1;
+      Key := 0;
+    end;
+    VK_A: if ssCtrl in Shift then
+      begin
+        SelectAll;
         Key := 0;
       end;
-    VK_A: if ssCtrl in Shift then begin SelectAll; Key := 0; end;
-    VK_C: if ssCtrl in Shift then begin CopyToClipboard; Key := 0; end;
-    VK_X: if ssCtrl in Shift then begin CutToClipboard; Key := 0; end;
-    VK_V: if ssCtrl in Shift then begin PasteFromClipboard; Key := 0; end;
+    VK_C: if ssCtrl in Shift then
+      begin
+        CopyToClipboard;
+        Key := 0;
+      end;
+    VK_X: if ssCtrl in Shift then
+      begin
+        CutToClipboard;
+        Key := 0;
+      end;
+    VK_V: if ssCtrl in Shift then
+      begin
+        PasteFromClipboard;
+        Key := 0;
+      end;
     VK_Z: if ssCtrl in Shift then
-          begin
-            if ssShift in Shift then Redo else Undo;
-            Key := 0;
-          end;
-    VK_Y: if ssCtrl in Shift then begin Redo; Key := 0; end;
-    VK_B: if ssCtrl in Shift then begin ToggleStyle(fsBold); Key := 0; end;
-    VK_I: if ssCtrl in Shift then begin ToggleStyle(fsItalic); Key := 0; end;
-    VK_U: if ssCtrl in Shift then begin ToggleStyle(fsUnderline); Key := 0; end;
+      begin
+        if ssShift in Shift then Redo
+        else
+          Undo;
+        Key := 0;
+      end;
+    VK_Y: if ssCtrl in Shift then
+      begin
+        Redo;
+        Key := 0;
+      end;
+    VK_B: if ssCtrl in Shift then
+      begin
+        ToggleStyle(fsBold);
+        Key := 0;
+      end;
+    VK_I: if ssCtrl in Shift then
+      begin
+        ToggleStyle(fsItalic);
+        Key := 0;
+      end;
+    VK_U: if ssCtrl in Shift then
+      begin
+        ToggleStyle(fsUnderline);
+        Key := 0;
+      end;
   end;
 end;
 
@@ -2257,8 +2281,7 @@ end;
 
 { -------------------------------------------------------------------- mouse }
 
-procedure TInkRichEdit.MouseDown(Button: TMouseButton; Shift: TShiftState;
-  X, Y: Integer);
+procedure TInkRichEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 begin
   inherited MouseDown(Button, Shift, X, Y);
   if Button = mbLeft then
@@ -2274,9 +2297,9 @@ begin
   end;
 end;
 
-procedure TInkRichEdit.MouseMove(Shift: TShiftState; X, Y: Integer);
+procedure TInkRichEdit.MouseMove(Shift: TShiftState; X, Y: integer);
 var
-  Idx: Integer;
+  Idx: integer;
 begin
   inherited MouseMove(Shift, X, Y);
   if ssLeft in Shift then
@@ -2307,14 +2330,13 @@ begin
   inherited Click;
   // ctrl+click follows a link; a plain click has to keep placing the caret,
   // or the text under a link would be uneditable
-  if FMouseOnLink and (FHoverLink <> '') and Assigned(FOnLinkClick) and
-    (GetKeyState(VK_CONTROL) < 0) then
+  if FMouseOnLink and (FHoverLink <> '') and Assigned(FOnLinkClick) and (GetKeyState(VK_CONTROL) < 0) then
     FOnLinkClick(Self, FHoverLink);
 end;
 
 procedure TInkRichEdit.DblClick;
 var
-  A, B: Integer;
+  A, B: integer;
 begin
   inherited DblClick;
   if CharCount = 0 then Exit;
@@ -2332,7 +2354,7 @@ end;
 
 procedure TInkRichEdit.CopyToClipboard;
 var
-  i, A, N: Integer;
+  i, A, N: integer;
 begin
   if GetSelLength = 0 then Exit;
   A := GetSelStart;
@@ -2361,22 +2383,22 @@ begin
     4: CopyToClipboard;
     5: PasteFromClipboard;
     6: if (not FReadOnly) and (GetSelLength > 0) then
-       begin
-         PushUndo(False);
-         DeleteSelection;
-         FMarkupDirty := True;
-         InvalidateLayout;
-         if Assigned(FOnChange) then FOnChange(Self);
-       end;
+      begin
+        PushUndo(False);
+        DeleteSelection;
+        FMarkupDirty := True;
+        InvalidateLayout;
+        if Assigned(FOnChange) then FOnChange(Self);
+      end;
     7: SelectAll;
   end;
 end;
 
-procedure TInkRichEdit.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+procedure TInkRichEdit.DoContextPopup(MousePos: TPoint; var Handled: boolean);
 var
   P: TPoint;
 
-  procedure AddItem(const ACaption: string; ATag: Integer; AEnabled: Boolean);
+  procedure AddItem(const ACaption: string; ATag: integer; AEnabled: boolean);
   var
     It: TMenuItem;
   begin
@@ -2416,7 +2438,7 @@ end;
 procedure TInkRichEdit.PasteFromClipboard;
 var
   S: string;
-  i, At: Integer;
+  i, At: integer;
   A: TInkAttr;
 begin
   if FReadOnly then Exit;
@@ -2434,8 +2456,7 @@ begin
   DoInsert(S, A);
 
   // same text we put there, so the formatting that went with it is still good
-  if (gClipText <> '') and (Length(gClipAttrs) > 0) and
-     (StringReplace(gClipText, LineEnding, #10, [rfReplaceAll]) = S) then
+  if (gClipText <> '') and (Length(gClipAttrs) > 0) and (StringReplace(gClipText, LineEnding, #10, [rfReplaceAll]) = S) then
     for i := 0 to Length(gClipAttrs) - 1 do
       if At + i < CharCount then
         FAttrs[At + i] := gClipAttrs[i];
@@ -2447,7 +2468,7 @@ end;
 function TInkRichEdit.TakeSnapshot: TObject;
 var
   S: TInkSnapshot;
-  i: Integer;
+  i: integer;
 begin
   S := TInkSnapshot.Create;
   SetLength(S.Chars, CharCount);
@@ -2465,7 +2486,7 @@ end;
 procedure TInkRichEdit.RestoreSnapshot(ASnap: TObject);
 var
   S: TInkSnapshot;
-  i: Integer;
+  i: integer;
 begin
   S := TInkSnapshot(ASnap);
   SetLength(FChars, Length(S.Chars));
@@ -2482,7 +2503,7 @@ end;
 
 procedure TInkRichEdit.ClearUndoList(AList: TFPList);
 var
-  i: Integer;
+  i: integer;
 begin
   if AList = nil then Exit;
   for i := 0 to AList.Count - 1 do
@@ -2492,7 +2513,7 @@ end;
 
 { ACoalesce folds a run of keystrokes into one undo step, so ctrl+Z takes back
   a word rather than a letter. }
-procedure TInkRichEdit.PushUndo(ACoalesce: Boolean);
+procedure TInkRichEdit.PushUndo(ACoalesce: boolean);
 var
   Now: QWord;
 begin
@@ -2512,12 +2533,12 @@ begin
   ClearUndoList(FRedo);
 end;
 
-function TInkRichEdit.CanUndo: Boolean;
+function TInkRichEdit.CanUndo: boolean;
 begin
   Result := FUndo.Count > 0;
 end;
 
-function TInkRichEdit.CanRedo: Boolean;
+function TInkRichEdit.CanRedo: boolean;
 begin
   Result := FRedo.Count > 0;
 end;
@@ -2550,12 +2571,12 @@ end;
 
 { ------------------------------------------------------------------- markup */ }
 
-procedure TInkRichEdit.SetReadOnly(AValue: Boolean);
+procedure TInkRichEdit.SetReadOnly(AValue: boolean);
 begin
   FReadOnly := AValue;
 end;
 
-procedure TInkRichEdit.SetWordWrap(AValue: Boolean);
+procedure TInkRichEdit.SetWordWrap(AValue: boolean);
 begin
   if FWordWrap = AValue then Exit;
   FWordWrap := AValue;
@@ -2581,7 +2602,7 @@ end;
 
 procedure TInkRichEdit.RebuildFromMarkup;
 var
-  i: Integer;
+  i: integer;
 begin
   FSettingMarkup := True;
   try
@@ -2618,11 +2639,11 @@ end;
 { Reads one paragraph of markup onto the end of the document. A stack of
   attributes mirrors the tag nesting: an opening tag pushes a modified copy,
   a closing tag pops back to what was in force before it. }
-procedure TInkRichEdit.ParseInto(const AMarkup: string; AParaBreakFirst: Boolean);
+procedure TInkRichEdit.ParseInto(const AMarkup: string; AParaBreakFirst: boolean);
 var
   Stack: array of TInkAttr;
   Cur: TInkAttr;
-  P, Len, Start, N: Integer;
+  P, Len, Start, N: integer;
   TagStr, Nm, Val: string;
   Body: string;
   Up: string;
@@ -2643,7 +2664,7 @@ var
   procedure Emit(const S: string);
   var
     Q: PChar;
-    CharLen, Old, k: Integer;
+    CharLen, Old, k: integer;
     Txt: string;
   begin
     if S = '' then Exit;
@@ -2676,9 +2697,9 @@ var
     family name is not case insensitive to the font matcher. }
   function PropOf(const ATag, APropName: string): string;
   var
-    ip, j: Integer;
+    ip, j: integer;
     R: string;
-    Q: Char;
+    Q: char;
   begin
     Result := '';
     ip := Pos(APropName, UpperCase(ATag));
@@ -2702,8 +2723,7 @@ var
     else
     begin
       j := 1;
-      while (j <= Length(R)) and (R[j] <> ' ') and (R[j] <> '>') and
-        (R[j] <> #9) and (R[j] <> '/') do
+      while (j <= Length(R)) and (R[j] <> ' ') and (R[j] <> '>') and (R[j] <> #9) and (R[j] <> '/') do
         Inc(j);
       Result := Copy(R, 1, j - 1);
     end;
@@ -2740,17 +2760,51 @@ begin
 
       if (Nm = 'BR') or (Nm = 'P') or (Nm = '/P') then
         EmitBreak
-      else if Nm = 'B' then begin Push; Cur.Style := Cur.Style + [fsBold]; end
-      else if Nm = 'I' then begin Push; Cur.Style := Cur.Style + [fsItalic]; end
-      else if Nm = 'U' then begin Push; Cur.Style := Cur.Style + [fsUnderline]; end
+      else if Nm = 'B' then
+      begin
+        Push;
+        Cur.Style := Cur.Style + [fsBold];
+      end
+      else if Nm = 'I' then
+      begin
+        Push;
+        Cur.Style := Cur.Style + [fsItalic];
+      end
+      else if Nm = 'U' then
+      begin
+        Push;
+        Cur.Style := Cur.Style + [fsUnderline];
+      end
       else if (Nm = 'S') or (Nm = 'STRIKE') then
-        begin Push; Cur.Style := Cur.Style + [fsStrikeOut]; end
-      else if Nm = 'SUP' then begin Push; Cur.Script := isSuperscript; end
-      else if Nm = 'SUB' then begin Push; Cur.Script := isSubscript; end
-      else if Nm = 'CENTER' then begin Push; Cur.Align := taCenter; end
-      else if Nm = 'RIGHT' then begin Push; Cur.Align := taRightJustify; end
+      begin
+        Push;
+        Cur.Style := Cur.Style + [fsStrikeOut];
+      end
+      else if Nm = 'SUP' then
+      begin
+        Push;
+        Cur.Script := isSuperscript;
+      end
+      else if Nm = 'SUB' then
+      begin
+        Push;
+        Cur.Script := isSubscript;
+      end
+      else if Nm = 'CENTER' then
+      begin
+        Push;
+        Cur.Align := taCenter;
+      end
+      else if Nm = 'RIGHT' then
+      begin
+        Push;
+        Cur.Align := taRightJustify;
+      end
       else if (Length(Nm) = 2) and (Nm[1] = 'H') and (Nm[2] in ['1'..'6']) then
-        begin Push; Cur.Kind := TInkParaKind(Ord(ipkH1) + Ord(Nm[2]) - Ord('1')); end
+      begin
+        Push;
+        Cur.Kind := TInkParaKind(Ord(ipkH1) + Ord(Nm[2]) - Ord('1'));
+      end
       else if Nm = 'LI' then
       begin
         Push;
@@ -2763,15 +2817,27 @@ begin
         Cur.Kind := ipkNumber;
         Cur.Level := EnsureRange(StrToIntDef(PropOf(TagStr, 'LEVEL'), 0), 0, 5);
       end
-      else if Nm = 'BLOCKQUOTE' then begin Push; Cur.Kind := ipkQuote; end
+      else if Nm = 'BLOCKQUOTE' then
+      begin
+        Push;
+        Cur.Kind := ipkQuote;
+      end
       else if Nm = 'PRE' then
       begin
         Push;
         Cur.Kind := ipkCode;
         Cur.Lang := PropOf(TagStr, 'LANG');
       end
-      else if Nm = 'TH' then begin Push; Cur.Kind := ipkTableHead; end
-      else if Nm = 'TR' then begin Push; Cur.Kind := ipkTableRow; end
+      else if Nm = 'TH' then
+      begin
+        Push;
+        Cur.Kind := ipkTableHead;
+      end
+      else if Nm = 'TR' then
+      begin
+        Push;
+        Cur.Kind := ipkTableRow;
+      end
       else if Nm = 'A' then
       begin
         Push;
@@ -2786,8 +2852,7 @@ begin
         // "BGCOLOR" ends in "COLOR", so looking for the shorter name in the
         // raw tag finds the longer one and paints the text in its own
         // background. Mask it out first.
-        Val := PropOf(StringReplace(TagStr, 'bgcolor', '#######',
-          [rfReplaceAll, rfIgnoreCase]), 'COLOR');
+        Val := PropOf(StringReplace(TagStr, 'bgcolor', '#######', [rfReplaceAll, rfIgnoreCase]), 'COLOR');
         if Val <> '' then Cur.Color := HTMLStringToColor(Val, clDefault);
         Val := PropOf(TagStr, 'SIZE');
         if Val <> '' then Cur.Size := StrToIntDef(Val, 0);
@@ -2822,17 +2887,17 @@ const
   cMaxTags = 8;
 var
   Line, Body: string;
-  i, RunEnd, k, NOpen, NWant: Integer;
+  i, RunEnd, k, NOpen, NWant: integer;
   OpenName, OpenTag: array[0..cMaxTags - 1] of string;
   WantName, WantTag: array[0..cMaxTags - 1] of string;
   ParaAlign: TAlignment;
   ParaKind: TInkParaKind;
-  ParaLevel: Integer;
+  ParaLevel: integer;
   ParaLang: string;
 
-  procedure CloseDownTo(ALevel: Integer);
+  procedure CloseDownTo(ALevel: integer);
   var
-    j: Integer;
+    j: integer;
   begin
     for j := NOpen - 1 downto ALevel do
       Line := Line + '</' + OpenName[j] + '>';
@@ -2878,8 +2943,8 @@ var
     into three separate <b> runs. }
   procedure OrderWantForReuse;
   var
-    j, m, Cnt, Found: Integer;
-    Used: array[0..cMaxTags - 1] of Boolean;
+    j, m, Cnt, Found: integer;
+    Used: array[0..cMaxTags - 1] of boolean;
     TmpName, TmpTag: array[0..cMaxTags - 1] of string;
   begin
     for j := 0 to cMaxTags - 1 do
@@ -2918,8 +2983,7 @@ var
   procedure EndParagraph;
   const
     cKindTag: array[TInkParaKind] of string =
-      ('', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'oli', 'blockquote', 'pre',
-       'th', 'tr');
+      ('', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'oli', 'blockquote', 'pre', 'th', 'tr');
   begin
     CloseDownTo(0);
     case ParaAlign of
@@ -2955,10 +3019,18 @@ begin
       WantName[k] := '';
       WantTag[k] := '';
     end;
-    if CharCount > 0 then ParaAlign := FAttrs[0].Align else ParaAlign := taLeftJustify;
-    if CharCount > 0 then ParaKind := FAttrs[0].Kind else ParaKind := ipkText;
-    if CharCount > 0 then ParaLevel := FAttrs[0].Level else ParaLevel := 0;
-    if CharCount > 0 then ParaLang := FAttrs[0].Lang else ParaLang := '';
+    if CharCount > 0 then ParaAlign := FAttrs[0].Align
+    else
+      ParaAlign := taLeftJustify;
+    if CharCount > 0 then ParaKind := FAttrs[0].Kind
+    else
+      ParaKind := ipkText;
+    if CharCount > 0 then ParaLevel := FAttrs[0].Level
+    else
+      ParaLevel := 0;
+    if CharCount > 0 then ParaLang := FAttrs[0].Lang
+    else
+      ParaLang := '';
 
     i := 0;
     while i <= CharCount do
@@ -2985,8 +3057,7 @@ begin
       end;
 
       RunEnd := i;
-      while (RunEnd + 1 < CharCount) and (FChars[RunEnd + 1] <> #10) and
-        SameInkAttr(FAttrs[RunEnd + 1], FAttrs[i]) do
+      while (RunEnd + 1 < CharCount) and (FChars[RunEnd + 1] <> #10) and SameInkAttr(FAttrs[RunEnd + 1], FAttrs[i]) do
         Inc(RunEnd);
 
       BuildWant(FAttrs[i]);
@@ -3018,7 +3089,7 @@ end;
 
 function TInkRichEdit.AsHTML(const ASep: string): string;
 var
-  i: Integer;
+  i: integer;
   M: TStrings;
 begin
   M := GetMarkup;
@@ -3035,18 +3106,16 @@ end;
   tags, inline content flattened through HTMLToInk.  Nested lists flatten
   to one level, and a table becomes plain rows - the editor has no tables
   yet. }
-procedure MarkdownHTMLToParagraphs(const H: string; AOut: TStrings;
-  AListLevel: Integer = 0);
+procedure MarkdownHTMLToParagraphs(const H: string; AOut: TStrings; AListLevel: integer = 0);
 var
-  P, Q, Depth: Integer;
+  P, Q, Depth: integer;
   Raw, Name, Inner, Wrap: string;
-  Closing: Boolean;
-  InOrdered: Boolean;
+  Closing: boolean;
+  InOrdered: boolean;
 
-  function ReadTagIn(const Src: string; var AP: Integer; out AName: string;
-    out AClosing: Boolean): string;
+  function ReadTagIn(const Src: string; var AP: integer; out AName: string; out AClosing: boolean): string;
   var
-    E, K: Integer;
+    E, K: integer;
   begin
     Result := '';
     AName := '';
@@ -3054,7 +3123,11 @@ var
     if (AP > Length(Src)) or (Src[AP] <> '<') then Exit;
     E := AP + 1;
     while (E <= Length(Src)) and (Src[E] <> '>') do Inc(E);
-    if E > Length(Src) then begin AP := E; Exit end;
+    if E > Length(Src) then
+    begin
+      AP := E;
+      Exit;
+    end;
     Result := Copy(Src, AP, E - AP + 1);
     AP := E + 1;
     K := 2;
@@ -3070,7 +3143,7 @@ var
     end;
   end;
 
-  function ReadTag(var AP: Integer; out AName: string; out AClosing: Boolean): string;
+  function ReadTag(var AP: integer; out AName: string; out AClosing: boolean): string;
   begin
     Result := ReadTagIn(H, AP, AName, AClosing);
   end;
@@ -3078,9 +3151,9 @@ var
   { everything up to the close of AName, nesting counted, cursor left after }
   function InnerOf(const AName: string): string;
   var
-    S0, D, TP: Integer;
+    S0, D, TP: integer;
     N: string;
-    C: Boolean;
+    C: boolean;
   begin
     S0 := P;
     D := 1;
@@ -3110,7 +3183,7 @@ var
   procedure AddWrapped(const AWrap, AInner: string);
   var
     Ink, CloseName: string;
-    SP: Integer;
+    SP: integer;
   begin
     Ink := Trim(HTMLToInk(AInner));
     if AWrap = '' then
@@ -3128,7 +3201,7 @@ var
   var
     T, Lang, Open: string;
     Lines: TStringList;
-    K: Integer;
+    K: integer;
   begin
     T := AInner;
     { the code tag inside pre carries the fence's language as
@@ -3171,14 +3244,14 @@ var
     a body row per <tr>, the cells joined by the '|' that draws the grid }
   procedure AddTable(const AInner: string);
   var
-    TP, CE: Integer;
+    TP, CE: integer;
     N, Row, Cell: string;
-    C, IsHead: Boolean;
+    C, IsHead: boolean;
     Cells: TStringList;
 
     procedure FlushRow;
     var
-      K: Integer;
+      K: integer;
     begin
       if Cells.Count = 0 then Exit;
       Row := '';
@@ -3305,16 +3378,16 @@ end;
 
 function TInkRichEdit.AsMarkdown: string;
 var
-  i, PS, CS, CE, NCells: Integer;
+  i, PS, CS, CE, NCells: integer;
   Kind, PrevKind: TInkParaKind;
   Lines: TStringList;
-  InFence: Boolean;
-  PrevLevel: Integer;
+  InFence: boolean;
+  PrevLevel: integer;
   Back, FenceLang: string;
 
   function EscapeMD(const T: string): string;
   var
-    K: Integer;
+    K: integer;
   begin
     Result := '';
     for K := 1 to Length(T) do
@@ -3325,9 +3398,9 @@ var
   end;
 
   { the paragraph's characters as Markdown inline text }
-  function InlineMD(AFrom, ATo: Integer): string;
+  function InlineMD(AFrom, ATo: integer): string;
   var
-    K, J, RunEnd: Integer;
+    K, J, RunEnd: integer;
     A: TInkAttr;
     Txt, Piece: string;
   begin
@@ -3361,9 +3434,9 @@ var
     end;
   end;
 
-  function RawText(AFrom, ATo: Integer): string;
+  function RawText(AFrom, ATo: integer): string;
   var
-    K: Integer;
+    K: integer;
   begin
     Result := '';
     for K := AFrom to ATo do
@@ -3394,12 +3467,9 @@ begin
         or a table.  A nested item continues its list whatever its kind;
         two different kinds at the top level are two lists, kept apart. }
       if (Lines.Count > 0) and not InFence then
-        if not (((Kind in [ipkBullet, ipkNumber]) and
-             (PrevKind in [ipkBullet, ipkNumber]) and
-             ((Kind = PrevKind) or (ParaLevelAt(PS) > 0) or (PrevLevel > 0))) or
-          ((Kind = PrevKind) and (Kind in [ipkQuote, ipkCode])) or
-          ((Kind in [ipkTableHead, ipkTableRow]) and
-           (PrevKind in [ipkTableHead, ipkTableRow]))) then
+        if not (((Kind in [ipkBullet, ipkNumber]) and (PrevKind in [ipkBullet, ipkNumber]) and ((Kind = PrevKind) or
+          (ParaLevelAt(PS) > 0) or (PrevLevel > 0))) or ((Kind = PrevKind) and (Kind in [ipkQuote, ipkCode])) or
+          ((Kind in [ipkTableHead, ipkTableRow]) and (PrevKind in [ipkTableHead, ipkTableRow]))) then
           Lines.Add('');
       case Kind of
         ipkH1..ipkH6:
@@ -3409,50 +3479,49 @@ begin
             as under "- ", and never deep enough to read as indented code }
           Lines.Add(StringOfChar(' ', 3 * ParaLevelAt(PS)) + '- ' + InlineMD(PS, i - 1));
         ipkNumber:
-          Lines.Add(StringOfChar(' ', 3 * ParaLevelAt(PS)) +
-            IntToStr(ParaNumber(PS)) + '. ' + InlineMD(PS, i - 1));
+          Lines.Add(StringOfChar(' ', 3 * ParaLevelAt(PS)) + IntToStr(ParaNumber(PS)) + '. ' + InlineMD(PS, i - 1));
         ipkQuote:
           Lines.Add('> ' + InlineMD(PS, i - 1));
         ipkCode:
+        begin
+          if InFence and (FAttrs[PS].Lang <> FenceLang) then
           begin
-            if InFence and (FAttrs[PS].Lang <> FenceLang) then
-            begin
-              { the language changed: this is another fence }
-              Lines.Add('```');
-              InFence := False;
-            end;
-            if not InFence then
-            begin
-              FenceLang := '';
-              if PS < CharCount then FenceLang := FAttrs[PS].Lang;
-              Lines.Add('```' + FenceLang);
-              InFence := True;
-            end;
-            Lines.Add(RawText(PS, i - 1));
+            { the language changed: this is another fence }
+            Lines.Add('```');
+            InFence := False;
           end;
+          if not InFence then
+          begin
+            FenceLang := '';
+            if PS < CharCount then FenceLang := FAttrs[PS].Lang;
+            Lines.Add('```' + FenceLang);
+            InFence := True;
+          end;
+          Lines.Add(RawText(PS, i - 1));
+        end;
         ipkTableHead, ipkTableRow:
-          begin
-            { cells between the pipes, each written as inline Markdown }
-            Back := '|';
-            NCells := 0;
-            CS := PS;
-            for CE := PS to i do
-              if (CE = i) or (FChars[CE] = '|') then
-              begin
-                Back := Back + ' ' + InlineMD(CS, CE - 1) + ' |';
-                Inc(NCells);
-                CS := CE + 1;
-              end;
-            Lines.Add(Back);
-            if Kind = ipkTableHead then
+        begin
+          { cells between the pipes, each written as inline Markdown }
+          Back := '|';
+          NCells := 0;
+          CS := PS;
+          for CE := PS to i do
+            if (CE = i) or (FChars[CE] = '|') then
             begin
-              Back := '|';
-              for CE := 1 to NCells do Back := Back + ' --- |';
-              Lines.Add(Back);
+              Back := Back + ' ' + InlineMD(CS, CE - 1) + ' |';
+              Inc(NCells);
+              CS := CE + 1;
             end;
+          Lines.Add(Back);
+          if Kind = ipkTableHead then
+          begin
+            Back := '|';
+            for CE := 1 to NCells do Back := Back + ' --- |';
+            Lines.Add(Back);
           end;
-      else
-        Lines.Add(InlineMD(PS, i - 1));
+        end;
+        else
+          Lines.Add(InlineMD(PS, i - 1));
       end;
       PrevKind := Kind;
       PrevLevel := ParaLevelAt(PS);
@@ -3467,7 +3536,7 @@ end;
 
 function TInkRichEdit.PlainText: string;
 var
-  i: Integer;
+  i: integer;
 begin
   Result := '';
   for i := 0 to CharCount - 1 do

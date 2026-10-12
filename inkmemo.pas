@@ -42,24 +42,23 @@ uses
   Types, InkDraw, InkMarkdown, InkPage, InkCopyMenu, InkDOM;
 
 type
-  TInkMemoLinkEvent = procedure(Sender: TObject; LineIndex: Integer;
-    const LinkName: string) of object;
+  TInkMemoLinkEvent = procedure(Sender: TObject; LineIndex: integer; const LinkName: string) of object;
 
   { what one entry of the memo is: its line of Lines holds the source }
   TInkMemoEntry = record
     { itfHTML/itfMarkdown as an override; UseFormat False follows the
       memo's own TextFormat }
     Format: TInkTextFormat;
-    UseFormat: Boolean;
+    UseFormat: boolean;
     { shown exactly as written, markup and all }
-    Plain: Boolean;
+    Plain: boolean;
     { a whole message laid out like a fragment of a page - paragraphs,
       lists, quotes, fenced code - instead of one line of inline markup }
-    Block: Boolean;
+    Block: boolean;
     { a band behind the entry, and an inset, so a question can be set
       apart from an answer }
     Color: TColor;
-    Indent: Integer;
+    Indent: integer;
   end;
 
   { TInkMemo }
@@ -68,20 +67,20 @@ type
   private
     FLines: TStringList;
     FEntries: array of TInkMemoEntry;
-    FHTMLScale: Integer;
-    FSuperSubScriptRatio: Double;
-    FShowSelection: Boolean;
-    FWordWrap: Boolean;
-    FLineSpacing: Integer;
+    FHTMLScale: integer;
+    FSuperSubScriptRatio: double;
+    FShowSelection: boolean;
+    FWordWrap: boolean;
+    FLineSpacing: integer;
     FBorders: TInkBorders;
     FNoBorders: TInkBorders;
     FImages: TCustomImageList;
     FLinkStyle: TInkLinkStyle;
     FLinkHoverStyle: TInkLinkStyle;
-    FAutoOpenLink: Boolean;
-    FHoverLine: Integer;     // -1 when the mouse is not over a link
-    FHoverBlock: Integer;    // the block it is in
-    FHoverIndex: Integer;    // ordinal of that link within its block
+    FAutoOpenLink: boolean;
+    FHoverLine: integer;     // -1 when the mouse is not over a link
+    FHoverBlock: integer;    // the block it is in
+    FHoverIndex: integer;    // ordinal of that link within its block
     FHoverHref: string;
     FHoverLinkText: string;
     FOnLinkClick: TInkMemoLinkEvent;
@@ -91,35 +90,34 @@ type
     function GetLines: TStrings;
     procedure SetLines(AValue: TStrings);
     procedure LinesChanged(Sender: TObject);
-    procedure SetHTMLScale(AValue: Integer);
-    procedure SetSuperSubScriptRatio(AValue: Double);
-    procedure SetWordWrap(AValue: Boolean);
-    procedure SetLineSpacing(AValue: Integer);
+    procedure SetHTMLScale(AValue: integer);
+    procedure SetSuperSubScriptRatio(AValue: double);
+    procedure SetWordWrap(AValue: boolean);
+    procedure SetLineSpacing(AValue: integer);
     procedure SetBorders(AValue: TInkBorders);
     procedure SetImages(AValue: TCustomImageList);
     procedure SetLinkStyle(AValue: TInkLinkStyle);
     procedure SetLinkHoverStyle(AValue: TInkLinkStyle);
     procedure SubPropChanged(Sender: TObject);
-    function MakeLine(AIndex: Integer): TInkPageBlock;
-    function AtEnd: Boolean;
+    function MakeLine(AIndex: integer): TInkPageBlock;
+    function AtEnd: boolean;
     function DefaultEntry: TInkMemoEntry;
     function EntryFormat(const E: TInkMemoEntry): TInkTextFormat;
-    procedure MakeEntry(AIndex: Integer);
+    procedure MakeEntry(AIndex: integer);
     procedure AddEntry(const AText: string; const E: TInkMemoEntry);
     procedure MemoStyler;
   protected
     procedure Parse; override;
-    procedure LayoutColumn(out ALeft, AWidth: Integer); override;
+    procedure LayoutColumn(out ALeft, AWidth: integer); override;
     procedure StyleBlock(B: TInkPageBlock); override;
     procedure StyleSection(S: TInkTreeSection); override;
     function Options: THTMLOptions; override;
-    function BlockOptions(Index: Integer): THTMLOptions; override;
+    function BlockOptions(Index: integer): THTMLOptions; override;
     procedure LinkClicked(const Link: TInkLinkInfo); override;
-    procedure HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo); override;
-    function CopyBlockCaption(AIndex: Integer): string; override;
-    function MenuBlockText(AIndex: Integer): string; override;
-    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
-      X, Y: Integer); override;
+    procedure HoverChanged(ABlock: integer; const AHit: THTMLHitInfo); override;
+    function CopyBlockCaption(AIndex: integer): string; override;
+    function MenuBlockText(AIndex: integer): string; override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
     { the messages are styled with the font: it changes, and the memo is
       read again }
     procedure FontChanged(Sender: TObject); override;
@@ -136,29 +134,28 @@ type
       paragraphs, lists, quotes, tables, fenced code through
       OnHighlightCode.  AColor puts a band behind it and AIndent sets it
       in, so a question reads apart from an answer. }
-    procedure AppendBlock(const AText: string; AFormat: TInkTextFormat;
-      AColor: TColor = clNone; AIndent: Integer = 0);
+    procedure AppendBlock(const AText: string; AFormat: TInkTextFormat; AColor: TColor = clNone; AIndent: integer = 0);
     { replaces the last entry's text and lays out only that entry - for an
       answer arriving a word at a time.  The view follows only when it was
       already at the end, and a selection elsewhere stays put. }
     procedure ReplaceLast(const AText: string);
     { the entry under a client point, -1 for none - for "Copy this answer"
       on a right click }
-    function EntryAt(X, Y: Integer): Integer;
+    function EntryAt(X, Y: integer): integer;
     { entry AIndex with all markup stripped, however many paragraphs }
-    function GetEntryText(AIndex: Integer): string;
+    function GetEntryText(AIndex: integer): string;
     { one complete HTML or Markdown document as the only line - a table or
       a list cannot be split across lines }
     procedure LoadDocument(const ADocument: string);
     procedure Clear;
     { line ALine with all markup stripped }
-    function GetPlainText(ALine: Integer): string;
+    function GetPlainText(ALine: integer): string;
     { the whole text with all markup stripped, a line each }
     function PlainText: string;
     procedure SaveAsPlain(const FileName: string);
     procedure SaveAsHTML(const FileName: string);
     { how many lines there are }
-    function Count: Integer;
+    function Count: integer;
     { The href under the mouse, '' when none }
     property HoverLink: string read FHoverHref;
     property HoverLinkText: string read FHoverLinkText;
@@ -172,13 +169,13 @@ type
     property CodeActions;
     property OnCodeAction;
     { the text's size, in percent of Font }
-    property HTMLScale: Integer read FHTMLScale write SetHTMLScale default 100;
-    property SuperSubScriptRatio: Double read FSuperSubScriptRatio write SetSuperSubScriptRatio;
+    property HTMLScale: integer read FHTMLScale write SetHTMLScale default 100;
+    property SuperSubScriptRatio: double read FSuperSubScriptRatio write SetSuperSubScriptRatio;
     { kept so forms from before selection existed still load; text is now
       selected with the mouse whatever this says }
-    property ShowSelection: Boolean read FShowSelection write FShowSelection default False;
+    property ShowSelection: boolean read FShowSelection write FShowSelection default False;
     { extra pixels between the lines inside one line of Lines }
-    property LineSpacing: Integer read FLineSpacing write SetLineSpacing default 0;
+    property LineSpacing: integer read FLineSpacing write SetLineSpacing default 0;
     { Left and Right are margins beside the text; Top and Bottom are space
       above and below every line of Lines }
     property Borders: TInkBorders read FBorders write SetBorders;
@@ -188,7 +185,7 @@ type
     property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
-    property AutoOpenLink: Boolean read FAutoOpenLink write FAutoOpenLink default False;
+    property AutoOpenLink: boolean read FAutoOpenLink write FAutoOpenLink default False;
     property OnLinkClick: TInkMemoLinkEvent read FOnLinkClick write FOnLinkClick;
     property OnLinkEnter: TInkMemoLinkEvent read FOnLinkEnter write FOnLinkEnter;
     property OnLinkLeave: TInkMemoLinkEvent read FOnLinkLeave write FOnLinkLeave;
@@ -200,7 +197,7 @@ type
     property OnElementHover;
     { Re-flow each line to the width.  Off, a long line is cut off at the
       right edge. }
-    property WordWrap: Boolean read FWordWrap write SetWordWrap default False;
+    property WordWrap: boolean read FWordWrap write SetWordWrap default False;
     property DragScroll;
     property FlickScroll;
     property MouseDrag;
@@ -210,14 +207,37 @@ type
     property CopyMenu;
     property OnCopyMenu;
     property PopupMenu;
-    property Align; property Anchors; property BorderSpacing; property BorderStyle;
-    property Color; property Constraints; property Enabled; property Font;
-    property Hint; property ParentColor; property ParentFont; property ParentShowHint;
-    property ShowHint; property TabStop default True; property TabOrder; property Visible;
-    property OnClick; property OnDblClick; property OnEnter; property OnExit;
-    property OnKeyDown; property OnKeyPress; property OnKeyUp; property OnUTF8KeyPress;
-    property OnMouseDown; property OnMouseEnter; property OnMouseLeave; property OnMouseMove;
-    property OnMouseUp; property OnMouseWheel; property OnResize;
+    property Align;
+    property Anchors;
+    property BorderSpacing;
+    property BorderStyle;
+    property Color;
+    property Constraints;
+    property Enabled;
+    property Font;
+    property Hint;
+    property ParentColor;
+    property ParentFont;
+    property ParentShowHint;
+    property ShowHint;
+    property TabStop default True;
+    property TabOrder;
+    property Visible;
+    property OnClick;
+    property OnDblClick;
+    property OnEnter;
+    property OnExit;
+    property OnKeyDown;
+    property OnKeyPress;
+    property OnKeyUp;
+    property OnUTF8KeyPress;
+    property OnMouseDown;
+    property OnMouseEnter;
+    property OnMouseLeave;
+    property OnMouseMove;
+    property OnMouseUp;
+    property OnMouseWheel;
+    property OnResize;
   end;
 
 implementation
@@ -225,7 +245,7 @@ implementation
 uses
   Math;
 
-{ TInkMemo }
+  { TInkMemo }
 
 constructor TInkMemo.Create(AOwner: TComponent);
 begin
@@ -245,7 +265,8 @@ begin
   FLinkHoverStyle := TInkLinkStyle.Create(True);
   FLinkHoverStyle.OnChange := @SubPropChanged;
   { a memo is text first: the mouse selects, like any memo }
-  Width := 300; Height := 150;
+  Width := 300;
+  Height := 150;
   Color := clWindow;
   Font.Color := clWindowText;
   Font.Size := 0;
@@ -272,10 +293,12 @@ end;
 function TInkMemo.EntryFormat(const E: TInkMemoEntry): TInkTextFormat;
 begin
   if E.Plain then Exit(itfPlain);
-  if E.UseFormat then Result := E.Format else Result := TextFormat;
+  if E.UseFormat then Result := E.Format
+  else
+    Result := TextFormat;
 end;
 
-function TInkMemo.MakeLine(AIndex: Integer): TInkPageBlock;
+function TInkMemo.MakeLine(AIndex: integer): TInkPageBlock;
 begin
   Result := TInkPageBlock.Create;
   Result.Tag := 'line';
@@ -290,21 +313,22 @@ begin
   Styler.MediumFont := Max(1, Round(ControlFontPixels * FHTMLScale / 100));
   Styler.AddSheet(ImageFitSheet);
   Styler.AddSheet(MarkdownSheet);
-  Styler.AddSheet('html, body { margin: 0; padding: 0 } ' +
-    'body > :first-child { margin-top: 0 } body > :last-child { margin-bottom: 0 }');
+  Styler.AddSheet('html, body { margin: 0; padding: 0 } ' + 'body > :first-child { margin-top: 0 } body > :last-child { margin-bottom: 0 }');
 end;
 
 { entry AIndex as the memo's item AIndex: a line of inline markup, or a
   message laid out whole as a small document - paragraphs, lists, quotes,
   tables and fenced code as on a page }
-procedure TInkMemo.MakeEntry(AIndex: Integer);
-var S: string;
+procedure TInkMemo.MakeEntry(AIndex: integer);
+var
+  S: string;
 begin
   if FEntries[AIndex].Block then
   begin
     if Styler = nil then MemoStyler;
     if EntryFormat(FEntries[AIndex]) = itfMarkdown then S := MarkdownToHTML(FLines[AIndex])
-    else S := FLines[AIndex];
+    else
+      S := FLines[AIndex];
     AddSection(InkParseHTML('<!doctype html>' + S), True);
   end
   else
@@ -314,7 +338,7 @@ end;
 { every entry's items, and the view stays where it was }
 procedure TInkMemo.Parse;
 var
-  I: Integer;
+  I: integer;
 begin
   if FLines = nil then Exit;
   BeginDocument;
@@ -336,7 +360,7 @@ end;
 
 procedure TInkMemo.LinesChanged(Sender: TObject);
 var
-  I: Integer;
+  I: integer;
 begin
   { Lines changed from outside: every entry is an ordinary line again.
     The entry kinds live with AppendPlain, AppendBlock and ReplaceLast,
@@ -349,7 +373,7 @@ end;
 
 { at the end, or everything fits - then new lines are followed, as in a
   terminal }
-function TInkMemo.AtEnd: Boolean;
+function TInkMemo.AtEnd: boolean;
 begin
   Layout;
   Result := ScrollY >= ContentHeight - ClientHeight - 2;
@@ -358,7 +382,7 @@ end;
 { one new entry and only its blocks laid out, not the whole memo again }
 procedure TInkMemo.AddEntry(const AText: string; const E: TInkMemoEntry);
 var
-  Follow: Boolean;
+  Follow: boolean;
 begin
   Follow := AtEnd;
   FLines.OnChange := nil;
@@ -393,8 +417,7 @@ begin
   AddEntry(AText, E);
 end;
 
-procedure TInkMemo.AppendBlock(const AText: string; AFormat: TInkTextFormat;
-  AColor: TColor; AIndent: Integer);
+procedure TInkMemo.AppendBlock(const AText: string; AFormat: TInkTextFormat; AColor: TColor; AIndent: integer);
 var
   E: TInkMemoEntry;
 begin
@@ -409,8 +432,8 @@ end;
 
 procedure TInkMemo.ReplaceLast(const AText: string);
 var
-  Follow: Boolean;
-  N: Integer;
+  Follow: boolean;
+  N: integer;
 begin
   N := FLines.Count - 1;
   if N < 0 then
@@ -438,9 +461,9 @@ begin
   if Follow then ScrollTo(MaxInt);
 end;
 
-function TInkMemo.EntryAt(X, Y: Integer): Integer;
+function TInkMemo.EntryAt(X, Y: integer): integer;
 var
-  I: Integer;
+  I: integer;
   R: TRect;
 begin
   Result := -1;
@@ -453,9 +476,9 @@ begin
   end;
 end;
 
-function TInkMemo.GetEntryText(AIndex: Integer): string;
+function TInkMemo.GetEntryText(AIndex: integer): string;
 var
-  I: Integer;
+  I: integer;
 begin
   Result := '';
   if (AIndex < 0) or (AIndex >= FLines.Count) then Exit;
@@ -474,7 +497,9 @@ begin
   try
     FLines.Clear;
     FLines.Add(ADocument);
-  finally FLines.EndUpdate end;
+  finally
+    FLines.EndUpdate
+  end;
 end;
 
 procedure TInkMemo.Clear;
@@ -482,7 +507,7 @@ begin
   FLines.Clear;
 end;
 
-function TInkMemo.Count: Integer;
+function TInkMemo.Count: integer;
 begin
   Result := FLines.Count;
 end;
@@ -502,7 +527,7 @@ begin
   InvalidateLayout(0);
 end;
 
-procedure TInkMemo.SetHTMLScale(AValue: Integer);
+procedure TInkMemo.SetHTMLScale(AValue: integer);
 begin
   AValue := EnsureRange(AValue, 10, 1000);
   if FHTMLScale = AValue then Exit;
@@ -511,21 +536,21 @@ begin
   Parse;
 end;
 
-procedure TInkMemo.SetSuperSubScriptRatio(AValue: Double);
+procedure TInkMemo.SetSuperSubScriptRatio(AValue: double);
 begin
   if FSuperSubScriptRatio = AValue then Exit;
   FSuperSubScriptRatio := AValue;
   SubPropChanged(nil);
 end;
 
-procedure TInkMemo.SetWordWrap(AValue: Boolean);
+procedure TInkMemo.SetWordWrap(AValue: boolean);
 begin
   if FWordWrap = AValue then Exit;
   FWordWrap := AValue;
   SubPropChanged(nil);
 end;
 
-procedure TInkMemo.SetLineSpacing(AValue: Integer);
+procedure TInkMemo.SetLineSpacing(AValue: integer);
 begin
   if FLineSpacing = AValue then Exit;
   FLineSpacing := AValue;
@@ -568,7 +593,7 @@ end;
 
 { --- how it is laid out and drawn --------------------------------------- }
 
-procedure TInkMemo.LayoutColumn(out ALeft, AWidth: Integer);
+procedure TInkMemo.LayoutColumn(out ALeft, AWidth: integer);
 begin
   ALeft := FBorders.Left;
   AWidth := Max(20, ClientWidth - ScrollBar.Width - FBorders.Left - FBorders.Right);
@@ -613,11 +638,10 @@ end;
 function TInkMemo.Options: THTMLOptions;
 begin
   { the borders are the layout's business here, not the renderer's }
-  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
-    FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, 0);
+  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing, FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, 0);
 end;
 
-function TInkMemo.BlockOptions(Index: Integer): THTMLOptions;
+function TInkMemo.BlockOptions(Index: integer): THTMLOptions;
 begin
   { the block's own say first - a code block in an entry never wraps, and
     a block entry keeps its line height - as on a page }
@@ -626,17 +650,16 @@ begin
   if Index = FHoverBlock then Result.HoverIndex := FHoverIndex;
 end;
 
-function TInkMemo.CopyBlockCaption(AIndex: Integer): string;
+function TInkMemo.CopyBlockCaption(AIndex: integer): string;
 begin
   Result := SInkCopyLine;
   if (AIndex >= 0) and (AIndex < BlockCount) then
     if FEntries[Block(AIndex).Entry].Block then Result := SInkCopyMessage;
 end;
 
-function TInkMemo.MenuBlockText(AIndex: Integer): string;
+function TInkMemo.MenuBlockText(AIndex: integer): string;
 begin
-  if (AIndex >= 0) and (AIndex < BlockCount) and
-    FEntries[Block(AIndex).Entry].Block then
+  if (AIndex >= 0) and (AIndex < BlockCount) and FEntries[Block(AIndex).Entry].Block then
     { the whole message, not the paragraph the mouse happened to be on }
     Result := GetEntryText(Block(AIndex).Entry)
   else
@@ -647,9 +670,9 @@ end;
 
 { Hover is tracked as (line, ordinal-of-link-on-that-line), so two links with
   the same target still light up one at a time. }
-procedure TInkMemo.HoverChanged(ABlock: Integer; const AHit: THTMLHitInfo);
+procedure TInkMemo.HoverChanged(ABlock: integer; const AHit: THTMLHitInfo);
 var
-  OldLine: Integer;
+  OldLine: integer;
   OldLink: string;
 begin
   OldLine := FHoverLine;
@@ -684,12 +707,10 @@ begin
     OpenURL(Link.Href);
 end;
 
-procedure TInkMemo.MouseUp(Button: TMouseButton; Shift: TShiftState;
-  X, Y: Integer);
+procedure TInkMemo.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
-  if (Button = mbRight) and (FHoverLine >= 0) and (FHoverHref <> '') and
-    Assigned(FOnLinkRightClick) then
+  if (Button = mbRight) and (FHoverLine >= 0) and (FHoverHref <> '') and Assigned(FOnLinkRightClick) then
     FOnLinkRightClick(Self, FHoverLine, FHoverHref);
 end;
 
@@ -701,7 +722,7 @@ end;
 
 { --- text --------------------------------------------------------------- }
 
-function TInkMemo.GetPlainText(ALine: Integer): string;
+function TInkMemo.GetPlainText(ALine: integer): string;
 begin
   if (ALine < 0) or (ALine >= FLines.Count) then
     Result := ''
@@ -714,7 +735,7 @@ end;
 function TInkMemo.PlainText: string;
 var
   SL: TStringList;
-  I: Integer;
+  I: integer;
 begin
   SL := TStringList.Create;
   try
@@ -729,7 +750,7 @@ end;
 procedure TInkMemo.SaveAsPlain(const FileName: string);
 var
   SL: TStringList;
-  I: Integer;
+  I: integer;
 begin
   SL := TStringList.Create;
   try
@@ -744,7 +765,7 @@ end;
 procedure TInkMemo.SaveAsHTML(const FileName: string);
 var
   SL: TStringList;
-  I: Integer;
+  I: integer;
 begin
   SL := TStringList.Create;
   try

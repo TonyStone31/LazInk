@@ -19,13 +19,19 @@ program PageMarks;
 {$mode objfpc}{$H+}
 
 uses
-  Interfaces, Forms, Controls, Classes, SysUtils, InkPage, InkDraw;
+  Interfaces,
+  Forms,
+  Controls,
+  Classes,
+  SysUtils,
+  InkPage,
+  InkDraw;
 
 var
   Host: TForm;
   Page: TInkPage;
   Block: TInkPageBlock;
-  I, Column: Integer;
+  I, Column: integer;
   Text: string;
 begin
   if ParamCount < 1 then
@@ -50,8 +56,7 @@ begin
   for I := 0 to Page.BlockCount - 1 do
   begin
     Block := Page.Block(I);
-    if (Length(Block.Tag) = 2) and (Block.Tag[1] = 'h') and
-      (Block.Tag[2] in ['1'..'6']) then
+    if (Length(Block.Tag) = 2) and (Block.Tag[1] = 'h') and (Block.Tag[2] in ['1'..'6']) then
     begin
       Text := Trim(HTMLPlainText(Block.Source));
       if Text <> '' then

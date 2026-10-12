@@ -22,14 +22,11 @@ type
                          in that moment does not edit }
   TInkEditMode = (emNone, emOnSelect, emOnDblClick, emOnTripleClick, emOnClickSelected);
 
-  TBeforeEditEvent = procedure(Sender: TObject; Index: Integer;
-    var Cancel: Boolean) of object;
+  TBeforeEditEvent = procedure(Sender: TObject; Index: integer; var Cancel: boolean) of object;
 
-  TItemEditedEvent = procedure(Sender: TObject; Index: Integer;
-    const OldText, NewText: string; var Accept: Boolean) of object;
+  TItemEditedEvent = procedure(Sender: TObject; Index: integer; const OldText, NewText: string; var Accept: boolean) of object;
 
-  TInkListLinkEvent = procedure(Sender: TObject; Index: Integer;
-    const LinkName: string) of object;
+  TInkListLinkEvent = procedure(Sender: TObject; Index: integer; const LinkName: string) of object;
 
   { TInkListBox }
 
@@ -38,28 +35,28 @@ type
     FTextFormat: TInkTextFormat;
     procedure SetTextFormat(AValue: TInkTextFormat);
   private
-    FHTMLEnabled: Boolean;
-    FHTMLScale: Integer;
-    FSuperSubScriptRatio: Double;
+    FHTMLEnabled: boolean;
+    FHTMLScale: integer;
+    FSuperSubScriptRatio: double;
     FEditMode: TInkEditMode;
-    FReadOnlyEdit: Boolean;
-    FEditTimeout: Integer;
-    FEditOverhang: Integer;
+    FReadOnlyEdit: boolean;
+    FEditTimeout: integer;
+    FEditOverhang: integer;
     FSelectionColor: TColor;
     FSelectionTextColor: TColor;
     FEdit: TEdit;
     FEditTimer: TTimer;
-    FEditingIndex: Integer;
-    FEditRawHTML: Boolean;
+    FEditingIndex: integer;
+    FEditRawHTML: boolean;
     FAlternateColor: TColor;
-    FLineSpacing: Integer;
+    FLineSpacing: integer;
     FBorders: TInkBorders;
     FImages: TCustomImageList;
     FLinkStyle: TInkLinkStyle;
     FLinkHoverStyle: TInkLinkStyle;
-    FAutoOpenLink: Boolean;
-    FHoverItem: Integer;     // -1 when the mouse is not over a link
-    FHoverIndex: Integer;    // ordinal of that link within its item
+    FAutoOpenLink: boolean;
+    FHoverItem: integer;     // -1 when the mouse is not over a link
+    FHoverIndex: integer;    // ordinal of that link within its item
     FHoverLink: string;
     FHoverLinkText: string;
     FOnBeforeEdit: TBeforeEditEvent;
@@ -71,79 +68,78 @@ type
     FOnUserSelectionChange: TSelectionChangeEvent;
   private
     { the copy menu, and Ctrl+A / Ctrl+C }
-    FCopyMenu: Boolean;
+    FCopyMenu: boolean;
     FCopyMenuHost: TInkCopyMenu;
     FOnCopyMenu: TInkCopyMenuEvent;
     { Ctrl+A was the last thing done: Ctrl+C copies everything }
-    FAllChosen: Boolean;
+    FAllChosen: boolean;
     { clicks counted here: GTK3's backend reports a triple click's third
       press as a plain one }
-    FClicks, FLastClickX, FLastClickY, FPressItem, FPendingEdit: Integer;
+    FClicks, FLastClickX, FLastClickY, FPressItem, FPendingEdit: integer;
     FLastClickTime: QWord;
-    FPressWasSelected: Boolean;
+    FPressWasSelected: boolean;
     { the left button is down on the list: the selection follows the
       pointer, and emOnSelect waits for the release }
-    FButtonDown, FEditOnRelease: Boolean;
+    FButtonDown, FEditOnRelease: boolean;
     { character selection inside one item: a drag over an item's text
       selects its characters, clamped to the item the press landed on }
     FCharRuns: TInkRunText;
-    FCharItem: Integer;                 // -1 when nothing is selected
-    FCharAnchor, FCharCaret: Integer;   // offsets into that item's words
-    FCharSelecting, FCharMoved: Boolean;
-    FCharPressX, FCharPressY: Integer;
+    FCharItem: integer;                 // -1 when nothing is selected
+    FCharAnchor, FCharCaret: integer;   // offsets into that item's words
+    FCharSelecting, FCharMoved: boolean;
+    FCharPressX, FCharPressY: integer;
     FClickEditTimer: TTimer;
-    procedure BuildItemRuns(Index: Integer; const ARect: TRect);
+    procedure BuildItemRuns(Index: integer; const ARect: TRect);
     function GetTextSelection: string;
     procedure ClearTextSelection;
     procedure ClickEditTick(Sender: TObject);
     procedure DoSelectAll(Sender: TObject);
     procedure SetAlternateColor(AValue: TColor);
-    procedure SetLineSpacing(AValue: Integer);
+    procedure SetLineSpacing(AValue: integer);
     procedure SetBorders(AValue: TInkBorders);
     procedure SetImages(AValue: TCustomImageList);
     procedure SetLinkStyle(AValue: TInkLinkStyle);
     procedure SetLinkHoverStyle(AValue: TInkLinkStyle);
     procedure SubPropChanged(Sender: TObject);
-    procedure UpdateHover(AItem: Integer; const AHit: THTMLHitInfo);
-    procedure InternalSelectionChange(Sender: TObject; User: Boolean);
+    procedure UpdateHover(AItem: integer; const AHit: THTMLHitInfo);
+    procedure InternalSelectionChange(Sender: TObject; User: boolean);
     procedure EnsureEdit;
     procedure PositionEdit;
     procedure HideEdit;
-    procedure BeginEdit(Index: Integer);
+    procedure BeginEdit(Index: integer);
     procedure CommitEdit;
     procedure ResetEditTimeout;
     procedure EditTimerTick(Sender: TObject);
     procedure EditMouseEnter(Sender: TObject);
-    procedure EditMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
-    procedure EditKeyPress(Sender: TObject; var Key: Char);
-    procedure EditKeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure EditMouseMove(Sender: TObject; Shift: TShiftState; X, Y: integer);
+    procedure EditKeyPress(Sender: TObject; var Key: char);
+    procedure EditKeyUp(Sender: TObject; var Key: word; Shift: TShiftState);
     procedure EditExit(Sender: TObject);
   protected
     { Everything the renderer needs beyond the text itself. }
-    function Options(AHoverIndex: Integer = 0): THTMLOptions;
-    procedure DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState); override;
+    function Options(AHoverIndex: integer = 0): THTMLOptions;
+    procedure DrawItem(Index: integer; ARect: TRect; State: TOwnerDrawState); override;
     procedure DblClick; override;
-    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
-    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
-      X, Y: Integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
     procedure MouseLeave; override;
     procedure Resize; override;
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
-    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
-    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: boolean); override;
+    procedure KeyDown(var Key: word; Shift: TShiftState); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure Click; override;
-    procedure MeasureItem(Index: Integer; var TheHeight: Integer); override;
+    procedure MeasureItem(Index: integer; var TheHeight: integer); override;
     { Opens the in-place editor on Index from code - whatever EditMode is,
       so a program can edit on its own terms. }
-    procedure EditItem(Index: Integer);
+    procedure EditItem(Index: integer);
     { whether the in-place editor is open, and closing it unchanged }
-    function Editing: Boolean;
+    function Editing: boolean;
     procedure CancelEdit;
-    function GetPlainText(Index: Integer): string;
+    function GetPlainText(Index: integer): string;
     { The href under the mouse, '' when none }
     property HoverLink: string read FHoverLink;
     property HoverLinkText: string read FHoverLinkText;
@@ -154,31 +150,31 @@ type
     { the selected items as plain text - every one after Ctrl+A }
     function SelectedText: string;
     { a drag over one item's text selected some of its characters }
-    function HasTextSelection: Boolean;
+    function HasTextSelection: boolean;
     procedure CopyToClipboard;
     { fills the copy menu for client X, Y without opening it }
-    function BuildCopyMenu(X, Y: Integer): TPopupMenu;
+    function BuildCopyMenu(X, Y: integer): TPopupMenu;
   published
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     { the right-click menu: Copy, Copy this item, Copy link address,
       Copy all, Select all.  Not shown when off or when PopupMenu is set. }
-    property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
+    property CopyMenu: boolean read FCopyMenu write FCopyMenu default True;
     { lets a program add its own items to that menu as it opens }
     property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
 
-    property HTMLEnabled: Boolean read FHTMLEnabled write FHTMLEnabled default True;
-    property HTMLScale: Integer read FHTMLScale write FHTMLScale default 100;
-    property SuperSubScriptRatio: Double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    property HTMLEnabled: boolean read FHTMLEnabled write FHTMLEnabled default True;
+    property HTMLScale: integer read FHTMLScale write FHTMLScale default 100;
+    property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
     property EditMode: TInkEditMode read FEditMode write FEditMode default emOnSelect;
-    property ReadOnlyEdit: Boolean read FReadOnlyEdit write FReadOnlyEdit default True;
+    property ReadOnlyEdit: boolean read FReadOnlyEdit write FReadOnlyEdit default True;
     { What the in-place editor shows. False (the default) hands the user the
       item with the markup stripped - good for copying a log line out. True
       hands over the markup itself, so the item can be re-styled in place and
       the result is visible the moment Enter is pressed. }
-    property EditRawHTML: Boolean read FEditRawHTML write FEditRawHTML default False;
+    property EditRawHTML: boolean read FEditRawHTML write FEditRawHTML default False;
     { Background for odd-numbered rows. clNone (the default) turns it off. }
     property AlternateColor: TColor read FAlternateColor write SetAlternateColor default clNone;
-    property LineSpacing: Integer read FLineSpacing write SetLineSpacing default 0;
+    property LineSpacing: integer read FLineSpacing write SetLineSpacing default 0;
     { Margins around the text. Each row is drawn on its own, so Top and Bottom
       are padding inside every row rather than once for the whole control;
       LineSpacing is what separates lines within a row. }
@@ -190,9 +186,9 @@ type
     property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
-    property AutoOpenLink: Boolean read FAutoOpenLink write FAutoOpenLink default False;
-    property EditTimeout: Integer read FEditTimeout write FEditTimeout default 5000;
-    property EditOverhang: Integer read FEditOverhang write FEditOverhang default 2;
+    property AutoOpenLink: boolean read FAutoOpenLink write FAutoOpenLink default False;
+    property EditTimeout: integer read FEditTimeout write FEditTimeout default 5000;
+    property EditOverhang: integer read FEditOverhang write FEditOverhang default 2;
     property SelectionColor: TColor read FSelectionColor write FSelectionColor default clHighlight;
     property SelectionTextColor: TColor read FSelectionTextColor write FSelectionTextColor default clHighlightText;
     property OnBeforeEdit: TBeforeEditEvent read FOnBeforeEdit write FOnBeforeEdit;
@@ -240,8 +236,7 @@ type
     property OnMouseWheelDown;
     property OnMouseWheelUp;
     property OnResize;
-    property OnSelectionChange: TSelectionChangeEvent
-      read FOnUserSelectionChange write FOnUserSelectionChange;
+    property OnSelectionChange: TSelectionChangeEvent read FOnUserSelectionChange write FOnUserSelectionChange;
     property OnShowHint;
     property OnStartDrag;
     property OnUTF8KeyPress;
@@ -317,19 +312,22 @@ begin
   inherited Destroy;
 end;
 
-function TInkListBox.Options(AHoverIndex: Integer = 0): THTMLOptions;
+function TInkListBox.Options(AHoverIndex: integer = 0): THTMLOptions;
 begin
-  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
-    FBorders, FImages, FLinkStyle, FLinkHoverStyle, AHoverIndex);
+  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing, FBorders, FImages, FLinkStyle, FLinkHoverStyle, AHoverIndex);
 end;
 
 procedure TInkListBox.SubPropChanged(Sender: TObject);
 begin
-  if HandleAllocated then begin Items.BeginUpdate; Items.EndUpdate end;
+  if HandleAllocated then
+  begin
+    Items.BeginUpdate;
+    Items.EndUpdate;
+  end;
   Invalidate;
 end;
 
-procedure TInkListBox.SetLineSpacing(AValue: Integer);
+procedure TInkListBox.SetLineSpacing(AValue: integer);
 begin
   if FLineSpacing = AValue then Exit;
   FLineSpacing := AValue;
@@ -395,7 +393,7 @@ end;
 procedure TInkListBox.PositionEdit;
 var
   R: TRect;
-  NewLeft, NewTop, NewWidth: Integer;
+  NewLeft, NewTop, NewWidth: integer;
 begin
   if (FEdit = nil) or (FEditingIndex < 0) or (FEditingIndex >= Items.Count) then
     Exit;
@@ -417,9 +415,9 @@ begin
   FEditingIndex := -1;
 end;
 
-procedure TInkListBox.BeginEdit(Index: Integer);
+procedure TInkListBox.BeginEdit(Index: integer);
 var
-  Cancel: Boolean;
+  Cancel: boolean;
 begin
   if (Index < 0) or (Index >= Items.Count) then Exit;
 
@@ -452,9 +450,9 @@ end;
 
 procedure TInkListBox.CommitEdit;
 var
-  Idx: Integer;
+  Idx: integer;
   OldText, NewText: string;
-  Accept: Boolean;
+  Accept: boolean;
 begin
   if FReadOnlyEdit then Exit;
   if (FEdit = nil) or (FEditingIndex < 0) or (FEditingIndex >= Items.Count) then
@@ -493,12 +491,12 @@ begin
   ResetEditTimeout;
 end;
 
-procedure TInkListBox.EditMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+procedure TInkListBox.EditMouseMove(Sender: TObject; Shift: TShiftState; X, Y: integer);
 begin
   ResetEditTimeout;
 end;
 
-procedure TInkListBox.EditKeyPress(Sender: TObject; var Key: Char);
+procedure TInkListBox.EditKeyPress(Sender: TObject; var Key: char);
 begin
   ResetEditTimeout;
   if Key = #13 then
@@ -514,7 +512,7 @@ begin
   end;
 end;
 
-procedure TInkListBox.EditKeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TInkListBox.EditKeyUp(Sender: TObject; var Key: word; Shift: TShiftState);
 begin
   ResetEditTimeout;
 end;
@@ -525,18 +523,18 @@ begin
   HideEdit;
 end;
 
-procedure TInkListBox.MeasureItem(Index: Integer; var TheHeight: Integer);
-var Sz: TSize;
+procedure TInkListBox.MeasureItem(Index: integer; var TheHeight: integer);
+var
+  Sz: TSize;
 begin
   TheHeight := ItemHeight;
   if (Index < 0) or (Index >= Items.Count) or not FHTMLEnabled then Exit;
   Canvas.Font := Font;
-  Sz := HTMLTextExtentOpt(Canvas, Rect(0,0,ClientWidth,0), [],
-    InkToHTML(Items[Index], FTextFormat), Options);
+  Sz := HTMLTextExtentOpt(Canvas, Rect(0, 0, ClientWidth, 0), [], InkToHTML(Items[Index], FTextFormat), Options);
   if Sz.cy + 2 > TheHeight then TheHeight := Sz.cy + 2;
 end;
 
-procedure TInkListBox.DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState);
+procedure TInkListBox.DrawItem(Index: integer; ARect: TRect; State: TOwnerDrawState);
 var
   TextR: TRect;
   Opts: THTMLOptions;
@@ -583,14 +581,15 @@ begin
   end;
 end;
 
-procedure TInkListBox.InternalSelectionChange(Sender: TObject; User: Boolean);
+procedure TInkListBox.InternalSelectionChange(Sender: TObject; User: boolean);
 begin
   if Assigned(FOnUserSelectionChange) then
     FOnUserSelectionChange(Self, User);
   if User and (FEditMode = emOnSelect) then
   begin
     if FButtonDown then FEditOnRelease := True
-    else BeginEdit(ItemIndex);
+    else
+      BeginEdit(ItemIndex);
   end;
   { a selection that moved is not a click on the selected item }
   FClickEditTimer.Enabled := False;
@@ -604,12 +603,12 @@ begin
   FClickEditTimer.Enabled := False;
 end;
 
-procedure TInkListBox.EditItem(Index: Integer);
+procedure TInkListBox.EditItem(Index: integer);
 begin
   BeginEdit(Index);
 end;
 
-function TInkListBox.Editing: Boolean;
+function TInkListBox.Editing: boolean;
 begin
   Result := (FEdit <> nil) and FEdit.Visible;
 end;
@@ -628,12 +627,14 @@ end;
 
 { Hover is tracked as (row, ordinal-of-link-in-that-row), so two links with the
   same target still light up one at a time. }
-procedure TInkListBox.UpdateHover(AItem: Integer; const AHit: THTMLHitInfo);
+procedure TInkListBox.UpdateHover(AItem: integer; const AHit: THTMLHitInfo);
 var
-  NewIndex, OldItem: Integer;
+  NewIndex, OldItem: integer;
   OldLink: string;
 begin
-  if AHit.OnLink then NewIndex := AHit.LinkIndex else NewIndex := 0;
+  if AHit.OnLink then NewIndex := AHit.LinkIndex
+  else
+    NewIndex := 0;
   if NewIndex = 0 then AItem := -1;
   if (AItem = FHoverItem) and (NewIndex = FHoverIndex) then Exit;
 
@@ -660,9 +661,9 @@ begin
   Invalidate;
 end;
 
-procedure TInkListBox.MouseMove(Shift: TShiftState; X, Y: Integer);
+procedure TInkListBox.MouseMove(Shift: TShiftState; X, Y: integer);
 var
-  Idx: Integer;
+  Idx: integer;
   R: TRect;
   Hit: THTMLHitInfo;
 begin
@@ -671,8 +672,7 @@ begin
     characters.  The moment it leaves the row it is an ordinary item drag
     again - the highlight follows the pointer as it always has - and the
     character selection lets go. }
-  if FCharSelecting and (ssLeft in Shift) and (FCharItem >= 0) and
-    (FCharItem < Items.Count) then
+  if FCharSelecting and (ssLeft in Shift) and (FCharItem >= 0) and (FCharItem < Items.Count) then
   begin
     R := ItemRect(FCharItem);
     if (Y < R.Top) or (Y >= R.Bottom) then
@@ -705,7 +705,8 @@ begin
       Idx := ItemAtPos(Point(X, ClientHeight - 1), False);
       Idx := Min(Items.Count - 1, Idx + 1);
     end
-    else Idx := ItemAtPos(Point(X, Y), False);
+    else
+      Idx := ItemAtPos(Point(X, Y), False);
     Idx := EnsureRange(Idx, 0, Items.Count - 1);
     if Idx <> ItemIndex then
     begin
@@ -764,7 +765,7 @@ begin
     PositionEdit;
 end;
 
-function TInkListBox.GetPlainText(Index: Integer): string;
+function TInkListBox.GetPlainText(Index: integer): string;
 begin
   if (Index < 0) or (Index >= Items.Count) then
     Result := ''
@@ -775,7 +776,7 @@ end;
 procedure TInkListBox.SaveAsPlain(const FileName: string);
 var
   SL: TStringList;
-  i: Integer;
+  i: integer;
 begin
   SL := TStringList.Create;
   try
@@ -788,18 +789,23 @@ begin
 end;
 
 procedure TInkListBox.SaveAsHTML(const FileName: string);
-var SL: TStringList; I: Integer;
+var
+  SL: TStringList;
+  I: integer;
 begin
   SL := TStringList.Create;
   try
     for I := 0 to Items.Count - 1 do SL.Add(InkToHTML(Items[I], FTextFormat));
     SL.SaveToFile(FileName);
-  finally SL.Free end;
+  finally
+    SL.Free
+  end;
 end;
 
 
 function TInkListBox.PlainText: string;
-var I: Integer;
+var
+  I: integer;
 begin
   Result := '';
   for I := 0 to Items.Count - 1 do
@@ -808,16 +814,15 @@ end;
 
 { --- character selection inside one item -------------------------------- }
 
-procedure TInkListBox.BuildItemRuns(Index: Integer; const ARect: TRect);
+procedure TInkListBox.BuildItemRuns(Index: integer; const ARect: TRect);
 begin
   Canvas.Font := Font;
   FCharRuns.Build(Canvas, ARect, InkToHTML(Items[Index], FTextFormat), Options);
 end;
 
-function TInkListBox.HasTextSelection: Boolean;
+function TInkListBox.HasTextSelection: boolean;
 begin
-  Result := (FCharItem >= 0) and (FCharItem < Items.Count) and
-    (FCharAnchor <> FCharCaret);
+  Result := (FCharItem >= 0) and (FCharItem < Items.Count) and (FCharAnchor <> FCharCaret);
 end;
 
 function TInkListBox.GetTextSelection: string;
@@ -834,7 +839,7 @@ end;
 
 procedure TInkListBox.ClearTextSelection;
 var
-  Had: Boolean;
+  Had: boolean;
 begin
   Had := HasTextSelection;
   FCharItem := -1;
@@ -857,18 +862,22 @@ function TInkListBox.SelectedText: string;
 begin
   if FAllChosen then Result := TrimRight(PlainText)
   else if HasTextSelection then Result := GetTextSelection
-  else Result := InkListSelection(Self, @GetPlainText);
+  else
+    Result := InkListSelection(Self, @GetPlainText);
 end;
 
 procedure TInkListBox.CopyToClipboard;
-var S: string;
+var
+  S: string;
 begin
   S := SelectedText;
   if S <> '' then InkCopyText(S);
 end;
 
-function TInkListBox.BuildCopyMenu(X, Y: Integer): TPopupMenu;
-var Texts: TInkCopyTexts; I: Integer;
+function TInkListBox.BuildCopyMenu(X, Y: integer): TPopupMenu;
+var
+  Texts: TInkCopyTexts;
+  I: integer;
 begin
   Texts := Default(TInkCopyTexts);
   Texts.CanSelect := True;
@@ -886,8 +895,9 @@ begin
   Result := FCopyMenuHost.Menu;
 end;
 
-procedure TInkListBox.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
-var P: TPoint;
+procedure TInkListBox.DoContextPopup(MousePos: TPoint; var Handled: boolean);
+var
+  P: TPoint;
 begin
   inherited DoContextPopup(MousePos, Handled);
   if Handled or not FCopyMenu or Assigned(PopupMenu) then Exit;
@@ -899,7 +909,7 @@ begin
   Handled := True;
 end;
 
-procedure TInkListBox.KeyDown(var Key: Word; Shift: TShiftState);
+procedure TInkListBox.KeyDown(var Key: word; Shift: TShiftState);
 begin
   if (Shift * [ssCtrl, ssAlt, ssShift] = [ssCtrl]) and (Key = VK_A) then
   begin
@@ -924,11 +934,11 @@ begin
   inherited KeyDown(Key, Shift);
 end;
 
-procedure TInkListBox.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+procedure TInkListBox.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 var
   Now_: QWord;
-  Near: Boolean;
-  Idx: Integer;
+  Near: boolean;
+  Idx: integer;
   R: TRect;
 begin
   if Button <> mbLeft then
@@ -954,7 +964,9 @@ begin
       FPressWasSelected := (FPressItem >= 0) and (FPressItem = ItemIndex);
     end;
   end;
-  FLastClickTime := Now_; FLastClickX := X; FLastClickY := Y;
+  FLastClickTime := Now_;
+  FLastClickX := X;
+  FLastClickY := Y;
   if ssTriple in Shift then FClicks := 3
   else if (ssDouble in Shift) and (FClicks < 2) then FClicks := 2;
   FButtonDown := True;
@@ -975,7 +987,8 @@ begin
       FCharCaret := FCharAnchor;
       FCharSelecting := True;
       FCharMoved := False;
-      FCharPressX := X; FCharPressY := Y;
+      FCharPressX := X;
+      FCharPressY := Y;
     end;
   end;
   if (FEditMode = emOnSelect) and not MultiSelect then
@@ -995,8 +1008,7 @@ begin
     BeginEdit(ItemAtPos(Point(X, Y), True));
 end;
 
-procedure TInkListBox.MouseUp(Button: TMouseButton; Shift: TShiftState;
-  X, Y: Integer);
+procedure TInkListBox.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
   if Button = mbLeft then
@@ -1014,12 +1026,9 @@ begin
     end;
     FEditOnRelease := False;
   end;
-  if (Button = mbRight) and (FHoverItem >= 0) and (FHoverLink <> '') and
-    Assigned(FOnLinkRightClick) then
+  if (Button = mbRight) and (FHoverItem >= 0) and (FHoverLink <> '') and Assigned(FOnLinkRightClick) then
     FOnLinkRightClick(Self, FHoverItem, FHoverLink);
-  if (Button = mbLeft) and (FEditMode = emOnClickSelected) and (FClicks = 1) and
-    FPressWasSelected and (ItemAtPos(Point(X, Y), True) = FPressItem) and
-    (FHoverLink = '') then
+  if (Button = mbLeft) and (FEditMode = emOnClickSelected) and (FClicks = 1) and FPressWasSelected and (ItemAtPos(Point(X, Y), True) = FPressItem) and (FHoverLink = '') then
   begin
     { wait: this may be the first half of a double click }
     FPendingEdit := FPressItem;

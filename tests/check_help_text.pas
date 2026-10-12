@@ -19,145 +19,144 @@ program check_help_text;
 
 uses
   {$IFDEF UNIX}cwstring,{$ENDIF}
-  Classes, SysUtils, sax, sax_html, xmlutils, xmlreader;
+  Classes,
+  SysUtils,
+  sax,
+  sax_html,
+  xmlutils,
+  xmlreader;
 
 type
   TVisibleText = class
   public
-    Body: Boolean;
-    Hidden: Integer;
+    Body: boolean;
+    Hidden: integer;
     Fragments: TStringList;       { UTF-8 }
-    Pending: UnicodeString;
+    Pending: unicodestring;
     constructor Create;
     destructor Destroy; override;
     procedure Flush;
-    procedure StartElement(Sender: TObject; const NamespaceURI, LocalName,
-      QName: SAXString; Atts: TSAXAttributes);
-    procedure EndElement(Sender: TObject; const NamespaceURI, LocalName,
-      QName: SAXString);
-    procedure Characters(Sender: TObject; const Ch: PSAXChar;
-      AStart, ALength: Integer);
+    procedure StartElement(Sender: TObject; const NamespaceURI, LocalName, QName: SAXString; Atts: TSAXAttributes);
+    procedure EndElement(Sender: TObject; const NamespaceURI, LocalName, QName: SAXString);
+    procedure Characters(Sender: TObject; const Ch: PSAXChar; AStart, ALength: integer);
   end;
 
-constructor TVisibleText.Create;
-begin
-  Fragments := TStringList.Create;
-end;
+  constructor TVisibleText.Create;
+  begin
+    Fragments := TStringList.Create;
+  end;
 
-destructor TVisibleText.Destroy;
-begin
-  Fragments.Free;
-  inherited Destroy;
-end;
+  destructor TVisibleText.Destroy;
+  begin
+    Fragments.Free;
+    inherited Destroy;
+  end;
 
 { A fragment is all the text between two tags, entities and all - the reader
   hands an entity over as a piece of its own, so the pieces are joined here
   until the next tag. }
-procedure TVisibleText.Flush;
-begin
-  if (Pending <> '') and Body and (Hidden = 0) and (Trim(Pending) <> '') then
-    Fragments.Add(UTF8Encode(Pending));
-  Pending := '';
-end;
+  procedure TVisibleText.Flush;
+  begin
+    if (Pending <> '') and Body and (Hidden = 0) and (Trim(Pending) <> '') then
+      Fragments.Add(UTF8Encode(Pending));
+    Pending := '';
+  end;
 
-procedure TVisibleText.StartElement(Sender: TObject; const NamespaceURI,
-  LocalName, QName: SAXString; Atts: TSAXAttributes);
-var
-  Tag: UnicodeString;
-begin
-  Flush;
-  Tag := LowerCase(LocalName);
-  if Tag = 'body' then Body := True;
-  if (Tag = 'script') or (Tag = 'style') then Inc(Hidden);
-end;
+  procedure TVisibleText.StartElement(Sender: TObject; const NamespaceURI, LocalName, QName: SAXString; Atts: TSAXAttributes);
+  var
+    Tag: unicodestring;
+  begin
+    Flush;
+    Tag := LowerCase(LocalName);
+    if Tag = 'body' then Body := True;
+    if (Tag = 'script') or (Tag = 'style') then Inc(Hidden);
+  end;
 
-procedure TVisibleText.EndElement(Sender: TObject; const NamespaceURI,
-  LocalName, QName: SAXString);
-var
-  Tag: UnicodeString;
-begin
-  Flush;
-  Tag := LowerCase(LocalName);
-  if Tag = 'body' then Body := False;
-  if ((Tag = 'script') or (Tag = 'style')) and (Hidden > 0) then Dec(Hidden);
-end;
+  procedure TVisibleText.EndElement(Sender: TObject; const NamespaceURI, LocalName, QName: SAXString);
+  var
+    Tag: unicodestring;
+  begin
+    Flush;
+    Tag := LowerCase(LocalName);
+    if Tag = 'body' then Body := False;
+    if ((Tag = 'script') or (Tag = 'style')) and (Hidden > 0) then Dec(Hidden);
+  end;
 
-procedure TVisibleText.Characters(Sender: TObject; const Ch: PSAXChar;
-  AStart, ALength: Integer);
-var
-  S: UnicodeString;
-begin
-  SetLength(S, ALength);
-  if ALength > 0 then
-    Move(Ch[AStart], S[1], ALength * SizeOf(WideChar));
-  Pending := Pending + S;
-end;
+  procedure TVisibleText.Characters(Sender: TObject; const Ch: PSAXChar; AStart, ALength: integer);
+  var
+    S: unicodestring;
+  begin
+    SetLength(S, ALength);
+    if ALength > 0 then
+      Move(Ch[AStart], S[1], ALength * SizeOf(widechar));
+    Pending := Pending + S;
+  end;
 
 { Every kind of space taken out, the no-break one included - &nbsp; is a
   space to a reader and to the renderer's wrapping, if not to the file. }
-function Compact(const S: UnicodeString): UnicodeString;
-var
-  I, N: Integer;
-  C: WideChar;
-begin
-  SetLength(Result, Length(S));
-  N := 0;
-  for I := 1 to Length(S) do
+  function Compact(const S: unicodestring): unicodestring;
+  var
+    I, N: integer;
+    C: widechar;
   begin
-    C := S[I];
-    case Ord(C) of
-      9..13, 28..32, $85, $A0, $1680, $2000..$200A, $2028, $2029, $202F,
-      $205F, $3000: Continue;
+    SetLength(Result, Length(S));
+    N := 0;
+    for I := 1 to Length(S) do
+    begin
+      C := S[I];
+      case Ord(C) of
+        9..13, 28..32, $85, $A0, $1680, $2000..$200A, $2028, $2029, $202F,
+        $205F, $3000: Continue;
+      end;
+      Inc(N);
+      Result[N] := C;
     end;
-    Inc(N);
-    Result[N] := C;
+    SetLength(Result, N);
   end;
-  SetLength(Result, N);
-end;
 
-function ReadUTF8(const Path: string): UnicodeString;
-var
-  F: TFileStream;
-  Raw: RawByteString;
-begin
-  F := TFileStream.Create(Path, fmOpenRead or fmShareDenyNone);
-  try
-    SetLength(Raw, F.Size);
-    if F.Size > 0 then F.ReadBuffer(Raw[1], F.Size);
-  finally
-    F.Free;
+  function ReadUTF8(const Path: string): unicodestring;
+  var
+    F: TFileStream;
+    Raw: rawbytestring;
+  begin
+    F := TFileStream.Create(Path, fmOpenRead or fmShareDenyNone);
+    try
+      SetLength(Raw, F.Size);
+      if F.Size > 0 then F.ReadBuffer(Raw[1], F.Size);
+    finally
+      F.Free;
+    end;
+    Result := UTF8Decode(Raw);
   end;
-  Result := UTF8Decode(Raw);
-end;
 
-procedure ReadPage(const Path: string; Into: TVisibleText);
-var
-  Reader: THTMLReader;
-  Stream: TFileStream;
-  Input: TXMLInputSource;
-begin
-  Stream := TFileStream.Create(Path, fmOpenRead or fmShareDenyNone);
-  Reader := THTMLReader.Create;
-  Input := TXMLInputSource.Create(Stream);
-  try
-    Reader.OnStartElement := @Into.StartElement;
-    Reader.OnEndElement := @Into.EndElement;
-    Reader.OnCharacters := @Into.Characters;
-    { whitespace between tags is a fragment's edge, never a fragment }
-    Reader.Parse(Input);
-    Into.Flush;
-  finally
-    Input.Free;
-    Reader.Free;
-    Stream.Free;
+  procedure ReadPage(const Path: string; Into: TVisibleText);
+  var
+    Reader: THTMLReader;
+    Stream: TFileStream;
+    Input: TXMLInputSource;
+  begin
+    Stream := TFileStream.Create(Path, fmOpenRead or fmShareDenyNone);
+    Reader := THTMLReader.Create;
+    Input := TXMLInputSource.Create(Stream);
+    try
+      Reader.OnStartElement := @Into.StartElement;
+      Reader.OnEndElement := @Into.EndElement;
+      Reader.OnCharacters := @Into.Characters;
+      { whitespace between tags is a fragment's edge, never a fragment }
+      Reader.Parse(Input);
+      Into.Flush;
+    finally
+      Input.Free;
+      Reader.Free;
+      Stream.Free;
+    end;
   end;
-end;
 
 var
   Pages: TStringList;
   Page: TVisibleText;
-  Rendered: UnicodeString;
-  I, K, Count, Lost: Integer;
+  Rendered: unicodestring;
+  I, K, Count, Lost: integer;
   Name: string;
 begin
   if ParamCount < 2 then
@@ -179,8 +178,7 @@ begin
         ReadPage(Name, Page);
         { case-insensitive: a page may say text-transform: uppercase, and a
           heading rendered as WHAT HAPPENS is not lost }
-        Rendered := UpperCase(Compact(ReadUTF8(IncludeTrailingPathDelimiter(ParamStr(2)) +
-          ExtractFileName(Name) + '.txt')));
+        Rendered := UpperCase(Compact(ReadUTF8(IncludeTrailingPathDelimiter(ParamStr(2)) + ExtractFileName(Name) + '.txt')));
         for K := 0 to Page.Fragments.Count - 1 do
         begin
           if Pos(UpperCase(Compact(UTF8Decode(Page.Fragments[K]))), Rendered) = 0 then
