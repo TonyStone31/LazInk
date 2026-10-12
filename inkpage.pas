@@ -3277,6 +3277,9 @@ begin
     FFindEdit.OnKeyDown := @FindEditKey;
   end;
   FFindEdit.Font.Assign(Font);
+  { the page's ink is mixed for the page's background; on the box's own
+    clWindow it can vanish, so the box keeps system ink for text and caret }
+  FFindEdit.Font.Color := clWindowText;
   PlaceFindBar;
   FFindEdit.Visible := True;
   if FFindEdit.CanFocus then FFindEdit.SetFocus;
