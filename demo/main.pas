@@ -149,8 +149,7 @@ type
     tabMarkdown: TTabSheet;
     pnlMdTools: TPanel;
     btnMdOpen, btnMdSave, btnMdSaveAs: TButton;
-    btnKindH1, btnKindH2, btnKindBullet, btnKindNumber, btnKindQuote,
-      btnKindCode, btnTable: TSpeedButton;
+    btnKindH1, btnKindH2, btnKindBullet, btnKindNumber, btnKindQuote, btnKindCode, btnTable: TSpeedButton;
     chkSrcMarkdown: TCheckBox;
     cbDocScheme: TComboBox;
     chkMdRawHTML: TCheckBox;
@@ -203,11 +202,10 @@ type
     { side by side }
     procedure tmrCompareTimer(Sender: TObject);
     procedure btnNudgeClick(Sender: TObject);
-    procedure CompareCross(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+    procedure CompareCross(Sender: TObject; Shift: TShiftState; X, Y: integer);
     { Markdown editor }
     procedure MdOpen(Sender: TObject);
-    procedure MdCharAttrs(Sender: TObject; AIndex: Integer;
-      const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+    procedure MdCharAttrs(Sender: TObject; AIndex: integer; const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
     procedure btnKindClick(Sender: TObject);
     procedure btnTableClick(Sender: TObject);
     procedure chkSrcMarkdownChange(Sender: TObject);
@@ -235,8 +233,7 @@ type
     procedure btnApplySourceClick(Sender: TObject);
     { list box }
     procedure edtMarkupChange(Sender: TObject);
-    procedure edtMarkupGetCharAttrs(Sender: TObject; AIndex: Integer;
-      const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+    procedure edtMarkupGetCharAttrs(Sender: TObject; AIndex: integer; const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
     procedure btnAddItemClick(Sender: TObject);
     procedure btnFromEditorClick(Sender: TObject);
     procedure btnClearListClick(Sender: TObject);
@@ -245,15 +242,12 @@ type
     procedure chkRawEditChange(Sender: TObject);
     procedure chkStripesChange(Sender: TObject);
     procedure cbEditModeChange(Sender: TObject);
-    procedure lstLogItemEdited(Sender: TObject; Index: Integer;
-      const OldText, NewText: string; var Accept: Boolean);
-    procedure lstLogLinkClick(Sender: TObject; Index: Integer;
-      const LinkName: string);
+    procedure lstLogItemEdited(Sender: TObject; Index: integer; const OldText, NewText: string; var Accept: boolean);
+    procedure lstLogLinkClick(Sender: TObject; Index: integer; const LinkName: string);
     procedure tmrLogTimer(Sender: TObject);
     { label + edit }
     procedure edtPasswordChange(Sender: TObject);
-    procedure edtPasswordGetCharAttrs(Sender: TObject; AIndex: Integer;
-      const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+    procedure edtPasswordGetCharAttrs(Sender: TObject; AIndex: integer; const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
     procedure rgCharModeClick(Sender: TObject);
     procedure LiveChange(Sender: TObject);
     procedure LiveMarkdownChange(Sender: TObject);
@@ -265,18 +259,17 @@ type
     procedure btnChatStreamClick(Sender: TObject);
     procedure tmrChatTimer(Sender: TObject);
     procedure chkHideCharsChange(Sender: TObject);
-    procedure memLinkClick(Sender: TObject; LineIndex: Integer;
-      const LinkName: string);
+    procedure memLinkClick(Sender: TObject; LineIndex: integer; const LinkName: string);
     procedure edtAppendChange(Sender: TObject);
-    procedure edtAppendKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure edtAppendKeyDown(Sender: TObject; var Key: word; Shift: TShiftState);
     procedure btnAppendClick(Sender: TObject);
     procedure btnMemoClearClick(Sender: TObject);
   private
-    FSyncing: Boolean;
+    FSyncing: boolean;
     { where each side of the side-by-side tab was last tick, so whichever
       moved leads and the other follows - and the hand-set offset between
       them, for lining a drifted spot up under the crosshair }
-    FCmpBrowserY, FCmpInkY, FCmpOffset: Integer;
+    FCmpBrowserY, FCmpInkY, FCmpOffset: integer;
     { one entry per character of edtMarkup: 0 plain, 1 tag, 2 attribute value.
       Worked out once when the text changes rather than per character, because
       OnGetCharAttrs is handed a character with no idea what surrounds it. }
@@ -288,10 +281,10 @@ type
     FMdColor: array of TColor;
     FMdStyle: array of TFontStyles;
     { the little chat: whose turn it is, and the answer still streaming in }
-    FChatTurn: Integer;
+    FChatTurn: integer;
     FStreamText: string;
-    FStreamPos: Integer;
-    function ChatBand(AAnswer: Boolean): TColor;
+    FStreamPos: integer;
+    function ChatBand(AAnswer: boolean): TColor;
     procedure MdRecolor;
     procedure UpdateSource;
     function TagMask(const S: string): TBytes;
@@ -320,11 +313,11 @@ uses
 const
   PROJECT_URL = 'https://github.com/TonyStone31/LazInk';
 
-{ ------------------------------------------------------------------ startup }
+  { ------------------------------------------------------------------ startup }
 
 procedure TfrmMain.SaveScreenshots(const ADir: string);
 var
-  I: Integer;
+  I: integer;
   Shot: TBitmap;
   Png: TPortableNetworkGraphic;
   TabName: string;
@@ -383,8 +376,7 @@ var
   Dir, Candidate: string;
 begin
   Dir := ExtractFilePath(ParamStr(0));
-  for Candidate in [Dir + AName, Dir + '..' + PathDelim + AName,
-    Dir + 'demo' + PathDelim + AName, AName] do
+  for Candidate in [Dir + AName, Dir + '..' + PathDelim + AName, Dir + 'demo' + PathDelim + AName, AName] do
     if FileExists(Candidate) then Exit(ExpandFileName(Candidate));
   Result := '';
 end;
@@ -402,39 +394,26 @@ begin
     S := DemoFile('tour.md');
     if S <> '' then OpenDocument(S)
     else
-      pageDoc.LoadMarkdown('# LazInk' + LineEnding + LineEnding +
-        '`tour.md` was not found next to the program. **Open...** shows ' +
-        'any HTML or Markdown page.');
+      pageDoc.LoadMarkdown('# LazInk' + LineEnding + LineEnding + '`tour.md` was not found next to the program. **Open...** shows ' + 'any HTML or Markdown page.');
   end;
   S := DemoFile('docs' + PathDelim + 'GUIDE.md');
   if S <> '' then LoadMarkdownFile(S)
   else
   begin
-    memMarkdown.Text := '# A heading' + LineEnding + LineEnding +
-      'Type **Markdown** on the left and watch it on the right.' + LineEnding;
+    memMarkdown.Text := '# A heading' + LineEnding + LineEnding + 'Type **Markdown** on the left and watch it on the right.' + LineEnding;
     ShowMdFile;
   end;
   MdRecolor;
   { the WYSIWYG editor opens on Markdown, edited as the thing itself }
   reMain.LoadMarkdown(
-    '# The WYSIWYG editor' + LineEnding + LineEnding +
-    'Here you edit the **page itself** - click into this text and type. ' +
-    'The *Markdown source* tab next door is the other way round: there ' +
-    'you type source and watch a preview. The toolbar''s *H1 H2* ' +
-    #$E2#$80#$A2 + ' *1.* ' + #$E2#$80#$9D +
-    ' *{}* buttons change what a paragraph is, and **Table** inserts one:' + LineEnding + LineEnding +
-    '| Control | Does |' + LineEnding +
-    '| --- | --- |' + LineEnding +
-    '| **Tab** | the next cell, a new row past the last |' + LineEnding +
-    '| **Enter** | another row; on an empty one, out |' + LineEnding + LineEnding +
-    '- a bullet item - Enter continues the list' + LineEnding +
-    '- an empty item ends it' + LineEnding + LineEnding +
-    '> The pane on the right is the **output**: the Markdown this document ' +
-    'would be saved as, kept up to date as you edit - and **Apply** reads ' +
-    'your edits to it back. Untick *Markdown* to see raw markup instead.' + LineEnding + LineEnding +
-    '```' + LineEnding +
-    'code lines keep their spacing' + LineEnding +
-    '```');
+    '# The WYSIWYG editor' + LineEnding + LineEnding + 'Here you edit the **page itself** - click into this text and type. ' +
+    'The *Markdown source* tab next door is the other way round: there ' + 'you type source and watch a preview. The toolbar''s *H1 H2* ' +
+    #$E2#$80#$A2 + ' *1.* ' + #$E2#$80#$9D + ' *{}* buttons change what a paragraph is, and **Table** inserts one:' + LineEnding +
+    LineEnding + '| Control | Does |' + LineEnding + '| --- | --- |' + LineEnding + '| **Tab** | the next cell, a new row past the last |' +
+    LineEnding + '| **Enter** | another row; on an empty one, out |' + LineEnding + LineEnding + '- a bullet item - Enter continues the list' +
+    LineEnding + '- an empty item ends it' + LineEnding + LineEnding + '> The pane on the right is the **output**: the Markdown this document ' +
+    'would be saved as, kept up to date as you edit - and **Apply** reads ' + 'your edits to it back. Untick *Markdown* to see raw markup instead.' +
+    LineEnding + LineEnding + '```' + LineEnding + 'code lines keep their spacing' + LineEnding + '```');
   LiveChange(nil);
   edtAppendChange(nil);
   chkStripesChange(chkStripes);
@@ -450,31 +429,17 @@ begin
   { the DOM events tab: a page the program drives through Document,
     OnElementClick and OnElementHover - what script would do, in Pascal }
   pgDom.LoadHTML(
-    '<html><head><style>' +
-    'body { margin: 16px; font: 15px/1.6 sans-serif }' +
-    'h2 { margin-top: 0 }' +
+    '<html><head><style>' + 'body { margin: 16px; font: 15px/1.6 sans-serif }' + 'h2 { margin-top: 0 }' +
     '.pill { border-radius: 999px; padding: 2px 10px; color: white; font-size: 12px }' +
-    '.blue { background: #2E86DE } .green { background: #1E8449 } .gold { background: #B7950B }' +
-    '#todo { list-style: none; padding-left: 0; max-width: 420px }' +
-    '#todo li { border: 1px solid light-dark(#ccc, #555); border-radius: 6px; ' +
-    'padding: 6px 10px; margin: 6px 0 }' +
-    '#todo li.done { text-decoration: line-through; color: #7F8C8D; ' +
-    'background: light-dark(#f2f3f4, #2a2d31) }' +
-    '</style></head><body>' +
-    '<h2>A to-do list with no script</h2>' +
-    '<p><span class="pill blue">canvas-drawn</span> <span class="pill green">0BSD</span> ' +
-    '<span class="pill gold">no JavaScript</span></p>' +
-    '<p>Click a line to cross it out, and again to bring it back. The page runs ' +
-    'nothing: the program hears the click and changes the document.</p>' +
-    '<ul id=todo>' +
-    '<li class=done>parse pages into a document tree</li>' +
-    '<li class=done>compute every element''s style</li>' +
-    '<li class=done>lay the boxes out from the tree</li>' +
-    '<li>flow words round a floated picture</li>' +
-    '<li>forms drawn by LazInk</li>' +
-    '</ul>' +
-    '<p>Move the mouse anywhere on this page: the right side names the element under it.</p>' +
-    '</body></html>');
+    '.blue { background: #2E86DE } .green { background: #1E8449 } .gold { background: #B7950B }' + '#todo { list-style: none; padding-left: 0; max-width: 420px }' +
+    '#todo li { border: 1px solid light-dark(#ccc, #555); border-radius: 6px; ' + 'padding: 6px 10px; margin: 6px 0 }' +
+    '#todo li.done { text-decoration: line-through; color: #7F8C8D; ' + 'background: light-dark(#f2f3f4, #2a2d31) }' + '</style></head><body>' +
+    '<h2>A to-do list with no script</h2>' + '<p><span class="pill blue">canvas-drawn</span> <span class="pill green">0BSD</span> ' +
+    '<span class="pill gold">no JavaScript</span></p>' + '<p>Click a line to cross it out, and again to bring it back. The page runs ' +
+    'nothing: the program hears the click and changes the document.</p>' + '<ul id=todo>' + '<li class=done>parse pages into a document tree</li>' +
+    '<li class=done>compute every element''s style</li>' + '<li class=done>lay the boxes out from the tree</li>' +
+    '<li>flow words round a floated picture</li>' + '<li>forms drawn by LazInk</li>' + '</ul>' +
+    '<p>Move the mouse anywhere on this page: the right side names the element under it.</p>' + '</body></html>');
   { the side-by-side tab: the browser's picture of showcase.html beside
     LazInk rendering the same file live, scroll-locked by tmrCompare }
   { Each pane's scrollbar draws inside its width - the picture pane's
@@ -487,18 +452,15 @@ begin
   shpCrossH.Width := pgCompareInk.Left + pgCompareInk.Width - shpCrossH.Left;
   S := DemoFile('showcase.html');
   if S <> '' then pgCompareInk.LoadFromFile(S)
-  else pgCompareInk.LoadHTML('<body style="font-family: sans-serif">' +
-    '<p><b>showcase.html</b> was not found beside the program.</p></body>');
+  else
+    pgCompareInk.LoadHTML('<body style="font-family: sans-serif">' + '<p><b>showcase.html</b> was not found beside the program.</p></body>');
   S := DemoFile('showcase-browser.png');
   if S <> '' then
-    pgCompareBrowser.LoadHTML('<html><body style="margin:0;background:#fff">' +
-      '<img src="' + ExtractFileName(S) + '" alt="the browser''s picture"></body></html>',
+    pgCompareBrowser.LoadHTML('<html><body style="margin:0;background:#fff">' + '<img src="' + ExtractFileName(S) + '" alt="the browser''s picture"></body></html>',
       FilenameToURI(ExtractFilePath(S)))
   else
-    pgCompareBrowser.LoadHTML('<body style="font-family: sans-serif">' +
-      '<p><b>showcase-browser.png</b> was not found beside the program. ' +
-      'Make the browser''s picture once with:</p>' +
-      '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding +
+    pgCompareBrowser.LoadHTML('<body style="font-family: sans-serif">' + '<p><b>showcase-browser.png</b> was not found beside the program. ' +
+      'Make the browser''s picture once with:</p>' + '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding +
       '  demo/showcase-browser.png 548 7560</pre></body>');
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
@@ -511,8 +473,7 @@ begin
     pageDoc.LoadFromFile(AFileName);
   except
     on E: Exception do
-      pageDoc.LoadMarkdown('# Could not open that' + LineEnding + LineEnding +
-        '`' + AFileName + '`' + LineEnding + LineEnding + E.Message);
+      pageDoc.LoadMarkdown('# Could not open that' + LineEnding + LineEnding + '`' + AFileName + '`' + LineEnding + LineEnding + E.Message);
   end;
 end;
 
@@ -554,17 +515,13 @@ procedure TfrmMain.DocThemeChange(Sender: TObject);
 begin
   case cbDocTheme.ItemIndex of
     1: pageDoc.StyleSheet.Text :=
-         'body { background: #1e2127; color: #c8ccd4 } ' +
-         'h1, h2 { color: #61afef } h3 { color: #e5c07b } a { color: #56b6c2 } ' +
-         'code, pre { background: #2c313a } blockquote { color: #8a9099 } ' +
-         'html { scrollbar-color: #61afef #1e2127; scrollbar-width: thin }';
+        'body { background: #1e2127; color: #c8ccd4 } ' + 'h1, h2 { color: #61afef } h3 { color: #e5c07b } a { color: #56b6c2 } ' +
+        'code, pre { background: #2c313a } blockquote { color: #8a9099 } ' + 'html { scrollbar-color: #61afef #1e2127; scrollbar-width: thin }';
     2: pageDoc.StyleSheet.Text :=
-         'body { background: #f4ecd8; color: #433422 } ' +
-         'h1, h2, h3 { color: #7a4a1c } a { color: #8b3a1a } ' +
-         'code, pre { background: #e8dcc0 } ' +
-         'html { scrollbar-color: #b89b72 #f4ecd8 }';
-  else
-    pageDoc.StyleSheet.Clear;
+        'body { background: #f4ecd8; color: #433422 } ' + 'h1, h2, h3 { color: #7a4a1c } a { color: #8b3a1a } ' +
+        'code, pre { background: #e8dcc0 } ' + 'html { scrollbar-color: #b89b72 #f4ecd8 }';
+    else
+      pageDoc.StyleSheet.Clear;
   end;
 end;
 
@@ -574,8 +531,7 @@ procedure TfrmMain.DocLinkClick(Sender: TObject; const URL: string);
 var
   Page: TInkPage;
 begin
-  if (Pos('http://', URL) = 1) or (Pos('https://', URL) = 1) or
-    (Pos('mailto:', URL) = 1) then
+  if (Pos('http://', URL) = 1) or (Pos('https://', URL) = 1) or (Pos('mailto:', URL) = 1) then
   begin
     OpenURL(URL);
     Exit;
@@ -589,7 +545,11 @@ begin
     else
     begin
       pcMain.ActivePage := tabDocuments;
-      try pageDoc.LoadFromURL(URL) except on E: Exception do ShowMessage(E.Message) end;
+      try
+        pageDoc.LoadFromURL(URL)
+      except
+        on E: Exception do ShowMessage(E.Message)
+      end;
     end;
     Exit;
   end;
@@ -612,7 +572,8 @@ begin
   while (N <> nil) and (N.Name <> 'li') do N := N.Parent;
   if N = nil then Exit;
   if N.GetAttribute('class') = 'done' then N.SetAttribute('class', '')
-  else N.SetAttribute('class', 'done');
+  else
+    N.SetAttribute('class', 'done');
   pgDom.DocumentChanged;
 end;
 
@@ -634,7 +595,9 @@ begin
       Part := Part + '#' + AElement.GetAttribute('id');
     if AElement.GetAttribute('class') <> '' then
       Part := Part + '.' + AElement.GetAttribute('class');
-    if S = '' then S := Part else S := Part + ' &gt; ' + S;
+    if S = '' then S := Part
+    else
+      S := Part + ' &gt; ' + S;
     AElement := AElement.Parent;
   end;
   lblDomHover.Caption := '<font color="#2E86DE"><b>' + S + '</b></font>';
@@ -659,16 +622,18 @@ procedure TfrmMain.btnNudgeClick(Sender: TObject);
 begin
   { one pixel of the live side only - the browser's picture stays put, so
     a drifted spot can be lined back up under the crosshair }
-  if Sender = btnNudgeUp then Dec(FCmpOffset) else Inc(FCmpOffset);
+  if Sender = btnNudgeUp then Dec(FCmpOffset)
+  else
+    Inc(FCmpOffset);
   pgCompareInk.ScrollTo(pgCompareBrowser.ScrollY + FCmpOffset);
   FCmpBrowserY := pgCompareBrowser.ScrollY;
   FCmpInkY := pgCompareInk.ScrollY;
 end;
 
-procedure TfrmMain.CompareCross(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+procedure TfrmMain.CompareCross(Sender: TObject; Shift: TShiftState; X, Y: integer);
 var
   P: TPoint;
-  RelX: Integer;
+  RelX: integer;
 begin
   { the crosshair is always on: the same spot marked on both halves.
     The lines stand a hair beside the pointer so they never sit under it
@@ -676,7 +641,8 @@ begin
   P := tabCompare.ScreenToClient(Mouse.CursorPos);
   shpCrossH.Top := P.Y + 1;
   if P.X >= pgCompareInk.Left then RelX := P.X - pgCompareInk.Left
-  else RelX := P.X - pgCompareBrowser.Left;
+  else
+    RelX := P.X - pgCompareBrowser.Left;
   if (RelX < 0) or (RelX >= pgCompareBrowser.Width) then Exit;
   shpCrossVL.Left := pgCompareBrowser.Left + RelX + 1;
   shpCrossVR.Left := pgCompareInk.Left + RelX + 1;
@@ -697,7 +663,9 @@ procedure TfrmMain.ShowMdFile;
 var
   FileName: string;
 begin
-  if FMdFile = '' then FileName := 'untitled' else FileName := ExtractFileName(FMdFile);
+  if FMdFile = '' then FileName := 'untitled'
+  else
+    FileName := ExtractFileName(FMdFile);
   if memMarkdown.Modified then
     lblMdFile.Caption := '<b>' + HTMLEscape(FileName) + '</b> <font color="#C0392B">(changed)</font>'
   else
@@ -744,13 +712,13 @@ const
   cHead = $00DE862E;    // blue   (TColor is BGR)
   cMark = $001980E6;    // orange
   cCode = $00847016;    // teal
-  cDim  = $008D8C7F;    // gray
+  cDim = $008D8C7F;    // gray
 var
-  i, j, CP, N, LineStart: Integer;
+  i, j, CP, N, LineStart: integer;
   L: string;
-  InFence, Table: Boolean;
+  InFence, Table: boolean;
 
-  procedure Put(AAt: Integer; AColor: TColor; AStyle: TFontStyles);
+  procedure Put(AAt: integer; AColor: TColor; AStyle: TFontStyles);
   begin
     if (AAt >= 0) and (AAt < N) then
     begin
@@ -759,9 +727,9 @@ var
     end;
   end;
 
-  procedure PutRun(AFrom, ATo: Integer; AColor: TColor; AStyle: TFontStyles);
+  procedure PutRun(AFrom, ATo: integer; AColor: TColor; AStyle: TFontStyles);
   var
-    K: Integer;
+    K: integer;
   begin
     for K := AFrom to ATo do
       Put(K, AColor, AStyle);
@@ -799,8 +767,7 @@ begin
       j := 1;
       while (j <= Length(L)) and (L[j] = ' ') do Inc(j);
       { a list marker: -, *, + or 1. at the line's start }
-      if (j <= Length(L)) and (L[j] in ['-', '*', '+']) and
-        (j < Length(L)) and (L[j + 1] = ' ') then
+      if (j <= Length(L)) and (L[j] in ['-', '*', '+']) and (j < Length(L)) and (L[j + 1] = ' ') then
         PutRun(LineStart + j - 1, LineStart + j - 1, cMark, [fsBold])
       else if (j <= Length(L)) and (L[j] in ['0'..'9']) then
       begin
@@ -818,16 +785,18 @@ begin
       begin
         case L[j] of
           '`':
+          begin
+            Put(LineStart + CP, cMark, []);
+            Inc(j);
+            Inc(CP);
+            while (j <= Length(L)) and (L[j] <> '`') do
             begin
-              Put(LineStart + CP, cMark, []);
-              Inc(j); Inc(CP);
-              while (j <= Length(L)) and (L[j] <> '`') do
-              begin
-                Put(LineStart + CP, cCode, []);
-                Inc(j, UTF8CodepointSize(@L[j])); Inc(CP);
-              end;
-              if j <= Length(L) then Put(LineStart + CP, cMark, []);
+              Put(LineStart + CP, cCode, []);
+              Inc(j, UTF8CodepointSize(@L[j]));
+              Inc(CP);
             end;
+            if j <= Length(L) then Put(LineStart + CP, cMark, []);
+          end;
           '*', '_', '~':
             Put(LineStart + CP, cMark, []);
           '[', ']', '(', ')':
@@ -846,8 +815,7 @@ begin
   end;
 end;
 
-procedure TfrmMain.MdCharAttrs(Sender: TObject; AIndex: Integer;
-  const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+procedure TfrmMain.MdCharAttrs(Sender: TObject; AIndex: integer; const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
 begin
   if (AIndex >= 1) and (AIndex <= Length(FMdColor)) then
   begin
@@ -867,13 +835,15 @@ end;
 
 procedure TfrmMain.MdTimer(Sender: TObject);
 var
-  Y: Integer;
+  Y: integer;
   Base: string;
 begin
   tmrMarkdown.Enabled := False;
   Y := pageMdPreview.ScrollY;
   { relative images and links are found beside the file }
-  if FMdFile <> '' then Base := FilenameToURI(FMdFile) else Base := '';
+  if FMdFile <> '' then Base := FilenameToURI(FMdFile)
+  else
+    Base := '';
   pageMdPreview.LoadMarkdown(memMarkdown.Text, Base);
   pageMdPreview.ScrollTo(Y);
 end;
@@ -910,9 +880,9 @@ end;
 procedure TfrmMain.UpdateToolbar;
 var
   St: TFontStyles;
-  Sz: Integer;
+  Sz: integer;
   Fc: string;
-  i: Integer;
+  i: integer;
 begin
   St := reMain.SelStyle;
   btnBold.Down := fsBold in St;
@@ -931,7 +901,9 @@ begin
   else
   begin
     i := cbSize.Items.IndexOf(IntToStr(Sz));
-    if i >= 0 then cbSize.ItemIndex := i else cbSize.Text := IntToStr(Sz);
+    if i >= 0 then cbSize.ItemIndex := i
+    else
+      cbSize.Text := IntToStr(Sz);
   end;
 
   Fc := reMain.SelFace;
@@ -940,7 +912,9 @@ begin
   else
   begin
     i := cbFace.Items.IndexOf(Fc);
-    if i >= 0 then cbFace.ItemIndex := i else cbFace.Text := Fc;
+    if i >= 0 then cbFace.ItemIndex := i
+    else
+      cbFace.Text := Fc;
   end;
 
   btnUndo.Enabled := reMain.CanUndo;
@@ -969,8 +943,7 @@ procedure TfrmMain.btnTableClick(Sender: TObject);
 begin
   reMain.InsertTable(3, 2);
   reMain.SetFocus;
-  SetStatus('A table: <b>Tab</b> hops cells, <b>Enter</b> adds a row, ' +
-    'Enter on an empty row ends it.');
+  SetStatus('A table: <b>Tab</b> hops cells, <b>Enter</b> adds a row, ' + 'Enter on an empty row ends it.');
 end;
 
 procedure TfrmMain.chkSrcMarkdownChange(Sender: TObject);
@@ -987,8 +960,8 @@ begin
   case cbDocScheme.ItemIndex of
     1: pageDoc.ColorScheme := icsLight;
     2: pageDoc.ColorScheme := icsDark;
-  else
-    pageDoc.ColorScheme := icsAuto;
+    else
+      pageDoc.ColorScheme := icsAuto;
   end;
 end;
 
@@ -998,8 +971,7 @@ begin
   if reMain.SelLength > 0 then
     SetStatus(Format('<b>%d</b> characters selected', [reMain.SelLength]))
   else
-    SetStatus('Caret at <b>' + IntToStr(reMain.SelStart) + '</b>. ' +
-      'Ctrl+B / Ctrl+I / Ctrl+U, Ctrl+Z to undo.');
+    SetStatus('Caret at <b>' + IntToStr(reMain.SelStart) + '</b>. ' + 'Ctrl+B / Ctrl+I / Ctrl+U, Ctrl+Z to undo.');
 end;
 
 procedure TfrmMain.reMainLinkClick(Sender: TObject; const LinkName: string);
@@ -1024,7 +996,9 @@ procedure TfrmMain.btnScriptClick(Sender: TObject);
 var
   Want: TInkScript;
 begin
-  if TComponent(Sender).Tag = 0 then Want := isSuperscript else Want := isSubscript;
+  if TComponent(Sender).Tag = 0 then Want := isSuperscript
+  else
+    Want := isSubscript;
   if reMain.SelScript = Want then
     reMain.ApplyScript(isNormal)      // pressing it again puts it back down
   else
@@ -1146,8 +1120,8 @@ end;
   text ever containing anything but what the user typed. }
 function TfrmMain.TagMask(const S: string): TBytes;
 var
-  i, N: Integer;
-  InTag, InQuote: Boolean;
+  i, N: integer;
+  InTag, InQuote: boolean;
   Ch: string;
 begin
   N := UTF8Length(S);
@@ -1183,21 +1157,24 @@ begin
   edtMarkup.Invalidate;
 end;
 
-procedure TfrmMain.edtMarkupGetCharAttrs(Sender: TObject; AIndex: Integer;
-  const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+procedure TfrmMain.edtMarkupGetCharAttrs(Sender: TObject; AIndex: integer; const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
 var
   Mask: TBytes;
 begin
   { both markup boxes share this; each has its own mask }
   if Sender = edtLive then Mask := FLiveMask
   else if Sender = edtAppend then Mask := FAppendMask
-  else Mask := FTagMask;
+  else
+    Mask := FTagMask;
   if (AIndex < 1) or (AIndex > Length(Mask)) then Exit;
   case Mask[AIndex - 1] of
-    1: begin AColor := $00A05A2C; AStyle := [fsBold]; end;   // the tag itself
+    1: begin
+      AColor := $00A05A2C;
+      AStyle := [fsBold];
+    end;   // the tag itself
     2: AColor := $002080108;                                 // quoted value
-  else
-    AColor := clWindowText;
+    else
+      AColor := clWindowText;
   end;
 end;
 
@@ -1247,7 +1224,7 @@ const
     '<img src="2"> Process <u>%s</u> <font color="#B7950B">halted</font>',
     '<img src="3"> Process <u>%s</u> <font color="#C0392B"><b>error</b></font>',
     '<img src="4"> Process <u>%s</u> retrying — see <a href="' + PROJECT_URL + '">project</a>'
-  );
+    );
   NAMES: array[0..5] of string = ('alpha', 'bravo', 'charlie', 'delta',
     'echo', 'foxtrot');
 var
@@ -1255,8 +1232,7 @@ var
 begin
   Msg := Format(EVENTS[Random(Length(EVENTS))], [NAMES[Random(Length(NAMES))]]);
   // the icon has to come first, then the timestamp, then the event text
-  Insert(Format('<font color="#7F8C8D">%s</font> ',
-    [FormatDateTime('hh:nn:ss.zzz', Now)]), Msg, Pos('> ', Msg) + 2);
+  Insert(Format('<font color="#7F8C8D">%s</font> ', [FormatDateTime('hh:nn:ss.zzz', Now)]), Msg, Pos('> ', Msg) + 2);
   lstLog.Items.Add(Msg);
   lstLog.TopIndex := lstLog.Items.Count - 1;
   tmrLog.Interval := 250 + Random(900);
@@ -1297,19 +1273,14 @@ const
     'Can a memo hold `code`?',
     'What about a *table*?');
   cChatAnswers: array[0..2] of string = (
-    'Load it into a **TInkPage**:' + LineEnding + LineEnding +
-      '```pascal' + LineEnding +
-      'InkPage1.LoadFromFile(''help/index.html'');' + LineEnding +
-      '```' + LineEnding + LineEnding +
-      'Headings, pictures, links - the whole document.',
-    'It can - a fenced block keeps its spacing and is colored:' + LineEnding +
-      LineEnding + '```pascal' + LineEnding + 'begin' + LineEnding +
-      '  WriteLn(''hello'');' + LineEnding + 'end.' + LineEnding + '```',
-    'Pipes make one:' + LineEnding + LineEnding +
-      '| Control | Does |' + LineEnding + '| --- | --- |' + LineEnding +
-      '| TInkMemo | this chat |' + LineEnding + '| TInkPage | documents |');
+    'Load it into a **TInkPage**:' + LineEnding + LineEnding + '```pascal' + LineEnding + 'InkPage1.LoadFromFile(''help/index.html'');' +
+    LineEnding + '```' + LineEnding + LineEnding + 'Headings, pictures, links - the whole document.',
+    'It can - a fenced block keeps its spacing and is colored:' + LineEnding + LineEnding + '```pascal' + LineEnding + 'begin' +
+    LineEnding + '  WriteLn(''hello'');' + LineEnding + 'end.' + LineEnding + '```',
+    'Pipes make one:' + LineEnding + LineEnding + '| Control | Does |' + LineEnding + '| --- | --- |' + LineEnding + '| TInkMemo | this chat |' +
+    LineEnding + '| TInkPage | documents |');
 
-function TfrmMain.ChatBand(AAnswer: Boolean): TColor;
+function TfrmMain.ChatBand(AAnswer: boolean): TColor;
 var
   Base, Tint: TColor;
 begin
@@ -1323,15 +1294,12 @@ begin
     Tint := RGBToColor(60, 165, 90)
   else
     Tint := RGBToColor(60, 130, 215);
-  Result := RGBToColor(
-    (Red(Base) * 86 + Red(Tint) * 14) div 100,
-    (Green(Base) * 86 + Green(Tint) * 14) div 100,
-    (Blue(Base) * 86 + Blue(Tint) * 14) div 100);
+  Result := RGBToColor((Red(Base) * 86 + Red(Tint) * 14) div 100, (Green(Base) * 86 + Green(Tint) * 14) div 100, (Blue(Base) * 86 + Blue(Tint) * 14) div 100);
 end;
 
 procedure TfrmMain.btnChatMsgClick(Sender: TObject);
 var
-  N: Integer;
+  N: integer;
 begin
   N := FChatTurn mod Length(cChatQuestions);
   { the question, then the answer: each one whole Markdown message, one
@@ -1347,10 +1315,8 @@ begin
   if tmrChat.Enabled then Exit;
   memCheat.AppendBlock('**You:** And an answer can arrive a word at a time?',
     itfMarkdown, ChatBand(False));
-  FStreamText := 'It can. `ReplaceLast` lays out only the last entry, so ' +
-    'a long conversation never re-layouts above it - and the view follows ' +
-    'only while you are already at the end. Scroll up while this types ' +
-    'and you will not be pulled back down.';
+  FStreamText := 'It can. `ReplaceLast` lays out only the last entry, so ' + 'a long conversation never re-layouts above it - and the view follows ' +
+    'only while you are already at the end. Scroll up while this types ' + 'and you will not be pulled back down.';
   FStreamPos := 0;
   memCheat.AppendBlock('...', itfMarkdown, ChatBand(True), 14);
   btnChatStream.Enabled := False;
@@ -1359,12 +1325,11 @@ end;
 
 procedure TfrmMain.tmrChatTimer(Sender: TObject);
 var
-  Upto: Integer;
+  Upto: integer;
 begin
   { a few more words each tick }
   Upto := FStreamPos;
-  while (Upto < Length(FStreamText)) and
-    ((Upto - FStreamPos < 12) or (FStreamText[Upto] <> ' ')) do
+  while (Upto < Length(FStreamText)) and ((Upto - FStreamPos < 12) or (FStreamText[Upto] <> ' ')) do
     Inc(Upto);
   FStreamPos := Upto;
   memCheat.ReplaceLast(Copy(FStreamText, 1, FStreamPos));
@@ -1390,16 +1355,13 @@ begin
   lstLog.EditMode := TInkEditMode(cbEditMode.ItemIndex);
 end;
 
-procedure TfrmMain.lstLogItemEdited(Sender: TObject; Index: Integer;
-  const OldText, NewText: string; var Accept: Boolean);
+procedure TfrmMain.lstLogItemEdited(Sender: TObject; Index: integer; const OldText, NewText: string; var Accept: boolean);
 begin
   Accept := True;
-  lblListStatus.Caption := Format('Item <b>%d</b> changed to: <i>%s</i>',
-    [Index, HTMLEscape(NewText)]);
+  lblListStatus.Caption := Format('Item <b>%d</b> changed to: <i>%s</i>', [Index, HTMLEscape(NewText)]);
 end;
 
-procedure TfrmMain.lstLogLinkClick(Sender: TObject; Index: Integer;
-  const LinkName: string);
+procedure TfrmMain.lstLogLinkClick(Sender: TObject; Index: integer; const LinkName: string);
 begin
   OpenURL(LinkName);
 end;
@@ -1413,20 +1375,23 @@ end;
 
 procedure TfrmMain.edtPasswordChange(Sender: TObject);
 var
-  Score: Integer;
+  Score: integer;
   S: string;
-  i: Integer;
-  HasUp, HasLo, HasDig, HasSym: Boolean;
+  i: integer;
+  HasUp, HasLo, HasDig, HasSym: boolean;
 begin
   S := edtPassword.Text;
-  HasUp := False; HasLo := False; HasDig := False; HasSym := False;
+  HasUp := False;
+  HasLo := False;
+  HasDig := False;
+  HasSym := False;
   for i := 1 to Length(S) do
     case S[i] of
       'A'..'Z': HasUp := True;
       'a'..'z': HasLo := True;
       '0'..'9': HasDig := True;
-    else
-      HasSym := True;
+      else
+        HasSym := True;
     end;
   Score := Ord(HasUp) + Ord(HasLo) + Ord(HasDig) + Ord(HasSym);
   if Length(S) >= 12 then Inc(Score);
@@ -1447,21 +1412,26 @@ end;
 { Two ways of using OnGetCharAttrs, chosen by the radio group. The control
   never sees any markup - it hands over one character at a time and takes back
   a color and a style. }
-procedure TfrmMain.edtPasswordGetCharAttrs(Sender: TObject; AIndex: Integer;
-  const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
+procedure TfrmMain.edtPasswordGetCharAttrs(Sender: TObject; AIndex: integer; const AChar: string; var AColor: TColor; var AStyle: TFontStyles);
 var
-  C: Char;
+  C: char;
 begin
   if AChar = '' then Exit;
   C := AChar[1];
   case rgCharMode.ItemIndex of
     0:  // character classes
       case C of
-        '0'..'9': begin AColor := $001E8449; AStyle := [fsBold]; end;
+        '0'..'9': begin
+          AColor := $001E8449;
+          AStyle := [fsBold];
+        end;
         'A'..'Z': AColor := $00DE862E;
         'a'..'z': AColor := clWindowText;
-      else
-        begin AColor := $002E57E4; AStyle := [fsBold]; end;
+        else
+        begin
+          AColor := $002E57E4;
+          AStyle := [fsBold];
+        end;
       end;
     1:  // a rainbow, because we can
       case AIndex mod 6 of
@@ -1470,14 +1440,17 @@ begin
         2: AColor := $00E48A2E;
         3: AColor := $00A05AC0;
         4: AColor := $001EA4C0;
-      else
-        AColor := $00C03080;
+        else
+          AColor := $00C03080;
       end;
-  else  // every other character emphasized
-    if Odd(AIndex) then
-      AStyle := [fsBold]
-    else
-      begin AStyle := [fsItalic]; AColor := $007F8C8D; end;
+    else  // every other character emphasized
+      if Odd(AIndex) then
+        AStyle := [fsBold]
+      else
+      begin
+        AStyle := [fsItalic];
+        AColor := $007F8C8D;
+      end;
   end;
 end;
 
@@ -1519,8 +1492,7 @@ begin
   lblScale.Caption := Format('Scale: <b>%d%%</b>', [tbScale.Position]);
 end;
 
-procedure TfrmMain.memLinkClick(Sender: TObject; LineIndex: Integer;
-  const LinkName: string);
+procedure TfrmMain.memLinkClick(Sender: TObject; LineIndex: integer; const LinkName: string);
 begin
   OpenURL(LinkName);
 end;
@@ -1533,7 +1505,7 @@ begin
   edtAppend.Invalidate;
 end;
 
-procedure TfrmMain.edtAppendKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TfrmMain.edtAppendKeyDown(Sender: TObject; var Key: word; Shift: TShiftState);
 begin
   if Key = VK_RETURN then
   begin
@@ -1547,8 +1519,7 @@ end;
 procedure TfrmMain.btnAppendClick(Sender: TObject);
 begin
   if Trim(edtAppend.Text) = '' then Exit;
-  memCheat.Append(Format('<font color="#7F8C8D">%s</font> %s',
-    [FormatDateTime('hh:nn:ss', Now), edtAppend.Text]));
+  memCheat.Append(Format('<font color="#7F8C8D">%s</font> %s', [FormatDateTime('hh:nn:ss', Now), edtAppend.Text]));
 end;
 
 procedure TfrmMain.btnMemoClearClick(Sender: TObject);

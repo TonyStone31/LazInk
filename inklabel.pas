@@ -28,33 +28,33 @@ type
     FTextFormat: TInkTextFormat;
     procedure SetTextFormat(AValue: TInkTextFormat);
   private
-    FHTMLScale: Integer;
-    FSuperSubScriptRatio: Double;
-    FTransparent: Boolean;
-    FWordWrap: Boolean;
-    FEllipsis: Boolean;
-    FMaxWidth: Integer;
-    FLineSpacing: Integer;
+    FHTMLScale: integer;
+    FSuperSubScriptRatio: double;
+    FTransparent: boolean;
+    FWordWrap: boolean;
+    FEllipsis: boolean;
+    FMaxWidth: integer;
+    FLineSpacing: integer;
     FVertAlign: TInkVertAlign;
     FHorzAlign: TInkHorzAlign;
     FBorders: TInkBorders;
     FImages: TCustomImageList;
     FLinkStyle: TInkLinkStyle;
     FLinkHoverStyle: TInkLinkStyle;
-    FAutoOpenLink: Boolean;
-    FHoverIndex: Integer;
+    FAutoOpenLink: boolean;
+    FHoverIndex: integer;
     FHoverLink: string;
     FHoverLinkText: string;
     FOnLinkClick: TInkLinkEvent;
     FOnLinkEnter: TInkLinkEvent;
     FOnLinkLeave: TInkLinkEvent;
     FOnLinkRightClick: TInkLinkEvent;
-    procedure SetHTMLScale(AValue: Integer);
-    procedure SetTransparent(AValue: Boolean);
-    procedure SetWordWrap(AValue: Boolean);
-    procedure SetEllipsis(AValue: Boolean);
-    procedure SetMaxWidth(AValue: Integer);
-    procedure SetLineSpacing(AValue: Integer);
+    procedure SetHTMLScale(AValue: integer);
+    procedure SetTransparent(AValue: boolean);
+    procedure SetWordWrap(AValue: boolean);
+    procedure SetEllipsis(AValue: boolean);
+    procedure SetMaxWidth(AValue: integer);
+    procedure SetLineSpacing(AValue: integer);
     procedure SetVertAlign(AValue: TInkVertAlign);
     procedure SetHorzAlign(AValue: TInkHorzAlign);
     procedure SetBorders(AValue: TInkBorders);
@@ -66,22 +66,22 @@ type
   private
     { character selection: offsets into the run map's Words }
     FRunText: TInkRunText;
-    FRunsReady: Boolean;
-    FSelectable: Boolean;
-    FSelAnchor, FSelCaret: Integer;
-    FSelecting, FSelMoved: Boolean;
-    FSelectUnit: Integer;              // 0 characters, 1 words, 2 all
-    FUnitFrom, FUnitTo: Integer;
-    FPressX, FPressY: Integer;
-    FClicks, FLastClickX, FLastClickY: Integer;
+    FRunsReady: boolean;
+    FSelectable: boolean;
+    FSelAnchor, FSelCaret: integer;
+    FSelecting, FSelMoved: boolean;
+    FSelectUnit: integer;              // 0 characters, 1 words, 2 all
+    FUnitFrom, FUnitTo: integer;
+    FPressX, FPressY: integer;
+    FClicks, FLastClickX, FLastClickY: integer;
     FLastClickTime: QWord;
     procedure NeedRuns;
-    procedure SetSelectable(AValue: Boolean);
-    procedure InvalidateRuns(AClearSelection: Boolean);
-    procedure ExtendSelectionTo(AOffset: Integer);
+    procedure SetSelectable(AValue: boolean);
+    procedure InvalidateRuns(AClearSelection: boolean);
+    procedure ExtendSelectionTo(AOffset: integer);
     procedure DoSelectAll(Sender: TObject);
   private
-    FCopyMenu: Boolean;
+    FCopyMenu: boolean;
     FCopyMenuHost: TInkCopyMenu;
     FOnCopyMenu: TInkCopyMenuEvent;
     { Caption as it will actually be drawn: re-flowed when WordWrap or
@@ -91,20 +91,17 @@ type
     { Everything the renderer needs beyond the text itself. }
     function Options: THTMLOptions;
     procedure Paint; override;
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
-      X, Y: Integer); override;
-    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
-    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
-      X, Y: Integer); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
     procedure MouseLeave; override;
     procedure FontChanged(Sender: TObject); override;
     procedure Click; override;
-    procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: integer;
-      WithThemeSpace: Boolean); override;
+    procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: integer; WithThemeSpace: boolean); override;
     procedure TextChanged; override;
     procedure DoSetBounds(ALeft, ATop, AWidth, AHeight: integer); override;
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
-    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: boolean); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -112,12 +109,12 @@ type
     function PlainText: string;
     { character selection: a drag selects, a double click takes a word, a
       triple click everything; the copy menu then offers Copy }
-    function HasSelection: Boolean;
+    function HasSelection: boolean;
     function SelectedText: string;
     procedure SelectAll;
     procedure ClearSelection;
     { fills the copy menu for client X, Y without opening it }
-    function BuildCopyMenu(X, Y: Integer): TPopupMenu;
+    function BuildCopyMenu(X, Y: integer): TPopupMenu;
     { The href under the mouse, '' when none }
     property HoverLink: string read FHoverLink;
     { The text shown for that link }
@@ -125,20 +122,20 @@ type
   published
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     property Caption;
-    property HTMLScale: Integer read FHTMLScale write SetHTMLScale default 100;
-    property SuperSubScriptRatio: Double read FSuperSubScriptRatio write FSuperSubScriptRatio;
-    property Transparent: Boolean read FTransparent write SetTransparent default True;
+    property HTMLScale: integer read FHTMLScale write SetHTMLScale default 100;
+    property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    property Transparent: boolean read FTransparent write SetTransparent default True;
     { Re-flow the caption to the control width. With AutoSize the width is left
       alone and only the height follows the text, the way TLabel behaves. }
-    property WordWrap: Boolean read FWordWrap write SetWordWrap default False;
+    property WordWrap: boolean read FWordWrap write SetWordWrap default False;
     { with WordWrap off and AutoSize off: one line that ends in an ellipsis
       when the label is too narrow for it, instead of a word stopping
       halfway through a letter }
-    property Ellipsis: Boolean read FEllipsis write SetEllipsis default False;
+    property Ellipsis: boolean read FEllipsis write SetEllipsis default False;
     { With AutoSize and no WordWrap the label grows sideways forever. MaxWidth
       caps that: past it the text wraps instead. 0 means no cap. }
-    property MaxWidth: Integer read FMaxWidth write SetMaxWidth default 0;
-    property LineSpacing: Integer read FLineSpacing write SetLineSpacing default 0;
+    property MaxWidth: integer read FMaxWidth write SetMaxWidth default 0;
+    property LineSpacing: integer read FLineSpacing write SetLineSpacing default 0;
     { Where the block of text sits when the control is bigger than it. }
     property VertAlign: TInkVertAlign read FVertAlign write SetVertAlign default ivaTop;
     property HorzAlign: TInkHorzAlign read FHorzAlign write SetHorzAlign default ihaLeft;
@@ -149,20 +146,20 @@ type
     property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
-    property AutoOpenLink: Boolean read FAutoOpenLink write FAutoOpenLink default False;
+    property AutoOpenLink: boolean read FAutoOpenLink write FAutoOpenLink default False;
     property OnLinkClick: TInkLinkEvent read FOnLinkClick write FOnLinkClick;
     property OnLinkEnter: TInkLinkEvent read FOnLinkEnter write FOnLinkEnter;
     property OnLinkLeave: TInkLinkEvent read FOnLinkLeave write FOnLinkLeave;
     property OnLinkRightClick: TInkLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
     { the right-click menu: Copy link address over a link, and Copy all.
       Not shown when off or when PopupMenu is set. }
-    property CopyMenu: Boolean read FCopyMenu write FCopyMenu default True;
+    property CopyMenu: boolean read FCopyMenu write FCopyMenu default True;
     { lets a program add its own items to that menu as it opens }
     property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
     { lets the mouse select characters, as in a browser: a drag, a double
       click for a word, a triple click for everything.  Off, the label
       behaves like any other label; SelectAll still works from code. }
-    property Selectable: Boolean read FSelectable write SetSelectable default False;
+    property Selectable: boolean read FSelectable write SetSelectable default False;
 
     property Align;
     property Anchors;
@@ -233,8 +230,7 @@ end;
 
 function TInkLabel.Options: THTMLOptions;
 begin
-  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing,
-    FBorders, FImages, FLinkStyle, FLinkHoverStyle, FHoverIndex);
+  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing, FBorders, FImages, FLinkStyle, FLinkHoverStyle, FHoverIndex);
   Result.VertAlign := FVertAlign;
   Result.HorzAlign := FHorzAlign;
   if FEllipsis and not FWordWrap then
@@ -252,35 +248,35 @@ begin
   Invalidate;
 end;
 
-procedure TInkLabel.SetHTMLScale(AValue: Integer);
+procedure TInkLabel.SetHTMLScale(AValue: integer);
 begin
   if FHTMLScale = AValue then Exit;
   FHTMLScale := AValue;
   SubPropChanged(nil);
 end;
 
-procedure TInkLabel.SetTransparent(AValue: Boolean);
+procedure TInkLabel.SetTransparent(AValue: boolean);
 begin
   if FTransparent = AValue then Exit;
   FTransparent := AValue;
   Invalidate;
 end;
 
-procedure TInkLabel.SetEllipsis(AValue: Boolean);
+procedure TInkLabel.SetEllipsis(AValue: boolean);
 begin
   if FEllipsis = AValue then Exit;
   FEllipsis := AValue;
   SubPropChanged(nil);
 end;
 
-procedure TInkLabel.SetWordWrap(AValue: Boolean);
+procedure TInkLabel.SetWordWrap(AValue: boolean);
 begin
   if FWordWrap = AValue then Exit;
   FWordWrap := AValue;
   SubPropChanged(nil);
 end;
 
-procedure TInkLabel.SetMaxWidth(AValue: Integer);
+procedure TInkLabel.SetMaxWidth(AValue: integer);
 begin
   if AValue < 0 then AValue := 0;
   if FMaxWidth = AValue then Exit;
@@ -288,7 +284,7 @@ begin
   SubPropChanged(nil);
 end;
 
-procedure TInkLabel.SetLineSpacing(AValue: Integer);
+procedure TInkLabel.SetLineSpacing(AValue: integer);
 begin
   if FLineSpacing = AValue then Exit;
   FLineSpacing := AValue;
@@ -324,14 +320,14 @@ begin
   FRunsReady := True;
 end;
 
-procedure TInkLabel.SetSelectable(AValue: Boolean);
+procedure TInkLabel.SetSelectable(AValue: boolean);
 begin
   if FSelectable = AValue then Exit;
   FSelectable := AValue;
   if not AValue then ClearSelection;
 end;
 
-procedure TInkLabel.InvalidateRuns(AClearSelection: Boolean);
+procedure TInkLabel.InvalidateRuns(AClearSelection: boolean);
 begin
   FRunsReady := False;
   if AClearSelection and (FSelAnchor <> FSelCaret) then
@@ -341,7 +337,7 @@ begin
   end;
 end;
 
-function TInkLabel.HasSelection: Boolean;
+function TInkLabel.HasSelection: boolean;
 begin
   Result := FSelAnchor <> FSelCaret;
 end;
@@ -374,28 +370,28 @@ begin
   SelectAll;
 end;
 
-procedure TInkLabel.ExtendSelectionTo(AOffset: Integer);
+procedure TInkLabel.ExtendSelectionTo(AOffset: integer);
 var
-  WordFrom, WordTo: Integer;
+  WordFrom, WordTo: integer;
 begin
   case FSelectUnit of
     1:
+    begin
+      FRunText.WordAt(AOffset, WordFrom, WordTo);
+      if WordFrom < FUnitFrom then
       begin
-        FRunText.WordAt(AOffset, WordFrom, WordTo);
-        if WordFrom < FUnitFrom then
-        begin
-          FSelAnchor := FUnitTo;
-          FSelCaret := WordFrom;
-        end
-        else
-        begin
-          FSelAnchor := FUnitFrom;
-          FSelCaret := WordTo;
-        end;
+        FSelAnchor := FUnitTo;
+        FSelCaret := WordFrom;
+      end
+      else
+      begin
+        FSelAnchor := FUnitFrom;
+        FSelCaret := WordTo;
       end;
+    end;
     2: ;   // everything is selected already
-  else
-    FSelCaret := AOffset;
+    else
+      FSelCaret := AOffset;
   end;
   Invalidate;
 end;
@@ -447,7 +443,7 @@ end;
   This is the same guard TCustomLabel uses. }
 procedure TInkLabel.DoSetBounds(ALeft, ATop, AWidth, AHeight: integer);
 var
-  WidthChanged: Boolean;
+  WidthChanged: boolean;
 begin
   WidthChanged := AWidth <> Width;
   if (AWidth <> Width) or (AHeight <> Height) then InvalidateRuns(False);
@@ -462,7 +458,7 @@ end;
 
 function TInkLabel.RenderText: string;
 var
-  W: Integer;
+  W: integer;
 begin
   Canvas.Font := Font;
   W := 0;
@@ -497,12 +493,11 @@ end;
 
 { the mouse selects, as in a browser: a click places (and follows a link),
   a drag selects, a double click takes a word and a triple click all of it }
-procedure TInkLabel.MouseDown(Button: TMouseButton; Shift: TShiftState;
-  X, Y: Integer);
+procedure TInkLabel.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 var
-  P, WordFrom, WordTo: Integer;
+  P, WordFrom, WordTo: integer;
   Now_: QWord;
-  Near: Boolean;
+  Near: boolean;
 begin
   inherited MouseDown(Button, Shift, X, Y);
   if (Button <> mbLeft) or not FSelectable then Exit;
@@ -510,7 +505,8 @@ begin
   P := FRunText.OffsetAt(Canvas, X, Y);
   FSelecting := True;
   FSelMoved := False;
-  FPressX := X; FPressY := Y;
+  FPressX := X;
+  FPressY := Y;
   { A press soon after another in the same place is its second or third
     click.  GTK sends a double click as a press and then the same press
     again, marked double, at the same moment: that is not one more click. }
@@ -523,32 +519,40 @@ begin
     else
       FClicks := 1;
   end;
-  FLastClickTime := Now_; FLastClickX := X; FLastClickY := Y;
+  FLastClickTime := Now_;
+  FLastClickX := X;
+  FLastClickY := Y;
   if ssTriple in Shift then FClicks := 3
   else if (ssDouble in Shift) and (FClicks < 2) then FClicks := 2;
   if FClicks = 3 then
   begin
-    FSelectUnit := 2; FSelMoved := True;
+    FSelectUnit := 2;
+    FSelMoved := True;
     SelectAll;
   end
   else if FClicks = 2 then
   begin
-    FSelectUnit := 1; FSelMoved := True;
+    FSelectUnit := 1;
+    FSelMoved := True;
     FRunText.WordAt(P, WordFrom, WordTo);
-    FUnitFrom := WordFrom; FUnitTo := WordTo;
-    FSelAnchor := WordFrom; FSelCaret := WordTo;
+    FUnitFrom := WordFrom;
+    FUnitTo := WordTo;
+    FSelAnchor := WordFrom;
+    FSelCaret := WordTo;
     Invalidate;
   end
   else if (ssShift in Shift) and HasSelection then
   begin
-    FSelectUnit := 0; FSelMoved := True;
+    FSelectUnit := 0;
+    FSelMoved := True;
     FSelCaret := P;
     Invalidate;
   end
   else
   begin
     FSelectUnit := 0;
-    FSelAnchor := P; FSelCaret := P;
+    FSelAnchor := P;
+    FSelCaret := P;
     Invalidate;
   end;
 end;
@@ -557,10 +561,12 @@ end;
   same target still light up one at a time. }
 procedure TInkLabel.UpdateHover(const AHit: THTMLHitInfo);
 var
-  NewIndex: Integer;
+  NewIndex: integer;
   OldLink: string;
 begin
-  if AHit.OnLink then NewIndex := AHit.LinkIndex else NewIndex := 0;
+  if AHit.OnLink then NewIndex := AHit.LinkIndex
+  else
+    NewIndex := 0;
   if NewIndex = FHoverIndex then Exit;
 
   OldLink := FHoverLink;
@@ -584,7 +590,7 @@ begin
   Invalidate;
 end;
 
-procedure TInkLabel.MouseMove(Shift: TShiftState; X, Y: Integer);
+procedure TInkLabel.MouseMove(Shift: TShiftState; X, Y: integer);
 var
   Opts: THTMLOptions;
 begin
@@ -609,7 +615,9 @@ begin
     if FSelectable then
     begin
       NeedRuns;
-      if FRunText.OverText(X, Y) then Cursor := crIBeam else Cursor := crDefault;
+      if FRunText.OverText(X, Y) then Cursor := crIBeam
+      else
+        Cursor := crDefault;
     end
     else
       Cursor := crDefault;
@@ -628,8 +636,7 @@ begin
   UpdateHover(Empty);
 end;
 
-procedure TInkLabel.MouseUp(Button: TMouseButton; Shift: TShiftState;
-  X, Y: Integer);
+procedure TInkLabel.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
   if (Button = mbLeft) and FSelecting then
@@ -639,8 +646,7 @@ begin
       { X11's other clipboard: what is selected is ready for a middle click }
       Clipboard(ctPrimarySelection).AsText := SelectedText;
   end;
-  if (Button = mbRight) and (FHoverIndex > 0) and (FHoverLink <> '') and
-    Assigned(FOnLinkRightClick) then
+  if (Button = mbRight) and (FHoverIndex > 0) and (FHoverLink <> '') and Assigned(FOnLinkRightClick) then
     FOnLinkRightClick(Self, FHoverLink);
 end;
 
@@ -658,8 +664,7 @@ begin
   end;
 end;
 
-procedure TInkLabel.CalculatePreferredSize(var PreferredWidth,
-  PreferredHeight: integer; WithThemeSpace: Boolean);
+procedure TInkLabel.CalculatePreferredSize(var PreferredWidth, PreferredHeight: integer; WithThemeSpace: boolean);
 var
   Sz: TSize;
   R: TRect;
@@ -691,8 +696,9 @@ begin
   Result := HTMLPlainText(InkToHTML(Caption, FTextFormat));
 end;
 
-function TInkLabel.BuildCopyMenu(X, Y: Integer): TPopupMenu;
-var Texts: TInkCopyTexts;
+function TInkLabel.BuildCopyMenu(X, Y: integer): TPopupMenu;
+var
+  Texts: TInkCopyTexts;
 begin
   Texts := Default(TInkCopyTexts);
   Texts.CanSelect := FSelectable;
@@ -704,8 +710,9 @@ begin
   Result := FCopyMenuHost.Menu;
 end;
 
-procedure TInkLabel.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
-var P: TPoint;
+procedure TInkLabel.DoContextPopup(MousePos: TPoint; var Handled: boolean);
+var
+  P: TPoint;
 begin
   inherited DoContextPopup(MousePos, Handled);
   if Handled or not FCopyMenu or Assigned(PopupMenu) then Exit;

@@ -36,51 +36,50 @@ resourcestring
   SInkEditSelectAll = 'Select all';
 
 type
-  TInkGetCharAttrsEvent = procedure(Sender: TObject; AIndex: Integer;
-    const AChar: string; var AColor: TColor; var AStyle: TFontStyles) of object;
+  TInkGetCharAttrsEvent = procedure(Sender: TObject; AIndex: integer; const AChar: string; var AColor: TColor; var AStyle: TFontStyles) of object;
 
   { TInkEdit }
 
   TInkEdit = class(TCustomControl)
   private
     FChars: array of string;   // one UTF-8 codepoint per entry
-    FCaret: Integer;           // 0..Length(FChars), position between chars
-    FAnchor: Integer;          // selection anchor; = FCaret when no selection
-    FScrollX: Integer;         // horizontal scroll offset in pixels
-    FMaxLength: Integer;
-    FReadOnly: Boolean;
+    FCaret: integer;           // 0..Length(FChars), position between chars
+    FAnchor: integer;          // selection anchor; = FCaret when no selection
+    FScrollX: integer;         // horizontal scroll offset in pixels
+    FMaxLength: integer;
+    FReadOnly: boolean;
     FAlignment: TAlignment;
     FCaretTimer: TTimer;
-    FCaretOn: Boolean;
+    FCaretOn: boolean;
     FOnChange: TNotifyEvent;
     FOnGetCharAttrs: TInkGetCharAttrsEvent;
     FTextHint: string;
     FTextHintColor: TColor;
-    FPasswordChar: Char;
-    FEditMenu: Boolean;
+    FPasswordChar: char;
+    FEditMenu: boolean;
     FMenu: TPopupMenu;
     FUndo, FRedo: TFPList;
-    FUndoKind: Integer;        // 1 typing, 2 deleting, 0 anything else
+    FUndoKind: integer;        // 1 typing, 2 deleting, 0 anything else
     FUndoTick: QWord;
     FLastTyped: string;
     procedure SetTextHint(const AValue: string);
     procedure SetTextHintColor(AValue: TColor);
-    procedure SetPasswordChar(AValue: Char);
+    procedure SetPasswordChar(AValue: char);
     { what character i is drawn and measured as - the mask while hidden }
-    function DisplayChar(AIndex: Integer): string;
-    procedure PushUndo(AKind: Integer);
+    function DisplayChar(AIndex: integer): string;
+    procedure PushUndo(AKind: integer);
     procedure ClearUndoList(AList: TFPList);
     procedure MenuClick(Sender: TObject);
     function GetTextValue: string;
     procedure SetTextValue(const AValue: string);
-    function GetSelStart: Integer;
-    procedure SetSelStart(AValue: Integer);
-    function GetSelLength: Integer;
-    procedure SetSelLength(AValue: Integer);
+    function GetSelStart: integer;
+    procedure SetSelStart(AValue: integer);
+    function GetSelLength: integer;
+    procedure SetSelLength(AValue: integer);
     function GetSelText: string;
     procedure SetAlignment(AValue: TAlignment);
-    procedure SetReadOnly(AValue: Boolean);
-    function CharCount: Integer;
+    procedure SetReadOnly(AValue: boolean);
+    function CharCount: integer;
     procedure SplitText(const AValue: string);
     procedure CaretTimerTick(Sender: TObject);
     procedure RestartCaretBlink;
@@ -88,23 +87,23 @@ type
       Positions[i] is the left edge of char i+1; Positions[CharCount] is the
       right edge of the text. StartX is where the text begins for the current
       alignment, before FScrollX is applied. }
-    procedure ComputeLayout(out StartX: Integer; out Positions: TIntegerDynArray);
-    function CaretToX(ACaret: Integer): Integer;
-    function XToCaret(X: Integer): Integer;
+    procedure ComputeLayout(out StartX: integer; out Positions: TIntegerDynArray);
+    function CaretToX(ACaret: integer): integer;
+    function XToCaret(X: integer): integer;
     procedure EnsureCaretVisible;
-    procedure DeleteRange(AFrom, ATo: Integer);  // chars [AFrom+1..ATo], 0-based gap positions
+    procedure DeleteRange(AFrom, ATo: integer);  // chars [AFrom+1..ATo], 0-based gap positions
     procedure InsertText(const AValue: string);
     procedure DeleteSelection;
     procedure Changed;
   protected
     procedure CreateWnd; override;
     procedure Paint; override;
-    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure KeyDown(var Key: word; Shift: TShiftState); override;
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
-    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
     procedure DblClick; override;
-    procedure DoContextPopup(MousePos: TPoint; var Handled: Boolean); override;
+    procedure DoContextPopup(MousePos: TPoint; var Handled: boolean); override;
     procedure DoEnter; override;
     procedure DoExit; override;
     class function GetControlClassDefaultSize: TSize; override;
@@ -118,16 +117,16 @@ type
     procedure PasteFromClipboard;
     procedure Undo;
     procedure Redo;
-    function CanUndo: Boolean;
-    function CanRedo: Boolean;
+    function CanUndo: boolean;
+    function CanRedo: boolean;
     procedure ClearUndo;
     property SelText: string read GetSelText;
   published
     property Text: string read GetTextValue write SetTextValue;
-    property SelStart: Integer read GetSelStart write SetSelStart;
-    property SelLength: Integer read GetSelLength write SetSelLength;
-    property MaxLength: Integer read FMaxLength write FMaxLength default 0;
-    property ReadOnly: Boolean read FReadOnly write SetReadOnly default False;
+    property SelStart: integer read GetSelStart write SetSelStart;
+    property SelLength: integer read GetSelLength write SetSelLength;
+    property MaxLength: integer read FMaxLength write FMaxLength default 0;
+    property ReadOnly: boolean read FReadOnly write SetReadOnly default False;
     property Alignment: TAlignment read FAlignment write SetAlignment default taLeftJustify;
     { the gray words an empty box shows - what goes in the field, said
       without a second label.  Never part of Text, never copied; drawn in
@@ -139,11 +138,11 @@ type
       is '*', the way most toolkits draw it now).  While hidden, Copy and
       Cut do nothing and the text never reaches the clipboard.  Text is
       the real text, and undo still works. }
-    property PasswordChar: Char read FPasswordChar write SetPasswordChar default #0;
+    property PasswordChar: char read FPasswordChar write SetPasswordChar default #0;
     { the box's own right-click menu - Undo, Redo, Cut, Copy, Paste, Delete,
       Select All, each enabled only when it can do something.  A PopupMenu
       of the host's own still wins. }
-    property EditMenu: Boolean read FEditMenu write FEditMenu default True;
+    property EditMenu: boolean read FEditMenu write FEditMenu default True;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnGetCharAttrs: TInkGetCharAttrsEvent read FOnGetCharAttrs write FOnGetCharAttrs;
 
@@ -192,10 +191,10 @@ type
     cannot be subtly wrong beats a delta log that can }
   TInkEditSnap = class
     Chars: array of string;
-    Caret, Anchor: Integer;
+    Caret, Anchor: integer;
   end;
 
-{ TInkEdit }
+  { TInkEdit }
 
 procedure TInkEdit.CreateWnd;
 begin
@@ -207,8 +206,7 @@ end;
 constructor TInkEdit.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  ControlStyle := ControlStyle + [csCaptureMouse, csOpaque, csRequiresKeyboardInput]
-    - [csSetCaption];
+  ControlStyle := ControlStyle + [csCaptureMouse, csOpaque, csRequiresKeyboardInput] - [csSetCaption];
   BorderStyle := bsSingle;
   TabStop := True;
   Cursor := crIBeam;
@@ -242,7 +240,7 @@ end;
 
 procedure TInkEdit.ClearUndoList(AList: TFPList);
 var
-  i: Integer;
+  i: integer;
 begin
   if AList = nil then Exit;
   for i := 0 to AList.Count - 1 do
@@ -253,14 +251,13 @@ end;
 { One step is one typed run: a run ends at a pause, a caret move, a change
   from typing to deleting, a paste or a cut, and at a word boundary - so
   undoing "two words" gives back a word, not a letter and not the day. }
-procedure TInkEdit.PushUndo(AKind: Integer);
+procedure TInkEdit.PushUndo(AKind: integer);
 var
   Snap: TInkEditSnap;
-  i: Integer;
+  i: integer;
 begin
   ClearUndoList(FRedo);
-  if (AKind > 0) and (AKind = FUndoKind) and
-    (GetTickCount64 - FUndoTick < cUndoCoalesceMs) and (FUndo.Count > 0) then
+  if (AKind > 0) and (AKind = FUndoKind) and (GetTickCount64 - FUndoTick < cUndoCoalesceMs) and (FUndo.Count > 0) then
   begin
     FUndoTick := GetTickCount64;
     Exit;                        // still the same run: one snapshot covers it
@@ -284,7 +281,7 @@ end;
 procedure TInkEdit.Undo;
 var
   Snap, Back: TInkEditSnap;
-  i: Integer;
+  i: integer;
 begin
   if FUndo.Count = 0 then Exit;
   Back := TInkEditSnap.Create;
@@ -309,7 +306,7 @@ end;
 procedure TInkEdit.Redo;
 var
   Snap, Back: TInkEditSnap;
-  i: Integer;
+  i: integer;
 begin
   if FRedo.Count = 0 then Exit;
   Back := TInkEditSnap.Create;
@@ -331,12 +328,12 @@ begin
   Changed;
 end;
 
-function TInkEdit.CanUndo: Boolean;
+function TInkEdit.CanUndo: boolean;
 begin
   Result := (FUndo <> nil) and (FUndo.Count > 0);
 end;
 
-function TInkEdit.CanRedo: Boolean;
+function TInkEdit.CanRedo: boolean;
 begin
   Result := (FRedo <> nil) and (FRedo.Count > 0);
 end;
@@ -348,14 +345,14 @@ begin
   FUndoKind := 0;
 end;
 
-procedure TInkEdit.SetPasswordChar(AValue: Char);
+procedure TInkEdit.SetPasswordChar(AValue: char);
 begin
   if FPasswordChar = AValue then Exit;
   FPasswordChar := AValue;
   Invalidate;
 end;
 
-function TInkEdit.DisplayChar(AIndex: Integer): string;
+function TInkEdit.DisplayChar(AIndex: integer): string;
 begin
   if FPasswordChar = #0 then
     Result := FChars[AIndex]
@@ -385,7 +382,7 @@ begin
   Result.cy := 30;
 end;
 
-function TInkEdit.CharCount: Integer;
+function TInkEdit.CharCount: integer;
 begin
   Result := Length(FChars);
 end;
@@ -393,7 +390,7 @@ end;
 procedure TInkEdit.SplitText(const AValue: string);
 var
   P: PChar;
-  CharLen, N: Integer;
+  CharLen, N: integer;
 begin
   SetLength(FChars, UTF8Length(AValue));
   N := 0;
@@ -409,7 +406,7 @@ end;
 
 function TInkEdit.GetTextValue: string;
 var
-  i: Integer;
+  i: integer;
 begin
   Result := '';
   for i := 0 to High(FChars) do
@@ -435,12 +432,14 @@ begin
   Changed;
 end;
 
-function TInkEdit.GetSelStart: Integer;
+function TInkEdit.GetSelStart: integer;
 begin
-  if FCaret < FAnchor then Result := FCaret else Result := FAnchor;
+  if FCaret < FAnchor then Result := FCaret
+  else
+    Result := FAnchor;
 end;
 
-procedure TInkEdit.SetSelStart(AValue: Integer);
+procedure TInkEdit.SetSelStart(AValue: integer);
 begin
   if AValue < 0 then AValue := 0;
   if AValue > CharCount then AValue := CharCount;
@@ -451,12 +450,12 @@ begin
   Invalidate;
 end;
 
-function TInkEdit.GetSelLength: Integer;
+function TInkEdit.GetSelLength: integer;
 begin
   Result := Abs(FCaret - FAnchor);
 end;
 
-procedure TInkEdit.SetSelLength(AValue: Integer);
+procedure TInkEdit.SetSelLength(AValue: integer);
 begin
   if AValue < 0 then AValue := 0;
   FAnchor := GetSelStart;
@@ -467,7 +466,7 @@ end;
 
 function TInkEdit.GetSelText: string;
 var
-  i: Integer;
+  i: integer;
 begin
   Result := '';
   for i := GetSelStart to GetSelStart + GetSelLength - 1 do
@@ -481,7 +480,7 @@ begin
   Invalidate;
 end;
 
-procedure TInkEdit.SetReadOnly(AValue: Boolean);
+procedure TInkEdit.SetReadOnly(AValue: boolean);
 begin
   if FReadOnly = AValue then Exit;
   FReadOnly := AValue;
@@ -503,9 +502,9 @@ begin
   end;
 end;
 
-procedure TInkEdit.ComputeLayout(out StartX: Integer; out Positions: TIntegerDynArray);
+procedure TInkEdit.ComputeLayout(out StartX: integer; out Positions: TIntegerDynArray);
 var
-  i, X, TotalW: Integer;
+  i, X, TotalW: integer;
   AColor: TColor;
   AStyle: TFontStyles;
 begin
@@ -537,14 +536,14 @@ begin
         StartX := ClientWidth - cTextMargin - TotalW
       else
         StartX := cTextMargin;
-  else
-    StartX := cTextMargin;
+    else
+      StartX := cTextMargin;
   end;
 end;
 
-function TInkEdit.CaretToX(ACaret: Integer): Integer;
+function TInkEdit.CaretToX(ACaret: integer): integer;
 var
-  StartX: Integer;
+  StartX: integer;
   Positions: TIntegerDynArray;
 begin
   ComputeLayout(StartX, Positions);
@@ -553,9 +552,9 @@ begin
   Result := StartX + Positions[ACaret] - FScrollX;
 end;
 
-function TInkEdit.XToCaret(X: Integer): Integer;
+function TInkEdit.XToCaret(X: integer): integer;
 var
-  StartX, i, TextX: Integer;
+  StartX, i, TextX: integer;
   Positions: TIntegerDynArray;
 begin
   ComputeLayout(StartX, Positions);
@@ -571,7 +570,7 @@ end;
 
 procedure TInkEdit.EnsureCaretVisible;
 var
-  CaretX: Integer;
+  CaretX: integer;
 begin
   if not HandleAllocated then Exit;
   CaretX := CaretToX(FCaret);
@@ -582,9 +581,9 @@ begin
   if FScrollX < 0 then FScrollX := 0;
 end;
 
-procedure TInkEdit.DeleteRange(AFrom, ATo: Integer);
+procedure TInkEdit.DeleteRange(AFrom, ATo: integer);
 var
-  i: Integer;
+  i: integer;
 begin
   if ATo <= AFrom then Exit;
   for i := ATo to High(FChars) do
@@ -604,7 +603,7 @@ procedure TInkEdit.InsertText(const AValue: string);
 var
   Incoming: array of string;
   P: PChar;
-  CharLen, N, i, Room: Integer;
+  CharLen, N, i, Room: integer;
   Clean: string;
 begin
   if FReadOnly then Exit;
@@ -655,7 +654,7 @@ end;
 
 procedure TInkEdit.Paint;
 var
-  StartX, i, X, W, TextY, TH, SelA, SelB, CaretX: Integer;
+  StartX, i, X, W, TextY, TH, SelA, SelB, CaretX: integer;
   Positions: TIntegerDynArray;
   AColor: TColor;
   AStyle: TFontStyles;
@@ -678,10 +677,8 @@ begin
   if (CharCount = 0) and (FTextHint <> '') then
   begin
     if FTextHintColor = clDefault then
-      Canvas.Font.Color := RGBToColor(
-        (Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2,
-        (Green(ColorToRGB(Font.Color)) + Green(ColorToRGB(Color))) div 2,
-        (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)
+      Canvas.Font.Color := RGBToColor((Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2, (Green(ColorToRGB(Font.Color)) +
+        Green(ColorToRGB(Color))) div 2, (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)
     else
       Canvas.Font.Color := FTextHintColor;
     Canvas.Brush.Style := bsClear;
@@ -696,8 +693,8 @@ begin
     case FAlignment of
       taCenter: X := cTextMargin + Max(0, (W - Canvas.TextWidth(AHint)) div 2);
       taRightJustify: X := cTextMargin + Max(0, W - Canvas.TextWidth(AHint));
-    else
-      X := cTextMargin;
+      else
+        X := cTextMargin;
     end;
     Canvas.TextOut(X, TextY, AHint);
     Canvas.Font.Color := Font.Color;
@@ -737,9 +734,9 @@ begin
   end;
 end;
 
-procedure TInkEdit.KeyDown(var Key: Word; Shift: TShiftState);
+procedure TInkEdit.KeyDown(var Key: word; Shift: TShiftState);
 
-  procedure MoveCaret(NewPos: Integer);
+  procedure MoveCaret(NewPos: integer);
   begin
     if NewPos < 0 then NewPos := 0;
     if NewPos > CharCount then NewPos := CharCount;
@@ -756,58 +753,86 @@ begin
   if Key = 0 then Exit;
   case Key of
     VK_LEFT:
-      begin
-        if (GetSelLength > 0) and not (ssShift in Shift) then
-          MoveCaret(GetSelStart)
-        else
-          MoveCaret(FCaret - 1);
-        Key := 0;
-      end;
+    begin
+      if (GetSelLength > 0) and not (ssShift in Shift) then
+        MoveCaret(GetSelStart)
+      else
+        MoveCaret(FCaret - 1);
+      Key := 0;
+    end;
     VK_RIGHT:
-      begin
-        if (GetSelLength > 0) and not (ssShift in Shift) then
-          MoveCaret(GetSelStart + GetSelLength)
-        else
-          MoveCaret(FCaret + 1);
-        Key := 0;
-      end;
-    VK_HOME: begin MoveCaret(0); Key := 0; end;
-    VK_END: begin MoveCaret(CharCount); Key := 0; end;
+    begin
+      if (GetSelLength > 0) and not (ssShift in Shift) then
+        MoveCaret(GetSelStart + GetSelLength)
+      else
+        MoveCaret(FCaret + 1);
+      Key := 0;
+    end;
+    VK_HOME: begin
+      MoveCaret(0);
+      Key := 0;
+    end;
+    VK_END: begin
+      MoveCaret(CharCount);
+      Key := 0;
+    end;
     VK_BACK:
+    begin
+      if not FReadOnly then
       begin
-        if not FReadOnly then
-        begin
-          PushUndo(2);
-          if GetSelLength > 0 then
-            DeleteSelection
-          else if FCaret > 0 then
-            DeleteRange(FCaret - 1, FCaret);
-        end;
-        Key := 0;
+        PushUndo(2);
+        if GetSelLength > 0 then
+          DeleteSelection
+        else if FCaret > 0 then
+          DeleteRange(FCaret - 1, FCaret);
       end;
+      Key := 0;
+    end;
     VK_DELETE:
+    begin
+      if not FReadOnly then
       begin
-        if not FReadOnly then
-        begin
-          PushUndo(2);
-          if GetSelLength > 0 then
-            DeleteSelection
-          else if FCaret < CharCount then
-            DeleteRange(FCaret, FCaret + 1);
-        end;
+        PushUndo(2);
+        if GetSelLength > 0 then
+          DeleteSelection
+        else if FCaret < CharCount then
+          DeleteRange(FCaret, FCaret + 1);
+      end;
+      Key := 0;
+    end;
+    VK_A: if ssCtrl in Shift then
+      begin
+        SelectAll;
         Key := 0;
       end;
-    VK_A: if ssCtrl in Shift then begin SelectAll; Key := 0; end;
-    VK_C: if ssCtrl in Shift then begin CopyToClipboard; Key := 0; end;
-    VK_X: if ssCtrl in Shift then begin CutToClipboard; Key := 0; end;
-    VK_V: if ssCtrl in Shift then begin PasteFromClipboard; Key := 0; end;
+    VK_C: if ssCtrl in Shift then
+      begin
+        CopyToClipboard;
+        Key := 0;
+      end;
+    VK_X: if ssCtrl in Shift then
+      begin
+        CutToClipboard;
+        Key := 0;
+      end;
+    VK_V: if ssCtrl in Shift then
+      begin
+        PasteFromClipboard;
+        Key := 0;
+      end;
     VK_Z:
       if ssCtrl in Shift then
       begin
-        if ssShift in Shift then Redo else Undo;
+        if ssShift in Shift then Redo
+        else
+          Undo;
         Key := 0;
       end;
-    VK_Y: if ssCtrl in Shift then begin Redo; Key := 0; end;
+    VK_Y: if ssCtrl in Shift then
+      begin
+        Redo;
+        Key := 0;
+      end;
   end;
 end;
 
@@ -828,7 +853,7 @@ begin
   UTF8Key := '';
 end;
 
-procedure TInkEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+procedure TInkEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 begin
   inherited MouseDown(Button, Shift, X, Y);
   if Button = mbLeft then
@@ -842,7 +867,7 @@ begin
   end;
 end;
 
-procedure TInkEdit.MouseMove(Shift: TShiftState; X, Y: Integer);
+procedure TInkEdit.MouseMove(Shift: TShiftState; X, Y: integer);
 begin
   inherited MouseMove(Shift, X, Y);
   if ssLeft in Shift then
@@ -934,19 +959,19 @@ begin
     4: CopyToClipboard;
     5: PasteFromClipboard;
     6: if (not FReadOnly) and (GetSelLength > 0) then
-       begin
-         PushUndo(0);
-         DeleteSelection;
-       end;
+      begin
+        PushUndo(0);
+        DeleteSelection;
+      end;
     7: SelectAll;
   end;
 end;
 
-procedure TInkEdit.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
+procedure TInkEdit.DoContextPopup(MousePos: TPoint; var Handled: boolean);
 var
   P: TPoint;
 
-  procedure AddItem(const ACaption: string; ATag: Integer; AEnabled: Boolean);
+  procedure AddItem(const ACaption: string; ATag: integer; AEnabled: boolean);
   var
     It: TMenuItem;
   begin
