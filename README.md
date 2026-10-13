@@ -80,7 +80,7 @@ widgetset - an Intel virtual machine, Lazarus 4.8 and FPC 3.2.4 - and the
 whole test suite passes there: document tree, styles, layout, renderer and
 interaction, Markdown, WebP. Apple Silicon has not been tried.
 
-![The WYSIWYG editor on macOS](images/macos/window.png)
+![The WYSIWYG editor on macOS](images/macos/demo-editor.png)
 
 [Every tab of the demo on macOS](images/macos/README.md).
 

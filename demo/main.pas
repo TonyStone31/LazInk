@@ -308,7 +308,7 @@ implementation
 {$R *.lfm}
 
 uses
-  LazUTF8, URIParser;
+  LazUTF8, URIParser{$ifdef LCLCOCOA}, CocoaWindowShot{$endif};
 
 const
   PROJECT_URL = 'https://github.com/TonyStone31/LazInk';
@@ -343,6 +343,11 @@ begin
       Application.ProcessMessages;
       Sleep(150);
       Application.ProcessMessages;
+      TabName := LowerCase(pcMain.Pages[I].Name);
+      if Copy(TabName, 1, 3) = 'tab' then Delete(TabName, 1, 3);
+      {$ifdef LCLCOCOA}
+      SaveCocoaWindowScreenshot(Self, IncludeTrailingPathDelimiter(ADir) + 'demo-' + TabName + '.png');
+      {$else}
       { the window as it is on screen, which draws native widgets properly;
         where that cannot be had, the form paints itself }
       Shot.SetSize(ClientWidth, ClientHeight);
@@ -358,9 +363,8 @@ begin
         PaintTo(Shot.Canvas, 0, 0);
       end;
       Png.Assign(Shot);
-      TabName := LowerCase(pcMain.Pages[I].Name);
-      if Copy(TabName, 1, 3) = 'tab' then Delete(TabName, 1, 3);
       Png.SaveToFile(IncludeTrailingPathDelimiter(ADir) + 'demo-' + TabName + '.png');
+      {$endif}
     end;
   finally
     Png.Free;
@@ -437,9 +441,8 @@ begin
     '<h2>A to-do list with no script</h2>' + '<p><span class="pill blue">canvas-drawn</span> <span class="pill green">0BSD</span> ' +
     '<span class="pill gold">no JavaScript</span></p>' + '<p>Click a line to cross it out, and again to bring it back. The page runs ' +
     'nothing: the program hears the click and changes the document.</p>' + '<ul id=todo>' + '<li class=done>parse pages into a document tree</li>' +
-    '<li class=done>compute every element''s style</li>' + '<li class=done>lay the boxes out from the tree</li>' +
-    '<li>flow words round a floated picture</li>' + '<li>forms drawn by LazInk</li>' + '</ul>' +
-    '<p>Move the mouse anywhere on this page: the right side names the element under it.</p>' + '</body></html>');
+    '<li class=done>compute every element''s style</li>' + '<li class=done>lay the boxes out from the tree</li>' + '<li>flow words round a floated picture</li>' +
+    '<li>forms drawn by LazInk</li>' + '</ul>' + '<p>Move the mouse anywhere on this page: the right side names the element under it.</p>' + '</body></html>');
   { the side-by-side tab: the browser's picture of showcase.html beside
     LazInk rendering the same file live, scroll-locked by tmrCompare }
   { Each pane's scrollbar draws inside its width - the picture pane's
@@ -460,8 +463,7 @@ begin
       FilenameToURI(ExtractFilePath(S)))
   else
     pgCompareBrowser.LoadHTML('<body style="font-family: sans-serif">' + '<p><b>showcase-browser.png</b> was not found beside the program. ' +
-      'Make the browser''s picture once with:</p>' + '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding +
-      '  demo/showcase-browser.png 548 7560</pre></body>');
+      'Make the browser''s picture once with:</p>' + '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding + '  demo/showcase-browser.png 548 7560</pre></body>');
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
 
@@ -518,8 +520,8 @@ begin
         'body { background: #1e2127; color: #c8ccd4 } ' + 'h1, h2 { color: #61afef } h3 { color: #e5c07b } a { color: #56b6c2 } ' +
         'code, pre { background: #2c313a } blockquote { color: #8a9099 } ' + 'html { scrollbar-color: #61afef #1e2127; scrollbar-width: thin }';
     2: pageDoc.StyleSheet.Text :=
-        'body { background: #f4ecd8; color: #433422 } ' + 'h1, h2, h3 { color: #7a4a1c } a { color: #8b3a1a } ' +
-        'code, pre { background: #e8dcc0 } ' + 'html { scrollbar-color: #b89b72 #f4ecd8 }';
+        'body { background: #f4ecd8; color: #433422 } ' + 'h1, h2, h3 { color: #7a4a1c } a { color: #8b3a1a } ' + 'code, pre { background: #e8dcc0 } ' +
+        'html { scrollbar-color: #b89b72 #f4ecd8 }';
     else
       pageDoc.StyleSheet.Clear;
   end;
@@ -1275,8 +1277,8 @@ const
   cChatAnswers: array[0..2] of string = (
     'Load it into a **TInkPage**:' + LineEnding + LineEnding + '```pascal' + LineEnding + 'InkPage1.LoadFromFile(''help/index.html'');' +
     LineEnding + '```' + LineEnding + LineEnding + 'Headings, pictures, links - the whole document.',
-    'It can - a fenced block keeps its spacing and is colored:' + LineEnding + LineEnding + '```pascal' + LineEnding + 'begin' +
-    LineEnding + '  WriteLn(''hello'');' + LineEnding + 'end.' + LineEnding + '```',
+    'It can - a fenced block keeps its spacing and is colored:' + LineEnding + LineEnding + '```pascal' + LineEnding + 'begin' + LineEnding +
+    '  WriteLn(''hello'');' + LineEnding + 'end.' + LineEnding + '```',
     'Pipes make one:' + LineEnding + LineEnding + '| Control | Does |' + LineEnding + '| --- | --- |' + LineEnding + '| TInkMemo | this chat |' +
     LineEnding + '| TInkPage | documents |');
 
