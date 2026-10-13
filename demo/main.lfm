@@ -1,7 +1,7 @@
 object frmMain: TfrmMain
-  Left = 1611
+  Left = 10
   Height = 780
-  Top = 1172
+  Top = 10
   Width = 1140
   Caption = 'LazInk — HTML-formatted text controls for Lazarus'
   ClientHeight = 780

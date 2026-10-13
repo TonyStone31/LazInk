@@ -116,6 +116,9 @@ type
     procedure EditKeyUp(Sender: TObject; var Key: word; Shift: TShiftState);
     procedure EditExit(Sender: TObject);
   protected
+    {$ifdef LCLCOCOA}
+    procedure SetItemIndex(AIndex: integer); override;
+    {$endif}
     { Everything the renderer needs beyond the text itself. }
     function Options(AHoverIndex: integer = 0): THTMLOptions;
     procedure DrawItem(Index: integer; ARect: TRect; State: TOwnerDrawState); override;
@@ -580,6 +583,19 @@ begin
     FCharRuns.PaintSelection(Canvas, FCharAnchor, FCharCaret, clHighlight);
   end;
 end;
+
+{$ifdef LCLCOCOA}
+procedure TInkListBox.SetItemIndex(AIndex: integer);
+begin
+  // Cocoa's native selection callback also fires for assignments from code.
+  LockSelectionChange;
+  try
+    inherited SetItemIndex(AIndex);
+  finally
+    UnlockSelectionChange;
+  end;
+end;
+{$endif}
 
 procedure TInkListBox.InternalSelectionChange(Sender: TObject; User: boolean);
 begin

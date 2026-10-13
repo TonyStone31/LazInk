@@ -68,10 +68,21 @@ Open `lazink.lpk` with **Package → Open Package File**, then
 tab. The demo is `demo/lazinkdemo.lpi` - a tab for every control, built
 in the form designer.
 
-> **Status: 1.0.0.0.** Usable, and the API may still change. Built and
-> tested with FPC 3.3.1 and Lazarus trunk on GTK3/Linux; nothing in it is
-> widgetset-specific, but the other widgetsets have not been run yet -
-> reports welcome.
+> **Status: 1.0.0.0.** Usable, and the API may still change. Developed
+> with FPC 3.3.1 and Lazarus trunk on GTK3/Linux, and tested on macOS/Cocoa
+> with the released Lazarus 4.8 and FPC 3.2.4. The other widgetsets have
+> not been run yet - reports welcome.
+
+## On a Mac
+
+The package and the demo build and run on macOS Sequoia 15 with the Cocoa
+widgetset - an Intel virtual machine, Lazarus 4.8 and FPC 3.2.4 - and the
+whole test suite passes there: document tree, styles, layout, renderer and
+interaction, Markdown, WebP. Apple Silicon has not been tried.
+
+![The WYSIWYG editor on macOS](images/macos/window.png)
+
+[Every tab of the demo on macOS](images/macos/README.md).
 
 ## Learn more
 
