@@ -2,27 +2,37 @@
 set -eu
 : "${LAZARUS_DIR:?Set LAZARUS_DIR to the Lazarus source directory}"
 : "${FPC:?Set FPC to the Free Pascal compiler executable}"
-LCL_WIDGETSET=${LCL_WIDGETSET:-gtk3}
+TARGET_CPU=$("$FPC" -iTP)
+TARGET_OS=$("$FPC" -iTO)
+UNIT_TARGET="$TARGET_CPU-$TARGET_OS"
+case "$TARGET_OS" in
+  darwin) DEFAULT_WIDGETSET=cocoa ;;
+  *) DEFAULT_WIDGETSET=gtk3 ;;
+esac
+LCL_WIDGETSET=${LCL_WIDGETSET:-$DEFAULT_WIDGETSET}
+# lazbuild names this framework for Cocoa; compiling by hand has to
+COCOA_LINK=
+[ "$TARGET_OS" != darwin ] || COCOA_LINK="-k-framework -kUserNotifications"
 BUILD_DIR=$(mktemp -d)
 trap 'rm -rf "$BUILD_DIR"' EXIT
 cd "$(dirname "$0")/.."
 # the document tree first: it needs no widgetset, and every page goes through it
-"$FPC" -gl -Fu. -Fu"$LAZARUS_DIR/components/lazutils/lib/x86_64-linux" \
+"$FPC" -gl -Fu. -Fu"$LAZARUS_DIR/components/lazutils/lib/$UNIT_TARGET" \
   -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/dom_tests.pas >"$BUILD_DIR/dom.log" 2>&1 ||
   { tail -20 "$BUILD_DIR/dom.log"; exit 1; }
 "$BUILD_DIR/dom_tests"
-"$FPC" -gl -Fu. -Fu"$LAZARUS_DIR/components/lazutils/lib/x86_64-linux" \
+"$FPC" -gl -Fu. -Fu"$LAZARUS_DIR/components/lazutils/lib/$UNIT_TARGET" \
   -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/style_tests.pas >"$BUILD_DIR/style.log" 2>&1 ||
   { tail -20 "$BUILD_DIR/style.log"; exit 1; }
 "$BUILD_DIR/style_tests"
-"$FPC" -gl -Fu. -Fu"$LAZARUS_DIR/components/lazutils/lib/x86_64-linux" \
+"$FPC" -gl -Fu. -Fu"$LAZARUS_DIR/components/lazutils/lib/$UNIT_TARGET" \
   -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/layout_tests.pas >"$BUILD_DIR/layout.log" 2>&1 ||
   { tail -20 "$BUILD_DIR/layout.log"; exit 1; }
 "$BUILD_DIR/layout_tests"
-"$FPC" -gl -dLCL -dLCL$LCL_WIDGETSET -Fu. -Fu"$LAZARUS_DIR/lcl/units/x86_64-linux" \
-  -Fu"$LAZARUS_DIR/lcl/units/x86_64-linux/$LCL_WIDGETSET" \
-  -Fu"$LAZARUS_DIR/components/lazutils/lib/x86_64-linux" \
-  -Fu"$LAZARUS_DIR/components/freetype/lib/x86_64-linux" \
+"$FPC" $COCOA_LINK -gl -dLCL -dLCL$LCL_WIDGETSET -Fu. -Fu"$LAZARUS_DIR/lcl/units/$UNIT_TARGET" \
+  -Fu"$LAZARUS_DIR/lcl/units/$UNIT_TARGET/$LCL_WIDGETSET" \
+  -Fu"$LAZARUS_DIR/components/lazutils/lib/$UNIT_TARGET" \
+  -Fu"$LAZARUS_DIR/components/freetype/lib/$UNIT_TARGET" \
   -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/render_tests.pas
 "$BUILD_DIR/render_tests" "$@"
 # Given a page list and a results folder, also check that every piece of

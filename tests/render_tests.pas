@@ -573,6 +573,7 @@ type
     { a held button drags the highlight; emOnSelect edits on the release }
     AList.EditMode := emOnSelect;
     AList.ItemIndex := 0;
+    Check(not AList.Editing, 'setting ItemIndex from code does not start editing');
     Sleep(GetDoubleClickTime + 50);
     R := AList.ItemRect(0);
     TListAccess(AList).MouseDown(mbLeft, [ssLeft], R.Left + 5, R.Top + 2);
@@ -4681,8 +4682,12 @@ type
 
   { --- font stacks resolved the way the platform would --- }
   procedure FaceChecks;
+  var
+    Family: string;
   begin
-    Check(InkResolveFace('"DejaVu Sans", Arial, sans-serif') = 'DejaVu Sans',
+    Check(Screen.Fonts.Count > 0, 'the platform reports installed fonts');
+    Family := Screen.Fonts[0];
+    Check(InkResolveFace('"' + Family + '", Arial, sans-serif') = Family,
       'an installed family wins the stack');
   { not in Screen.Fonts on Linux, but fontconfig aliases it to its metric
     twin - the same substitution a browser gets, so the name is handed on }
