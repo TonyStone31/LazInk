@@ -3488,4 +3488,7 @@ begin
   if (Result = ABytes) and not IsValidUTF8(ABytes) then Result := FromWin1252(ABytes);
 end;
 
+finalization
+  TagIndex.Free;
+
 end.
