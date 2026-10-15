@@ -20,6 +20,10 @@ type
   { where a block sits when the rectangle is bigger than the text }
   TInkVertAlign = (ivaTop, ivaCenter, ivaBottom);
   TInkHorzAlign = (ihaLeft, ihaCenter, ihaRight);
+  { for Find in TInkPage and TInkRichEdit - ifoMatchCase: capitals must
+    match; ifoBackwards: the one before }
+  TInkFindOption = (ifoMatchCase, ifoBackwards);
+  TInkFindOptions = set of TInkFindOption;
 
   { told where every run of text went: how a control finds the character
     under the mouse, and paints a selection over the same pixels }
@@ -197,6 +201,8 @@ function HTMLUnescape(const Text: string): string;
 function HTMLStringToColor(AText: string; ADefColor: TColor = clBlack): TColor;
 function HTMLContrastColor(ABackground: TColor): TColor;
 function HTMLShadeColor(AColor: TColor; APercent: integer): TColor;
+{ A moved Amount of the way to B; 0 is A, 1 is B }
+function MixColor(A, B: TColor; Amount: double): TColor;
 { a size the LCL's way: points when positive, pixels when negative, exactly
   as TFont.Size and TFont.Height spell it }
 procedure HTMLFontSize(const ACanvas: TCanvas; ASize: integer); overload;
@@ -706,6 +712,13 @@ end;
 function HTMLContrastColor(ABackground: TColor): TColor;
 begin
   Result := InkRenderContrastColor(ABackground);
+end;
+
+function MixColor(A, B: TColor; Amount: double): TColor;
+begin
+  A := ColorToRGB(A);
+  B := ColorToRGB(B);
+  Result := RGBToColor(Round(Red(A) + (Red(B) - Red(A)) * Amount), Round(Green(A) + (Green(B) - Green(A)) * Amount), Round(Blue(A) + (Blue(B) - Blue(A)) * Amount));
 end;
 
 function HTMLShadeColor(AColor: TColor; APercent: integer): TColor;

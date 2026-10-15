@@ -56,9 +56,6 @@ type
     decide (scrollbar-width), issNone never shows one.  The content still
     scrolls by wheel, keys, finger and code either way. }
   TInkScrollBarStyle = (issAuto, issNone);
-  { ifoMatchCase: capitals must match; ifoBackwards: the one before }
-  TInkFindOption = (ifoMatchCase, ifoBackwards);
-  TInkFindOptions = set of TInkFindOption;
   { a run of text as the renderer laid it out, in page coordinates }
   TInkPageRun = record
     Text: string;
@@ -946,12 +943,6 @@ begin
   Result := (Length(Tag) = 2) and (Tag[1] = 'h') and (Tag[2] in ['1'..'6']);
 end;
 
-function MixColor(A, B: TColor; Amount: double): TColor;
-begin
-  A := ColorToRGB(A);
-  B := ColorToRGB(B);
-  Result := RGBToColor(Round(Red(A) + (Red(B) - Red(A)) * Amount), Round(Green(A) + (Green(B) - Green(A)) * Amount), Round(Blue(A) + (Blue(B) - Blue(A)) * Amount));
-end;
 { a CSS number, which has a full stop whatever the locale says }
 function CSSFloat(const S: string; ADefault: double): double;
 var
