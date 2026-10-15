@@ -28,7 +28,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Controls, Graphics, StdCtrls, Forms, LCLType,
-  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types, Menus, InkMarkdown;
+  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types, Menus, InkMarkdown, InkDraw, InkEdit;
 
 type
   TInkScript = (isNormal, isSuperscript, isSubscript);
@@ -134,6 +134,16 @@ type
     FOnLinkClick: TInkRichLinkEvent;
     FEditMenu: boolean;
     FMenu: TPopupMenu;
+    FFindEdit: TInkEdit;
+    FFindText: string;
+    function FindFrom(const AText: string; AOptions: TInkFindOptions; AFrom: integer): integer;
+    function FindBarRect: TRect;
+    function FindButtonRect(Index: integer): TRect;
+    procedure PlaceFindBar;
+    procedure PaintFindBar;
+    procedure FindEditChange(Sender: TObject);
+    procedure FindEditKey(Sender: TObject; var Key: word; Shift: TShiftState);
+    function GetFindBarVisible: boolean;
     function SelectImageAt(X, Y: integer): boolean;
     procedure ContextAt(X, Y: integer);
     procedure SetImageBaseURI(const Value: string);
@@ -143,6 +153,9 @@ type
     function MarkdownRange(AFirst, AEnd: integer): string;
     procedure MenuClick(Sender: TObject);
     function IsCellBreak(AIndex: integer): boolean;
+    function FontEm: integer;
+    function QuoteBarWidth: integer;
+    function IsCodeSpan(AIndex: integer): boolean;
     function CharCount: integer;
     function GetSelStart: integer;
     function GetSelLength: integer;
@@ -236,6 +249,19 @@ type
     { fires OnGoToSource; the context menu's Go to source does the same }
     procedure GoToSource;
     procedure SelectAll;
+    { Selects the next place AText appears after the selection - before it
+      with ifoBackwards - going round the end, and scrolls it into view.
+      False when it appears nowhere. }
+    function Find(const AText: string; AOptions: TInkFindOptions = []): boolean;
+    { how often AText appears, and which of them is selected (from 1; 0 when
+      the selection is not one of them) }
+    function FindCount(const AText: string; AOptions: TInkFindOptions; out Current: integer): integer;
+    { The find bar, as TInkPage has it: a box at the top right.  Ctrl+F
+      opens it, typing finds as you go, Enter and F3 go to the next, Shift
+      with either to the one before, Esc closes it. }
+    procedure ShowFindBar;
+    procedure HideFindBar;
+    property FindBarVisible: boolean read GetFindBarVisible;
     procedure CopyToClipboard;
     procedure CutToClipboard;
     procedure PasteFromClipboard; virtual;
@@ -357,15 +383,15 @@ function SameInkAttr(const A, B: TInkAttr): boolean;
 implementation
 
 uses
-  StrUtils, URIParser, InkDraw, InkTouch, InkEdit;
+  StrUtils, URIParser, InkTouch;
 
 resourcestring
   SInkRichGoToSource = 'Go to source';
 
 const
   cMargin = 3;
-  cCellPad = 8;           // a table cell's inset each side of its text
-  cRowPad = 4;            // and above and below it
+  cCellPad = 13;          // a table cell's inset each side of its text
+  cRowPad = 6;            // and above and below it
   cScrollBarWidth = 16;
   cUndoDepth = 200;
   cUndoCoalesceMs = 700;
@@ -506,6 +532,32 @@ end;
 function TInkRichEdit.IsCellBreak(AIndex: integer): boolean;
 begin
   Result := (AIndex >= 0) and (AIndex < CharCount) and FAttrs[AIndex].CellBreak;
+end;
+
+{ the control font's em in pixels; a negative Height is it, the default
+  font says 0 }
+function TInkRichEdit.FontEm: integer;
+var
+  tm: TLCLTextMetric;
+begin
+  Canvas.Font := Font;
+  Result := -Canvas.Font.Height;
+  if (Result <= 0) and Canvas.GetTextMetrics(tm) then Result := tm.Height * 4 div 5;
+  if Result <= 0 then Result := 12;
+end;
+
+{ a quote's bar, a quarter em as on TInkPage's Markdown page }
+function TInkRichEdit.QuoteBarWidth: integer;
+begin
+  Result := Max(3, FontEm div 4);
+end;
+
+{ a character of an inline code span, which sits on a shaded chip; not in a
+  code block or a table, which lay their characters out their own way }
+function TInkRichEdit.IsCodeSpan(AIndex: integer): boolean;
+begin
+  Result := (AIndex >= 0) and (AIndex < CharCount) and (FChars[AIndex] <> #10) and (FAttrs[AIndex].Face = InkMonoFace) and not
+    (FAttrs[AIndex].Kind in [ipkCode, ipkSource, ipkTableHead, ipkTableRow]);
 end;
 
 function TInkRichEdit.CharCount: integer;
@@ -907,6 +959,9 @@ begin
     // one that can be read on that background rather than inheriting a
     // control color that may well be invisible on it
     Canvas.Font.Color := HTMLContrastColor(A.BackColor)
+  else if A.Kind = ipkQuote then
+    { quoted words are muted, as on TInkPage's Markdown page }
+    Canvas.Font.Color := MixColor(Font.Color, Color, 0.3)
   else
     Canvas.Font.Color := Font.Color;
 end;
@@ -936,7 +991,7 @@ begin
   Canvas.Font := Font;
   case AKind of
     ipkBullet, ipkNumber: Result := Canvas.TextWidth('99. ') * (ALevel + 1);
-    ipkQuote: Result := Canvas.TextWidth('AB');
+    ipkQuote: Result := QuoteBarWidth + FontEm;
     ipkCode: Result := Canvas.TextWidth('A') div 2 + 4;
     else
       Result := 0;
@@ -1041,15 +1096,16 @@ var
   LastAttr: TInkAttr;
   tm: TLCLTextMetric;
   { the word so far in the current run, and its measured width }
-  word: string;
+  WordText: string;
   WordW: integer;
   HasLast: boolean;
   CurKind: TInkParaKind;
   CurInd: integer;
   { the full width a table row's line reports, while one is being laid }
   TableRowW: integer;
-  { space owed above the next paragraph's first line, and the font's em }
-  Gap, Em: integer;
+  { space owed above the next paragraph's first line, the font's em, and
+    the room either side of an inline code span }
+  Gap, Em, CodePad: integer;
 
   { A block's margin in hundredths of the body's em, from the default
     stylesheet: 1em, and a heading's own margin times its size. }
@@ -1329,12 +1385,11 @@ begin
   LastAttr := DefaultInkAttr;
   TableRowW := 0;
   Gap := 0;
-  word := '';
+  WordText := '';
   WordW := 0;
   Canvas.Font := Font;
-  { a negative Height is the em in pixels; the default font says 0 }
-  Em := -Canvas.Font.Height;
-  if (Em <= 0) and Canvas.GetTextMetrics(tm) then Em := tm.Height * 4 div 5;
+  Em := FontEm;
+  CodePad := Em * 2 div 5;
   CurKind := ParaKindAt(0);
   CurInd := ParaIndent(CurKind, ParaLevelAt(0));
   AvailP := Max(16, Avail - CurInd);
@@ -1370,7 +1425,7 @@ begin
       LastAttr := EffAttr(i);
       ApplyAttrToCanvas(LastAttr);
       HasLast := True;
-      word := '';
+      WordText := '';
       WordW := 0;
     end;
     { A word is measured whole and each letter gets what it adds: macOS
@@ -1378,14 +1433,19 @@ begin
     if (FChars[i] = ' ') or (FAttrs[i].TaskState >= 0) or (FAttrs[i].ImageSource <> '') then
     begin
       W := MeasureChar(i);
-      word := '';
+      WordText := '';
       WordW := 0;
     end
     else
     begin
-      word := word + FChars[i];
-      W := Canvas.TextWidth(word) - WordW;
+      WordText := WordText + FChars[i];
+      W := Canvas.TextWidth(WordText) - WordW;
       Inc(WordW, W);
+    end;
+    if IsCodeSpan(i) then
+    begin
+      if not IsCodeSpan(i - 1) then Inc(W, CodePad);
+      if not IsCodeSpan(i + 1) then Inc(W, CodePad);
     end;
 
     if FWordWrap and (i > LineStart) and (X + W > AvailP) then
@@ -1588,8 +1648,18 @@ var
   GridC: TColor;
   BX, LT, LB: integer;
   IsTbl: boolean;
+  CodePad: integer;
 
-{ the grid's color: the background mixed a sixth toward the text }
+{ the room in front of an inline code span's first letter }
+  function CodeLead(AIndex: integer): integer;
+  begin
+    if IsCodeSpan(AIndex) and not IsCodeSpan(AIndex - 1) then
+      Result := CodePad
+    else
+      Result := 0;
+  end;
+
+  { the grid's color: the background mixed a sixth toward the text }
   function BlendToText(ANum, ADen: integer): TColor;
   begin
     Result := RGBToColor(Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) * ANum div ADen,
@@ -1603,6 +1673,7 @@ var
   end;
 
 begin
+  CodePad := FontEm * 2 div 5;
   Canvas.Brush.Color := Color;
   Canvas.Brush.Style := bsSolid;
   Canvas.FillRect(ClientRect);
@@ -1637,23 +1708,18 @@ begin
       end;
       ipkQuote:
       begin
-        Canvas.Brush.Color := RGBToColor((Red(ColorToRGB(Color)) + Red(ColorToRGB(Font.Color))) div 2,
-          (Green(ColorToRGB(Color)) + Green(ColorToRGB(Font.Color))) div 2, (Blue(ColorToRGB(Color)) + Blue(ColorToRGB(Font.Color))) div 2);
+        Canvas.Brush.Color := MixColor(Font.Color, Color, 0.6);
         Canvas.Brush.Style := bsSolid;
         Canvas.FillRect(cMargin, L.Top - FScrollY,
-          cMargin + 3, L.Top - FScrollY + L.Height);
+          cMargin + QuoteBarWidth, L.Top - FScrollY + L.Height);
       end;
       ipkTableHead, ipkTableRow:
       begin
         LT := L.Top - FScrollY;
         LB := LT + L.Height;
-        GridC := BlendToText(1, 6);
-        if ParaKindAt(L.First) = ipkTableHead then
-        begin
-          Canvas.Brush.Color := BlendToText(1, 14);
-          Canvas.Brush.Style := bsSolid;
-          Canvas.FillRect(L.Left, LT, L.Left + L.Width, LB);
-        end;
+        { the grid a quarter of the way to the text and the head row on the
+          page's own background, as on TInkPage's Markdown page }
+        GridC := BlendToText(1, 4);
         Canvas.Pen.Color := GridC;
         Canvas.Pen.Style := psSolid;
           { the frame: a top edge on the table's first row, a bottom edge
@@ -1777,6 +1843,15 @@ begin
         Canvas.Font.Color := clHighlightText;
         Canvas.Brush.Style := bsClear;
       end
+      else if IsCodeSpan(i) and (EffAttr(i).BackColor = clNone) then
+      begin
+        { inline code on its chip, as on TInkPage's Markdown page }
+        Canvas.Brush.Color := HTMLShadeColor(ColorToRGB(Color), 7);
+        Canvas.Brush.Style := bsSolid;
+        Canvas.Pen.Color := Canvas.Brush.Color;
+        Canvas.RoundRect(X, RunTop, L.Left + FCharX[RunEnd] + FCharW[RunEnd], RunTop + RunH, 6, 6);
+        Canvas.Brush.Style := bsClear;
+      end
       else if EffAttr(i).BackColor <> clNone then
       begin
         Canvas.Brush.Color := EffAttr(i).BackColor;
@@ -1799,13 +1874,13 @@ begin
       begin
         if (FChars[K] = ' ') and (S <> '') and (Canvas.Font.Style * [fsUnderline, fsStrikeOut] = []) then
         begin
-          Canvas.TextOut(L.Left + FCharX[WordStart], RunTop, S);
+          Canvas.TextOut(L.Left + FCharX[WordStart] + CodeLead(WordStart), RunTop, S);
           WordStart := K;
           S := '';
         end;
         S := S + FChars[K];
       end;
-      Canvas.TextOut(L.Left + FCharX[WordStart], RunTop, S);
+      Canvas.TextOut(L.Left + FCharX[WordStart] + CodeLead(WordStart), RunTop, S);
       i := RunEnd + 1;
     end;
   end;
@@ -1822,6 +1897,7 @@ begin
       Canvas.Line(X + 1, BaseY + 1, X + 1, BaseY + FLines[Li].Height - 1);
     end;
   end;
+  if FindBarVisible then PaintFindBar;
 end;
 
 procedure TInkRichEdit.Resize;
@@ -1830,6 +1906,7 @@ begin
   InvalidateLayout;
   if FVScroll <> nil then
     UpdateScrollBar;
+  PlaceFindBar;
 end;
 
 procedure TInkRichEdit.FontChanged(Sender: TObject);
@@ -2703,6 +2780,26 @@ var
 begin
   inherited KeyDown(Key, Shift);
   if Key = 0 then Exit;
+  if (Key = VK_F) and (Shift = [ssCtrl]) then
+  begin
+    ShowFindBar;
+    Key := 0;
+    Exit;
+  end;
+  if (Key = VK_F3) and (FFindText <> '') then
+  begin
+    if ssShift in Shift then Find(FFindText, [ifoBackwards])
+    else
+      Find(FFindText);
+    Key := 0;
+    Exit;
+  end;
+  if (Key = VK_ESCAPE) and FindBarVisible then
+  begin
+    HideFindBar;
+    Key := 0;
+    Exit;
+  end;
   NeedLayout;
   Ext := ssShift in Shift;
 
@@ -2900,6 +2997,244 @@ begin
   UTF8Key := '';
 end;
 
+{ ------------------------------------------------------------------ finding }
+
+{ where AText next starts at or after AFrom - at or before it with
+  ifoBackwards - going round the end; -1 when nowhere }
+function TInkRichEdit.FindFrom(const AText: string; AOptions: TInkFindOptions; AFrom: integer): integer;
+var
+  Needle, Hay: array of string;
+  P: PChar;
+  N, K, I, Step, Tries: integer;
+
+  function Fold(const S: string): string;
+  begin
+    if ifoMatchCase in AOptions then
+      Result := S
+    else
+      Result := UTF8LowerCase(S);
+  end;
+
+  function MatchAt(At: integer): boolean;
+  var
+    J: integer;
+  begin
+    Result := At + N <= CharCount;
+    for J := 0 to N - 1 do
+      if not Result then Exit
+      else
+        Result := Hay[At + J] = Needle[J];
+  end;
+
+begin
+  Result := -1;
+  N := 0;
+  P := PChar(AText);
+  while P^ <> #0 do
+  begin
+    K := UTF8CodepointSize(P);
+    SetLength(Needle, N + 1);
+    SetString(Needle[N], P, K);
+    Needle[N] := Fold(Needle[N]);
+    Inc(N);
+    Inc(P, K);
+  end;
+  if (N = 0) or (CharCount = 0) then Exit;
+  SetLength(Hay, CharCount);
+  for I := 0 to CharCount - 1 do
+    Hay[I] := Fold(FChars[I]);
+  if ifoBackwards in AOptions then
+    Step := -1
+  else
+    Step := 1;
+  I := EnsureRange(AFrom, 0, CharCount - 1);
+  for Tries := 1 to CharCount do
+  begin
+    if MatchAt(I) then Exit(I);
+    Inc(I, Step);
+    if I >= CharCount then I := 0
+    else if I < 0 then I := CharCount - 1;
+  end;
+end;
+
+function TInkRichEdit.Find(const AText: string; AOptions: TInkFindOptions): boolean;
+var
+  From, At: integer;
+begin
+  FFindText := AText;
+  { the next one starts past the selection's start, the one before before it }
+  From := GetSelStart;
+  if ifoBackwards in AOptions then Dec(From)
+  else if GetSelLength > 0 then Inc(From);
+  if From < 0 then From := CharCount - 1;
+  if From >= CharCount then From := 0;
+  At := FindFrom(AText, AOptions, From);
+  Result := At >= 0;
+  if not Result then Exit;
+  FAnchor := At;
+  FCaret := At + UTF8Length(AText);
+  FHasTypingAttr := False;
+  ScrollToCaret;
+  Invalidate;
+  SelectionChanged;
+end;
+
+function TInkRichEdit.FindCount(const AText: string; AOptions: TInkFindOptions; out Current: integer): integer;
+var
+  First, At: integer;
+begin
+  Result := 0;
+  Current := 0;
+  First := FindFrom(AText, AOptions - [ifoBackwards], 0);
+  if First < 0 then Exit;
+  At := First;
+  repeat
+    Inc(Result);
+    if (At = GetSelStart) and (GetSelLength = UTF8Length(AText)) then Current := Result;
+    if At + 1 >= CharCount then Break;
+    At := FindFrom(AText, AOptions - [ifoBackwards], At + 1);
+  until (At <= First);
+end;
+
+function TInkRichEdit.GetFindBarVisible: boolean;
+begin
+  Result := Assigned(FFindEdit) and FFindEdit.Visible;
+end;
+
+function TInkRichEdit.FindBarRect: TRect;
+var
+  W, H, R: integer;
+begin
+  R := ClientWidth - 6;
+  if Assigned(FVScroll) and FVScroll.Visible then Dec(R, FVScroll.Width);
+  H := Scale96ToFont(34);
+  W := Min(Scale96ToFont(360), R - 2);
+  Result := Rect(R - W, 4, R, 4 + H);
+end;
+
+{ 0 previous, 1 next, 2 close }
+function TInkRichEdit.FindButtonRect(Index: integer): TRect;
+var
+  Bar: TRect;
+  S: integer;
+begin
+  Bar := FindBarRect;
+  S := Bar.Bottom - Bar.Top - 8;
+  Result := Rect(Bar.Right - 4 - (3 - Index) * S, Bar.Top + 4, Bar.Right - 4 - (2 - Index) * S, Bar.Bottom - 4);
+end;
+
+procedure TInkRichEdit.PlaceFindBar;
+var
+  Bar: TRect;
+begin
+  if not Assigned(FFindEdit) then Exit;
+  Bar := FindBarRect;
+  { the edit, then the count, then the three buttons }
+  FFindEdit.SetBounds(Bar.Left + 6, Bar.Top + 5,
+    Max(40, FindButtonRect(0).Left - Bar.Left - 6 - Scale96ToFont(64)), Bar.Bottom - Bar.Top - 10);
+end;
+
+procedure TInkRichEdit.ShowFindBar;
+begin
+  if not Assigned(FFindEdit) then
+  begin
+    FFindEdit := TInkEdit.Create(Self);
+    FFindEdit.Parent := Self;
+    FFindEdit.OnChange := @FindEditChange;
+    FFindEdit.OnKeyDown := @FindEditKey;
+  end;
+  FFindEdit.Font.Assign(Font);
+  FFindEdit.Font.Color := clWindowText;
+  PlaceFindBar;
+  FFindEdit.Visible := True;
+  if FFindEdit.CanFocus then FFindEdit.SetFocus;
+  { a selection on one line is what to look for }
+  if (GetSelLength > 0) and (Pos(#10, GetSelText) = 0) and (Pos(#13, GetSelText) = 0) and (FFindEdit.Text <> GetSelText) then
+    FFindEdit.Text := GetSelText;
+  FFindEdit.SelectAll;
+  Invalidate;
+end;
+
+procedure TInkRichEdit.HideFindBar;
+begin
+  if not FindBarVisible then Exit;
+  FFindEdit.Visible := False;
+  if CanFocus then SetFocus;
+  Invalidate;
+end;
+
+procedure TInkRichEdit.FindEditChange(Sender: TObject);
+var
+  At: integer;
+begin
+  FFindText := FFindEdit.Text;
+  { as it is typed: from where the match so far begins, so it grows in
+    place; nothing found leaves the last match where it was }
+  if FFindText <> '' then
+  begin
+    At := FindFrom(FFindText, [], GetSelStart);
+    if At >= 0 then
+    begin
+      FAnchor := At;
+      FCaret := At + UTF8Length(FFindText);
+      ScrollToCaret;
+      SelectionChanged;
+    end;
+  end;
+  Invalidate;
+end;
+
+procedure TInkRichEdit.FindEditKey(Sender: TObject; var Key: word; Shift: TShiftState);
+begin
+  case Key of
+    VK_RETURN, VK_F3:
+    begin
+      if ssShift in Shift then Find(FFindEdit.Text, [ifoBackwards])
+      else
+        Find(FFindEdit.Text);
+      Key := 0;
+    end;
+    VK_ESCAPE:
+    begin
+      HideFindBar;
+      Key := 0;
+    end;
+  end;
+end;
+
+procedure TInkRichEdit.PaintFindBar;
+const
+  Glyphs: array[0..2] of string = ('▲', '▼', '✕');
+var
+  Bar, R: TRect;
+  Back, Fore: TColor;
+  Total, Current, K: integer;
+  Count: string;
+begin
+  Bar := FindBarRect;
+  Back := ColorToRGB(Color);
+  Fore := ColorToRGB(Font.Color);
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := HTMLShadeColor(Back, 10);
+  Canvas.Pen.Color := MixColor(Back, Fore, 0.4);
+  Canvas.RoundRect(Bar, 8, 8);
+  Canvas.Font.Assign(Font);
+  Canvas.Font.Color := MixColor(Back, Fore, 0.8);
+  Canvas.Brush.Style := bsClear;
+  Total := FindCount(FFindEdit.Text, [], Current);
+  if FFindEdit.Text = '' then Count := ''
+  else if Total = 0 then Count := '0/0'
+  else
+    Count := IntToStr(Current) + '/' + IntToStr(Total);
+  R := Rect(FFindEdit.Left + FFindEdit.Width + 4, Bar.Top, FindButtonRect(0).Left - 2, Bar.Bottom);
+  Canvas.TextOut(R.Right - Canvas.TextWidth(Count), (Bar.Top + Bar.Bottom - Canvas.TextHeight(Count)) div 2, Count);
+  for K := 0 to 2 do
+  begin
+    R := FindButtonRect(K);
+    Canvas.TextOut((R.Left + R.Right - Canvas.TextWidth(Glyphs[K])) div 2, (R.Top + R.Bottom - Canvas.TextHeight(Glyphs[K])) div 2, Glyphs[K]);
+  end;
+end;
+
 { -------------------------------------------------------------------- mouse }
 
 procedure TInkRichEdit.ToggleTask;
@@ -2957,6 +3292,13 @@ var
   I: integer;
   P: TPoint;
 begin
+  if FindBarVisible and (Button = mbLeft) and PtInRect(FindBarRect, Point(X, Y)) then
+  begin
+    if PtInRect(FindButtonRect(0), Point(X, Y)) then Find(FFindEdit.Text, [ifoBackwards])
+    else if PtInRect(FindButtonRect(1), Point(X, Y)) then Find(FFindEdit.Text)
+    else if PtInRect(FindButtonRect(2), Point(X, Y)) then HideFindBar;
+    Exit;
+  end;
   if Button = mbRight then ContextAt(X, Y);
   inherited MouseDown(Button, Shift, X, Y);
   if Button = mbLeft then

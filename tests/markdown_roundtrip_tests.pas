@@ -9,6 +9,7 @@ uses
   Controls,
   LazUTF8,
   LCLType,
+  InkDraw,
   InkRichEdit,
   InkCodeMemo,
   InkMarkdown,
@@ -280,7 +281,24 @@ begin
         MarkdownToHTML('| A | B |' + #10 + '| - | - |' + #10 + '| a\\| b |'),
         '<table>' + #10 + '<thead><tr><th>A</th><th>B</th></tr></thead>' + #10 + '<tbody>' + #10 + '<tr><td>a\</td><td>b</td></tr>' +
         #10 + '</tbody>' + #10 + '</table>' + #10);
-      { paragraph spacing: between blocks, never inside one list }
+      { find: on through the matches, round the end, back, case }
+    E.LoadMarkdown('Alpha beta alpha **ALPHA**' + #10#10 + 'é café');
+    E.SelStart := 0;
+    Equal('find selects the first', IntToStr(Ord(E.Find('alpha'))) + ' ' + IntToStr(E.SelStart), '1 0');
+    E.Find('alpha');
+    Equal('find goes on to the next', IntToStr(E.SelStart), '11');
+    E.Find('alpha');
+    Equal('find ignores case and formatting', IntToStr(E.SelStart) + ' ' + E.SelText, '17 ALPHA');
+    E.Find('alpha');
+    Equal('find goes round the end', IntToStr(E.SelStart), '0');
+    E.Find('alpha', [ifoBackwards]);
+    Equal('find backwards goes round the start', IntToStr(E.SelStart), '17');
+    Equal('find counts and knows which is selected', IntToStr(E.FindCount('alpha', [], I)) + ' ' + IntToStr(I), '3 3');
+    Equal('match case counts one', IntToStr(E.FindCount('alpha', [ifoMatchCase], I)), '1');
+    Equal('find across a paragraph break and accents', IntToStr(Ord(E.Find('CAFÉ'))) + ' ' + E.SelText, '1 café');
+    Equal('nothing found', IntToStr(Ord(E.Find('gamma'))), '0');
+    Equal('find leaves the source alone', E.AsMarkdown, 'Alpha beta alpha **ALPHA**' + #10#10 + 'é café');
+    { paragraph spacing: between blocks, never inside one list }
     for T in ['one' + #10#10 + 'two', '- one' + #10 + '- two', '- one' + #10 + '  - two', '- one' + #10#10 + '1. two'] do
     begin
       E.ParagraphSpacing := False;
