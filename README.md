@@ -87,27 +87,6 @@ interaction, Markdown, WebP. Apple Silicon has not been tried.
 * **[Writing pages](docs/HTML_SUPPORT.md)** - every tag and CSS property it reads, with examples.
 * **[The roadmap](ROADMAP.md)** - open work; **[the history](docs/HISTORY.md)** - how it was built and the decisions made.
 
-## Where it started
-
-LazInk began with a question Tony Stone asked on the Lazarus forum in
-August 2021, [Memo Component that supports HTML
-markup](https://forum.lazarus.freepascal.org/index.php/topic,55971.0.html).
-wp answered with an owner-drawn list box built on the HTML drawing routines
-of Project JEDI's [JVCL](https://github.com/project-jedi/jvcl) -
-`JvHtControls.pas` by Andrei Prygounkov and `JvJVCLUtils.pas` by Fedor
-Koshevnikov, Igor Pavluk and Serge Korolev - extracted into a unit of its
-own.  That example is where LazInk came from.
-
-The JVCL-derived renderer was replaced with LazInk's own on 18 September
-2026.  On 15 October 2026 every LazInk unit was compared with those two
-JVCL files token by token: what they share is Lazarus boilerplate -
-override declarations, lists of published events - and no routine.  The
-public drawing functions keep JVCL's names (`HTMLPlainText`,
-`HTMLStringToColor` and so on), so they read the way people expect.
-
-Digão Dalpiaz's `TDzHTMLText` was a source of ideas - inline images, link
-hover, borders, line spacing, CJK line breaking - and no code.
-
 ## License
 
 [0BSD](LICENSE), the BSD Zero Clause License. The default stylesheet and the
