@@ -18,13 +18,13 @@
   and backslash escapes.  HTML comments are dropped.  Other raw HTML is shown
   as text unless imoRawHTML is given.
 
-  Not CommonMark-complete, on purpose: emphasis follows simpler rules than
+  CommonMark conformance is incomplete: emphasis follows simpler rules than
   the specification's delimiter algorithm, a link reference definition has
   to fit on one line, and footnotes are not read. }
 unit InkMarkdown;
 {$mode objfpc}{$H+}
 interface
-uses Classes, SysUtils;
+uses Classes, SysUtils, Math;
 type
   { itfPlain: the text exactly as written - no tags, entities or Markdown
     read - so a ticket, a log or a cut list like "width < 24\" & square"
@@ -41,13 +41,21 @@ type
       is not fully trusted.  imoRawHTML wins when both are given. }
     imoInlineHTML);
   TInkMarkdownOptions = set of TInkMarkdownOption;
+  TInkMarkdownBlock = record
+    First, Count: integer;  // byte range in the original source, starting at 1
+    HTML: string;
+  end;
+  TInkMarkdownBlocks = array of TInkMarkdownBlock;
 
 { Markdown to HTML with block elements. }
 function MarkdownToHTML(const S: string; Options: TInkMarkdownOptions = []): string;
+{ Top-level blocks with their original byte ranges. Gaps retain blank lines,
+  comments and reference definitions that do not produce visible blocks. }
+function MarkdownBlocks(const S: string; Options: TInkMarkdownOptions = []): TInkMarkdownBlocks;
 { Markdown to the inline markup TInkLabel, TInkMemo and TInkListBox draw. }
 function MarkdownToInk(const S: string; Options: TInkMarkdownOptions = []): string;
 { HTML, as MarkdownToHTML writes it, flattened to that inline markup. }
-function HTMLToInk(const S: string): string;
+function HTMLToInk(const S: string; PreserveImages: boolean = False): string;
 { What a control draws for Source in the given format. }
 function InkToHTML(const S: string; AFormat: TInkTextFormat): string;
 var
@@ -183,8 +191,38 @@ begin
   end;
 end;
 
-{ Backslash escapes taken out, as in a link destination or a code fence's
-  language. }
+{ A link destination or title as an attribute value: backslash escapes
+  taken out and entities kept, in one pass, so an escaped & stays an & }
+function LinkAttr(const S: string): string;
+var
+  I, N: integer;
+begin
+  Result := '';
+  I := 1;
+  while I <= Length(S) do
+  begin
+    if (S[I] = '\') and IsPunct(CharAt(S, I + 1)) then
+    begin
+      Result := Result + Escape(S[I + 1]);
+      Inc(I, 2);
+      Continue;
+    end;
+    if S[I] = '&' then
+    begin
+      N := EntityAt(S, I);
+      if N > 0 then
+      begin
+        Result := Result + Copy(S, I, N);
+        Inc(I, N);
+        Continue;
+      end;
+    end;
+    Result := Result + Escape(S[I]);
+    Inc(I);
+  end;
+end;
+
+{ Backslash escapes taken out, as in a code fence's language. }
 function Unbackslash(const S: string): string;
 var I: Integer;
 begin
@@ -362,11 +400,18 @@ begin
 end;
 
 function IsHTMLStart(const L: string): Boolean;
-var T: string;
+var T: string; P: integer;
 begin
   T := TrimLeft(L);
-  Result := (LeadSpaces(L) <= 3) and (CharAt(T, 1) = '<') and
-    ((CharAt(T, 2) in ['a'..'z', 'A'..'Z', '!', '?']) or
+  if (LeadSpaces(L) > 3) or (CharAt(T, 1) <> '<') then Exit(False);
+  { <https://...> and <me@example.com> are autolinks, not tags }
+  P := 2;
+  while (P <= Length(T)) and not (T[P] in [' ', #9, '>', '/']) do
+  begin
+    if T[P] in [':', '@'] then Exit(False);
+    Inc(P);
+  end;
+  Result := ((CharAt(T, 2) in ['a'..'z', 'A'..'Z', '!', '?']) or
      ((CharAt(T, 2) = '/') and (CharAt(T, 3) in ['a'..'z', 'A'..'Z'])));
 end;
 
@@ -415,23 +460,39 @@ begin
 end;
 
 procedure SplitCells(const S: string; A: TStrings);
-var T, Cell: string; P: Integer; Code: Boolean;
+var T, Cell: string; P: Integer; Divider: boolean;
 begin
-  A.Clear; T := Trim(S);
+  A.Clear;
+  T := Trim(S);
   if (T <> '') and (T[1] = '|') then Delete(T, 1, 1);
-  if (T <> '') and (T[Length(T)] = '|') and
-    ((Length(T) < 2) or (T[Length(T) - 1] <> '\')) then Delete(T, Length(T), 1);
-  Cell := ''; Code := False; P := 1;
+  Cell := '';
+  P := 1;
+  Divider := False;
   while P <= Length(T) do
   begin
+    { GFM resolves \| before inline parsing, even in code; any other escape
+      pair is kept whole, so the pipe in \\| still divides }
     if (T[P] = '\') and (P < Length(T)) then
-    begin Cell := Cell + T[P] + T[P + 1]; Inc(P, 2); Continue end;
-    if T[P] = '`' then Code := not Code;
-    if (T[P] = '|') and not Code then begin A.Add(Trim(Cell)); Cell := '' end
-    else Cell := Cell + T[P];
+    begin
+      if T[P + 1] = '|' then
+        Cell := Cell + '|'
+      else
+        Cell := Cell + T[P] + T[P + 1];
+      Divider := False;
+      Inc(P, 2);
+      Continue;
+    end;
+    Divider := T[P] = '|';
+    if Divider then
+    begin
+      A.Add(Trim(Cell));
+      Cell := '';
+    end
+    else
+      Cell := Cell + T[P];
     Inc(P);
   end;
-  A.Add(Trim(Cell));
+  if not Divider then A.Add(Trim(Cell));
 end;
 
 { The row under a table's header: cells of dashes, with a colon at either
@@ -471,21 +532,24 @@ type
     FOptions: TInkMarkdownOptions;
     FRefs: TStringList;     // label=destination#1title
     FSlugs: TStringList;
+    FBlockMap: TInkMarkdownBlocks;
+    FOffsets: array of integer;
     function StartsBlock(const L: string): Boolean;
     function IsTable(Lines: TStrings; I: Integer; Aligns: TStrings): Boolean;
     procedure ReadDefinitions(Lines: TStrings);
     function Lookup(const ALabel: string; out Dest, Title: string): Boolean;
-    function Blocks(Lines: TStrings; Tight: Boolean): string;
+    function Blocks(Lines: TStrings; Tight: Boolean; TopLevel: Boolean = False): string;
     function Inline(const S: string; Links: Boolean = True): string;
     function TryAngle(const S: string; P: Integer; var Output: string): Integer;
     function TryInlineTag(const S: string; P: Integer; var Output: string): Integer;
+    function ImageDescription(const S: string): string;
     function TryLink(const S: string; P: Integer; Image: Boolean; var Output: string): Integer;
     function TryEmphasis(const S: string; P: Integer; Links: Boolean; var Output: string): Integer;
     function TryBareURL(const S: string; P: Integer; var Output: string): Integer;
   public
     constructor Create(AOptions: TInkMarkdownOptions);
     destructor Destroy; override;
-    function Convert(const S: string): string;
+    function Convert(const S: string; Capture: boolean = False): string;
   end;
 
 constructor TMarkdown.Create(AOptions: TInkMarkdownOptions);
@@ -587,7 +651,7 @@ begin
         if (Name <> '') and (Dest <> '') and (T = '') then
         begin
           if FRefs.IndexOfName(Name) < 0 then
-            FRefs.Add(Name + '=' + Unbackslash(Dest) + #1 + Unbackslash(Title));
+            FRefs.Add(Name + '=' + Dest + #1 + Title);
           Lines[I] := '';
           Inc(I);
           Continue;       // PrevBlank stays: definitions may follow each other
@@ -661,9 +725,9 @@ begin
   end;
 end;
 
-function TMarkdown.Blocks(Lines: TStrings; Tight: Boolean): string;
+function TMarkdown.Blocks(Lines: TStrings; Tight: Boolean; TopLevel: Boolean): string;
 var
-  I, J, N, Ind, Level: Integer;
+  I, J, N, Ind, Level, FirstLine, ParaFirst: Integer;
   L, T, Info, Code, Box, Alert: string;
   C: Char;
   Para, Sub, Cells, Aligns, ItemList: TStringList;
@@ -671,8 +735,17 @@ var
   Loose, Trailing, More: Boolean;
 
   procedure Emit(const X: string);
+  var K, LastLine: integer;
   begin
     Result := Result + X + LF;
+    if not TopLevel then Exit;
+    K := Length(FBlockMap);
+    SetLength(FBlockMap, K + 1);
+    LastLine := Min(I, Lines.Count);
+    while (LastLine > FirstLine) and IsBlank(Lines[LastLine - 1]) do Dec(LastLine);
+    FBlockMap[K].First := FOffsets[FirstLine];
+    FBlockMap[K].Count := FOffsets[LastLine] - FOffsets[FirstLine];
+    FBlockMap[K].HTML := X + LF;
   end;
 
   procedure Heading(ALevel: Integer; const AText: string);
@@ -701,6 +774,7 @@ var
       Txt := Txt + TrimLeft(Para[K]);
     end;
     Txt := TrimRight(Txt);
+    FirstLine := ParaFirst;
     if Tight then Emit(Inline(Txt))
     else Emit('<p>' + Inline(Txt) + '</p>');
     Para.Clear;
@@ -729,6 +803,8 @@ var
 
 begin
   Result := '';
+  ParaFirst := 0;
+  FirstLine := 0;
   Para := TStringList.Create;
   Sub := TStringList.Create;
   Cells := TStringList.Create;
@@ -744,6 +820,7 @@ begin
         FlushPara; Inc(I); Continue;
       end;
 
+      FirstLine := I;
       Ind := LeadSpaces(L);
       if Ind >= 4 then
       begin
@@ -769,6 +846,7 @@ begin
       if IsFence(L, C, N, Ind, Info) then
       begin
         FlushPara;
+        FirstLine := I;
         Inc(I);
         Code := '';
         while (I < Lines.Count) and not IsFenceEnd(Lines[I], C, N) do
@@ -797,8 +875,10 @@ begin
       if IsHeading(L, Level, T) then
       begin
         FlushPara;
+        FirstLine := I;
+        Inc(I);
         Heading(Level, T);
-        Inc(I); Continue;
+        Continue;
       end;
 
       if (Para.Count > 0) and (UnderlineLevel(L) > 0) then
@@ -810,20 +890,25 @@ begin
           T := T + Trim(Para[J]);
         end;
         Para.Clear;
+        FirstLine := ParaFirst;
+        Inc(I);
         Heading(UnderlineLevel(L), T);
-        Inc(I); Continue;
+        Continue;
       end;
 
       if IsRule(L) then
       begin
         FlushPara;
+        FirstLine := I;
+        Inc(I);
         Emit('<hr>');
-        Inc(I); Continue;
+        Continue;
       end;
 
       if IsQuote(L, T) then
       begin
         FlushPara;
+        FirstLine := I;
         Sub.Clear;
         while I < Lines.Count do
         begin
@@ -857,6 +942,7 @@ begin
         (not M.Empty and (not M.Ordered or (M.Start = 1)))) then
       begin
         FlushPara;
+        FirstLine := I;
         Loose := False;
         ItemList.Clear;
         repeat
@@ -933,6 +1019,7 @@ begin
       if IsTable(Lines, I, Aligns) then
       begin
         FlushPara;
+        FirstLine := I;
         T := '<table>' + LF + '<thead>' + Row(L, 'th') + '</thead>' + LF;
         Inc(I, 2);
         Code := '';
@@ -950,12 +1037,14 @@ begin
       begin
         while (I < Lines.Count) and not IsBlank(Lines[I]) do
         begin
-          Emit(Lines[I]);
+          FirstLine := I;
           Inc(I);
+          Emit(Lines[I - 1]);
         end;
         Continue;
       end;
 
+      if Para.Count = 0 then ParaFirst := I;
       Para.Add(L);
       Inc(I);
     end;
@@ -1155,6 +1244,38 @@ begin
   Result := Q - P + 1;
 end;
 
+function AttrValue(const Tag, Name: string): string; forward;
+
+function TMarkdown.ImageDescription(const S: string): string;
+var HTML, Tag: string; P, Q: integer; Quote: char;
+begin
+  Result := '';
+  HTML := Inline(S);
+  P := 1;
+  while P <= Length(HTML) do
+  begin
+    if HTML[P] = '<' then
+    begin
+      Q := P + 1;
+      Quote := #0;
+      while Q <= Length(HTML) do
+      begin
+        if Quote <> #0 then
+        begin if HTML[Q] = Quote then Quote := #0 end
+        else if HTML[Q] in ['"', #39] then Quote := HTML[Q]
+        else if HTML[Q] = '>' then Break;
+        Inc(Q);
+      end;
+      Tag := Copy(HTML, P, Q - P + 1);
+      if Copy(Tag, 1, 5) = '<img ' then Result := Result + AttrValue(Tag, 'alt');
+      P := Q + 1;
+    end
+    else
+    begin Result := Result + HTML[P]; Inc(P) end;
+  end;
+end;
+
+
 { [text](destination "title"), [text][label], [label][] and [label]; with
   Image, the same after a "!".  P is on the "[". }
 function TMarkdown.TryLink(const S: string; P: Integer; Image: Boolean; var Output: string): Integer;
@@ -1234,8 +1355,6 @@ begin
     if CharAt(S, K) = ')' then
     begin
       Found := True;
-      Dest := Unbackslash(Dest);
-      Title := Unbackslash(Title);
       Result := K + 1 - P;
     end
     else
@@ -1259,13 +1378,12 @@ begin
     if not Found then Exit;
     Result := Q + 1 - P;
   end;
-  if Title <> '' then Title := ' title="' + EscapeText(Title) + '"';
+  if Title <> '' then Title := ' title="' + LinkAttr(Title) + '"';
   if Image then
-    Output := '<img src="' + EscapeText(Dest) + '" alt="' +
-      Escape(Trim(StringReplace(StringReplace(Text, '*', '', [rfReplaceAll]),
-        '`', '', [rfReplaceAll]))) + '"' + Title + '>'
+    Output := '<img src="' + LinkAttr(Dest) + '" alt="' +
+      EscapeText(ImageDescription(Text)) + '"' + Title + '>'
   else
-    Output := '<a href="' + EscapeText(Dest) + '"' + Title + '>' +
+    Output := '<a href="' + LinkAttr(Dest) + '"' + Title + '>' +
       Inline(Text, False) + '</a>';
 end;
 
@@ -1353,15 +1471,37 @@ begin
   Result := Length(URL);
 end;
 
-function TMarkdown.Convert(const S: string): string;
-var Lines: TStringList; I: Integer;
+function TMarkdown.Convert(const S: string; Capture: boolean): string;
+var Lines: TStringList; I, P: Integer;
 begin
   Lines := TStringList.Create;
   try
+    SetLength(FBlockMap, 0);
+    SetLength(FOffsets, 0);
+    if Capture then
+    begin
+      P := 1;
+      while P <= Length(S) do
+      begin
+        I := Length(FOffsets);
+        SetLength(FOffsets, I + 1);
+        FOffsets[I] := P;
+        while (P <= Length(S)) and not (S[P] in [#10, #13]) do Inc(P);
+        if (P <= Length(S)) and (S[P] = #13) then
+        begin
+          Inc(P);
+          if (P <= Length(S)) and (S[P] = #10) then Inc(P);
+        end
+        else if P <= Length(S) then Inc(P);
+      end;
+      I := Length(FOffsets);
+      SetLength(FOffsets, I + 1);
+      FOffsets[I] := Length(S) + 1;
+    end;
     Lines.Text := S;
     for I := 0 to Lines.Count - 1 do Lines[I] := ExpandTabs(Lines[I]);
     ReadDefinitions(Lines);
-    Result := Blocks(Lines, False);
+    Result := Blocks(Lines, False, Capture);
   finally Lines.Free end;
 end;
 
@@ -1370,6 +1510,18 @@ var M: TMarkdown;
 begin
   M := TMarkdown.Create(Options);
   try Result := M.Convert(S) finally M.Free end;
+end;
+
+function MarkdownBlocks(const S: string; Options: TInkMarkdownOptions): TInkMarkdownBlocks;
+var M: TMarkdown;
+begin
+  M := TMarkdown.Create(Options);
+  try
+    M.Convert(S, True);
+    Result := M.FBlockMap;
+  finally
+    M.Free;
+  end;
 end;
 
 { --- flattening, for the inline renderer -------------------------------- }
@@ -1466,7 +1618,7 @@ begin
     end;
 end;
 
-function HTMLToInk(const S: string): string;
+function HTMLToInk(const S: string; PreserveImages: boolean): string;
 var
   P, Q, K, Quotes, SkipDepth: Integer;
   Tag, Name, Text, Marker: string;
@@ -1831,11 +1983,16 @@ begin
           LineStart;
           Put('<a href="' + Escape(StringReplace(StringReplace(StringReplace(
             AttrValue(Tag, 'href'), '&quot;', '"', [rfReplaceAll]),
-            '&lt;', '<', [rfReplaceAll]), '&amp;', '&', [rfReplaceAll])) + '">');
+            '&lt;', '<', [rfReplaceAll]), '&amp;', '&', [rfReplaceAll])) + '"');
+          if AttrValue(Tag, 'title') <> '' then Put(' title="' + AttrValue(Tag, 'title') + '"');
+          Put('>');
         end;
       end
       else if Name = 'img' then
-        AddText(AttrValue(Tag, 'alt'))
+      begin
+        if PreserveImages then begin LineStart; Put(Tag) end
+        else AddText(AttrValue(Tag, 'alt'));
+      end
       else if Name = 'font' then
       begin
         if not Closing then LineStart;

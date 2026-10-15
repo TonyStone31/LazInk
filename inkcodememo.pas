@@ -200,6 +200,7 @@ begin
   M := TStringList.Create;
   try
     M.Text := AValue;
+    if (AValue <> '') and (AValue[Length(AValue)] in [#10, #13]) then M.Add('');
     FSettingLines := True;
     try
       Markup.BeginUpdate;
