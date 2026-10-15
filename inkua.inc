@@ -1,6 +1,8 @@
 { The browser's own stylesheet: what every element looks like before a page
   says anything - the parts of the HTML standard's rendering section that
-  LazInk lays out.  Kept as CSS so it reads like the standard. }
+  LazInk lays out.  Kept as CSS so it reads like the standard.
+  Adapted from the WHATWG HTML Living Standard, CC BY 4.0; see
+  LICENSES/THIRD-PARTY.md. }
 const
   InkUserAgentCSS =
     'html, address, blockquote, body, center, dialog, div, figure, figcaption,' +

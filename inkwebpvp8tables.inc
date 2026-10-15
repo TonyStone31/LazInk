@@ -1,6 +1,9 @@
 { Normative numeric probability/quantizer data from RFC 6386 sections
   11.5, 13.4, 13.5 and 14.1. These constants define the VP8 bitstream.
-  No reference decoder implementation is included. }
+  No reference decoder implementation is included.  Copyright (c) 2011
+  IETF Trust and the persons identified as the document authors; used
+  under the RFC's BSD terms for code components, in
+  LICENSES/THIRD-PARTY.md. }
   ModeProb: array[0..899] of Byte = (
     231,120,48,89,115,113,120,152,112,152,179,64,126,170,118,46,70,95,175,69,143,80,85,82,
     72,155,103,56,58,10,171,218,189,17,13,152,144,71,10,38,171,213,144,34,26,114,26,17,
