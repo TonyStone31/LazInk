@@ -624,6 +624,18 @@ long page lived in `tools/compare.sh`, `tools/sidebyside.pas`,
 `tools/make_long_page.py` and `tests/compare/`; the demo tab replaced
 them, and git history keeps them.)
 
+For Markdown, GitHub is the reference.  This shows any `.md` file as
+GitHub renders it - its own HTML, from its API, in its own stylesheet, in a
+browser - beside `TInkPage` and `TInkRichEdit`, scrolling together, the
+headings numbered on all three:
+
+```sh
+LAZARUS_DIR=... FPC=... tools/github_side.sh README.md
+```
+
+It needs `gh` logged in, a Chromium-family browser, and Python for the
+numbering.
+
 A page keeps its blocks' finished geometry, so painting, measuring and hit
 testing share one layout rather than each rebuilding it.
 `tests/layout_cache_checks.pas` renders the same markup with and without that

@@ -196,7 +196,9 @@ type
     procedure SelectionChanged;
     procedure MoveCaret(ANew: integer; AExtend: boolean);
     { markup }
-    procedure ParseInto(const AMarkup: string; AParaBreakFirst: boolean);
+    { reads one line of markup into the document; returns the paragraph's
+      own attributes, its kind, level and language }
+    function ParseInto(const AMarkup: string; AParaBreakFirst: boolean): TInkAttr;
     procedure SyncMarkupFromDoc;
     { undo }
     procedure PushUndo(ACoalesce: boolean);
@@ -1078,6 +1080,9 @@ begin
     Result := HTMLTextExtentOpt(Canvas, Rect(0, 0, 100, 100), [], InkCheckboxMarkup(FAttrs[AIndex].TaskState = 1), DefaultHTMLOptions).cx
   else if FAttrs[AIndex].ImageSource <> '' then
     Result := ImageWidth(AIndex)
+  else if FChars[AIndex] = #9 then
+    { a tab is four spaces wide, drawn as such; no tab stops }
+    Result := Canvas.TextWidth('    ')
   else
     Result := Canvas.TextWidth(FChars[AIndex]);
 end;
@@ -1430,7 +1435,7 @@ begin
     end;
     { A word is measured whole and each letter gets what it adds: macOS
       widths are fractional, and rounding letter by letter drifts. }
-    if (FChars[i] = ' ') or (FAttrs[i].TaskState >= 0) or (FAttrs[i].ImageSource <> '') then
+    if (FChars[i] = ' ') or (FChars[i] = #9) or (FAttrs[i].TaskState >= 0) or (FAttrs[i].ImageSource <> '') then
     begin
       W := MeasureChar(i);
       WordText := '';
@@ -1472,7 +1477,7 @@ begin
     Inc(X, W);
     // CJK writes without spaces, so every ideograph is somewhere a line may
     // break; otherwise a CJK paragraph would only ever break mid-character
-    if (FChars[i] = ' ') or HTMLIsCJK(FChars[i]) then LastSpace := i;
+    if (FChars[i] = ' ') or (FChars[i] = #9) or HTMLIsCJK(FChars[i]) then LastSpace := i;
     Inc(i);
   end;
 
@@ -1872,13 +1877,16 @@ begin
       S := '';
       for K := i to RunEnd do
       begin
-        if (FChars[K] = ' ') and (S <> '') and (Canvas.Font.Style * [fsUnderline, fsStrikeOut] = []) then
+        if ((FChars[K] = ' ') or (FChars[K] = #9)) and (S <> '') and (Canvas.Font.Style * [fsUnderline, fsStrikeOut] = []) then
         begin
           Canvas.TextOut(L.Left + FCharX[WordStart] + CodeLead(WordStart), RunTop, S);
           WordStart := K;
           S := '';
         end;
-        S := S + FChars[K];
+        if FChars[K] = #9 then
+          S := S + '    '
+        else
+          S := S + FChars[K];
       end;
       Canvas.TextOut(L.Left + FCharX[WordStart] + CodeLead(WordStart), RunTop, S);
       i := RunEnd + 1;
@@ -3656,7 +3664,9 @@ end;
 
 procedure TInkRichEdit.RebuildFromMarkup;
 var
-  i: integer;
+  i, B: integer;
+  Paras: array of TInkAttr;
+  Breaks: array of integer;
 begin
   FSettingMarkup := True;
   try
@@ -3664,8 +3674,13 @@ begin
     SetLength(FMarkdownOriginals, 0);
     SetLength(FChars, 0);
     SetLength(FAttrs, 0);
+    SetLength(Paras, FMarkup.Count);
+    SetLength(Breaks, FMarkup.Count);
     for i := 0 to FMarkup.Count - 1 do
-      ParseInto(FMarkup[i], i > 0);
+    begin
+      Breaks[i] := CharCount;
+      Paras[i] := ParseInto(FMarkup[i], i > 0);
+    end;
     { the #10 between paragraphs was emitted before its paragraph's wrapper
       was read: give each one the kind, level and language of the paragraph
       it ends }
@@ -3676,6 +3691,18 @@ begin
         FAttrs[i].Level := FAttrs[i - 1].Level;
         FAttrs[i].Lang := FAttrs[i - 1].Lang;
       end;
+    { an empty paragraph has no character to take them from: its wrapper says }
+    for i := 1 to FMarkup.Count - 1 do
+    begin
+      B := Breaks[i];
+      if (B < CharCount) and (FChars[B] = #10) and ((B = 0) or (FChars[B - 1] = #10)) then
+      begin
+        FAttrs[B].Kind := Paras[i - 1].Kind;
+        FAttrs[B].Level := Paras[i - 1].Level;
+        FAttrs[B].Lang := Paras[i - 1].Lang;
+        FAttrs[B].TableAlign := Paras[i - 1].TableAlign;
+      end;
+    end;
     FCaret := 0;
     FAnchor := 0;
     FScrollY := 0;
@@ -3695,7 +3722,7 @@ end;
 { Reads one paragraph of markup onto the end of the document. A stack of
   attributes mirrors the tag nesting: an opening tag pushes a modified copy,
   a closing tag pops back to what was in force before it. }
-procedure TInkRichEdit.ParseInto(const AMarkup: string; AParaBreakFirst: boolean);
+function TInkRichEdit.ParseInto(const AMarkup: string; AParaBreakFirst: boolean): TInkAttr;
 var
   Stack: array of TInkAttr;
   Cur: TInkAttr;
@@ -3789,6 +3816,7 @@ var
 
 begin
   Cur := DefaultInkAttr;
+  Result := DefaultInkAttr;
   if AParaBreakFirst then EmitBreak;
 
   Body := AMarkup;
@@ -3947,6 +3975,7 @@ begin
       end
       else if (Length(Nm) > 1) and (Nm[1] = '/') then
         Pop;
+      if (Result.Kind = ipkText) and (Cur.Kind <> ipkText) then Result := Cur;
       Continue;
     end;
 
@@ -4495,10 +4524,11 @@ end;
   unambiguous source match and produces the same parsed result. }
 function PreserveMarkdownText(const Source, Before, After: string): string;
 var
-  P, OldEnd, NewEnd, K, L, Context: integer;
-  Needle, Replacement, Candidate: string;
+  P, OldEnd, NewEnd, K, L, Context, Side, Tries: integer;
+  Needle, Replacement, Candidate, Wanted: string;
 begin
   Result := '';
+  Wanted := MarkdownToHTML(After, [imoInlineHTML]);
   P := 1;
   while (P <= Length(Before)) and (P <= Length(After)) and (Before[P] = After[P]) do Inc(P);
   OldEnd := Length(Before);
@@ -4508,18 +4538,31 @@ begin
     Dec(OldEnd);
     Dec(NewEnd);
   end;
+  { context on both sides of the change first, then on one side alone: the
+    other side may be spelled differently in the source, as the indent of
+    an indented code line or a tab }
   for Context := 8 downto 0 do
-  begin
-    K := Min(Context, P - 1);
-    L := Min(Context, Length(Before) - OldEnd);
-    Needle := Copy(Before, P - K, OldEnd - P + 1 + K + L);
-    Replacement := Copy(After, P - K, NewEnd - P + 1 + K + L);
-    if Needle = '' then Continue;
-    K := Pos(Needle, Source);
-    if (K = 0) or (PosEx(Needle, Source, K + 1) > 0) then Continue;
-    Candidate := Copy(Source, 1, K - 1) + Replacement + Copy(Source, K + Length(Needle), MaxInt);
-    if MarkdownToHTML(Candidate, [imoInlineHTML]) = MarkdownToHTML(After, [imoInlineHTML]) then Exit(Candidate);
-  end;
+    for Side := 0 to 2 do
+    begin
+      K := Min(Context, P - 1);
+      L := Min(Context, Length(Before) - OldEnd);
+      if Side = 1 then L := 0
+      else if Side = 2 then K := 0;
+      Needle := Copy(Before, P - K, OldEnd - P + 1 + K + L);
+      Replacement := Copy(After, P - K, NewEnd - P + 1 + K + L);
+      if Needle = '' then Continue;
+      { every place the context appears, the same line repeated in a code
+        block say; the parse decides which one the edit was }
+      K := Pos(Needle, Source);
+      Tries := 0;
+      while (K > 0) and (Tries < 16) do
+      begin
+        Candidate := Copy(Source, 1, K - 1) + Replacement + Copy(Source, K + Length(Needle), MaxInt);
+        if MarkdownToHTML(Candidate, [imoInlineHTML]) = Wanted then Exit(Candidate);
+        K := PosEx(Needle, Source, K + 1);
+        Inc(Tries);
+      end;
+    end;
 end;
 
 { Source blocks the editor cannot represent stay visible as literal Markdown.

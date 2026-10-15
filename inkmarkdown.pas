@@ -1472,7 +1472,12 @@ begin
 end;
 
 function TMarkdown.Convert(const S: string; Capture: boolean): string;
-var Lines: TStringList; I, P: Integer;
+var
+  Lines: TStringList;
+  I, P, N, Ind: integer;
+  C: char;
+  Info: string;
+  Fence: boolean;
 begin
   Lines := TStringList.Create;
   try
@@ -1499,7 +1504,23 @@ begin
       FOffsets[I] := Length(S) + 1;
     end;
     Lines.Text := S;
-    for I := 0 to Lines.Count - 1 do Lines[I] := ExpandTabs(Lines[I]);
+    { tabs count as spaces for indents and markers, but a fenced code
+      block's lines are its content and keep them, as CommonMark says }
+    Fence := False;
+    for I := 0 to Lines.Count - 1 do
+      if Fence then
+      begin
+        if IsFenceEnd(ExpandTabs(Lines[I]), C, N) then
+        begin
+          Fence := False;
+          Lines[I] := ExpandTabs(Lines[I]);
+        end;
+      end
+      else
+      begin
+        Lines[I] := ExpandTabs(Lines[I]);
+        Fence := IsFence(Lines[I], C, N, Ind, Info);
+      end;
     ReadDefinitions(Lines);
     Result := Blocks(Lines, False, Capture);
   finally Lines.Free end;
