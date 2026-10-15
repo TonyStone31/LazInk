@@ -885,8 +885,11 @@ begin
     Canvas.Font.Style := A.Style;
   if A.Link <> '' then
   begin
-    if A.Color = clDefault then
-      Canvas.Font.Color := clBlue
+    { the same blues as TInkPage: dark on a light page, light on a dark one }
+    if (A.Color = clDefault) and (HTMLContrastColor(Color) = clWhite) then
+      Canvas.Font.Color := RGBToColor($58, $A6, $FF)
+    else if A.Color = clDefault then
+      Canvas.Font.Color := RGBToColor($09, $69, $DA)
     else
       Canvas.Font.Color := A.Color;
     Canvas.Font.Style := Canvas.Font.Style + [fsUnderline];

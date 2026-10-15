@@ -1,8 +1,8 @@
 # Markdown editing and round trips
 
 LazMD edits the rendered page with `TInkRichEdit` and the source with
-`TInkCodeMemo`. The Rendered and Raw tabs switch between them; Side by side
-shows both, and an edit in one updates the other.
+`TInkCodeMemo`. The Mode menu switches between Rendered and Raw; Side by
+side shows both, and an edit in one updates the other.
 
 Turning the whole edited page back into Markdown is not good enough: the
 renderer cannot know whether the author wrote `*` or `_`, a setext or an ATX
@@ -11,7 +11,7 @@ only what was edited.
 
 ## The rules
 
-- Opening a document, switching tabs and saving without edits keeps its
+- Opening a document, switching modes and saving without edits keeps its
   bytes.
 - An edit leaves the rest of the source alone.
 - Undoing every edit gives back the original source, after a save too.
@@ -157,7 +157,7 @@ inserted but are not downloaded.
 2. Open this file in LazMD and compare Rendered and Raw.
 3. Edit text and formatting, the first character of a paragraph included.
 4. Edit table cells, a literal pipe included; use Tab, Shift+Tab and Enter.
-5. Save, switch tabs, undo, save again, and diff the source.
+5. Save, switch modes, undo, save again, and diff the source.
 6. Repeat with CRLF, a BOM, no final newline, comments and references.
 7. Try deleting across blocks, joining paragraphs, paste, and Clear
    formatting.
