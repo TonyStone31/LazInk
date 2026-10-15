@@ -123,6 +123,7 @@ type
     FLastUndoTick: QWord;
     FReadOnly: boolean;
     FWordWrap: boolean;
+    FParagraphSpacing: boolean;
     FSuperSubScriptRatio: double;
     FModified: boolean;
     FMouseOnLink: boolean;
@@ -154,6 +155,7 @@ type
     procedure RebuildFromMarkup;
     procedure SetReadOnly(AValue: boolean);
     procedure SetWordWrap(AValue: boolean);
+    procedure SetParagraphSpacing(AValue: boolean);
     { layout }
     procedure InvalidateLayout;
     procedure Relayout;
@@ -303,6 +305,10 @@ type
     property Markup: TStrings read GetMarkup write SetMarkup;
     property ReadOnly: boolean read FReadOnly write SetReadOnly default False;
     property WordWrap: boolean read FWordWrap write SetWordWrap default True;
+    { space between paragraphs, headings, lists, quotes, code and tables, as
+      a browser leaves it; list items, quote lines and code lines stay
+      together.  Off, every paragraph sits right under the one before. }
+    property ParagraphSpacing: boolean read FParagraphSpacing write SetParagraphSpacing default False;
     property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
     { the editor's own right-click menu - Undo, Redo, Cut, Copy, Paste,
       Delete, Select All; a PopupMenu of the host's own still wins }
@@ -1033,11 +1039,56 @@ var
   N, i, k, X, W, Avail, AvailP, Y, LineStart, LastSpace, BreakAt: integer;
   LineCount: integer;
   LastAttr: TInkAttr;
+  tm: TLCLTextMetric;
+  { the word so far in the current run, and its measured width }
+  word: string;
+  WordW: integer;
   HasLast: boolean;
   CurKind: TInkParaKind;
   CurInd: integer;
   { the full width a table row's line reports, while one is being laid }
   TableRowW: integer;
+  { space owed above the next paragraph's first line, and the font's em }
+  Gap, Em: integer;
+
+  { A block's margin in hundredths of the body's em, from the default
+    stylesheet: 1em, and a heading's own margin times its size. }
+  function Margin(AKind: TInkParaKind): integer;
+  begin
+    case AKind of
+      ipkH1: Result := 134;
+      ipkH2: Result := 125;
+      ipkH3: Result := 117;
+      ipkH4: Result := 133;
+      ipkH5: Result := 139;
+      ipkH6: Result := 156;
+      ipkTableHead, ipkTableRow: Result := 0;
+      else
+        Result := 100;
+    end;
+  end;
+
+  { the space between two paragraphs; margins collapse to the larger one }
+  procedure SpaceBetween(AAt: integer);
+  var
+    Prev, Next: TInkParaKind;
+    K: integer;
+  begin
+    Gap := 0;
+    if not FParagraphSpacing then Exit;
+    Prev := ParaKindAt(AAt);
+    Next := ParaKindAt(AAt + 1);
+    { one list goes on while it nests, or while its top level keeps its kind }
+    if (Prev in [ipkBullet, ipkNumber]) and (Next in [ipkBullet, ipkNumber]) then
+    begin
+      if ParaLevelAt(AAt + 1) > 0 then Exit;
+      K := AAt;
+      while (K > 0) and (ParaKindAt(K) in [ipkBullet, ipkNumber]) and (ParaLevelAt(K) > 0) do Dec(K);
+      if ParaKindAt(K) = Next then Exit;
+    end;
+    if (Prev = Next) and (Prev in [ipkQuote, ipkCode, ipkSource]) then Exit;
+    Gap := Em * Max(Margin(Prev), Margin(Next)) div 100;
+  end;
 
   { Height and baseline of the characters [AFirst, AFirst+ACount). An empty
     paragraph still needs a line box, so fall back to the control font. }
@@ -1089,6 +1140,8 @@ var
       if H - Asc - Rise > MaxH - MaxAsc then MaxH := MaxAsc + (H - Asc - Rise);
     end;
 
+    Inc(Y, Gap);
+    Gap := 0;
     L.First := AFirst;
     L.Count := ACount;
     L.Top := Y;
@@ -1254,6 +1307,7 @@ var
     X := 0;
     LastSpace := -1;
     HasLast := False;
+    if GEnd > 0 then SpaceBetween(GEnd - 1);
     CurKind := ParaKindAt(GEnd);
     CurInd := ParaIndent(CurKind, ParaLevelAt(GEnd));
     AvailP := Max(16, Avail - CurInd);
@@ -1274,6 +1328,13 @@ begin
   HasLast := False;
   LastAttr := DefaultInkAttr;
   TableRowW := 0;
+  Gap := 0;
+  word := '';
+  WordW := 0;
+  Canvas.Font := Font;
+  { a negative Height is the em in pixels; the default font says 0 }
+  Em := -Canvas.Font.Height;
+  if (Em <= 0) and Canvas.GetTextMetrics(tm) then Em := tm.Height * 4 div 5;
   CurKind := ParaKindAt(0);
   CurInd := ParaIndent(CurKind, ParaLevelAt(0));
   AvailP := Max(16, Avail - CurInd);
@@ -1295,6 +1356,7 @@ begin
       LineStart := i + 1;
       X := 0;
       LastSpace := -1;
+      if not FAttrs[i].HardBreak then SpaceBetween(i);
       CurKind := ParaKindAt(i + 1);
       CurInd := ParaIndent(CurKind, ParaLevelAt(i + 1));
       AvailP := Max(16, Avail - CurInd);
@@ -1308,8 +1370,23 @@ begin
       LastAttr := EffAttr(i);
       ApplyAttrToCanvas(LastAttr);
       HasLast := True;
+      word := '';
+      WordW := 0;
     end;
-    W := MeasureChar(i);
+    { A word is measured whole and each letter gets what it adds: macOS
+      widths are fractional, and rounding letter by letter drifts. }
+    if (FChars[i] = ' ') or (FAttrs[i].TaskState >= 0) or (FAttrs[i].ImageSource <> '') then
+    begin
+      W := MeasureChar(i);
+      word := '';
+      WordW := 0;
+    end
+    else
+    begin
+      word := word + FChars[i];
+      W := Canvas.TextWidth(word) - WordW;
+      Inc(WordW, W);
+    end;
 
     if FWordWrap and (i > LineStart) and (X + W > AvailP) then
     begin
@@ -1502,7 +1579,7 @@ end;
 
 procedure TInkRichEdit.Paint;
 var
-  Li, i, RunEnd, SelA, SelB, LineEndIdx, BaseY, RunTop: integer;
+  Li, i, RunEnd, SelA, SelB, LineEndIdx, BaseY, RunTop, WordStart, K: integer;
   S: string;
   Sel, RunSel: boolean;
   L: TInkVisLine;
@@ -1670,10 +1747,6 @@ begin
         SameInkAttr(EffAttr(RunEnd + 1), EffAttr(i)) and (IsSel(RunEnd + 1) = RunSel) do
         Inc(RunEnd);
 
-      S := '';
-      for RunTop := i to RunEnd do
-        S := S + FChars[RunTop];
-
       ApplyAttrToCanvas(EffAttr(i));
       if Canvas.GetTextMetrics(tm) then
       begin
@@ -1715,7 +1788,24 @@ begin
       else
         Canvas.Brush.Style := bsClear;
 
-      Canvas.TextOut(X, RunTop, S);
+      { word by word, each where Relayout measured it to be, so a run drawn
+        in one go cannot drift from the caret on fractional-width fonts.  An
+        underline or a strike line has to run through the spaces, and Cocoa
+        draws none under a space at either end of a piece, so those runs -
+        links, mostly short - go in one piece. }
+      WordStart := i;
+      S := '';
+      for K := i to RunEnd do
+      begin
+        if (FChars[K] = ' ') and (S <> '') and (Canvas.Font.Style * [fsUnderline, fsStrikeOut] = []) then
+        begin
+          Canvas.TextOut(L.Left + FCharX[WordStart], RunTop, S);
+          WordStart := K;
+          S := '';
+        end;
+        S := S + FChars[K];
+      end;
+      Canvas.TextOut(L.Left + FCharX[WordStart], RunTop, S);
       i := RunEnd + 1;
     end;
   end;
@@ -3195,6 +3285,13 @@ procedure TInkRichEdit.SetWordWrap(AValue: boolean);
 begin
   if FWordWrap = AValue then Exit;
   FWordWrap := AValue;
+  InvalidateLayout;
+end;
+
+procedure TInkRichEdit.SetParagraphSpacing(AValue: boolean);
+begin
+  if FParagraphSpacing = AValue then Exit;
+  FParagraphSpacing := AValue;
   InvalidateLayout;
 end;
 
