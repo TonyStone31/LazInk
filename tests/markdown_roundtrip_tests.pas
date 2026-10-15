@@ -280,7 +280,21 @@ begin
         MarkdownToHTML('| A | B |' + #10 + '| - | - |' + #10 + '| a\\| b |'),
         '<table>' + #10 + '<thead><tr><th>A</th><th>B</th></tr></thead>' + #10 + '<tbody>' + #10 + '<tr><td>a\</td><td>b</td></tr>' +
         #10 + '</tbody>' + #10 + '</table>' + #10);
-      E.LoadMarkdown('# First' + #10#10 + '# First');
+      { paragraph spacing: between blocks, never inside one list }
+    for T in ['one' + #10#10 + 'two', '- one' + #10 + '- two', '- one' + #10 + '  - two', '- one' + #10#10 + '1. two'] do
+    begin
+      E.ParagraphSpacing := False;
+      E.LoadMarkdown(T);
+      Col := E.DocHeight;
+      E.ParagraphSpacing := True;
+      I := E.DocHeight;
+      if (T = '- one' + #10 + '- two') or (T = '- one' + #10 + '  - two') then
+        Equal('no space inside a list: ' + T, IntToStr(I), IntToStr(Col))
+      else
+        Equal('space between blocks: ' + T, IntToStr(Ord(I > Col)), '1');
+    end;
+    E.ParagraphSpacing := False;
+    E.LoadMarkdown('# First' + #10#10 + '# First');
       Equal('duplicate heading anchor resolves', IntToStr(Ord(E.JumpToAnchor('first-1'))), '1');
       Equal('anchor moves into the second heading', IntToStr(E.SelStart), '6');
       S := '# A heading' + #13#10#13#10 + '**same** and [same](same) then same';
