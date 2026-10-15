@@ -35,6 +35,16 @@ cd "$(dirname "$0")/.."
   -Fu"$LAZARUS_DIR/components/freetype/lib/$UNIT_TARGET" \
   -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/render_tests.pas
 "$BUILD_DIR/render_tests" "$@"
+# Source preservation and rendered editing, separate from parser conformance.
+"$FPC" $COCOA_LINK -gl -Cr -Co -Ci -Sa -dLCL -dLCL$LCL_WIDGETSET -Fu. \
+  -Fu"$LAZARUS_DIR/lcl/units/$UNIT_TARGET" \
+  -Fu"$LAZARUS_DIR/lcl/units/$UNIT_TARGET/$LCL_WIDGETSET" \
+  -Fu"$LAZARUS_DIR/components/lazutils/lib/$UNIT_TARGET" \
+  -Fu"$LAZARUS_DIR/components/freetype/lib/$UNIT_TARGET" \
+  -FU"$BUILD_DIR" -FE"$BUILD_DIR" tests/markdown_roundtrip_tests.pas >"$BUILD_DIR/roundtrip.log" 2>&1 ||
+  { tail -20 "$BUILD_DIR/roundtrip.log"; exit 1; }
+if [ -n "${MARKDOWN_SPEC:-}" ]; then "$BUILD_DIR/markdown_roundtrip_tests" "$MARKDOWN_SPEC"
+else "$BUILD_DIR/markdown_roundtrip_tests"; fi
 # Given a page list and a results folder, also check that every piece of
 # visible text in the pages survived into what was rendered.
 if [ "$#" -ge 2 ]; then

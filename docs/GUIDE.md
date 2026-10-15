@@ -357,11 +357,14 @@ translate the source.
 `TInkEdit` remains plain text.  `TInkRichEdit` edits paragraphs with kinds -
 headings, bullet and numbered lists, quotes, code lines and **table rows** -
 and reads and writes Markdown itself: `LoadMarkdown` brings a document in
-(nested lists flatten to one level), `AsMarkdown` writes it back with
-`**bold**`, `*italic*`, `~~strike~~`, code spans, links, fenced code and
-pipe tables with their head and delimiter rows.  A table row's cells are
-the text between literal `|` characters, which draw as the grid rather
-than as glyphs; consecutive rows share their column widths, the head row
+with images, task checkboxes and table alignment, and `AsMarkdown` gives
+it back.  Blocks that were not edited come back byte for byte; an edited
+one is spliced into its original text where that parses the same, and
+written fresh with `**bold**`, `*italic*`, `~~strike~~`, code spans, links,
+fenced code and pipe tables otherwise - see
+[Markdown editing and round trips](MARKDOWN_ROUNDTRIP.md).  A table row's
+cells are split by dividers that draw as the grid rather than as glyphs; a
+`|` typed into a cell stays text.  Consecutive rows share their column widths, the head row
 is bold on a band, **Tab** hops to the next cell (a new row past the last
 one), **Enter** adds a row, and Enter on an empty row ends the table -
 as Enter at a heading's end starts a plain paragraph and an empty list

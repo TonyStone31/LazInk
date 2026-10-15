@@ -28,7 +28,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Controls, Graphics, StdCtrls, Forms, LCLType,
-  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types, Menus;
+  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types, Menus, InkMarkdown;
 
 type
   TInkScript = (isNormal, isSuperscript, isSubscript);
@@ -43,7 +43,7 @@ type
       which draw as the grid, not as glyphs.  Consecutive table rows are
       one table and share their column widths; the head row is bold on a
       band.  Tab hops to the next cell, Enter adds a row. }
-    ipkTableHead, ipkTableRow);
+    ipkTableHead, ipkTableRow, ipkSource);
 
   { Everything one character can carry. The sentinels — clDefault, clNone, 0,
     '' — mean "follow the control's Font", so a document that never mentions a
@@ -55,11 +55,18 @@ type
     Face: string;         // ''        -> Font.Name
     Style: TFontStyles;
     Script: TInkScript;
+    ImageSource, ImageAlt, ImageTitle: string;
+    LinkTitle: string;
+    TaskState: shortint;  // -1 for text, 0 or 1 for a task checkbox
+    HardBreak: boolean;
     Link: string;         // ''        -> not a link
     Align: TAlignment;    // paragraph property, held per character
     Kind: TInkParaKind;   // paragraph property, held per character
     Level: byte;          // a list item's nesting depth, 0 for the first
     Lang: string;         // a code line's fence language, '' unsaid
+    TableAlign: string;   // one alignment per column: l, c, r or -
+    CellBreak: boolean;   // a table divider, distinct from a literal pipe
+    MarkdownBlock: integer; // source identity; 0 for documents built from markup
   end;
 
   { One visual line: a run of characters that share a baseline. A paragraph is
@@ -74,12 +81,23 @@ type
     Left: integer;        // x of the line's start, after alignment
   end;
 
+  TInkMarkdownOriginal = record
+    First, Count: integer;
+    Canonical: string;
+  end;
+
+  TInkRichImageEvent = procedure(Sender: TObject; const Source: string; Picture: TPicture) of object;
   TInkRichLinkEvent = procedure(Sender: TObject; const LinkName: string) of object;
 
   { TInkRichEdit }
 
   TInkRichEdit = class(TCustomControl)
   private
+    FImageBase: string;
+    FImages: TStringList;
+    FOnImageNeeded: TInkRichImageEvent;
+    FMarkdownSource: string;
+    FMarkdownOriginals: array of TInkMarkdownOriginal;
     FChars: array of string;      // one UTF-8 codepoint each; #10 = paragraph
     FAttrs: array of TInkAttr;
     FCaret: integer;              // 0..CharCount, a gap between characters
@@ -111,10 +129,19 @@ type
     FHoverLink: string;
     FOnChange: TNotifyEvent;
     FOnSelectionChange: TNotifyEvent;
+    FOnGoToSource: TNotifyEvent;
     FOnLinkClick: TInkRichLinkEvent;
     FEditMenu: boolean;
     FMenu: TPopupMenu;
+    function SelectImageAt(X, Y: integer): boolean;
+    procedure ContextAt(X, Y: integer);
+    procedure SetImageBaseURI(const Value: string);
+    function ImagePicture(const Source: string): TPicture;
+    function ImageWidth(AIndex: integer): integer;
+    function ImageHeight(AIndex: integer): integer;
+    function MarkdownRange(AFirst, AEnd: integer): string;
     procedure MenuClick(Sender: TObject);
+    function IsCellBreak(AIndex: integer): boolean;
     function CharCount: integer;
     function GetSelStart: integer;
     function GetSelLength: integer;
@@ -195,6 +222,17 @@ type
     destructor Destroy; override;
 
     procedure Clear;
+    { the caret to the heading whose GitHub-style slug is Anchor }
+    function JumpToAnchor(const Anchor: string): boolean;
+    procedure ScrollTo(AY: integer);
+    property ScrollY: integer read FScrollY;
+    { where relative image paths are resolved from; a file:// URI }
+    property ImageBaseURI: string read FImageBase write SetImageBaseURI;
+    { the selection's bytes in AsMarkdown, from 1; False when no range
+      renders the same }
+    function MarkdownSourceRange(out AFirst, ACount: integer): boolean;
+    { fires OnGoToSource; the context menu's Go to source does the same }
+    procedure GoToSource;
     procedure SelectAll;
     procedure CopyToClipboard;
     procedure CutToClipboard;
@@ -218,12 +256,16 @@ type
     { the whole paragraphs the selection touches become AKind - a heading,
       a bullet or numbered item, a quote, a line of code, or plain text }
     procedure ApplyParaKind(AKind: TInkParaKind);
+    { checks or clears the task checkbox of the caret's list item }
+    procedure ToggleTask;
     { the list items the selection touches step ADelta levels deeper or
       back out - what Tab and Shift+Tab do on a list item }
     procedure ApplyParaLevel(ADelta: integer);
     { a fresh table at the caret: a head row and ARows body rows of ACols
       empty cells, the caret in the head's first cell }
     procedure InsertTable(ACols, ARows: integer);
+    { an image at the caret, replacing the selection; one undo step }
+    procedure InsertImage(const Source, AltText: string; const Title: string = '');
     procedure ClearFormatting;
     procedure InsertParagraph;
 
@@ -234,6 +276,8 @@ type
     function SelBackColor: TColor;
     function SelSize: integer;
     function SelFace: string;
+    { the selection's link target, '' when none or mixed }
+    function SelLink: string;
     function SelScript: TInkScript;
     function SelAlignment: TAlignment;
     function SelParaKind: TInkParaKind;
@@ -242,12 +286,12 @@ type
       a TInkLabel caption or a TInkMemo line. }
     function AsHTML(const ASep: string = '<br>'): string;
     function PlainText: string;
-    { The document as Markdown, and a Markdown document read in: headings,
-      bullet and numbered lists, quotes, fenced code, bold, italic, strike,
-      code spans and links.  What Markdown has no word for rides as inline
-      HTML (<u>, <sup>, <sub>); colors and faces do not survive the trip. }
+    { The document as Markdown, and a Markdown document read in.  After
+      LoadMarkdown, blocks that were not edited come back byte for byte.
+      What Markdown has no word for goes out as inline HTML (<u>, <sup>,
+      <sub>); colors and faces are lost.  ABaseURI resolves relative images. }
     function AsMarkdown: string;
-    procedure LoadMarkdown(const S: string);
+    procedure LoadMarkdown(const S: string; const ABaseURI: string = '');
     property SelText: string read GetSelText;
     property Modified: boolean read FModified write FModified;
     { runtime only - a stored caret position would be meaningless in a .lfm }
@@ -265,6 +309,10 @@ type
     property EditMenu: boolean read FEditMenu write FEditMenu default True;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
+    { Assigned, the context menu gets Go to source; show the source there. }
+    property OnGoToSource: TNotifyEvent read FOnGoToSource write FOnGoToSource;
+    { Supply pictures from the host's resources; local files load by default. }
+    property OnImageNeeded: TInkRichImageEvent read FOnImageNeeded write FOnImageNeeded;
     property OnLinkClick: TInkRichLinkEvent read FOnLinkClick write FOnLinkClick;
 
     property Align;
@@ -303,7 +351,10 @@ function SameInkAttr(const A, B: TInkAttr): boolean;
 implementation
 
 uses
-  StrUtils, InkDraw, InkTouch, InkMarkdown, InkEdit;
+  StrUtils, URIParser, InkDraw, InkTouch, InkEdit;
+
+resourcestring
+  SInkRichGoToSource = 'Go to source';
 
 const
   cMargin = 3;
@@ -339,17 +390,28 @@ begin
   Result.Face := '';
   Result.Style := [];
   Result.Script := isNormal;
+  Result.ImageSource := '';
+  Result.ImageAlt := '';
+  Result.ImageTitle := '';
+  Result.LinkTitle := '';
+  Result.TaskState := -1;
+  Result.HardBreak := False;
   Result.Link := '';
   Result.Align := taLeftJustify;
   Result.Kind := ipkText;
   Result.Level := 0;
   Result.Lang := '';
+  Result.MarkdownBlock := 0;
+  Result.TableAlign := '';
+  Result.CellBreak := False;
 end;
 
 function SameInkAttr(const A, B: TInkAttr): boolean;
 begin
   Result := (A.Color = B.Color) and (A.BackColor = B.BackColor) and (A.Size = B.Size) and (A.Face = B.Face) and (A.Style = B.Style) and
-    (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align) and (A.Kind = B.Kind) and (A.Level = B.Level) and (A.Lang = B.Lang);
+    (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align) and (A.Kind = B.Kind) and (A.Level = B.Level) and (A.Lang = B.Lang) and
+    (A.TableAlign = B.TableAlign) and (A.CellBreak = B.CellBreak) and (A.ImageSource = B.ImageSource) and (A.ImageAlt = B.ImageAlt) and
+    (A.ImageTitle = B.ImageTitle) and (A.LinkTitle = B.LinkTitle) and (A.TaskState = B.TaskState) and (A.HardBreak = B.HardBreak);
 end;
 
 { '#RRGGBB' for a real color, '' for the sentinels }
@@ -374,6 +436,9 @@ end;
 
 constructor TInkRichEdit.Create(AOwner: TComponent);
 begin
+  FImages := TStringList.Create;
+  FImages.OwnsObjects := True;
+  FImages.CaseSensitive := True;
   FEditMenu := True;
   inherited Create(AOwner);
   ControlStyle := ControlStyle + [csCaptureMouse, csOpaque, csRequiresKeyboardInput] - [csSetCaption];
@@ -416,6 +481,7 @@ end;
 
 destructor TInkRichEdit.Destroy;
 begin
+  FreeAndNil(FImages);
   FreeAndNil(FMenu);
   ClearUndoList(FUndo);
   ClearUndoList(FRedo);
@@ -429,6 +495,11 @@ class function TInkRichEdit.GetControlClassDefaultSize: TSize;
 begin
   Result.cx := 320;
   Result.cy := 200;
+end;
+
+function TInkRichEdit.IsCellBreak(AIndex: integer): boolean;
+begin
+  Result := (AIndex >= 0) and (AIndex < CharCount) and FAttrs[AIndex].CellBreak;
 end;
 
 function TInkRichEdit.CharCount: integer;
@@ -499,6 +570,269 @@ begin
   SelectionChanged;
 end;
 
+function TInkRichEdit.JumpToAnchor(const Anchor: string): boolean;
+var
+  I, First, N: integer;
+  HeadingText, Base, Slug: string;
+  Slugs: TStringList;
+begin
+  Result := False;
+  Slugs := TStringList.Create;
+  try
+    I := 0;
+    while I < CharCount do
+    begin
+      First := I;
+      HeadingText := '';
+      while (I < CharCount) and (FChars[I] <> #10) do
+      begin
+        HeadingText := HeadingText + FChars[I];
+        Inc(I);
+      end;
+      if ParaKindAt(First) in [ipkH1..ipkH6] then
+      begin
+        Base := MarkdownSlug(HeadingText);
+        Slug := Base;
+        N := 0;
+        while Slugs.IndexOf(Slug) >= 0 do
+        begin
+          Inc(N);
+          Slug := Base + '-' + IntToStr(N);
+        end;
+        Slugs.Add(Slug);
+        if Slug = Anchor then
+        begin
+          MoveCaret(First, False);
+          Exit(True);
+        end;
+      end;
+      Inc(I);
+    end;
+  finally
+    Slugs.Free
+  end;
+end;
+
+procedure TInkRichEdit.ScrollTo(AY: integer);
+begin
+  NeedLayout;
+  FScrollY := EnsureRange(AY, 0, Max(0, FDocHeight - ClientHeight));
+  FVScroll.Position := FScrollY;
+  Invalidate;
+end;
+
+function TInkRichEdit.MarkdownSourceRange(out AFirst, ACount: integer): boolean;
+var
+  Source, DisplayText, Marker: string;
+  Probe: TInkRichEdit;
+  Start, Finish, Last, ObjectCount: integer;
+
+  function FindRange(FromChar, CharCount: integer; out ByteFirst, ByteCount: integer): boolean;
+  var
+    Needle, SearchNeedle, Expected, Candidate, Shown, Token: string;
+    P, N, Attempts, E, NextText, NextEntity, NextTask: integer;
+  begin
+    Result := False;
+    Needle := UTF8Copy(DisplayText, FromChar + 1, CharCount);
+    if Needle = '' then Exit;
+    SearchNeedle := Needle;
+    if (CharCount = 1) and (FromChar < Length(FChars)) and (FAttrs[FromChar].TaskState >= 0) then
+      if FAttrs[FromChar].TaskState = 1 then SearchNeedle := '[x]'
+      else
+        SearchNeedle := '[ ]';
+    Expected := UTF8Copy(DisplayText, 1, FromChar) + Marker + UTF8Copy(DisplayText, FromChar + CharCount + 1, MaxInt);
+    P := 1;
+    Attempts := 0;
+    while P <= Length(Source) do
+    begin
+      NextText := PosEx(SearchNeedle, Source, P);
+      if SearchNeedle = '[x]' then
+      begin
+        NextTask := PosEx('[X]', Source, P);
+        if (NextTask > 0) and ((NextText = 0) or (NextTask < NextText)) then NextText := NextTask;
+      end;
+      NextEntity := 0;
+      if CharCount = 1 then NextEntity := PosEx('&', Source, P);
+      if (NextEntity > 0) and ((NextText = 0) or (NextEntity < NextText)) then
+      begin
+        P := NextEntity;
+        E := P + 1;
+        while (E <= Length(Source)) and (E - P < 34) and not (Source[E] in [';', ' ', #10, #13]) do Inc(E);
+        Token := Copy(Source, P, E - P + 1);
+        if HTMLUnescape(Token) <> Needle then
+        begin
+          Inc(P);
+          Continue;
+        end;
+        N := Length(Token);
+      end
+      else
+      begin
+        P := NextText;
+        if P = 0 then Break;
+        N := Length(SearchNeedle);
+      end;
+      if (CharCount = 1) and (P > 1) and (Source[P - 1] = '\') then
+      begin
+        Dec(P);
+        Inc(N);
+      end;
+      { An entity is one rendered character but several source bytes. }
+      if (CharCount = 1) and (Source[P] = '&') then
+      begin
+        E := P + 1;
+        while (E <= Length(Source)) and (E - P < 34) and not (Source[E] in [';', ' ', #10, #13]) do Inc(E);
+        if (E <= Length(Source)) and (Source[E] = ';') then
+        begin
+          Token := Copy(Source, P, E - P + 1);
+          if HTMLUnescape(Token) = Needle then N := Length(Token);
+        end;
+      end;
+      Candidate := Copy(Source, 1, P - 1) + Marker + Copy(Source, P + N, MaxInt);
+      Probe.LoadMarkdown(Candidate);
+      Shown := StringReplace(Probe.PlainText, LineEnding, #10, [rfReplaceAll]);
+      if Shown = Expected then
+      begin
+        ByteFirst := P;
+        ByteCount := N;
+        Exit(True);
+      end;
+      Inc(P, N);
+      Inc(Attempts);
+      if Attempts >= 128 then Break;
+    end;
+  end;
+
+  function FindImage(CharIndex: integer; out ByteFirst, ByteCount: integer): boolean;
+  var
+    P, E, Attempts: integer;
+    Expected, Candidate, Shown: string;
+  begin
+    Result := False;
+    if (CharIndex < 0) or (CharIndex >= CharCount) or (FAttrs[CharIndex].ImageSource = '') then Exit;
+    Expected := UTF8Copy(DisplayText, 1, CharIndex) + Marker + UTF8Copy(DisplayText, CharIndex + 2, MaxInt);
+    P := Pos('![', Source);
+    Attempts := 0;
+    while P > 0 do
+    begin
+      E := P + 2;
+      while E <= Length(Source) do
+      begin
+        if Source[E] in [']', ')'] then
+        begin
+          Candidate := Copy(Source, 1, P - 1) + Marker + Copy(Source, E + 1, MaxInt);
+          Probe.LoadMarkdown(Candidate);
+          Shown := StringReplace(Probe.PlainText, LineEnding, #10, [rfReplaceAll]);
+          if Shown = Expected then
+          begin
+            ByteFirst := P;
+            ByteCount := E - P + 1;
+            Exit(True);
+          end;
+          Inc(Attempts);
+          if Attempts >= 256 then Exit;
+        end;
+        Inc(E);
+      end;
+      P := PosEx('![', Source, P + 2);
+    end;
+  end;
+
+  function Endpoint(CharIndex, Limit: integer; AtEnd: boolean; out Offset: integer): boolean;
+  var
+    Width, P, N, FirstChar: integer;
+  begin
+    for Width := Min(8, Limit) downto 1 do
+    begin
+      FirstChar := CharIndex;
+      if AtEnd then FirstChar := CharIndex - Width;
+      if FindRange(FirstChar, Width, P, N) then
+      begin
+        Offset := P;
+        if AtEnd then Inc(Offset, N);
+        Exit(True);
+      end;
+    end;
+    Result := False;
+  end;
+
+  function EmptyPosition(out Offset: integer): boolean;
+  var
+    Blocks: TInkMarkdownBlocks;
+    BlockID, P, FirstByte, EndByte, Attempts: integer;
+    Expected, Candidate, Shown: string;
+  begin
+    Result := False;
+    Expected := UTF8Copy(DisplayText, 1, GetSelStart) + Marker + UTF8Copy(DisplayText, GetSelStart + 1, MaxInt);
+    FirstByte := 1;
+    EndByte := Length(Source) + 1;
+    Blocks := MarkdownBlocks(Source, [imoInlineHTML]);
+    BlockID := 0;
+    if GetSelStart < CharCount then BlockID := FAttrs[GetSelStart].MarkdownBlock
+    else if CharCount > 0 then BlockID := FAttrs[CharCount - 1].MarkdownBlock;
+    if (BlockID > 0) and (BlockID <= Length(Blocks)) then
+    begin
+      FirstByte := Blocks[BlockID - 1].First;
+      EndByte := FirstByte + Blocks[BlockID - 1].Count;
+    end;
+    Attempts := 0;
+    for P := FirstByte to EndByte do
+      if (P > Length(Source)) or (Source[P] in [' ', #9, #10, #13, '|']) then
+      begin
+        Candidate := Copy(Source, 1, P - 1) + Marker + Copy(Source, P, MaxInt);
+        Probe.LoadMarkdown(Candidate);
+        Shown := StringReplace(Probe.PlainText, LineEnding, #10, [rfReplaceAll]);
+        if Shown = Expected then
+        begin
+          Offset := P;
+          Exit(True);
+        end;
+        Inc(Attempts);
+        if Attempts >= 256 then Break;
+      end;
+  end;
+
+begin
+  AFirst := 0;
+  ACount := 0;
+  Source := AsMarkdown;
+  DisplayText := StringReplace(PlainText, LineEnding, #10, [rfReplaceAll]);
+  Marker := 'LazInkSourcePosition';
+  while Pos(Marker, Source) > 0 do Marker := Marker + 'X';
+  Probe := TInkRichEdit.Create(nil);
+  try
+    if GetSelLength = 0 then
+    begin
+      Start := GetSelStart;
+      if FindImage(Start, AFirst, ObjectCount) then Exit(True);
+      if FindImage(Start - 1, AFirst, ObjectCount) then
+      begin
+        Inc(AFirst, ObjectCount);
+        Exit(True);
+      end;
+      Result := Endpoint(Start, CharCount - Start, False, AFirst) or Endpoint(Start, Start, True, AFirst) or EmptyPosition(AFirst);
+      Exit;
+    end;
+    if (GetSelLength = 1) and FindImage(GetSelStart, AFirst, ACount) then Exit(True);
+    if FindRange(GetSelStart, GetSelLength, AFirst, ACount) then Exit(True);
+    Start := GetSelStart;
+    Last := Start + GetSelLength;
+    Result := Endpoint(Start, GetSelLength, False, AFirst) and Endpoint(Last, GetSelLength, True, Finish);
+    if Result then
+    begin
+      ACount := Finish - AFirst;
+      Result := ACount > 0;
+    end;
+  finally
+    Probe.Free
+  end;
+end;
+
+procedure TInkRichEdit.GoToSource;
+begin
+  if Assigned(FOnGoToSource) then FOnGoToSource(Self);
+end;
+
 procedure TInkRichEdit.SelectAll;
 begin
   FAnchor := 0;
@@ -529,7 +863,7 @@ var
 begin
   if A.Face <> '' then
     Canvas.Font.Name := A.Face
-  else if A.Kind = ipkCode then
+  else if A.Kind in [ipkCode, ipkSource] then
     Canvas.Font.Name := InkMonoFace
   else
     Canvas.Font.Name := Font.Name;
@@ -624,10 +958,62 @@ begin
   end;
 end;
 
+procedure TInkRichEdit.SetImageBaseURI(const Value: string);
+begin
+  if FImageBase = Value then Exit;
+  FImageBase := Value;
+  FImages.Clear;
+  InvalidateLayout;
+end;
+
+function TInkRichEdit.ImagePicture(const Source: string): TPicture;
+var
+  I: integer;
+  Address, FileName: string;
+begin
+  I := FImages.IndexOf(Source);
+  if I >= 0 then Exit(TPicture(FImages.Objects[I]));
+  Result := TPicture.Create;
+  FImages.AddObject(Source, Result);
+  try
+    if Assigned(FOnImageNeeded) then FOnImageNeeded(Self, Source, Result);
+    if Result.Graphic <> nil then Exit;
+    if not ResolveRelativeURI(FImageBase, Source, Address) then Address := Source;
+    if not URIToFilename(Address, FileName) then FileName := Address;
+    if FileExists(FileName) then Result.LoadFromFile(FileName);
+  except
+    on E: Exception do Result.Clear;
+  end;
+end;
+
+function TInkRichEdit.ImageWidth(AIndex: integer): integer;
+var
+  Picture: TPicture;
+begin
+  Picture := ImagePicture(FAttrs[AIndex].ImageSource);
+  if Picture.Width > 0 then Result := Min(Picture.Width, LineTextWidth)
+  else
+    Result := Min(LineTextWidth, Max(32, Canvas.TextWidth(FAttrs[AIndex].ImageAlt) + 8));
+end;
+
+function TInkRichEdit.ImageHeight(AIndex: integer): integer;
+var
+  Picture: TPicture;
+begin
+  Picture := ImagePicture(FAttrs[AIndex].ImageSource);
+  if Picture.Width > 0 then Result := Max(1, Round(Picture.Height * (ImageWidth(AIndex) / Picture.Width)))
+  else
+    Result := Canvas.TextHeight('Ag') + 8;
+end;
+
 function TInkRichEdit.MeasureChar(AIndex: integer): integer;
 begin
   if FChars[AIndex] = #10 then
     Result := 0
+  else if FAttrs[AIndex].TaskState >= 0 then
+    Result := HTMLTextExtentOpt(Canvas, Rect(0, 0, 100, 100), [], InkCheckboxMarkup(FAttrs[AIndex].TaskState = 1), DefaultHTMLOptions).cx
+  else if FAttrs[AIndex].ImageSource <> '' then
+    Result := ImageWidth(AIndex)
   else
     Result := Canvas.TextWidth(FChars[AIndex]);
 end;
@@ -685,6 +1071,11 @@ var
         H := Canvas.TextHeight('Ag');
         Asc := H - (H div 5);
       end;
+      if FAttrs[j].ImageSource <> '' then
+      begin
+        H := ImageHeight(j);
+        Asc := H;
+      end;
       // a raised run needs headroom above it, a lowered one below
       Rise := 0;
       if FAttrs[j].Script = isSuperscript then
@@ -740,8 +1131,22 @@ var
     - the caret, clicks, selection - keeps working through FCharX/FCharW. }
   procedure LayTableGroup;
   var
-    GEnd, j, c, NCols, RowStart, CellW, ColCount: integer;
+    GEnd, j, c, NCols, RowStart, CellW, ColCount, CellFirst: integer;
     ColW, ColX: array of integer;
+
+    procedure AlignCell(AEnd: integer);
+    var
+      K, Extra: integer;
+      A: char;
+    begin
+      if (c >= NCols) or (CellFirst >= AEnd) then Exit;
+      A := '-';
+      if c < Length(FAttrs[CellFirst].TableAlign) then A := FAttrs[CellFirst].TableAlign[c + 1];
+      Extra := Max(0, ColX[c + 1] - cCellPad - X);
+      if A = 'c' then Extra := Extra div 2
+      else if A <> 'r' then Exit;
+      for K := CellFirst to AEnd - 1 do Inc(FCharX[K], Extra);
+    end;
 
     procedure CloseCell;
     begin
@@ -773,11 +1178,11 @@ var
     CellW := 0;
     for j := i to GEnd - 1 do
     begin
-      if (FChars[j] = #10) or (FChars[j] = '|') then
+      if (FChars[j] = #10) or IsCellBreak(j) then
       begin
         FCharW[j] := 0;
         CloseCell;
-        if FChars[j] = '|' then Inc(c)
+        if IsCellBreak(j) then Inc(c)
         else
           c := 0;
         Continue;
@@ -802,22 +1207,27 @@ var
 
     { pass 2: place each row and emit its line }
     RowStart := i;
+    CellFirst := i;
     c := 0;
     X := ColX[0] + cCellPad;
     for j := i to GEnd - 1 do
     begin
       if FChars[j] = #10 then
       begin
+        AlignCell(j);
         FCharX[j] := X;
         FCharW[j] := 0;
         EmitLine(RowStart, j - RowStart + 1);
         RowStart := j + 1;
+        CellFirst := j + 1;
         c := 0;
         X := ColX[0] + cCellPad;
         Continue;
       end;
-      if FChars[j] = '|' then
+      if IsCellBreak(j) then
       begin
+        AlignCell(j);
+        CellFirst := j + 1;
         FCharX[j] := X;
         ColCount := Min(c + 1, NCols);
         FCharW[j] := Max(0, ColX[ColCount] + cCellPad - X);
@@ -828,7 +1238,11 @@ var
       FCharX[j] := X;
       Inc(X, FCharW[j]);
     end;
-    if RowStart < GEnd then EmitLine(RowStart, GEnd - RowStart);
+    if RowStart < GEnd then
+    begin
+      AlignCell(GEnd);
+      EmitLine(RowStart, GEnd - RowStart);
+    end;
     TableRowW := 0;
 
     { the main loop picks up after the group }
@@ -1171,7 +1585,7 @@ begin
         Canvas.Line(L.Left + L.Width - 1, LT, L.Left + L.Width - 1, LB);
         { and a line where each '|' hands one cell to the next }
         for BX := L.First to L.First + L.Count - 1 do
-          if (BX < CharCount) and (FChars[BX] = '|') then
+          if (BX < CharCount) and IsCellBreak(BX) then
             Canvas.Line(L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LT,
               L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LB);
       end;
@@ -1185,7 +1599,8 @@ begin
             RunAsc := tm.Ascender
           else
             RunAsc := Canvas.TextHeight('Ag') * 4 div 5;
-          if ParaKindAt(L.First) = ipkBullet then
+          if FAttrs[L.First].TaskState >= 0 then S := ''
+          else if ParaKindAt(L.First) = ipkBullet then
             S := #$E2#$80#$A2' '
           else
             S := IntToStr(ParaNumber(L.First)) + '. ';
@@ -1197,7 +1612,7 @@ begin
     i := L.First;
     while i < LineEndIdx do
     begin
-      if (FChars[i] = #10) or (IsTbl and (FChars[i] = '|')) then
+      if (FChars[i] = #10) or (IsTbl and IsCellBreak(i)) then
       begin
         // a selected paragraph break shows as a thin bar, so selecting across
         // paragraphs looks like it selected something; a table's '|' draws
@@ -1213,9 +1628,42 @@ begin
         Continue;
       end;
 
+      if FAttrs[i].TaskState >= 0 then
+      begin
+        Canvas.Font := Font;
+        HTMLDrawOpt(Canvas, Rect(L.Left + FCharX[i], L.Top - FScrollY, L.Left + FCharX[i] + FCharW[i], L.Top - FScrollY + L.Height), [],
+          InkCheckboxMarkup(FAttrs[i].TaskState = 1), DefaultHTMLOptions);
+        Inc(i);
+        Continue;
+      end;
+
+      if FAttrs[i].ImageSource <> '' then
+      begin
+        RunTop := BaseY - ImageHeight(i);
+        if ImagePicture(FAttrs[i].ImageSource).Graphic <> nil then
+          Canvas.StretchDraw(Rect(L.Left + FCharX[i], RunTop, L.Left + FCharX[i] + FCharW[i], BaseY), ImagePicture(FAttrs[i].ImageSource).Graphic)
+        else
+        begin
+          Canvas.Brush.Style := bsClear;
+          Canvas.Pen.Color := clGray;
+          Canvas.Rectangle(L.Left + FCharX[i], RunTop, L.Left + FCharX[i] + FCharW[i], BaseY);
+          Canvas.Font := Font;
+          Canvas.Font.Color := Font.Color;
+          Canvas.TextOut(L.Left + FCharX[i] + 4, RunTop + 4, FAttrs[i].ImageAlt);
+        end;
+        if IsSel(i) then
+        begin
+          Canvas.Brush.Style := bsClear;
+          Canvas.Pen.Color := clHighlight;
+          Canvas.Rectangle(L.Left + FCharX[i], RunTop, L.Left + FCharX[i] + FCharW[i], BaseY);
+        end;
+        Inc(i);
+        Continue;
+      end;
+
       RunSel := IsSel(i);
       RunEnd := i;
-      while (RunEnd + 1 < LineEndIdx) and (FChars[RunEnd + 1] <> #10) and not (IsTbl and (FChars[RunEnd + 1] = '|')) and
+      while (RunEnd + 1 < LineEndIdx) and (FChars[RunEnd + 1] <> #10) and not (IsTbl and IsCellBreak(RunEnd + 1)) and
         SameInkAttr(EffAttr(RunEnd + 1), EffAttr(i)) and (IsSel(RunEnd + 1) = RunSel) do
         Inc(RunEnd);
 
@@ -1356,6 +1804,22 @@ begin
   Result := FDocHeight;
 end;
 
+procedure TInkRichEdit.InsertImage(const Source, AltText: string; const Title: string);
+var
+  A: TInkAttr;
+begin
+  if FReadOnly or (Trim(Source) = '') or (SelParaKind in [ipkCode, ipkSource]) then Exit;
+  PushUndo(False);
+  A := AttrAtCaret;
+  A.Face := '';
+  A.Style := [];
+  A.ImageSource := Source;
+  A.ImageAlt := AltText;
+  A.ImageTitle := Title;
+  if GetSelLength > 0 then DeleteSelection;
+  DoInsert(#$EF#$BF#$BC, A);
+end;
+
 procedure TInkRichEdit.InsertPlainText(const AText: string);
 var
   A: TInkAttr;
@@ -1363,8 +1827,8 @@ var
 begin
   if FReadOnly then Exit;
   PushUndo(False);
-  if GetSelLength > 0 then DeleteSelection;
   A := AttrAtCaret;
+  if GetSelLength > 0 then DeleteSelection;
   Clean := StringReplace(AText, #13#10, #10, [rfReplaceAll]);
   Clean := StringReplace(Clean, #13, #10, [rfReplaceAll]);
   DoInsert(Clean, A);
@@ -1376,6 +1840,8 @@ begin
     Exit(FTypingAttr);
   if GetSelLength > 0 then
     Result := FAttrs[GetSelStart]
+  else if (FCaret < CharCount) and ((FCaret = 0) or (FChars[FCaret - 1] = #10)) then
+    Result := FAttrs[FCaret]
   else if (FCaret > 0) and (FCaret <= CharCount) then
     { inherit from the character to the left; right after a break that is
       the #10 itself, which carries its paragraph's kind, level and
@@ -1386,13 +1852,20 @@ begin
   else
     Result := DefaultInkAttr;
   Result.Link := '';                  // typing never extends a link by accident
+  Result.CellBreak := False;
+  Result.ImageSource := '';
+  Result.ImageAlt := '';
+  Result.ImageTitle := '';
+  Result.LinkTitle := '';
+  Result.TaskState := -1;
+  Result.HardBreak := False;
 end;
 
 procedure TInkRichEdit.DoInsert(const AText: string; const AAttr: TInkAttr);
 var
   Incoming: array of string;
   P: PChar;
-  CharLen, N, i, Old: integer;
+  CharLen, N, i, Old, BlockID: integer;
 begin
   if AText = '' then Exit;
   N := 0;
@@ -1407,6 +1880,13 @@ begin
   end;
   if N = 0 then Exit;
 
+  BlockID := AAttr.MarkdownBlock;
+  if (BlockID = 0) and (Length(FMarkdownOriginals) > 0) then
+  begin
+    BlockID := 1;
+    if FCaret > 0 then BlockID := FAttrs[FCaret - 1].MarkdownBlock
+    else if CharCount > 0 then BlockID := FAttrs[0].MarkdownBlock;
+  end;
   Old := CharCount;
   SetLength(FChars, Old + N);
   SetLength(FAttrs, Old + N);
@@ -1419,6 +1899,8 @@ begin
   begin
     FChars[FCaret + i] := Incoming[i];
     FAttrs[FCaret + i] := AAttr;
+    FAttrs[FCaret + i].MarkdownBlock := BlockID;
+    FAttrs[FCaret + i].CellBreak := AAttr.CellBreak and (Incoming[i] = '|');
   end;
   Inc(FCaret, N);
   FAnchor := FCaret;
@@ -1427,7 +1909,7 @@ end;
 
 procedure TInkRichEdit.DoDelete(AFrom, ATo: integer);
 var
-  i, N: integer;
+  i, N, PS, PE, BlockID: integer;
 begin
   if ATo <= AFrom then Exit;
   if AFrom < 0 then AFrom := 0;
@@ -1440,6 +1922,16 @@ begin
   end;
   SetLength(FChars, CharCount - N);
   SetLength(FAttrs, Length(FChars));
+  { Joining paragraphs makes the remaining paragraph one source block. }
+  PS := AFrom;
+  while (PS > 0) and (FChars[PS - 1] <> #10) do Dec(PS);
+  PE := AFrom;
+  while (PE < CharCount) and (FChars[PE] <> #10) do Inc(PE);
+  if PS < PE then
+  begin
+    BlockID := FAttrs[PS].MarkdownBlock;
+    for i := PS to PE - 1 do FAttrs[i].MarkdownBlock := BlockID;
+  end;
   FCaret := AFrom;
   FAnchor := AFrom;
   Changed;
@@ -1499,7 +1991,7 @@ begin
     while (PE < CharCount) and (FChars[PE] <> #10) do Inc(PE);
     i := 0;                               { the row's cells, and its words }
     for K := PS to PE - 1 do
-      if FChars[K] = '|' then Inc(i)
+      if IsCellBreak(K) then Inc(i)
       else if FChars[K] <> ' ' then i := i or $10000;
     if i and $10000 = 0 then
     begin
@@ -1518,6 +2010,7 @@ begin
     end;
     { a new body row with the same columns, the caret in its first cell }
     A.Kind := ipkTableRow;
+    A.CellBreak := True;
     A.Link := '';
     MoveCaret(PE, False);
     DoInsert(#10 + StringOfChar('|', i and $FFFF), A);
@@ -1595,11 +2088,15 @@ begin
   if (FCaret > 0) and (FChars[FCaret - 1] <> #10) then DoInsert(#10, A);
   Home := FCaret;
   TA := A;
+  TA.CellBreak := True;
   TA.Kind := ipkTableHead;
   DoInsert(RowTxt, TA);
-  TA.Kind := ipkTableRow;
   for r := 1 to ARows do
-    DoInsert(#10 + RowTxt, TA);
+  begin
+    DoInsert(#10, TA);
+    TA.Kind := ipkTableRow;
+    DoInsert(RowTxt, TA);
+  end;
   { and plain text follows it - the break belongs to the last row }
   if (FCaret >= CharCount) or (FChars[FCaret] <> #10) then
     DoInsert(#10, TA);
@@ -1861,11 +2358,18 @@ var
   i: integer;
   Keep: TAlignment;
   KeepKind: TInkParaKind;
+  KeepAttr: TInkAttr;
 begin
   if FReadOnly then Exit;
   if GetSelLength = 0 then
   begin
+    KeepAttr := AttrAtCaret;
     FTypingAttr := DefaultInkAttr;
+    FTypingAttr.Kind := KeepAttr.Kind;
+    FTypingAttr.Level := KeepAttr.Level;
+    FTypingAttr.Lang := KeepAttr.Lang;
+    FTypingAttr.TableAlign := KeepAttr.TableAlign;
+    FTypingAttr.MarkdownBlock := KeepAttr.MarkdownBlock;
     FHasTypingAttr := True;
     SelectionChanged;
     Exit;
@@ -1873,11 +2377,23 @@ begin
   PushUndo(False);
   for i := GetSelStart to GetSelStart + GetSelLength - 1 do
   begin
+    KeepAttr := FAttrs[i];
     Keep := FAttrs[i].Align;          // alignment is not character formatting
     KeepKind := FAttrs[i].Kind;       // and neither is what the paragraph is
     FAttrs[i] := DefaultInkAttr;
     FAttrs[i].Align := Keep;
     FAttrs[i].Kind := KeepKind;
+    FAttrs[i].Level := KeepAttr.Level;
+    FAttrs[i].Lang := KeepAttr.Lang;
+    FAttrs[i].MarkdownBlock := KeepAttr.MarkdownBlock;
+    FAttrs[i].TableAlign := KeepAttr.TableAlign;
+    FAttrs[i].CellBreak := KeepAttr.CellBreak;
+    FAttrs[i].ImageSource := KeepAttr.ImageSource;
+    FAttrs[i].ImageAlt := KeepAttr.ImageAlt;
+    FAttrs[i].ImageTitle := KeepAttr.ImageTitle;
+    FAttrs[i].LinkTitle := KeepAttr.LinkTitle;
+    FAttrs[i].TaskState := KeepAttr.TaskState;
+    FAttrs[i].HardBreak := KeepAttr.HardBreak;
   end;
   FModified := True;
   FMarkupDirty := True;
@@ -1938,6 +2454,18 @@ begin
   Result := FAttrs[A].Size;
   for i := A + 1 to B - 1 do
     if FAttrs[i].Size <> Result then Exit(0);
+end;
+
+function TInkRichEdit.SelLink: string;
+var
+  I, A, B: integer;
+begin
+  A := GetSelStart;
+  B := A + GetSelLength;
+  if A >= CharCount then Exit('');
+  Result := FAttrs[A].Link;
+  for I := A + 1 to B - 1 do
+    if FAttrs[I].Link <> Result then Exit('');
 end;
 
 function TInkRichEdit.SelFace: string;
@@ -2037,7 +2565,7 @@ var
     if not ABack then
     begin
       C := FCaret;
-      while (C < RE) and (FChars[C] <> '|') do Inc(C);
+      while (C < RE) and (not IsCellBreak(C)) do Inc(C);
       if C < RE then
         MoveCaret(C + 1, False)
       else if (RE + 1 < CharCount) and (FAttrs[RE + 1].Kind in [ipkTableHead, ipkTableRow]) and (FChars[RE] = #10) then
@@ -2053,14 +2581,14 @@ var
     begin
       { the start of this cell, or of the one before it, or of the row above }
       C := FCaret - 1;
-      while (C >= RS) and (FChars[C] <> '|') do Dec(C);
+      while (C >= RS) and (not IsCellBreak(C)) do Dec(C);
       if C >= RS then
       begin
         { at a cell's own start already?  then the cell before it }
         if C + 1 = FCaret then
         begin
           Dec(C);
-          while (C >= RS) and (FChars[C] <> '|') do Dec(C);
+          while (C >= RS) and (not IsCellBreak(C)) do Dec(C);
         end;
         if C >= RS then MoveCaret(C + 1, False)
         else
@@ -2072,7 +2600,7 @@ var
       begin
         { the last cell of the row above }
         C := RS - 2;
-        while (C >= 0) and (FChars[C] <> #10) and (FChars[C] <> '|') do Dec(C);
+        while (C >= 0) and (FChars[C] <> #10) and (not IsCellBreak(C)) do Dec(C);
         MoveCaret(C + 1, False);
       end;
     end;
@@ -2281,13 +2809,80 @@ end;
 
 { -------------------------------------------------------------------- mouse }
 
-procedure TInkRichEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
+procedure TInkRichEdit.ToggleTask;
+var
+  I: integer;
 begin
+  if FReadOnly then Exit;
+  I := GetSelStart;
+  while (I > 0) and (FChars[I - 1] <> #10) do Dec(I);
+  if (I >= CharCount) or (FAttrs[I].TaskState < 0) then Exit;
+  PushUndo(False);
+  FAttrs[I].TaskState := 1 - FAttrs[I].TaskState;
+  if FAttrs[I].TaskState = 1 then FChars[I] := #$E2#$98#$91
+  else
+    FChars[I] := #$E2#$98#$90;
+  Changed;
+end;
+
+function TInkRichEdit.SelectImageAt(X, Y: integer): boolean;
+var
+  I, J, L, ImageLeft, ImageBottom: integer;
+begin
+  Result := False;
+  I := PointToCaret(X, Y);
+  for J := Max(0, I - 1) to Min(CharCount - 1, I) do
+    if FAttrs[J].ImageSource <> '' then
+    begin
+      L := LineOfChar(J);
+      ImageLeft := FLines[L].Left + FCharX[J];
+      ImageBottom := FLines[L].Top + FLines[L].Ascent - FScrollY;
+      if (X >= ImageLeft) and (X < ImageLeft + FCharW[J]) and (Y >= ImageBottom - ImageHeight(J)) and (Y < ImageBottom) then
+      begin
+        FAnchor := J;
+        FCaret := J + 1;
+        FHasTypingAttr := False;
+        Invalidate;
+        SelectionChanged;
+        Exit(True);
+      end;
+    end;
+end;
+
+procedure TInkRichEdit.ContextAt(X, Y: integer);
+var
+  I: integer;
+begin
+  if SelectImageAt(X, Y) then Exit;
+  I := PointToCaret(X, Y);
+  if (GetSelLength = 0) or (I < GetSelStart) or (I > GetSelStart + GetSelLength) then
+    MoveCaret(I, False);
+end;
+
+procedure TInkRichEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
+var
+  I: integer;
+  P: TPoint;
+begin
+  if Button = mbRight then ContextAt(X, Y);
   inherited MouseDown(Button, Shift, X, Y);
   if Button = mbLeft then
   begin
     if CanSetFocus then SetFocus;
     FCaret := PointToCaret(X, Y);
+    I := FCaret;
+    if (I = CharCount) or ((I < CharCount) and (FAttrs[I].TaskState < 0)) then Dec(I);
+    if (I >= 0) and (FAttrs[I].TaskState >= 0) and (Shift = []) then
+    begin
+      P := CaretPoint(I);
+      if (X >= P.X) and (X < P.X + FCharW[I]) then
+      begin
+        FCaret := I;
+        FAnchor := I;
+        ToggleTask;
+        Exit;
+      end;
+    end;
     if not (ssShift in Shift) then FAnchor := FCaret;
     FGoalX := -1;
     FHasTypingAttr := False;
@@ -2391,6 +2986,7 @@ begin
         if Assigned(FOnChange) then FOnChange(Self);
       end;
     7: SelectAll;
+    8: GoToSource;
   end;
 end;
 
@@ -2411,6 +3007,7 @@ var
   end;
 
 begin
+  if (MousePos.X >= 0) and (MousePos.Y >= 0) then ContextAt(MousePos.X, MousePos.Y);
   inherited DoContextPopup(MousePos, Handled);
   if Handled or (PopupMenu <> nil) or not FEditMenu then Exit;
   Handled := True;
@@ -2431,7 +3028,18 @@ begin
   end;
   AddItem('-', 0, True);
   AddItem(SInkEditSelectAll, 7, CharCount > 0);
-  P := ClientToScreen(MousePos);
+  if Assigned(FOnGoToSource) then
+  begin
+    AddItem('-', 0, True);
+    AddItem(SInkRichGoToSource, 8, True);
+  end;
+  P := MousePos;
+  if (P.X < 0) or (P.Y < 0) then
+  begin
+    P := CaretPoint(FCaret);
+    Dec(P.Y, FScrollY);
+  end;
+  P := ClientToScreen(P);
   FMenu.PopUp(P.X, P.Y);
 end;
 
@@ -2459,7 +3067,11 @@ begin
   if (gClipText <> '') and (Length(gClipAttrs) > 0) and (StringReplace(gClipText, LineEnding, #10, [rfReplaceAll]) = S) then
     for i := 0 to Length(gClipAttrs) - 1 do
       if At + i < CharCount then
-        FAttrs[At + i] := gClipAttrs[i];
+      begin
+        A := gClipAttrs[i];
+        A.MarkdownBlock := FAttrs[At + i].MarkdownBlock;
+        FAttrs[At + i] := A;
+      end;
   InvalidateLayout;
 end;
 
@@ -2606,6 +3218,8 @@ var
 begin
   FSettingMarkup := True;
   try
+    FMarkdownSource := '';
+    SetLength(FMarkdownOriginals, 0);
     SetLength(FChars, 0);
     SetLength(FAttrs, 0);
     for i := 0 to FMarkup.Count - 1 do
@@ -2661,7 +3275,7 @@ var
     SetLength(Stack, Length(Stack) - 1);
   end;
 
-  procedure Emit(const S: string);
+  procedure Emit(const S: string; Dividers: boolean = True);
   var
     Q: PChar;
     CharLen, Old, k: integer;
@@ -2680,17 +3294,19 @@ var
       CharLen := UTF8CodepointSize(Q);
       SetString(FChars[k], Q, CharLen);
       FAttrs[k] := Cur;
+      FAttrs[k].CellBreak := Dividers and (Cur.Kind in [ipkTableHead, ipkTableRow]) and (FChars[k] = '|');
       Inc(k);
       Inc(Q, CharLen);
     end;
   end;
 
-  procedure EmitBreak;
+  procedure EmitBreak(AHard: boolean = False);
   begin
     SetLength(FChars, CharCount + 1);
     SetLength(FAttrs, Length(FChars));
     FChars[High(FChars)] := #10;
     FAttrs[High(FAttrs)] := Cur;
+    FAttrs[High(FAttrs)].HardBreak := AHard;
   end;
 
   { The value of APropName inside ATag, in the case it was written in - a font
@@ -2758,7 +3374,8 @@ begin
         Inc(N);
       end;
 
-      if (Nm = 'BR') or (Nm = 'P') or (Nm = '/P') then
+      if Nm = 'BR' then EmitBreak(True)
+      else if (Nm = 'P') or (Nm = '/P') then
         EmitBreak
       else if Nm = 'B' then
       begin
@@ -2828,21 +3445,48 @@ begin
         Cur.Kind := ipkCode;
         Cur.Lang := PropOf(TagStr, 'LANG');
       end
+      else if Nm = 'MDSOURCE' then
+      begin
+        Push;
+        Cur.Kind := ipkSource;
+      end
       else if Nm = 'TH' then
       begin
         Push;
         Cur.Kind := ipkTableHead;
+        Cur.TableAlign := PropOf(TagStr, 'COLUMNS');
       end
       else if Nm = 'TR' then
       begin
         Push;
         Cur.Kind := ipkTableRow;
+        Cur.TableAlign := PropOf(TagStr, 'COLUMNS');
+      end
+      else if Nm = 'CHECKBOX' then
+      begin
+        Push;
+        Cur.TaskState := 0;
+        if PropOf(TagStr, 'CHECKED') = '1' then Cur.TaskState := 1;
+        if Cur.TaskState = 1 then Emit(#$E2#$98#$91)
+        else
+          Emit(#$E2#$98#$90);
+        Pop;
+      end
+      else if Nm = 'IMG' then
+      begin
+        Push;
+        Cur.ImageSource := HTMLUnescape(PropOf(TagStr, 'SRC'));
+        Cur.ImageAlt := HTMLUnescape(PropOf(TagStr, 'ALT'));
+        Cur.ImageTitle := HTMLUnescape(PropOf(TagStr, 'TITLE'));
+        if Cur.ImageSource <> '' then Emit(#$EF#$BF#$BC);
+        Pop;
       end
       else if Nm = 'A' then
       begin
         Push;
         Val := PropOf(TagStr, 'HREF');
-        if Val <> '' then Cur.Link := Val;
+        if Val <> '' then Cur.Link := HTMLUnescape(Val);
+        Cur.LinkTitle := HTMLUnescape(PropOf(TagStr, 'TITLE'));
       end
       else if Nm = 'FONT' then
       begin
@@ -2865,8 +3509,17 @@ begin
     end;
 
     Start := P;
-    while (P <= Len) and (Body[P] <> '<') do Inc(P);
-    Emit(HTMLUnescape(Copy(Body, Start, P - Start)));
+    if Body[P] = '&' then
+    begin
+      while (P <= Len) and not (Body[P] in [';', '<', ' ', #10]) do Inc(P);
+      if (P <= Len) and (Body[P] = ';') then Inc(P);
+      Emit(HTMLUnescape(Copy(Body, Start, P - Start)), False);
+    end
+    else
+    begin
+      while (P <= Len) and not (Body[P] in ['<', '&']) do Inc(P);
+      Emit(Copy(Body, Start, P - Start));
+    end;
   end;
 end;
 
@@ -2893,7 +3546,7 @@ var
   ParaAlign: TAlignment;
   ParaKind: TInkParaKind;
   ParaLevel: integer;
-  ParaLang: string;
+  ParaLang, ParaColumns: string;
 
   procedure CloseDownTo(ALevel: integer);
   var
@@ -2918,7 +3571,11 @@ var
   begin
     NWant := 0;
     if A.Link <> '' then
-      AddWant('a', '<a href="' + A.Link + '">');
+    begin
+      F := '<a href="' + HTMLEscape(A.Link) + '"';
+      if A.LinkTitle <> '' then F := F + ' title="' + HTMLEscape(A.LinkTitle) + '"';
+      AddWant('a', F + '>');
+    end;
     F := '';
     C := InkColorToHTML(A.Color);
     if C <> '' then F := F + ' color="' + C + '"';
@@ -2983,7 +3640,7 @@ var
   procedure EndParagraph;
   const
     cKindTag: array[TInkParaKind] of string =
-      ('', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'oli', 'blockquote', 'pre', 'th', 'tr');
+      ('', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'oli', 'blockquote', 'pre', 'th', 'tr', 'mdsource');
   begin
     CloseDownTo(0);
     case ParaAlign of
@@ -3000,6 +3657,8 @@ var
         Body := Body + ' level="' + IntToStr(ParaLevel) + '"';
       if (ParaKind = ipkCode) and (ParaLang <> '') then
         Body := Body + ' lang="' + ParaLang + '"';
+      if (ParaKind in [ipkTableHead, ipkTableRow]) and (ParaColumns <> '') then
+        Body := Body + ' columns="' + ParaColumns + '"';
       Line := Body + '>' + Line + '</' + cKindTag[ParaKind] + '>';
     end;
     FMarkup.Add(Line);
@@ -3032,9 +3691,18 @@ begin
     else
       ParaLang := '';
 
+    ParaColumns := '';
+    if CharCount > 0 then ParaColumns := FAttrs[0].TableAlign;
     i := 0;
     while i <= CharCount do
     begin
+      if (i < CharCount) and (FChars[i] = #10) and FAttrs[i].HardBreak then
+      begin
+        CloseDownTo(0);
+        Line := Line + '<br>';
+        Inc(i);
+        Continue;
+      end;
       if (i = CharCount) or (FChars[i] = #10) then
       begin
         EndParagraph;
@@ -3045,6 +3713,7 @@ begin
           ParaKind := FAttrs[i].Kind;
           ParaLevel := FAttrs[i].Level;
           ParaLang := FAttrs[i].Lang;
+          ParaColumns := FAttrs[i].TableAlign;
         end
         else
         begin
@@ -3052,6 +3721,7 @@ begin
           ParaKind := ipkText;
           ParaLevel := 0;
           ParaLang := '';
+          ParaColumns := '';
         end;
         Continue;
       end;
@@ -3077,8 +3747,18 @@ begin
 
       Body := '';
       for k := i to RunEnd do
-        Body := Body + FChars[k];
-      Line := Line + HTMLEscape(Body);
+        if FAttrs[k].TaskState >= 0 then Body := Body + InkCheckboxMarkup(FAttrs[k].TaskState = 1)
+        else if FAttrs[k].ImageSource <> '' then
+        begin
+          Body := Body + '<img src="' + HTMLEscape(FAttrs[k].ImageSource) + '" alt="' + HTMLEscape(FAttrs[k].ImageAlt) + '"';
+          if FAttrs[k].ImageTitle <> '' then Body := Body + ' title="' + HTMLEscape(FAttrs[k].ImageTitle) + '"';
+          Body := Body + '>';
+        end
+        else if (FChars[k] = '|') and (FAttrs[k].Kind in [ipkTableHead, ipkTableRow]) and not IsCellBreak(k) then
+          Body := Body + '&#124;'
+        else
+          Body := Body + HTMLEscape(FChars[k]);
+      Line := Line + Body;
       i := RunEnd + 1;
     end;
     FMarkupDirty := False;
@@ -3101,11 +3781,8 @@ begin
   end;
 end;
 
-{ The blocks of MarkdownToHTML's output, re-spoken as the editor's own
-  markup lines: one line per paragraph, wrapped in the editor's paragraph
-  tags, inline content flattened through HTMLToInk.  Nested lists flatten
-  to one level, and a table becomes plain rows - the editor has no tables
-  yet. }
+{ Project HTML blocks into the editor's paragraphs while retaining list
+  levels, table structure, images and inline character formatting. }
 procedure MarkdownHTMLToParagraphs(const H: string; AOut: TStrings; AListLevel: integer = 0);
 var
   P, Q, Depth: integer;
@@ -3185,7 +3862,7 @@ var
     Ink, CloseName: string;
     SP: integer;
   begin
-    Ink := Trim(HTMLToInk(AInner));
+    Ink := Trim(HTMLToInk(AInner, True));
     if AWrap = '' then
       AOut.Add(Ink)
     else
@@ -3245,7 +3922,7 @@ var
   procedure AddTable(const AInner: string);
   var
     TP, CE: integer;
-    N, Row, Cell: string;
+    N, Row, Cell, Tag, Alignments, Columns: string;
     C, IsHead: boolean;
     Cells: TStringList;
 
@@ -3258,18 +3935,23 @@ var
       for K := 0 to Cells.Count - 1 do
       begin
         if K > 0 then Row := Row + '|';
-        Row := Row + Trim(HTMLToInk(Cells[K]));
+        Row := Row + StringReplace(Trim(HTMLToInk(Cells[K], True)), '|', '&#124;', [rfReplaceAll]);
       end;
+      Columns := '';
+      if StringReplace(Alignments, '-', '', [rfReplaceAll]) <> '' then
+        Columns := ' columns="' + Alignments + '"';
       if IsHead then
-        AOut.Add('<th>' + Row + '</th>')
+        AOut.Add('<th' + Columns + '>' + Row + '</th>')
       else
-        AOut.Add('<tr>' + Row + '</tr>');
+        AOut.Add('<tr' + Columns + '>' + Row + '</tr>');
       Cells.Clear;
       IsHead := False;
+      Alignments := '';
     end;
 
   begin
     TP := 1;
+    Alignments := '';
     IsHead := False;
     Cells := TStringList.Create;
     try
@@ -3280,12 +3962,17 @@ var
           Inc(TP);
           Continue;
         end;
-        ReadTagIn(AInner, TP, N, C);
+        Tag := ReadTagIn(AInner, TP, N, C);
         if (N = 'tr') and C then
           FlushRow
         else if ((N = 'td') or (N = 'th')) and not C then
         begin
           if N = 'th' then IsHead := True;
+          if Pos('align="left"', Tag) > 0 then Alignments := Alignments + 'l'
+          else if Pos('align="right"', Tag) > 0 then Alignments := Alignments + 'r'
+          else if Pos('align="center"', Tag) > 0 then Alignments := Alignments + 'c'
+          else
+            Alignments := Alignments + '-';
           CE := Pos('</' + N + '>', LowerCase(Copy(AInner, TP, MaxInt)));
           if CE = 0 then
             Cell := Copy(AInner, TP, MaxInt)
@@ -3362,39 +4049,384 @@ begin
   end;
 end;
 
-procedure TInkRichEdit.LoadMarkdown(const S: string);
+{ Keep the writer's spelling of markup when a local text edit has an
+  unambiguous source match and produces the same parsed result. }
+function PreserveMarkdownText(const Source, Before, After: string): string;
 var
-  Lines: TStringList;
+  P, OldEnd, NewEnd, K, L, Context: integer;
+  Needle, Replacement, Candidate: string;
 begin
+  Result := '';
+  P := 1;
+  while (P <= Length(Before)) and (P <= Length(After)) and (Before[P] = After[P]) do Inc(P);
+  OldEnd := Length(Before);
+  NewEnd := Length(After);
+  while (OldEnd >= P) and (NewEnd >= P) and (Before[OldEnd] = After[NewEnd]) do
+  begin
+    Dec(OldEnd);
+    Dec(NewEnd);
+  end;
+  for Context := 8 downto 0 do
+  begin
+    K := Min(Context, P - 1);
+    L := Min(Context, Length(Before) - OldEnd);
+    Needle := Copy(Before, P - K, OldEnd - P + 1 + K + L);
+    Replacement := Copy(After, P - K, NewEnd - P + 1 + K + L);
+    if Needle = '' then Continue;
+    K := Pos(Needle, Source);
+    if (K = 0) or (PosEx(Needle, Source, K + 1) > 0) then Continue;
+    Candidate := Copy(Source, 1, K - 1) + Replacement + Copy(Source, K + Length(Needle), MaxInt);
+    if MarkdownToHTML(Candidate, [imoInlineHTML]) = MarkdownToHTML(After, [imoInlineHTML]) then Exit(Candidate);
+  end;
+end;
+
+{ Source blocks the editor cannot represent stay visible as literal Markdown.
+  They can still be edited without discarding images, tasks or table alignment. }
+procedure TInkRichEdit.LoadMarkdown(const S: string; const ABaseURI: string);
+var
+  Blocks: TInkMarkdownBlocks;
+  Lines, SourceLines: TStringList;
+  IDs: array of integer;
+  First, Last: array of integer;
+  B, I, J, P, LineNo, Pass: integer;
+  Raw: array of boolean;
+  Body, Canonical: string;
+
+  function Comparable(H: string): string;
+  var
+    K, E, P: integer;
+    InPre, Space: boolean;
+  begin
+    { Heading IDs depend on earlier headings, not on their editable text. }
+    K := Pos(' id="', H);
+    while K > 0 do
+    begin
+      E := K + 5;
+      while (E <= Length(H)) and (H[E] <> '"') do Inc(E);
+      Delete(H, K, E - K + 1);
+      K := Pos(' id="', H);
+    end;
+    Result := '';
+    P := 1;
+    InPre := False;
+    Space := False;
+    while P <= Length(H) do
+    begin
+      if H[P] = '&' then
+      begin
+        E := P + 1;
+        while (E <= Length(H)) and (E - P < 34) and not (H[E] in [';', '<', ' ', #10, #13]) do Inc(E);
+        if (E <= Length(H)) and (H[E] = ';') then
+        begin
+          Result := Result + HTMLEscape(HTMLUnescape(Copy(H, P, E - P + 1)));
+          Space := False;
+          P := E + 1;
+          Continue;
+        end;
+      end;
+      if Copy(H, P, 4) = '<pre' then InPre := True;
+      if Copy(H, P, 6) = '</pre>' then InPre := False;
+      if not InPre and (H[P] in [#9, #10, #13, ' ']) then
+      begin
+        if not Space then Result := Result + ' ';
+        Space := True;
+      end
+      else
+      begin
+        Result := Result + H[P];
+        Space := False;
+      end;
+      Inc(P);
+    end;
+  end;
+
+begin
+  FImageBase := ABaseURI;
+  FImages.Clear;
+  Blocks := MarkdownBlocks(S, [imoInlineHTML]);
+  SetLength(Raw, Length(Blocks));
+  SetLength(First, Length(Blocks));
+  SetLength(Last, Length(Blocks));
   Lines := TStringList.Create;
+  SourceLines := TStringList.Create;
   try
-    MarkdownHTMLToParagraphs(MarkdownToHTML(S), Lines);
-    if Lines.Count = 0 then Lines.Add('');
-    Markup := Lines;
+    for Pass := 0 to 1 do
+    begin
+      Lines.Clear;
+      SetLength(IDs, 0);
+      for B := 0 to High(Blocks) do
+      begin
+        I := Lines.Count;
+        if Raw[B] then
+        begin
+          Body := Copy(S, Blocks[B].First, Blocks[B].Count);
+          while (Body <> '') and (Body[Length(Body)] in [#10, #13]) do
+            Delete(Body, Length(Body), 1);
+          SourceLines.Text := Body;
+          if SourceLines.Count = 0 then SourceLines.Add('');
+          for J := 0 to SourceLines.Count - 1 do
+            Lines.Add('<mdsource>' + HTMLEscape(SourceLines[J]) + '</mdsource>');
+        end
+        else
+          MarkdownHTMLToParagraphs(Blocks[B].HTML, Lines);
+        SetLength(IDs, Lines.Count);
+        for J := I to Lines.Count - 1 do IDs[J] := B + 1;
+      end;
+      if Lines.Count = 0 then Lines.Add('');
+      Markup := Lines;
+      for B := 0 to High(Blocks) do
+      begin
+        First[B] := -1;
+        Last[B] := -1;
+      end;
+      LineNo := 0;
+      for P := 0 to CharCount - 1 do
+      begin
+        if LineNo < Length(IDs) then
+        begin
+          B := IDs[LineNo] - 1;
+          FAttrs[P].MarkdownBlock := B + 1;
+          if First[B] < 0 then First[B] := P;
+          Last[B] := P + 1;
+        end;
+        if (FChars[P] = #10) and not FAttrs[P].HardBreak then Inc(LineNo);
+      end;
+      if Pass = 0 then
+        for B := 0 to High(Blocks) do
+        begin
+          I := Last[B];
+          if (I > First[B]) and (I < CharCount) and (FChars[I - 1] = #10) then Dec(I);
+          Canonical := MarkdownRange(Max(0, First[B]), Max(0, I));
+          Raw[B] := (Comparable(MarkdownToHTML(Canonical, [imoInlineHTML])) <> Comparable(Blocks[B].HTML)) or
+            (Pos('<!--', Copy(S, Blocks[B].First, Blocks[B].Count)) > 0);
+        end;
+    end;
+    FMarkdownSource := S;
+    SetLength(FMarkdownOriginals, Length(Blocks));
+    for B := 0 to High(Blocks) do
+    begin
+      FMarkdownOriginals[B].First := Blocks[B].First;
+      FMarkdownOriginals[B].Count := Blocks[B].Count;
+      I := Last[B];
+      if (I > First[B]) and (I < CharCount) and (FChars[I - 1] = #10) then Dec(I);
+      FMarkdownOriginals[B].Canonical := MarkdownRange(Max(0, First[B]), Max(0, I));
+    end;
   finally
+    SourceLines.Free;
     Lines.Free;
   end;
 end;
 
 function TInkRichEdit.AsMarkdown: string;
 var
+  B, I, J, P, First, Last: integer;
+  Current, Original, Ending, EOL, Preserved: string;
+begin
+  if Length(FMarkdownOriginals) = 0 then
+  begin
+    if CharCount = 0 then Exit(FMarkdownSource);
+    Exit(MarkdownRange(0, CharCount));
+  end;
+  { Each source block owns its characters, including inserted text and undo
+    snapshots. Only a changed block is serialized; gaps stay byte for byte. }
+  Result := '';
+  P := 1;
+  I := 0;
+  EOL := #10;
+  J := Pos(#13, FMarkdownSource);
+  if J > 0 then
+  begin
+    EOL := #13;
+    if Copy(FMarkdownSource, J, 2) = #13#10 then EOL := #13#10;
+  end;
+  for B := 0 to High(FMarkdownOriginals) do
+  begin
+    Result := Result + Copy(FMarkdownSource, P, FMarkdownOriginals[B].First - P);
+    First := I;
+    while (I < CharCount) and (FAttrs[I].MarkdownBlock = B + 1) do Inc(I);
+    Last := I;
+    if (Last > First) and (Last < CharCount) and (FChars[Last - 1] = #10) then Dec(Last);
+    Original := Copy(FMarkdownSource, FMarkdownOriginals[B].First, FMarkdownOriginals[B].Count);
+    if I > First then
+    begin
+      Current := MarkdownRange(First, Last);
+      if Current = FMarkdownOriginals[B].Canonical then
+        Result := Result + Original
+      else
+      begin
+        Preserved := '';
+        if FAttrs[First].Kind <> ipkSource then
+          Preserved := PreserveMarkdownText(Original, Copy(FMarkdownOriginals[B].Canonical, 1, Length(FMarkdownOriginals[B].Canonical) - Length(LineEnding)),
+            Copy(Current, 1, Length(Current) - Length(LineEnding)));
+        if Preserved <> '' then
+        begin
+          Result := Result + Preserved;
+          P := FMarkdownOriginals[B].First + FMarkdownOriginals[B].Count;
+          Continue;
+        end;
+        Ending := '';
+        J := Length(Original);
+        while (J > 0) and (Original[J] in [#10, #13]) do Dec(J);
+        Ending := Copy(Original, J + 1, MaxInt);
+        if Copy(Current, Length(Current) - Length(LineEnding) + 1, Length(LineEnding)) = LineEnding then
+          SetLength(Current, Length(Current) - Length(LineEnding));
+        Current := StringReplace(Current, LineEnding, EOL, [rfReplaceAll]);
+        Result := Result + Current + Ending;
+      end;
+    end;
+    P := FMarkdownOriginals[B].First + FMarkdownOriginals[B].Count;
+  end;
+  Result := Result + Copy(FMarkdownSource, P, MaxInt);
+end;
+
+function TInkRichEdit.MarkdownRange(AFirst, AEnd: integer): string;
+var
   i, PS, CS, CE, NCells: integer;
   Kind, PrevKind: TInkParaKind;
   Lines: TStringList;
   InFence: boolean;
   PrevLevel: integer;
-  Back, FenceLang: string;
+  Back, FenceLang, Fence: string;
+  FenceRun, FenceMax, Tildes: integer;
+const
+  WordChars = ['A'..'Z', 'a'..'z', '0'..'9', #128..#255];
 
+{ an & that Markdown would read as the start of an entity }
+  function EntityAt(const T: string; K: integer): boolean;
+  var
+    E: integer;
+  begin
+    E := K + 1;
+    while (E <= Length(T)) and (E - K < 34) and (T[E] in ['A'..'Z', 'a'..'z', '0'..'9', '#']) do Inc(E);
+    Result := (E > K + 1) and (E <= Length(T)) and (T[E] = ';');
+  end;
+
+  { a backslash only where Markdown would read the character as markup }
   function EscapeMD(const T: string): string;
   var
     K: integer;
+    Escape: boolean;
   begin
     Result := '';
     for K := 1 to Length(T) do
     begin
-      if T[K] in ['\', '`', '*', '_', '[', '|'] then Result := Result + '\';
+      case T[K] of
+        '\', '`', '*', '[', ']': Escape := True;
+        '_': Escape := not ((K > 1) and (K < Length(T)) and (T[K - 1] in WordChars) and (T[K + 1] in WordChars));
+        '|': Escape := Kind in [ipkTableHead, ipkTableRow];
+        '~': Escape := Tildes > 1;
+        '<': Escape := (K = Length(T)) or (T[K + 1] in ['A'..'Z', 'a'..'z', '/', '!', '?']);
+        '&': Escape := EntityAt(T, K);
+        else
+          Escape := False;
+      end;
+      if Escape then Result := Result + '\';
       Result := Result + T[K];
     end;
+  end;
+
+  { text at the start of a line that would open a list, quote, heading or
+    rule gets a backslash in front of its marker }
+  function EscapeLineStart(const T: string): string;
+  var
+    K, D: integer;
+  begin
+    Result := T;
+    K := 1;
+    while (K <= Length(T)) and (T[K] in [' ', #9]) do Inc(K);
+    if K > Length(T) then Exit;
+    D := K;
+    while (D <= Length(T)) and (T[D] in ['0'..'9']) do Inc(D);
+    if (D > K) and (D - K <= 9) and (D <= Length(T)) and (T[D] in ['.', ')']) and ((D = Length(T)) or (T[D + 1] in [' ', #9])) then
+      Insert('\', Result, D)
+    else if (T[K] = '>') or ((T[K] in ['-', '+']) and ((K = Length(T)) or (T[K + 1] in [' ', #9]))) or ((T[K] in ['-', '=']) and
+      (Trim(StringReplace(T, T[K], '', [rfReplaceAll])) = '')) then
+      Insert('\', Result, K)
+    else if T[K] = '#' then
+    begin
+      D := K;
+      while (D <= Length(T)) and (T[D] = '#') do Inc(D);
+      if (D - K <= 6) and ((D > Length(T)) or (T[D] in [' ', #9])) then Insert('\', Result, K);
+    end;
+  end;
+
+  { a link or image destination, in angle brackets only when it needs them }
+  function Destination(const Text: string): string;
+  var
+    K, Depth: integer;
+    Angle: boolean;
+  begin
+    Result := '';
+    Depth := 0;
+    Angle := False;
+    for K := 1 to Length(Text) do
+    begin
+      case Text[K] of
+        #0..#31: Result := Result + '%' + IntToHex(Ord(Text[K]), 2);
+        '\', '<', '>': Result := Result + '\' + Text[K];
+        '&': if EntityAt(Text, K) then Result := Result + '\&'
+          else
+            Result := Result + '&';
+        '|': if Kind in [ipkTableHead, ipkTableRow] then Result := Result + '\|'
+          else
+            Result := Result + '|';
+        else
+          Result := Result + Text[K];
+      end;
+      case Text[K] of
+        ' ', '<', '>': Angle := True;
+        '(': Inc(Depth);
+        ')': begin
+          Dec(Depth);
+          if Depth < 0 then Angle := True;
+        end;
+      end;
+    end;
+    if Angle or (Depth <> 0) then Result := '<' + Result + '>';
+  end;
+
+  function TitleText(const Text: string): string;
+  var
+    K: integer;
+  begin
+    Result := '';
+    for K := 1 to Length(Text) do
+      case Text[K] of
+        '\', '"': Result := Result + '\' + Text[K];
+        '&': if EntityAt(Text, K) then Result := Result + '\&'
+          else
+            Result := Result + '&';
+        '|': if Kind in [ipkTableHead, ipkTableRow] then Result := Result + '\|'
+          else
+            Result := Result + '|';
+        else
+          Result := Result + Text[K];
+      end;
+  end;
+
+  function CodeSpan(const Text: string): string;
+  var
+    K, Run, Longest: integer;
+    Delimiter, Padding: string;
+  begin
+    Run := 0;
+    Longest := 0;
+    for K := 1 to Length(Text) do
+      if Text[K] = '`' then
+      begin
+        Inc(Run);
+        Longest := Max(Longest, Run);
+      end
+      else
+        Run := 0;
+    Delimiter := StringOfChar('`', Longest + 1);
+    Padding := '';
+    if (Text <> '') and ((Text[1] = '`') or (Text[Length(Text)] = '`') or ((Text[1] = ' ') and (Text[Length(Text)] = ' ') and (Trim(Text) <> ''))) then Padding := ' ';
+    if Kind in [ipkTableHead, ipkTableRow] then
+      Result := StringReplace(Text, '|', '\|', [rfReplaceAll])
+    else
+      Result := Text;
+    Result := Delimiter + Padding + Result + Padding + Delimiter;
   end;
 
   { the paragraph's characters as Markdown inline text }
@@ -3402,34 +4434,83 @@ var
   var
     K, J, RunEnd: integer;
     A: TInkAttr;
-    Txt, Piece: string;
+    Txt, Piece, Leading, Trailing: string;
+    LineStart: boolean;
   begin
     Result := '';
+    Tildes := 0;
+    for K := AFrom to ATo do
+      if FChars[K] = '~' then Inc(Tildes);
+    LineStart := not (Kind in [ipkTableHead, ipkTableRow]);
     K := AFrom;
     while K <= ATo do
     begin
+      if (FChars[K] = #10) and FAttrs[K].HardBreak then
+      begin
+        Result := Result + '  ' + LineEnding;
+        LineStart := True;
+        Inc(K);
+        Continue;
+      end;
       A := FAttrs[K];
       RunEnd := K;
-      while (RunEnd + 1 <= ATo) and SameInkAttr(FAttrs[RunEnd + 1], A) do
+      while (RunEnd + 1 <= ATo) and (FChars[RunEnd + 1] <> #10) and SameInkAttr(FAttrs[RunEnd + 1], A) do
         Inc(RunEnd);
       Txt := '';
       for J := K to RunEnd do
         Txt := Txt + FChars[J];
-      if (A.Face <> '') and (A.Kind <> ipkCode) then
+      if A.TaskState >= 0 then
+      begin
+        if A.TaskState = 1 then
+          Piece := '[x]'
+        else
+          Piece := '[ ]';
+      end
+      else if A.ImageSource <> '' then
+      begin
+        Piece := '![' + EscapeMD(A.ImageAlt) + '](' + Destination(A.ImageSource);
+        if A.ImageTitle <> '' then Piece := Piece + ' "' + TitleText(A.ImageTitle) + '"';
+        Piece := Piece + ')';
+      end
+      else if (A.Face <> '') and (A.Kind <> ipkCode) then
         { a monospaced run is a code span; nothing nests inside backticks }
-        Piece := '`' + Txt + '`'
+        Piece := CodeSpan(Txt)
       else
       begin
+        Leading := '';
+        Trailing := '';
+        if A.Style * [fsBold, fsItalic, fsStrikeOut] <> [] then
+        begin
+          while (Txt <> '') and (Txt[1] in [' ', #9]) do
+          begin
+            Leading := Leading + Txt[1];
+            Delete(Txt, 1, 1);
+          end;
+          while (Txt <> '') and (Txt[Length(Txt)] in [' ', #9]) do
+          begin
+            Trailing := Txt[Length(Txt)] + Trailing;
+            Delete(Txt, Length(Txt), 1);
+          end;
+        end;
         Piece := EscapeMD(Txt);
-        if fsBold in A.Style then Piece := '**' + Piece + '**';
-        if fsItalic in A.Style then Piece := '*' + Piece + '*';
-        if fsStrikeOut in A.Style then Piece := '~~' + Piece + '~~';
+        if LineStart and (A.Link = '') and (A.Style * [fsBold, fsItalic, fsStrikeOut, fsUnderline] = []) and (A.Script = isNormal) then
+          Piece := EscapeLineStart(Piece);
+        if (Piece <> '') and (fsBold in A.Style) then Piece := '**' + Piece + '**';
+        if (Piece <> '') and (fsItalic in A.Style) then Piece := '*' + Piece + '*';
+        if (Piece <> '') and (fsStrikeOut in A.Style) then Piece := '~~' + Piece + '~~';
         if fsUnderline in A.Style then Piece := '<u>' + Piece + '</u>';
         if A.Script = isSuperscript then Piece := '<sup>' + Piece + '</sup>';
         if A.Script = isSubscript then Piece := '<sub>' + Piece + '</sub>';
+        Piece := EscapeMD(Leading) + Piece + EscapeMD(Trailing);
       end;
-      if A.Link <> '' then Piece := '[' + Piece + '](' + A.Link + ')';
+      if A.Link <> '' then
+      begin
+        Piece := '[' + Piece + '](' + Destination(A.Link);
+        if A.LinkTitle <> '' then Piece := Piece + ' "' + TitleText(A.LinkTitle) + '"';
+        Piece := Piece + ')';
+      end;
       Result := Result + Piece;
+      LineStart := False;
       K := RunEnd + 1;
     end;
   end;
@@ -3449,29 +4530,41 @@ begin
     PrevKind := ipkText;
     PrevLevel := 0;
     FenceLang := '';
+    FenceRun := 0;
+    FenceMax := 2;
+    for i := AFirst to AEnd - 1 do
+      if FChars[i] = '`' then
+      begin
+        Inc(FenceRun);
+        FenceMax := Max(FenceMax, FenceRun);
+      end
+      else
+        FenceRun := 0;
+    Fence := StringOfChar('`', FenceMax + 1);
     InFence := False;
-    i := 0;
-    while i <= CharCount do
+    i := AFirst;
+    while i <= AEnd do
     begin
       PS := i;
-      while (i < CharCount) and (FChars[i] <> #10) do Inc(i);
-      if (PS = CharCount) and (PS > 0) then Break;  { nothing past the last break }
+      while (i < AEnd) and ((FChars[i] <> #10) or FAttrs[i].HardBreak) do Inc(i);
       Kind := ParaKindAt(PS);
+      if (PS = AEnd) and (PS > AFirst) and (ParaKindAt(PS - 1) in [ipkSource, ipkCode]) then
+        Kind := ParaKindAt(PS - 1);
       { fences open and close around an unbroken run of code lines }
       if InFence and (Kind <> ipkCode) then
       begin
-        Lines.Add('```');
+        Lines.Add(Fence);
         InFence := False;
       end;
       { a blank line between blocks, except inside a list, a quote, a fence
         or a table.  A nested item continues its list whatever its kind;
         two different kinds at the top level are two lists, kept apart. }
       if (Lines.Count > 0) and not InFence then
-        if not (((Kind in [ipkBullet, ipkNumber]) and (PrevKind in [ipkBullet, ipkNumber]) and ((Kind = PrevKind) or
-          (ParaLevelAt(PS) > 0) or (PrevLevel > 0))) or ((Kind = PrevKind) and (Kind in [ipkQuote, ipkCode])) or
-          ((Kind in [ipkTableHead, ipkTableRow]) and (PrevKind in [ipkTableHead, ipkTableRow]))) then
+        if not (((Kind in [ipkBullet, ipkNumber]) and (PrevKind in [ipkBullet, ipkNumber]) and ((Kind = PrevKind) or (ParaLevelAt(PS) > 0) or (PrevLevel > 0))) or
+          ((Kind = PrevKind) and (Kind in [ipkQuote, ipkCode, ipkSource])) or ((Kind in [ipkTableHead, ipkTableRow]) and (PrevKind in [ipkTableHead, ipkTableRow]))) then
           Lines.Add('');
       case Kind of
+        ipkSource: Lines.Add(RawText(PS, i - 1));
         ipkH1..ipkH6:
           Lines.Add(StringOfChar('#', Ord(Kind) - Ord(ipkH1) + 1) + ' ' + InlineMD(PS, i - 1));
         ipkBullet:
@@ -3484,17 +4577,17 @@ begin
           Lines.Add('> ' + InlineMD(PS, i - 1));
         ipkCode:
         begin
-          if InFence and (FAttrs[PS].Lang <> FenceLang) then
+          if InFence and (PS < CharCount) and (FAttrs[PS].Lang <> FenceLang) then
           begin
             { the language changed: this is another fence }
-            Lines.Add('```');
+            Lines.Add(Fence);
             InFence := False;
           end;
           if not InFence then
           begin
             FenceLang := '';
             if PS < CharCount then FenceLang := FAttrs[PS].Lang;
-            Lines.Add('```' + FenceLang);
+            Lines.Add(Fence + FenceLang);
             InFence := True;
           end;
           Lines.Add(RawText(PS, i - 1));
@@ -3506,7 +4599,7 @@ begin
           NCells := 0;
           CS := PS;
           for CE := PS to i do
-            if (CE = i) or (FChars[CE] = '|') then
+            if (CE = i) or IsCellBreak(CE) then
             begin
               Back := Back + ' ' + InlineMD(CS, CE - 1) + ' |';
               Inc(NCells);
@@ -3516,7 +4609,19 @@ begin
           if Kind = ipkTableHead then
           begin
             Back := '|';
-            for CE := 1 to NCells do Back := Back + ' --- |';
+            for CE := 1 to NCells do
+            begin
+              if CE <= Length(FAttrs[PS].TableAlign) then
+                case FAttrs[PS].TableAlign[CE] of
+                  'l': Back := Back + ' :--- |';
+                  'r': Back := Back + ' ---: |';
+                  'c': Back := Back + ' :---: |';
+                  else
+                    Back := Back + ' --- |';
+                end
+              else
+                Back := Back + ' --- |';
+            end;
             Lines.Add(Back);
           end;
         end;
@@ -3527,7 +4632,7 @@ begin
       PrevLevel := ParaLevelAt(PS);
       Inc(i);
     end;
-    if InFence then Lines.Add('```');
+    if InFence then Lines.Add(Fence);
     Result := Lines.Text;
   finally
     Lines.Free;

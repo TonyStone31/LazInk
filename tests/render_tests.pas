@@ -4826,11 +4826,11 @@ begin
   { a failed check ends the run with its message and stack trace, instead of
     waiting behind LCL's exception dialog once the test form is showing }
   Application.CaptureExceptions := False;
-  S := MarkdownToInk('# Heading' + LineEnding + '| Name | Value |' + LineEnding + '| --- | --- |' + LineEnding + '| **bold** | `a|b` |');
+  S := MarkdownToInk('# Heading' + LineEnding + '| Name | Value |' + LineEnding + '| --- | --- |' + LineEnding + '| **bold** | `a\|b` |');
   Check(Pos('<table>', S) > 0, 'Markdown table');
   Check(Pos('<th>Name</th>', S) > 0, 'Header cells');
   Check(Pos('<b>bold</b>', S) > 0, 'Cell emphasis');
-  Check(Pos('a|b</font>', S) > 0, 'Code pipes must not split cells');
+  Check(Pos('a|b</font>', S) > 0, 'Escaped code pipes must not split cells');
   Check(Pos('&lt;script&gt;', MarkdownToInk('<script>')) > 0, 'Escape raw HTML');
   Check(Pos('<a href="x&amp;y">label</a>', MarkdownToInk('[label](x&y)')) > 0, 'Link escaping');
   { GitHub takes a single dash as a delimiter; letters are not one }
