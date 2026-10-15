@@ -281,7 +281,28 @@ begin
         MarkdownToHTML('| A | B |' + #10 + '| - | - |' + #10 + '| a\\| b |'),
         '<table>' + #10 + '<thead><tr><th>A</th><th>B</th></tr></thead>' + #10 + '<tbody>' + #10 + '<tr><td>a\</td><td>b</td></tr>' +
         #10 + '</tbody>' + #10 + '</table>' + #10);
-      { find: on through the matches, round the end, back, case }
+      { a block shown as source keeps its empty lines when one of its lines is edited }
+    S := '* one' + #10#10 + '* two' + #10#10 + '* three';
+    E.LoadMarkdown(S);
+    E.SelStart := UTF8Length(Copy(E.PlainText, 1, Pos('two', E.PlainText) - 1));
+    E.TypeText('2 ');
+    Equal('edited source block keeps its blank lines', E.AsMarkdown, StringReplace(S, 'two', '2 two', []));
+    { an edit in a code block keeps its tabs, its indent style and its info }
+    for T in ['```java {.numberLines}' + #10 + 'if (x) {' + #10 + #9 + 'throw y;' + #10 + '}' + #10 + '```',
+      'Text' + #10#10 + '    cp a b' + #10 + '    ls' + #10#10 + '    # later' + #10 + '    run'] do
+    begin
+      E.LoadMarkdown(T);
+      if Pos('throw', E.PlainText) > 0 then
+        E.SelStart := UTF8Length(Copy(E.PlainText, 1, Pos('throw', E.PlainText) - 1))
+      else
+        E.SelStart := UTF8Length(Copy(E.PlainText, 1, Pos('cp a', E.PlainText) - 1));
+      E.TypeText('Z');
+      if Pos('throw', T) > 0 then
+        Equal('code edit keeps tabs and info', E.AsMarkdown, StringReplace(T, 'throw', 'Zthrow', []))
+      else
+        Equal('indented code edit stays indented', E.AsMarkdown, StringReplace(T, 'cp a', 'Zcp a', []));
+    end;
+    { find: on through the matches, round the end, back, case }
     E.LoadMarkdown('Alpha beta alpha **ALPHA**' + #10#10 + 'é café');
     E.SelStart := 0;
     Equal('find selects the first', IntToStr(Ord(E.Find('alpha'))) + ' ' + IntToStr(E.SelStart), '1 0');

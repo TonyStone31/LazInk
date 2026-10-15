@@ -1,0 +1,125 @@
+object frmSide: TfrmSide
+  Left = 10
+  Height = 900
+  Top = 10
+  Width = 1900
+  Caption = 'GitHub, TInkPage and TInkRichEdit'
+  ClientHeight = 900
+  ClientWidth = 1900
+  OnCreate = FormCreate
+  object pnlTop: TPanel
+    Left = 0
+    Height = 30
+    Top = 0
+    Width = 1900
+    Align = alTop
+    BevelOuter = bvNone
+    ClientHeight = 30
+    ClientWidth = 1900
+    TabOrder = 0
+    object chkTogether: TCheckBox
+      Left = 8
+      Height = 22
+      Top = 4
+      Width = 140
+      Caption = 'Scroll together'
+      Checked = True
+      State = cbChecked
+      TabOrder = 0
+    end
+    object lblFile: TLabel
+      Left = 170
+      Height = 17
+      Top = 7
+      Width = 40
+      Caption = 'lblFile'
+    end
+  end
+  object pnlGitHub: TPanel
+    Left = 0
+    Height = 870
+    Top = 30
+    Width = 640
+    Align = alLeft
+    BevelOuter = bvNone
+    ClientHeight = 870
+    ClientWidth = 640
+    TabOrder = 1
+    object lblGitHub: TLabel
+      Left = 0
+      Height = 17
+      Top = 0
+      Width = 640
+      Align = alTop
+      Caption = 'GitHub, in a browser'
+    end
+    object pgGitHub: TInkPage
+      Left = 0
+      Height = 853
+      Top = 17
+      Width = 640
+      Align = alClient
+    end
+  end
+  object pnlPage: TPanel
+    Left = 640
+    Height = 870
+    Top = 30
+    Width = 640
+    Align = alLeft
+    BevelOuter = bvNone
+    ClientHeight = 870
+    ClientWidth = 640
+    TabOrder = 2
+    object lblPage: TLabel
+      Left = 0
+      Height = 17
+      Top = 0
+      Width = 640
+      Align = alTop
+      Caption = 'TInkPage'
+    end
+    object pgInk: TInkPage
+      Left = 0
+      Height = 853
+      Top = 17
+      Width = 640
+      Align = alClient
+      CodeHeader = False
+    end
+  end
+  object pnlEdit: TPanel
+    Left = 1280
+    Height = 870
+    Top = 30
+    Width = 620
+    Align = alClient
+    BevelOuter = bvNone
+    ClientHeight = 870
+    ClientWidth = 620
+    TabOrder = 3
+    object lblEdit: TLabel
+      Left = 0
+      Height = 17
+      Top = 0
+      Width = 620
+      Align = alTop
+      Caption = 'TInkRichEdit'
+    end
+    object reInk: TInkRichEdit
+      Left = 0
+      Height = 853
+      Top = 17
+      Width = 620
+      Align = alClient
+      ParagraphSpacing = True
+      ReadOnly = True
+    end
+  end
+  object tmrSync: TTimer
+    Interval = 60
+    OnTimer = tmrSyncTimer
+    Left = 40
+    Top = 80
+  end
+end
