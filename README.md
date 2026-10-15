@@ -89,4 +89,8 @@ interaction, Markdown, WebP. Apple Silicon has not been tried.
 
 ## License
 
-[0BSD](LICENSE), the BSD Zero Clause License.
+[0BSD](LICENSE), the BSD Zero Clause License. The default stylesheet and the
+character-name table come from the WHATWG HTML standard (CC BY 4.0), and the
+WebP decoder's tables from RFC 6386 (BSD terms); both are credited in
+[LICENSES/THIRD-PARTY.md](LICENSES/THIRD-PARTY.md). A program that uses
+`TInkPage` should carry the RFC 6386 notice in its documentation.
