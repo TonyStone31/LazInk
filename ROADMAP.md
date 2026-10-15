@@ -243,14 +243,31 @@ The editor itself is **done as asked** (4 October 2026; the story is in
 `docs/HISTORY.md`): headings, lists, quotes, code, tables, Markdown in and
 out as a fixed point.  Nothing else for Lazarus does this.
 
-Open polish:
+Done 15 October 2026: pictures in the editor, a literal pipe in a table
+cell, tasks, round trips that keep the author's Markdown
+(`docs/MARKDOWN_ROUNDTRIP.md`), a find bar, and TInkPage's spacing,
+quotes, tables and inline code.
 
-* **Images** in the editor.
-* **A pipe inside a table cell** - the separator wins today.  Looked at
-  11 October 2026: not a patch.  The editor's table model is the literal
-  `|` character in the text stream, so a pipe that is a glyph needs a
-  per-character mark that paint, selection, Tab-hopping and both
-  serializers all respect - a planned half day, not an evening's trim.
+Open:
+
+* **WebP and animation in the editor - important.**  The editor loads
+  pictures through `TPicture`, so WebP does not show and GIF and WebP
+  stand still.  `TInkPage` has its own decoders and timer
+  (`InkWebP`, `InkGIF`); the editor should use them the same way.
+* **Zoom - wanted some day.**  Ctrl+wheel and Ctrl+plus/minus on
+  `TInkPage`, `TInkRichEdit` and `TInkCodeMemo` alike, with a `Zoom`
+  property.
+* **Crisper edges.**  Borders, rules and boxes snapped to whole device
+  pixels when painted - the likely reason other engines' lines look
+  sharper.
+* **The rest of the editor's look against the viewer's:** list indent
+  and nested bullet shapes, code colors in code blocks (no header strip
+  in the editor), the page margin, inline code inside table cells.
+  `tools/github_side.sh` shows all three side by side.
+* **`TInkMarkdownEdit`.**  The Markdown round-trip code (about 1,100
+  lines) and its per-character fields leave `TInkRichEdit` for a
+  component of its own built on it; `TInkRichEdit` stays the HTML rich
+  editor.
 
 ### F. An Online Package Manager listing
 
