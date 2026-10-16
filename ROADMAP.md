@@ -191,7 +191,8 @@ Left over from steps 1 and 2, when they get in the way:
   rebuilt at `-O-`, so it is not trunk's `-O3` miscompile.  A fix that
   clears every context in `TGtk3Font.Destroy` makes heaptrc clean in both
   layouts; the reproduction, patch and report text are in
-  `GIT/gtk3-bug-report`; filed as Lazarus issue #42641 (10 October 2026).
+  `GIT/bug-reports/lazarus/gtk3-font-destroy`; filed as Lazarus issue
+  #42641 (10 October 2026).
 * **Parser corners**: the 2025 `<select>` content rules, NUL bytes, some
   `<template>` edge cases (78 of html5lib's 1784 cases).
 * **Parser speed** - tag names are numbers now (9 October 2026): 1.7 MB
