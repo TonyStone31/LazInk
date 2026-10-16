@@ -136,6 +136,12 @@ type
     FMenu: TPopupMenu;
     FFindEdit: TInkEdit;
     FFindText: string;
+    FClicks, FLastClickX, FLastClickY: integer;
+    FLastClickTime: QWord;
+    FSelectUnit: integer;         // what a drag selects by: 0 chars, 1 words, 2 paragraphs
+    FUnitFrom, FUnitTo: integer;
+    FDefaultSize: integer;        // points, when neither Font nor the system font has a size
+    procedure UnitAt(AIndex: integer; out AFrom, ATo: integer);
     function FindFrom(const AText: string; AOptions: TInkFindOptions; AFrom: integer): integer;
     function FindBarRect: TRect;
     function FindButtonRect(Index: integer): TRect;
@@ -229,7 +235,6 @@ type
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
     procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
     procedure Click; override;
-    procedure DblClick; override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean; override;
     procedure DoEnter; override;
     procedure DoExit; override;
@@ -931,6 +936,12 @@ begin
   else
     Sz := Font.Size;
   if Sz = 0 then Sz := Screen.SystemFont.Size;
+  { GTK2 gives the system font no size; the handle knows it, in pixels }
+  if Sz = 0 then
+  begin
+    if FDefaultSize = 0 then FDefaultSize := Max(1, Round(Abs(GetFontData(Font.Handle).Height) * 72 / Font.PixelsPerInch));
+    Sz := FDefaultSize;
+  end;
   { a heading's size and weight come from its kind, unless the character
     picked its own size }
   if (A.Kind in [ipkH1..ipkH6]) and (A.Size = 0) then
@@ -2237,6 +2248,8 @@ begin
       Exit;
     end;
   end;
+  PE := FCaret;
+  while (PE < CharCount) and (FChars[PE] <> #10) do Inc(PE);
   DoInsert(#10, A);
   { a heading or a code line ends at its break; a list and a quote go on }
   if A.Kind in [ipkH1..ipkH6] then
@@ -2244,6 +2257,15 @@ begin
     FTypingAttr := AttrAtCaret;
     FTypingAttr.Kind := ipkText;
     FTypingAttr.Style := FTypingAttr.Style - [fsBold];
+    FHasTypingAttr := True;
+  end
+  { so does the last line of a source block, a --- for one; Enter there
+    starts plain text, not more source }
+  else if (A.Kind = ipkSource) and (FCaret = PE + 1) and (ParaKindAt(FCaret + 1) <> ipkSource) then
+  begin
+    if (FCaret < CharCount) and (FChars[FCaret] = #10) then FAttrs[FCaret].Kind := ipkText;
+    FTypingAttr := A;
+    FTypingAttr.Kind := ipkText;
     FHasTypingAttr := True;
   end;
 end;
@@ -3299,6 +3321,8 @@ procedure TInkRichEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y:
 var
   I: integer;
   P: TPoint;
+  Now_: QWord;
+  Near: boolean;
 begin
   if FindBarVisible and (Button = mbLeft) and PtInRect(FindBarRect, Point(X, Y)) then
   begin
@@ -3312,6 +3336,7 @@ begin
   if Button = mbLeft then
   begin
     if CanSetFocus then SetFocus;
+    FSelectUnit := 0;
     FCaret := PointToCaret(X, Y);
     I := FCaret;
     if (I = CharCount) or ((I < CharCount) and (FAttrs[I].TaskState < 0)) then Dec(I);
@@ -3326,7 +3351,32 @@ begin
         Exit;
       end;
     end;
-    if not (ssShift in Shift) then FAnchor := FCaret;
+    { counted as TInkCustomPage does: GTK sends a double click as a press and
+      the same press again, marked double, at the same moment }
+    Now_ := GetTickCount64;
+    Near := (Abs(X - FLastClickX) <= 4) and (Abs(Y - FLastClickY) <= 4);
+    if not (Near and (Now_ - FLastClickTime < 25)) then
+    begin
+      if Near and (Now_ - FLastClickTime <= GetDoubleClickTime) and (FClicks < 3) then
+        Inc(FClicks)
+      else
+        FClicks := 1;
+    end;
+    FLastClickTime := Now_;
+    FLastClickX := X;
+    FLastClickY := Y;
+    if ssTriple in Shift then FClicks := 3
+    else if (ssDouble in Shift) and (FClicks < 2) then FClicks := 2;
+    { a double click takes the word, a triple click the paragraph }
+    FSelectUnit := FClicks - 1;
+    if FSelectUnit > 0 then
+    begin
+      UnitAt(FCaret, FUnitFrom, FUnitTo);
+      FAnchor := FUnitFrom;
+      FCaret := FUnitTo;
+    end
+    else if not (ssShift in Shift) then
+      FAnchor := FCaret;
     FGoalX := -1;
     FHasTypingAttr := False;
     RestartCaretBlink;
@@ -3337,12 +3387,27 @@ end;
 
 procedure TInkRichEdit.MouseMove(Shift: TShiftState; X, Y: integer);
 var
-  Idx: integer;
+  Idx, A, B: integer;
 begin
   inherited MouseMove(Shift, X, Y);
   if ssLeft in Shift then
   begin
     FCaret := PointToCaret(X, Y);
+    if FSelectUnit > 0 then
+    begin
+      { after a double or triple click a drag goes by words or paragraphs }
+      UnitAt(FCaret, A, B);
+      if A < FUnitFrom then
+      begin
+        FAnchor := FUnitTo;
+        FCaret := A;
+      end
+      else
+      begin
+        FAnchor := FUnitFrom;
+        FCaret := Max(B, FUnitTo);
+      end;
+    end;
     ScrollToCaret;
     Invalidate;
     SelectionChanged;
@@ -3372,20 +3437,18 @@ begin
     FOnLinkClick(Self, FHoverLink);
 end;
 
-procedure TInkRichEdit.DblClick;
-var
-  A, B: integer;
+procedure TInkRichEdit.UnitAt(AIndex: integer; out AFrom, ATo: integer);
 begin
-  inherited DblClick;
-  if CharCount = 0 then Exit;
-  A := Min(FCaret, CharCount - 1);
-  B := A;
-  while (A > 0) and (FChars[A - 1] <> ' ') and (FChars[A - 1] <> #10) do Dec(A);
-  while (B < CharCount) and (FChars[B] <> ' ') and (FChars[B] <> #10) do Inc(B);
-  FAnchor := A;
-  FCaret := B;
-  Invalidate;
-  SelectionChanged;
+  if FSelectUnit = 1 then
+  begin
+    InkWordAt(FChars, CharCount, AIndex, AFrom, ATo);
+    Exit;
+  end;
+  { the paragraph, without the line break that ends it }
+  AFrom := AIndex;
+  while (AFrom > 0) and (FChars[AFrom - 1] <> #10) do Dec(AFrom);
+  ATo := AIndex;
+  while (ATo < CharCount) and (FChars[ATo] <> #10) do Inc(ATo);
 end;
 
 { ---------------------------------------------------------------- clipboard */ }

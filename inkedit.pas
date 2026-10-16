@@ -62,6 +62,10 @@ type
     FUndoKind: integer;        // 1 typing, 2 deleting, 0 anything else
     FUndoTick: QWord;
     FLastTyped: string;
+    FClicks, FLastClickX, FLastClickY: integer;
+    FLastClickTime: QWord;
+    FSelectUnit: integer;      // what a drag selects by: 0 chars, 1 words, 2 all
+    FUnitFrom, FUnitTo: integer;
     procedure SetTextHint(const AValue: string);
     procedure SetTextHintColor(AValue: TColor);
     procedure SetPasswordChar(AValue: char);
@@ -102,7 +106,6 @@ type
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
     procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
-    procedure DblClick; override;
     procedure DoContextPopup(MousePos: TPoint; var Handled: boolean); override;
     procedure DoEnter; override;
     procedure DoExit; override;
@@ -176,6 +179,11 @@ type
     property OnUTF8KeyPress;
   end;
 
+{ The word a double click at caret AIndex takes, as caret positions AFrom..ATo.
+  AChars holds one codepoint each; letters, digits, _ and anything not ASCII
+  make words, any other character is taken on its own. }
+procedure InkWordAt(const AChars: array of string; ACount, AIndex: integer; out AFrom, ATo: integer);
+
 implementation
 
 uses
@@ -193,6 +201,27 @@ type
     Chars: array of string;
     Caret, Anchor: integer;
   end;
+
+function IsWordChar(const C: string): boolean;
+begin
+  Result := (Length(C) > 1) or ((C <> '') and (C[1] in ['a'..'z', 'A'..'Z', '0'..'9', '_']));
+end;
+
+procedure InkWordAt(const AChars: array of string; ACount, AIndex: integer; out AFrom, ATo: integer);
+begin
+  AFrom := EnsureRange(AIndex, 0, ACount);
+  ATo := AFrom;
+  if ACount = 0 then Exit;
+  if AFrom = ACount then Dec(AFrom);
+  { a click on the space or line end just after a word takes the word }
+  if not IsWordChar(AChars[AFrom]) and (AFrom > 0) and IsWordChar(AChars[AFrom - 1]) and ((AChars[AFrom] = ' ') or (AChars[AFrom] = #9) or (AChars[AFrom] = #10) or (AIndex = ACount)) then Dec(AFrom);
+  ATo := AFrom;
+  if AChars[AFrom] = #10 then Exit;
+  Inc(ATo);
+  if not IsWordChar(AChars[AFrom]) then Exit;
+  while (AFrom > 0) and IsWordChar(AChars[AFrom - 1]) do Dec(AFrom);
+  while (ATo < ACount) and IsWordChar(AChars[ATo]) do Inc(ATo);
+end;
 
   { TInkEdit }
 
@@ -217,7 +246,8 @@ begin
   FEditMenu := True;
   FUndo := TFPList.Create;
   FRedo := TFPList.Create;
-  FCaretTimer := TTimer.Create(nil);
+  { owned, so it outlives the DoExit a focused edit gets while it is freed }
+  FCaretTimer := TTimer.Create(Self);
   FCaretTimer.Interval := 530;
   FCaretTimer.Enabled := False;
   FCaretTimer.OnTimer := @CaretTimerTick;
@@ -232,7 +262,6 @@ begin
   FreeAndNil(FUndo);
   FreeAndNil(FRedo);
   FreeAndNil(FMenu);
-  FreeAndNil(FCaretTimer);
   inherited Destroy;
 end;
 
@@ -854,6 +883,9 @@ begin
 end;
 
 procedure TInkEdit.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: integer);
+var
+  Now_: QWord;
+  Near: boolean;
 begin
   inherited MouseDown(Button, Shift, X, Y);
   if Button = mbLeft then
@@ -861,27 +893,70 @@ begin
     if CanSetFocus then SetFocus;
     FUndoKind := 0;
     FCaret := XToCaret(X);
-    if not (ssShift in Shift) then FAnchor := FCaret;
+    { counted as TInkCustomPage does: GTK sends a double click as a press and
+      the same press again, marked double, at the same moment }
+    Now_ := GetTickCount64;
+    Near := (Abs(X - FLastClickX) <= 4) and (Abs(Y - FLastClickY) <= 4);
+    if not (Near and (Now_ - FLastClickTime < 25)) then
+    begin
+      if Near and (Now_ - FLastClickTime <= GetDoubleClickTime) and (FClicks < 3) then
+        Inc(FClicks)
+      else
+        FClicks := 1;
+    end;
+    FLastClickTime := Now_;
+    FLastClickX := X;
+    FLastClickY := Y;
+    if ssTriple in Shift then FClicks := 3
+    else if (ssDouble in Shift) and (FClicks < 2) then FClicks := 2;
+    FSelectUnit := 0;
+    { a hidden text has no words to show; a double click takes it all }
+    if (FClicks = 3) or ((FClicks = 2) and (FPasswordChar <> #0)) then
+    begin
+      FSelectUnit := 2;
+      FAnchor := 0;
+      FCaret := CharCount;
+    end
+    else if FClicks = 2 then
+    begin
+      FSelectUnit := 1;
+      InkWordAt(FChars, CharCount, FCaret, FUnitFrom, FUnitTo);
+      FAnchor := FUnitFrom;
+      FCaret := FUnitTo;
+    end
+    else if not (ssShift in Shift) then
+      FAnchor := FCaret;
     RestartCaretBlink;
     Invalidate;
   end;
 end;
 
 procedure TInkEdit.MouseMove(Shift: TShiftState; X, Y: integer);
+var
+  A, B: integer;
 begin
   inherited MouseMove(Shift, X, Y);
-  if ssLeft in Shift then
+  if (ssLeft in Shift) and (FSelectUnit < 2) then
   begin
     FCaret := XToCaret(X);
+    if FSelectUnit = 1 then
+    begin
+      { after a double click a drag goes by whole words }
+      InkWordAt(FChars, CharCount, FCaret, A, B);
+      if A < FUnitFrom then
+      begin
+        FAnchor := FUnitTo;
+        FCaret := A;
+      end
+      else
+      begin
+        FAnchor := FUnitFrom;
+        FCaret := Max(B, FUnitTo);
+      end;
+    end;
     EnsureCaretVisible;
     Invalidate;
   end;
-end;
-
-procedure TInkEdit.DblClick;
-begin
-  inherited DblClick;
-  SelectAll;
 end;
 
 procedure TInkEdit.DoEnter;
