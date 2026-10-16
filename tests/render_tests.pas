@@ -434,6 +434,8 @@ type
   TRichProbe = class(TInkRichEdit)
   public
     procedure Key(AKey: word; AShift: TShiftState);
+    procedure Down(X, Y: integer; Shift: TShiftState);
+    procedure Drag(X, Y: integer);
   end;
 
   procedure TRichProbe.Key(AKey: word; AShift: TShiftState);
@@ -441,16 +443,38 @@ type
     KeyDown(AKey, AShift);
   end;
 
+  procedure TRichProbe.Down(X, Y: integer; Shift: TShiftState);
+  begin
+    MouseDown(mbLeft, Shift, X, Y);
+  end;
+
+  procedure TRichProbe.Drag(X, Y: integer);
+  begin
+    MouseMove([ssLeft], X, Y);
+  end;
+
 type
   TEditProbe = class(TInkEdit)
   public
     procedure Key(AKey: word; AShift: TShiftState);
     procedure Press(const C: TUTF8Char);
+    procedure Down(X, Y: integer; Shift: TShiftState);
+    procedure Drag(X, Y: integer);
   end;
 
   procedure TEditProbe.Key(AKey: word; AShift: TShiftState);
   begin
     KeyDown(AKey, AShift);
+  end;
+
+  procedure TEditProbe.Down(X, Y: integer; Shift: TShiftState);
+  begin
+    MouseDown(mbLeft, Shift, X, Y);
+  end;
+
+  procedure TEditProbe.Drag(X, Y: integer);
+  begin
+    MouseMove([ssLeft], X, Y);
   end;
 
   procedure TEditProbe.Press(const C: TUTF8Char);
@@ -2064,8 +2088,7 @@ type
   { one word of code, so it never wraps across two lines - where a font
     is wide enough to wrap it, two shaded lines touch and read as one band }
     Doc = 'A plain paragraph with `code` in the middle of a line ' + 'that is long enough to wrap at least twice, so that there is a line ' +
-      'of ordinary text above the shaded piece and another below it, with ' + 'letters that hang down - g j p q y - above it and tall ones - ' +
-      'b d f h k l - below it.';
+      'of ordinary text above the shaded piece and another below it, with ' + 'letters that hang down - g j p q y - above it and tall ones - ' + 'b d f h k l - below it.';
   var
     Shot: TBitmap;
     X, Y, Top, Band, Worst, Bands, RedRows: integer;
@@ -3069,12 +3092,12 @@ type
     R: TRect;
   begin
     Doc :=
-      '<!--' + E + '  notes for whoever edits this' + E + '-->' + E + '# What''s New' + E + E + '## v1.2' + E + E + '### Fixed' +
-      E + E + '- **Updates no longer fail.**  GitHub only answers so many update' + E + '  checks an hour, and when that runs out the check was simply' +
-      E + '  refused.  It now falls back to the release page.' + E + '- **`--offline`** starts with the network off.' + E +
-      '  - nested detail' + E + E + '1. first' + E + '2. second' + E + E + '- [x] shipped' + E + E + '> quoted words' + E + '>' +
-      E + '> > deeper' + E + E + '---' + E + E + '```pascal' + E + 'begin' + E + '  WriteLn(''a  b'');   // ' + StringOfChar('x', 300) +
-      E + 'end.' + E + '```' + E + E + '## Section two' + E + E + '[back](#whats-new)' + E;
+      '<!--' + E + '  notes for whoever edits this' + E + '-->' + E + '# What''s New' + E + E + '## v1.2' + E + E + '### Fixed' + E +
+      E + '- **Updates no longer fail.**  GitHub only answers so many update' + E + '  checks an hour, and when that runs out the check was simply' +
+      E + '  refused.  It now falls back to the release page.' + E + '- **`--offline`** starts with the network off.' + E + '  - nested detail' +
+      E + E + '1. first' + E + '2. second' + E + E + '- [x] shipped' + E + E + '> quoted words' + E + '>' + E + '> > deeper' + E + E +
+      '---' + E + E + '```pascal' + E + 'begin' + E + '  WriteLn(''a  b'');   // ' + StringOfChar('x', 300) + E + 'end.' + E + '```' + E +
+      E + '## Section two' + E + E + '[back](#whats-new)' + E;
     APage.LoadMarkdown(Doc);
     Check(APage.TextFormat = itfMarkdown, 'LoadMarkdown sets the format');
     Check(APage.DocumentTitle = 'What''s New', 'a Markdown page is named by its first heading');
@@ -3346,8 +3369,8 @@ type
     Check(B2.Bounds.Top >= B.Bounds.Bottom, 'an h3 in a cell is a heading line');
 
     { a table nested in a cell keeps its dress }
-    Probe.LoadHTML('<html><head><style>' + 'table.kv td{padding:3px 6px}' + 'table.kv td.key{background:#dde2ea}' +
-      '</style></head><body><table><tr><td>outer' + '<table class="kv"><tr><td class="key">K</td><td>V</td></tr></table>' + '</td></tr></table></body></html>');
+    Probe.LoadHTML('<html><head><style>' + 'table.kv td{padding:3px 6px}' + 'table.kv td.key{background:#dde2ea}' + '</style></head><body><table><tr><td>outer' +
+      '<table class="kv"><tr><td class="key">K</td><td>V</td></tr></table>' + '</td></tr></table></body></html>');
     B := FindBlock(Probe, 'td', 'K');
     Cell := UpTo(B, 'td');
     Check((Cell.Padding.Left = 6) and (Cell.Padding.Top = 3), 'a nested table keeps its padding');
@@ -3547,6 +3570,91 @@ type
     end;
   end;
 
+  { --- double and triple clicks in the editors.  Gestures are kept apart by
+    more than a double-click time, or they count as one more click. --- }
+  procedure ClickSelectChecks;
+  var
+    E: TRichProbe;
+    D: TEditProbe;
+
+    procedure Apart;
+    begin
+      Sleep(GetDoubleClickTime + 50);
+    end;
+
+  begin
+    E := TRichProbe.Create(F);
+    E.Parent := F;
+    E.SetBounds(0, 0, 400, 300);
+    try
+      E.LoadMarkdown('alpha beta, gamma' + LineEnding + LineEnding + 'second paragraph');
+      Apart;
+      E.Down(2, 8, [ssDouble]);
+      Check(E.SelText = 'alpha', 'rich edit: a double click selects a word: "' + E.SelText + '"');
+      Apart;
+      E.Down(390, 8, [ssDouble]);
+      Check(E.SelText = 'gamma', 'rich edit: a double click past the line end takes the last word: "' + E.SelText + '"');
+      Apart;
+      E.Down(2, 8, [ssDouble]);
+      E.Drag(390, 8);
+      Check(E.SelText = 'alpha beta, gamma', 'rich edit: a drag after a double click goes by words: "' + E.SelText + '"');
+      Apart;
+      E.Down(2, 8, [ssTriple]);
+      Check(E.SelText = 'alpha beta, gamma', 'rich edit: a triple click selects the paragraph: "' + E.SelText + '"');
+      { GTK3: press, press, press marked double, then the third unmarked }
+      Apart;
+      E.Down(2, 8, []);
+      Sleep(80);
+      E.Down(2, 8, []);
+      E.Down(2, 8, [ssDouble]);
+      Check(E.SelText = 'alpha', 'rich edit: GTK3''s double click is a word: "' + E.SelText + '"');
+      Sleep(80);
+      E.Down(2, 8, []);
+      Check(E.SelText = 'alpha beta, gamma', 'rich edit: and its unmarked third click the paragraph: "' + E.SelText + '"');
+      Apart;
+      E.Down(2, 8, []);
+      Check(E.SelLength = 0, 'rich edit: a single click selects nothing');
+
+      { Enter after a --- starts plain text, inside an HTML block it does not }
+      E.LoadMarkdown('above' + LineEnding + LineEnding + '---' + LineEnding + LineEnding + 'below');
+      E.SelStart := Pos('---', E.PlainText) + 2;
+      Check(E.SelParaKind = ipkSource, 'a --- is a source paragraph');
+      E.Key(VK_RETURN, []);
+      Check(E.SelParaKind = ipkText, 'Enter after a --- gives a text paragraph');
+      E.Markup.Text := '<mdsource>first</mdsource>' + LineEnding + '<mdsource>second</mdsource>' + LineEnding + 'below';
+      E.SelStart := 5;
+      Check(E.SelParaKind = ipkSource, 'a two-line source block');
+      E.Key(VK_RETURN, []);
+      Check(E.SelParaKind = ipkSource, 'Enter inside a source block keeps it source');
+    finally
+      E.Free;
+    end;
+
+    D := TEditProbe.Create(F);
+    D.Parent := F;
+    D.SetBounds(0, 0, 300, 24);
+    try
+      D.Text := 'alpha beta';
+      Apart;
+      D.Down(2, 8, [ssDouble]);
+      Check(D.SelText = 'alpha', 'edit: a double click selects a word: "' + D.SelText + '"');
+      Apart;
+      D.Down(2, 8, [ssDouble]);
+      D.Drag(290, 8);
+      Check(D.SelText = 'alpha beta', 'edit: a drag after a double click goes by words: "' + D.SelText + '"');
+      Apart;
+      D.Down(2, 8, [ssTriple]);
+      D.Drag(20, 8);
+      Check(D.SelText = 'alpha beta', 'edit: a triple click selects it all, and a twitch keeps it: "' + D.SelText + '"');
+      D.PasswordChar := '*';
+      Apart;
+      D.Down(2, 8, [ssDouble]);
+      Check(D.SelLength = 10, 'edit: a hidden text is taken whole on a double click');
+    finally
+      D.Free;
+    end;
+  end;
+
   { --- the rich editor speaks Markdown: paragraph kinds, in and out --- }
   procedure RichEditMarkdownChecks;
   var
@@ -3557,9 +3665,10 @@ type
     E.Parent := F;
     E.SetBounds(0, 0, 400, 300);
     try
-      MD := '# The title' + LineEnding + LineEnding + 'Words with **bold**, *italic*, ~~gone~~ and a [link](https://x.y).' + LineEnding + LineEnding +
-        '## Steps' + LineEnding + LineEnding + '1. first' + LineEnding + '2. second' + LineEnding + LineEnding + '- a bullet' + LineEnding + '- another' + LineEnding + LineEnding +
-        '> quoted' + LineEnding + LineEnding + '```' + LineEnding + 'begin' + LineEnding + '  x := 1;' + LineEnding + 'end.' + LineEnding + '```';
+      MD := '# The title' + LineEnding + LineEnding + 'Words with **bold**, *italic*, ~~gone~~ and a [link](https://x.y).' + LineEnding +
+        LineEnding + '## Steps' + LineEnding + LineEnding + '1. first' + LineEnding + '2. second' + LineEnding + LineEnding + '- a bullet' +
+        LineEnding + '- another' + LineEnding + LineEnding + '> quoted' + LineEnding + LineEnding + '```' + LineEnding + 'begin' + LineEnding +
+        '  x := 1;' + LineEnding + 'end.' + LineEnding + '```';
       E.LoadMarkdown(MD);
       { the kinds landed, and the markup carries them }
       Check(E.Markup[0] = '<h1>The title</h1>', 'a # heading is an h1 paragraph');
@@ -4291,7 +4400,8 @@ type
     when the page is shown afresh }
     Probe.Reads := 0;
     Probe.OnResource := @Probe.CountRead;
-    Probe.LoadHTML('<p id=s>x</p><img src="TInkLabel.png"><img src="TInkLabel.png" width=40>' + '<img src="TInkLabel.png" width=20>', FilenameToURI(ExpandFileName('images')) + '/');
+    Probe.LoadHTML('<p id=s>x</p><img src="TInkLabel.png"><img src="TInkLabel.png" width=40>' + '<img src="TInkLabel.png" width=20>',
+      FilenameToURI(ExpandFileName('images')) + '/');
     Check((Probe.ImageCount = 3) and (Probe.Reads = 1), Format('a picture used three times is read once (%d reads, %d shown)', [Probe.Reads, Probe.ImageCount]));
     Probe.SetInnerHTML('s', 'y');
     Check((Probe.ImageCount = 3) and (Probe.Reads = 1), 'and not read again when the page is shown afresh');
@@ -4621,8 +4731,8 @@ type
   procedure InlineBoxChecks;
   const
     Doc = '<html><head><style>body{margin:0;font:15px/1.5 "DejaVu Sans"}' + '.c{display:inline-block;width:110px;border:2px dashed #555555;padding:2px 6px;text-align:center}' +
-      '.d{display:inline-block;width:46px;height:46px;background:#2e86de;border-radius:50%;margin:5px 0 3px}' + '</style></head><body><p><span class=c>chip</span> word</p>' +
-      '<p>a <span class=d></span> dot</p></body></html>';
+      '.d{display:inline-block;width:46px;height:46px;background:#2e86de;border-radius:50%;margin:5px 0 3px}' +
+      '</style></head><body><p><span class=c>chip</span> word</p>' + '<p>a <span class=d></span> dot</p></body></html>';
   var
     P: TInkPageBlock;
     I, Seg, X, ChipW, ChipL, ChipT, DotW, DotH: integer;
@@ -5003,6 +5113,7 @@ begin
     RichEditMarkdownChecks;
     RichEditTableChecks;
     EditAndPlainChecks;
+    ClickSelectChecks;
     ChatWindowChecks;
     CodeHeaderChecks;
     SelectionBChecks;
