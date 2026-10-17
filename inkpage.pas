@@ -451,6 +451,7 @@ type
     function CopyBlockCaption(AIndex: integer): string; virtual;
     function MenuBlockText(AIndex: integer): string; virtual;
     procedure BlockFont(ACanvas: TCanvas; B: TInkPageBlock);
+    { how Source is read: HTML, Markdown or plain text }
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     procedure CreateWnd; override;
     procedure DoContextPopup(MousePos: TPoint; var Handled: boolean); override;
@@ -610,6 +611,8 @@ type
       and read the document again if the answer moved }
     procedure RecheckColorScheme;
   protected
+    { the document's text, read as TextFormat says; setting it shows the
+      new document }
     property Source: string read FSource write SetSource;
     { CSS applied to every page before the page's own styles - how a program
       dresses a Markdown document, which has no stylesheet, in its theme.
@@ -623,6 +626,7 @@ type
       class and title; a /tiles <folder> placeholder, a block tag or a
       script stays visible text.  MarkdownRawHTML wins when both are set. }
     property MarkdownInlineHTML: boolean read FMarkdownInlineHTML write SetMarkdownInlineHTML default False;
+    { a link was clicked; URL is its target }
     property OnLinkClick: TInkPageLinkEvent read FOnLinkClick write FOnLinkClick;
     { Before OnLinkClick, with everything about the link: its target, and the
       picture it wraps.  Set Handled to stop there. }
@@ -635,7 +639,12 @@ type
     { the element under the pointer changed - the one it moved onto, or
       nil when it left the last one }
     property OnElementHover: TInkElementEvent read FOnElementHover write FOnElementHover;
+    { How a picture is sized: never larger than it is, always as wide as the
+      column, or as large as fits in the window. }
     property ImageFit: TInkImageFit read FImageFit write SetImageFit default iifShrink;
+    { Asked for every picture and every linked document before the file or
+      URL is read: write the bytes to Destination and set Handled to supply
+      them from somewhere else, such as a resource or a database. }
     property OnResource: TInkPageResourceEvent read FOnResource write FOnResource;
     { Colors a code block's comments, strings, numbers and keywords.  The
       language comes from the fence (```pascal) or from
@@ -657,6 +666,8 @@ type
     { the captions of buttons every code block's header gets beside Copy;
       OnCodeAction says which was pressed, on which block }
     property CodeActions: TStrings read GetCodeActions write SetCodeActions;
+    { a CodeActions button was pressed: which caption, on which block, with
+      the block's code and language }
     property OnCodeAction: TInkCodeActionEvent read FOnCodeAction write FOnCodeAction;
     { drag the page with the left button - or a finger - to scroll it; a
       press that moves less than a few pixels is still a click }
@@ -682,6 +693,7 @@ type
       the page, so the words stay readable.  A page's ::selection
       background wins. }
     property SelectionColor: TColor read FSelectionColor write SetSelectionColor default clDefault;
+    { the selected text changed, or the selection was cleared }
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
     { after a new document is shown - a link, Back, Forward or a load from
       code - so a program can update its title and its Back and Forward

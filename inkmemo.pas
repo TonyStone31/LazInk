@@ -161,6 +161,7 @@ type
     property HoverLinkText: string read FHoverLinkText;
   published
     property TextFormat;
+    { the entries, one per line, each read as TextFormat says }
     property Lines: TStrings read GetLines write SetLines;
     property HighlightCode;
     property OnHighlightCode;
@@ -170,6 +171,7 @@ type
     property OnCodeAction;
     { the text's size, in percent of Font }
     property HTMLScale: integer read FHTMLScale write SetHTMLScale default 100;
+    { the size of <sup> and <sub> text as a fraction of the font's size }
     property SuperSubScriptRatio: double read FSuperSubScriptRatio write SetSuperSubScriptRatio;
     { kept so forms from before selection existed still load; text is now
       selected with the mouse whatever this says }
@@ -181,14 +183,20 @@ type
     property Borders: TInkBorders read FBorders write SetBorders;
     { Supplies <img src="n">, where n is an index into this list. }
     property Images: TCustomImageList read FImages write SetImages;
+    { how a link is drawn }
     property LinkStyle: TInkLinkStyle read FLinkStyle write SetLinkStyle;
+    { how a link is drawn while the pointer is over it }
     property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
     property AutoOpenLink: boolean read FAutoOpenLink write FAutoOpenLink default False;
+    { a link in line LineIndex was clicked; LinkName is its href }
     property OnLinkClick: TInkMemoLinkEvent read FOnLinkClick write FOnLinkClick;
+    { the pointer moved onto a link in line LineIndex }
     property OnLinkEnter: TInkMemoLinkEvent read FOnLinkEnter write FOnLinkEnter;
+    { the pointer left the link it was over }
     property OnLinkLeave: TInkMemoLinkEvent read FOnLinkLeave write FOnLinkLeave;
+    { a link in line LineIndex was clicked with the right button }
     property OnLinkRightClick: TInkMemoLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
     { the element under a click or the pointer, as on TInkPage; in a memo
       the element belongs to its entry's document (Block().Entry says

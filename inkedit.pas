@@ -125,17 +125,26 @@ type
     procedure ClearUndo;
     property SelText: string read GetSelText;
   published
+    { the box's text; the hint is never part of it }
     property Text: string read GetTextValue write SetTextValue;
+    { where the selection starts, in characters from 0; the caret when
+      nothing is selected }
     property SelStart: integer read GetSelStart write SetSelStart;
+    { how many characters are selected; 0 is a bare caret }
     property SelLength: integer read GetSelLength write SetSelLength;
+    { at most this many characters; 0 is no cap }
     property MaxLength: integer read FMaxLength write FMaxLength default 0;
+    { the text can be selected and copied but not changed }
     property ReadOnly: boolean read FReadOnly write SetReadOnly default False;
+    { the text sits at the left, in the middle or at the right of the box }
     property Alignment: TAlignment read FAlignment write SetAlignment default taLeftJustify;
     { the gray words an empty box shows - what goes in the field, said
       without a second label.  Never part of Text, never copied; drawn in
       TextHintColor, or with clDefault the font color blended halfway into
       the background, so it suits a light and a dark box unset. }
     property TextHint: string read FTextHint write SetTextHint;
+    { the color of TextHint; clDefault blends the font color halfway into
+      the background }
     property TextHintColor: TColor read FTextHintColor write SetTextHintColor default clDefault;
     { a typed secret: every character drawn as this one (a bullet when it
       is '*', the way most toolkits draw it now).  While hidden, Copy and
@@ -146,7 +155,10 @@ type
       Select All, each enabled only when it can do something.  A PopupMenu
       of the host's own still wins. }
     property EditMenu: boolean read FEditMenu write FEditMenu default True;
+    { fires after the text changed }
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    { every character's color and style, asked as it is drawn and measured -
+      AIndex counts from 1 }
     property OnGetCharAttrs: TInkGetCharAttrsEvent read FOnGetCharAttrs write FOnGetCharAttrs;
 
     property Align;
