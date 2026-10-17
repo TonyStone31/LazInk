@@ -63,6 +63,9 @@ var
     trusts without patching LazInk }
   InkMarkdownInlineTags: TStringList;
 
+{ Whether a line opens an HTML block: a tag at its start, not an autolink. }
+function IsHTMLStart(const L: string): Boolean;
+
 { A heading's text as GitHub makes an anchor of it:
   "Complete help pages" -> "complete-help-pages". }
 function MarkdownSlug(const Text: string): string;

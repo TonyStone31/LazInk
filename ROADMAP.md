@@ -117,7 +117,7 @@ page, not new controls.
 | `TInkListBox` | markup items, in-place editor, copy menu, character selection in an item | - |
 | `TInkPage` | whole HTML/Markdown documents laid out from the tree with computed CSS: blocks, floats, flex, grid, tables, positioning, PNG/GIF/WebP, links, history, media queries, mouse and keyboard selection, find, touch and flick, `ScrollBars` | hardware check of touch |
 | `TInkEdit` | single-line edit, per-character colors, `TextHint`, undo/redo, context menu | - |
-| `TInkRichEdit` | WYSIWYG editor: inline styles, headings, nested lists, quotes, code with fence languages, tables, Markdown in and out, undo, context menu | images |
+| `TInkRichEdit` | WYSIWYG editor: inline styles, headings, nested lists, quotes, code with fence languages, tables, images (PNG, JPEG, GIF and WebP, animated too), HTML blocks drawn and edited as source in place, Markdown in and out, undo, context menu | - |
 | `TInkCodeMemo` | plain multi-line editor: `Text`/`Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, per-character colors, undo, context menu | a `TInkScrollBar` of its own |
 | `TInkScrollBar` | canvas scrollbar, colored from CSS | - |
 

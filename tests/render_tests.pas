@@ -434,6 +434,7 @@ type
   TRichProbe = class(TInkRichEdit)
   public
     procedure Key(AKey: word; AShift: TShiftState);
+    procedure TypeText(const S: string);
     procedure Down(X, Y: integer; Shift: TShiftState);
     procedure Drag(X, Y: integer);
   end;
@@ -441,6 +442,11 @@ type
   procedure TRichProbe.Key(AKey: word; AShift: TShiftState);
   begin
     KeyDown(AKey, AShift);
+  end;
+
+  procedure TRichProbe.TypeText(const S: string);
+  begin
+    InsertPlainText(S);
   end;
 
   procedure TRichProbe.Down(X, Y: integer; Shift: TShiftState);
@@ -3615,12 +3621,17 @@ type
       E.Down(2, 8, []);
       Check(E.SelLength = 0, 'rich edit: a single click selects nothing');
 
-      { Enter after a --- starts plain text, inside an HTML block it does not }
+      { a --- is drawn as a rule and written back as one; Enter after it
+        starts plain text, inside a source block it does not }
       E.LoadMarkdown('above' + LineEnding + LineEnding + '---' + LineEnding + LineEnding + 'below');
-      E.SelStart := Pos('---', E.PlainText) + 2;
-      Check(E.SelParaKind = ipkSource, 'a --- is a source paragraph');
+      E.SelStart := 9; { the end of the rule's three bars }
+      Check(E.SelParaKind = ipkText, 'a --- is a rule, not a source paragraph');
+      Check(E.PlainText = 'above' + LineEnding + #$E2#$80#$95#$E2#$80#$95#$E2#$80#$95 + LineEnding + 'below', 'a --- is drawn as three bars');
       E.Key(VK_RETURN, []);
       Check(E.SelParaKind = ipkText, 'Enter after a --- gives a text paragraph');
+      E.TypeText('new');
+      Check(E.AsMarkdown = 'above' + LineEnding + LineEnding + '---' + LineEnding + LineEnding + 'new' + LineEnding + LineEnding + 'below',
+        'and the rule is written back as ---: ' + E.AsMarkdown);
       E.Markup.Text := '<mdsource>first</mdsource>' + LineEnding + '<mdsource>second</mdsource>' + LineEnding + 'below';
       E.SelStart := 5;
       Check(E.SelParaKind = ipkSource, 'a two-line source block');

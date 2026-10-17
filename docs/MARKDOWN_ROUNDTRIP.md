@@ -89,7 +89,19 @@ Images are one character each, carrying source, alternative text and title.
 `LoadMarkdown` takes a base URI for relative files, and `OnImageNeeded` lets
 the host supply pictures itself. Local pictures load by default and shrink
 to the editor width; a missing one shows its alternative text and keeps its
-Markdown. Animation is not done here.
+Markdown. An animated GIF or WebP plays, as on a page. An `<img>` tag's
+`width` and `height` set the drawn size.
+
+HTML blocks - a `<p align="center">` holding pictures, an `<img>` or an
+`<a>` on a line of its own, a `<details>`, an HTML table - are drawn the
+way the page viewer draws them, as far as the editor's paragraphs can show
+them. The editor cannot write such a block back from its paragraphs, so it
+is edited the way MarkText edits one: the caret entering the block opens
+its HTML source in place, the caret leaving draws it again from the source
+as it now stands, and a save writes that source. Untouched, the block
+keeps its bytes. Typing and formatting next to a drawn block cannot reach
+into it, and `SelLocked` says when the caret is on one. An HTML comment on
+its own is a gap between blocks: never drawn, always kept.
 
 Task checkboxes use the existing checkbox painter, toggle on a click and
 save as `[ ]` or `[x]`. Link titles and hard line breaks survive too. Code

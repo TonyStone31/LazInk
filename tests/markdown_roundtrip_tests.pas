@@ -19,6 +19,7 @@ uses
 type
   TProbe = class(TInkRichEdit)
     procedure TypeText(const S: string);
+    procedure Key(AKey: word);
     procedure RightClick(X, Y: integer);
     function Attr(I: integer): TInkAttr;
     function DocHeight: integer;
@@ -32,6 +33,11 @@ type
   procedure TProbe.TypeText(const S: string);
   begin
     InsertPlainText(S);
+  end;
+
+  procedure TProbe.Key(AKey: word);
+  begin
+    KeyDown(AKey, []);
   end;
 
   function TProbe.Attr(I: integer): TInkAttr;
@@ -118,6 +124,89 @@ begin
       E.SelStart := 0;
       Equal('wrapped paragraph stays rendered', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkText)));
       Equal('wrapped paragraph has no Markdown markers', E.PlainText, 'A paragraph with a wrapped line and bold text.');
+      { the editor writes [**x**](url); the author wrote **[x](url)**: the same text }
+      S := '**[Download](../releases)** - one file.' + #10#10 + 'Then **[Read the manual](https://example.com/)** and [**go**](x).';
+      E.LoadMarkdown(S);
+      E.SelStart := 0;
+      Equal('bold link stays rendered', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkText)));
+      E.SelStart := Pos('Then', E.PlainText) - 1;
+      Equal('bold link either way round stays rendered', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkText)));
+      Equal('bold link keeps its bytes', E.AsMarkdown, S);
+      E.LoadMarkdown('Text with <i>old tags</i> and <b>names</b> in it.');
+      E.SelStart := 0;
+      Equal('i and b are em and strong', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkText)));
+      { an HTML block - how a README centers a picture on GitHub - is drawn
+        as the page draws it and kept as written.  The caret in it opens its
+        source in place, the way MarkText does; the caret leaving draws it
+        again from the source as it now stands. }
+      S := '<p align="center">' + #10 + '  <img src="pic.png" width="40" height="30" alt="A picture">' + #10 +
+        '  <img src="two.png" width="20">' + #10 + '</p>' + #10#10 + 'After.';
+      E.LoadMarkdown(S);
+      Equal('an HTML block is rendered, not source', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkText)));
+      Equal('its pictures are objects', IntToStr(UTF8Length(Copy(E.PlainText, 1, Pos(LineEnding, E.PlainText) - 1))), '3');
+      Equal('the first picture keeps its source', E.Attr(0).ImageSource, 'pic.png');
+      Equal('and its width from the tag', IntToStr(E.Attr(0).ImageWidth), '40');
+      Equal('and its height from the tag', IntToStr(E.Attr(0).ImageHeight), '30');
+      Equal('the paragraph is centered', IntToStr(Ord(E.Attr(0).Align)), IntToStr(Ord(taCenter)));
+      Equal('the block says it is locked', IntToStr(Ord(E.SelLocked)), '1');
+      E.SelStart := 4; { the start of "After." }
+      Equal('the next paragraph is not locked', IntToStr(Ord(E.SelLocked)), '0');
+      E.Key(VK_BACK);
+      Equal('Backspace does not pull the paragraph into the block', E.AsMarkdown, S);
+      E.TypeText('Then ');
+      Equal('the block keeps its bytes when the paragraph after it changes', E.AsMarkdown,
+        StringReplace(S, 'After.', 'Then After.', []));
+      E.Undo;
+      Equal('and after an undo', E.AsMarkdown, S);
+      E.LoadMarkdown(S);
+      E.SelStart := 1;
+      Equal('opening a block is not an edit', IntToStr(Ord(E.Modified)), '0');
+      E.SelStart := MaxInt;
+      Equal('nor is closing it', IntToStr(Ord(E.Modified)), '0');
+      E.SelStart := 1;
+      Equal('the caret in an HTML block opens its source', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkSource)));
+      Equal('the source is the block as written', Copy(E.PlainText, 1, 18), '<p align="center">');
+      Equal('open, it saves as it was', E.AsMarkdown, S);
+      E.SelStart := Pos('width="40"', E.PlainText) + 6;
+      E.SelLength := 2;
+      E.TypeText('50');
+      E.SelStart := MaxInt; { into "After." }
+      Equal('the caret leaving draws the block again', E.Attr(0).ImageSource, 'pic.png');
+      Equal('the break after it is a break, not a third picture', E.Attr(3).ImageSource, '');
+      Equal('and the block is three characters, as it was', IntToStr(UTF8Length(Copy(E.PlainText, 1, Pos('After.', E.PlainText) - 1))), '4');
+      Equal('with the edit in it', IntToStr(E.Attr(0).ImageWidth), '50');
+      Equal('and the file gets the edited HTML, nothing else changed', E.AsMarkdown,
+        StringReplace(S, 'width="40"', 'width="50"', []));
+      E.SelStart := 1;
+      Equal('opened again, the source is the edited one', IntToStr(Ord(Pos('width="50"', E.PlainText) > 0)), '1');
+      E.SelStart := MaxInt;
+      Col := 0;
+      while (E.AsMarkdown <> S) and (Col < 8) do
+      begin
+        E.Undo;
+        Inc(Col);
+      end;
+      Equal('undo gives the file back', E.AsMarkdown, S);
+      E.LoadMarkdown('<img src="alone.png">' + #10#10 + '<details><summary>More</summary>' + #10 + 'Hidden text.</details>');
+      Equal('an image on a line of its own is drawn', E.Attr(0).ImageSource, 'alone.png');
+      Equal('a details block is drawn as text', IntToStr(Ord(Pos('More', E.PlainText) > 0)), '1');
+      S := '<!-- a comment -->' + #10#10 + 'text';
+      E.LoadMarkdown(S);
+      Equal('a comment on its own is not drawn', E.PlainText, 'text');
+      E.SelStart := 0;
+      E.TypeText('more ');
+      Equal('and is kept through an edit', E.AsMarkdown, StringReplace(S, 'text', 'more text', []));
+      { a rule is a rule, not a source block }
+      S := 'above' + #10#10 + '---' + #10#10 + 'below';
+      E.LoadMarkdown(S);
+      E.SelStart := 7; { inside the rule's three bars }
+      Equal('a rule stays rendered', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkText)));
+      E.SelStart := 10; { before "below" }
+      E.TypeText('under ');
+      Equal('editing after a rule keeps it as written', E.AsMarkdown, 'above' + #10#10 + '---' + #10#10 + 'under below');
+      E.LoadMarkdown('***' + #10#10 + 'x');
+      E.SelStart := 0;
+      Equal('a starred rule stays rendered', IntToStr(Ord(E.SelParaKind)), IntToStr(Ord(ipkText)));
       Images := TImages.Create;
       try
         E.OnImageNeeded := @Images.Supply;
