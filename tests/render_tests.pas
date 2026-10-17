@@ -4939,11 +4939,50 @@ type
     end;
   end;
 
+  { Every component on the palette needs its icon, under its class name. }
+  procedure PaletteIconChecks;
+  var
+    Reg, Names: string;
+    Name: string;
+    Res: TLResource;
+    Icon: TPortableNetworkGraphic;
+    Stream: TStringStream;
+    First, Last: integer;
+  begin
+    with TStringList.Create do
+    try
+      LoadFromFile('lazinkreg.pas');
+      Reg := Text;
+    finally
+      Free;
+    end;
+    First := Pos('[', Copy(Reg, Pos('RegisterComponents', Reg), MaxInt)) + Pos('RegisterComponents', Reg);
+    Last := Pos(']', Copy(Reg, First, MaxInt)) + First - 1;
+    Names := Copy(Reg, First, Last - First);
+    Check(Pos('TInkCodeMemo', Names) > 0, 'the registered names are read from lazinkreg.pas: ' + Names);
+    for Name in Names.Split([',', ' '], TStringSplitOptions.ExcludeEmpty) do
+    begin
+      Res := LazarusResources.Find(Name, 'PNG');
+      Check(Res <> nil, Name + ' has a palette icon');
+      Stream := TStringStream.Create(Res.Value);
+      Icon := TPortableNetworkGraphic.Create;
+      try
+        Icon.LoadFromStream(Stream);
+        Check((Icon.Width = 24) and (Icon.Height = 24), Name + '''s icon is 24 by 24');
+      finally
+        Icon.Free;
+        Stream.Free;
+      end;
+    end;
+    WriteLn('Palette icon checks passed.');
+  end;
+
 begin
   Application.Initialize;
   TestExceptions := TTestExceptions.Create;
   Application.OnException := @TestExceptions.Handle;
   LayoutCacheChecks;
+  PaletteIconChecks;
   { a failed check ends the run with its message and stack trace, instead of
     waiting behind LCL's exception dialog once the test form is showing }
   Application.CaptureExceptions := False;
