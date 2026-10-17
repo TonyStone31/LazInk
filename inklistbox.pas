@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Controls, Graphics, StdCtrls, ExtCtrls, ImgList,
   LCLType, LCLIntf, Types, Forms, Menus, Math, Clipbrd, InkDraw, InkMarkdown,
-  InkCopyMenu;
+  InkCopyMenu{$ifdef LCLGTK3}, LazGtk3, Gtk3Widgets{$endif};
 
 type
   { When the in-place editor opens by itself.  Whatever the mode, a program
@@ -119,6 +119,9 @@ type
     {$ifdef LCLCOCOA}
     procedure SetItemIndex(AIndex: integer); override;
     {$endif}
+    {$ifdef LCLGTK3}
+    procedure CreateWnd; override;
+    {$endif}
     { Everything the renderer needs beyond the text itself. }
     function Options(AHoverIndex: integer = 0): THTMLOptions;
     procedure DrawItem(Index: integer; ARect: TRect; State: TOwnerDrawState); override;
@@ -158,6 +161,7 @@ type
     { fills the copy menu for client X, Y without opening it }
     function BuildCopyMenu(X, Y: integer): TPopupMenu;
   published
+    { how every item is read: HTML, Markdown or plain text }
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     { the right-click menu: Copy, Copy this item, Copy link address,
       Copy all, Select all.  Not shown when off or when PopupMenu is set. }
@@ -165,10 +169,16 @@ type
     { lets a program add its own items to that menu as it opens }
     property OnCopyMenu: TInkCopyMenuEvent read FOnCopyMenu write FOnCopyMenu;
 
+    { off, every item is drawn as written, tags and all, one line each }
     property HTMLEnabled: boolean read FHTMLEnabled write FHTMLEnabled default True;
+    { the text's size, in percent of Font }
     property HTMLScale: integer read FHTMLScale write FHTMLScale default 100;
+    { the size of <sup> and <sub> text as a fraction of the font's size }
     property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    { when the in-place editor opens by itself; see TInkEditMode }
     property EditMode: TInkEditMode read FEditMode write FEditMode default emOnSelect;
+    { the in-place editor shows the item for copying but keeps it as it is;
+      off, Enter stores what was typed }
     property ReadOnlyEdit: boolean read FReadOnlyEdit write FReadOnlyEdit default True;
     { What the in-place editor shows. False (the default) hands the user the
       item with the markup stripped - good for copying a log line out. True
@@ -177,6 +187,7 @@ type
     property EditRawHTML: boolean read FEditRawHTML write FEditRawHTML default False;
     { Background for odd-numbered rows. clNone (the default) turns it off. }
     property AlternateColor: TColor read FAlternateColor write SetAlternateColor default clNone;
+    { extra pixels between wrapped lines inside one item }
     property LineSpacing: integer read FLineSpacing write SetLineSpacing default 0;
     { Margins around the text. Each row is drawn on its own, so Top and Bottom
       are padding inside every row rather than once for the whole control;
@@ -185,20 +196,36 @@ type
     { Supplies <img src="n">, where n is an index into this list - a status
       icon per row, which is what a log listbox usually wants. }
     property Images: TCustomImageList read FImages write SetImages;
+    { how a link is drawn }
     property LinkStyle: TInkLinkStyle read FLinkStyle write SetLinkStyle;
+    { how a link is drawn while the pointer is over it }
     property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
     property AutoOpenLink: boolean read FAutoOpenLink write FAutoOpenLink default False;
+    { milliseconds the in-place editor stays open with the pointer away
+      from it before it closes; 0 leaves it open }
     property EditTimeout: integer read FEditTimeout write FEditTimeout default 5000;
+    { pixels the in-place editor reaches past the item's left and right
+      edges, so its frame does not cover the first and last letters }
     property EditOverhang: integer read FEditOverhang write FEditOverhang default 2;
+    { behind the selected items }
     property SelectionColor: TColor read FSelectionColor write FSelectionColor default clHighlight;
+    { the selected items' text }
     property SelectionTextColor: TColor read FSelectionTextColor write FSelectionTextColor default clHighlightText;
+    { before the in-place editor opens on item Index; set Cancel to keep
+      it closed }
     property OnBeforeEdit: TBeforeEditEvent read FOnBeforeEdit write FOnBeforeEdit;
+    { the editor closed with the item changed; set Accept to False to keep
+      OldText }
     property OnItemEdited: TItemEditedEvent read FOnItemEdited write FOnItemEdited;
+    { a link in item Index was clicked; LinkName is its href }
     property OnLinkClick: TInkListLinkEvent read FOnLinkClick write FOnLinkClick;
+    { the pointer moved onto a link in item Index }
     property OnLinkEnter: TInkListLinkEvent read FOnLinkEnter write FOnLinkEnter;
+    { the pointer left the link it was over }
     property OnLinkLeave: TInkListLinkEvent read FOnLinkLeave write FOnLinkLeave;
+    { a link in item Index was clicked with the right button }
     property OnLinkRightClick: TInkListLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
 
     property Align;
@@ -239,6 +266,8 @@ type
     property OnMouseWheelDown;
     property OnMouseWheelUp;
     property OnResize;
+    { the selection changed; User is True when the user did it, False when
+      code did }
     property OnSelectionChange: TSelectionChangeEvent read FOnUserSelectionChange write FOnUserSelectionChange;
     property OnShowHint;
     property OnStartDrag;
@@ -583,6 +612,19 @@ begin
     FCharRuns.PaintSelection(Canvas, FCharAnchor, FCharCaret, clHighlight);
   end;
 end;
+
+{$ifdef LCLGTK3}
+{ The GTK3 widgetset lays the list's scrolled window out at the widest
+  item's natural width when it may not scroll sideways, which puts the
+  vertical scrollbar past the right edge as soon as an item is wider than
+  the box.  Markup items nearly always are.  An external policy keeps the
+  width at the control's own. }
+procedure TInkListBox.CreateWnd;
+begin
+  inherited CreateWnd;
+  TGtk3ScrollableWin(Handle).HScrollBarPolicy := GTK_POLICY_EXTERNAL;
+end;
+{$endif}
 
 {$ifdef LCLCOCOA}
 procedure TInkListBox.SetItemIndex(AIndex: integer);
