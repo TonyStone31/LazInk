@@ -120,10 +120,15 @@ type
     { The text shown for that link }
     property HoverLinkText: string read FHoverLinkText;
   published
+    { how Caption is read: HTML, Markdown or plain text }
     property TextFormat: TInkTextFormat read FTextFormat write SetTextFormat default itfHTML;
     property Caption;
+    { the text's size, in percent of Font }
     property HTMLScale: integer read FHTMLScale write SetHTMLScale default 100;
+    { the size of <sup> and <sub> text as a fraction of the font's size }
     property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    { the parent shows through behind the text; off, the label fills itself
+      with Color }
     property Transparent: boolean read FTransparent write SetTransparent default True;
     { Re-flow the caption to the control width. With AutoSize the width is left
       alone and only the height follows the text, the way TLabel behaves. }
@@ -135,21 +140,31 @@ type
     { With AutoSize and no WordWrap the label grows sideways forever. MaxWidth
       caps that: past it the text wraps instead. 0 means no cap. }
     property MaxWidth: integer read FMaxWidth write SetMaxWidth default 0;
+    { extra pixels between wrapped lines }
     property LineSpacing: integer read FLineSpacing write SetLineSpacing default 0;
-    { Where the block of text sits when the control is bigger than it. }
+    { Where the block of text sits when the control is taller than it. }
     property VertAlign: TInkVertAlign read FVertAlign write SetVertAlign default ivaTop;
+    { where each line sits when the control is wider than it: at the left,
+      in the middle or at the right }
     property HorzAlign: TInkHorzAlign read FHorzAlign write SetHorzAlign default ihaLeft;
+    { margins inside the control, between its edges and the text }
     property Borders: TInkBorders read FBorders write SetBorders;
     { Supplies <img src="n">, where n is an index into this list. }
     property Images: TCustomImageList read FImages write SetImages;
+    { how a link is drawn }
     property LinkStyle: TInkLinkStyle read FLinkStyle write SetLinkStyle;
+    { how a link is drawn while the pointer is over it }
     property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
     property AutoOpenLink: boolean read FAutoOpenLink write FAutoOpenLink default False;
+    { a link was clicked; LinkName is its href }
     property OnLinkClick: TInkLinkEvent read FOnLinkClick write FOnLinkClick;
+    { the pointer moved onto a link }
     property OnLinkEnter: TInkLinkEvent read FOnLinkEnter write FOnLinkEnter;
+    { the pointer left the link it was over }
     property OnLinkLeave: TInkLinkEvent read FOnLinkLeave write FOnLinkLeave;
+    { a link was clicked with the right button }
     property OnLinkRightClick: TInkLinkEvent read FOnLinkRightClick write FOnLinkRightClick;
     { the right-click menu: Copy link address over a link, and Copy all.
       Not shown when off or when PopupMenu is set. }

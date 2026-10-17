@@ -358,25 +358,31 @@ type
     { One paragraph per line. Editable in the Object Inspector, so a design-time
       document is real markup in the .lfm and renders in the form designer. }
     property Markup: TStrings read GetMarkup write SetMarkup;
+    { the document can be read, selected and copied but not changed }
     property ReadOnly: boolean read FReadOnly write SetReadOnly default False;
     { the selection, or the caret's paragraph, is in an HTML block the
       editor keeps as written: typing and formatting do nothing there }
     property SelLocked: boolean read EditLocked;
+    { re-flow each paragraph to the control's width }
     property WordWrap: boolean read FWordWrap write SetWordWrap default True;
     { space between paragraphs, headings, lists, quotes, code and tables, as
       a browser leaves it; list items, quote lines and code lines stay
       together.  Off, every paragraph sits right under the one before. }
     property ParagraphSpacing: boolean read FParagraphSpacing write SetParagraphSpacing default False;
+    { the size of <sup> and <sub> text as a fraction of the font's size }
     property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
     { the editor's own right-click menu - Undo, Redo, Cut, Copy, Paste,
       Delete, Select All; a PopupMenu of the host's own still wins }
     property EditMenu: boolean read FEditMenu write FEditMenu default True;
+    { fires after every edit of the document }
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    { the caret moved or the selection changed }
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
     { Assigned, the context menu gets Go to source; show the source there. }
     property OnGoToSource: TNotifyEvent read FOnGoToSource write FOnGoToSource;
     { Supply pictures from the host's resources; local files load by default. }
     property OnImageNeeded: TInkRichImageEvent read FOnImageNeeded write FOnImageNeeded;
+    { a link was clicked; LinkName is its href }
     property OnLinkClick: TInkRichLinkEvent read FOnLinkClick write FOnLinkClick;
 
     property Align;

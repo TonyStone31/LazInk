@@ -115,9 +115,11 @@ type
     procedure Assign(Source: TPersistent); override;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   published
-    { clDefault leaves the surrounding color alone }
+    { the link's text color; clDefault leaves the surrounding color alone }
     property Color: TColor read FColor write SetColor;
+    { behind the link's text; clNone draws no background }
     property BackColor: TColor read FBackColor write SetBackColor;
+    { whether the link is underlined }
     property Underline: boolean read FUnderline write SetUnderline;
   end;
 
@@ -133,9 +135,13 @@ type
     procedure SetAll(AValue: integer);
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   published
+    { pixels of space inside the left edge }
     property Left: integer index 0 read GetSide write SetSide default 0;
+    { pixels of space inside the top edge }
     property Top: integer index 1 read GetSide write SetSide default 0;
+    { pixels of space inside the right edge }
     property Right: integer index 2 read GetSide write SetSide default 0;
+    { pixels of space inside the bottom edge }
     property Bottom: integer index 3 read GetSide write SetSide default 0;
   end;
 

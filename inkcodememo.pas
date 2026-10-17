@@ -67,23 +67,29 @@ type
     destructor Destroy; override;
     procedure PasteFromClipboard; override;
   published
-    { the document as plain text, and the same line by line }
+    { the whole document as one string, lines joined with line breaks }
     property Text: string read GetText write SetText;
+    { the same document line by line }
     property Lines: TStrings read GetLines write SetLines;
     { the gray words an empty box shows; see TInkEdit.TextHint }
     property TextHint: string read FTextHint write SetTextHint;
+    { the color of TextHint; clDefault blends the font color halfway into
+      the background }
     property TextHintColor: TColor read FTextHintColor write SetTextHintColor default clDefault;
     { at most this many characters, counted over the whole text; 0 is no cap }
     property MaxLength: integer read FMaxLength write FMaxLength default 0;
-    { with WantReturns off, Enter goes to the form (a dialog's default
-      button); with WantTabs on, Tab indents instead of leaving the box }
+    { off, Enter goes to the form (a dialog's default button) instead of
+      starting a new line }
     property WantReturns: boolean read FWantReturns write FWantReturns default True;
+    { on, Tab indents the line instead of moving focus to the next control }
     property WantTabs: boolean read FWantTabs write FWantTabs default False;
     { the box grows with its text, between MinLines and MaxLines of the
       control's font, then scrolls - a question box that starts as one
       line and opens up as it is written }
     property AutoHeight: boolean read FAutoHeight write SetAutoHeight default False;
+    { the fewest lines AutoHeight shrinks the box to }
     property MinLines: integer read FMinLines write SetMinLines default 1;
+    { the most lines AutoHeight grows the box to; past them the text scrolls }
     property MaxLines: integer read FMaxLines write SetMaxLines default 8;
     { every character's color and style, asked as it is drawn and measured -
       AIndex counts from 1 over the whole text, line breaks included }
