@@ -104,7 +104,7 @@ Example:
 
 ```pascal
 InkLabel1.Caption := 'Status: <b><font color="#00AA00">connected</font></b> to <a href="cfg">server</a>';
-InkMemo1.Append('<font color="clGray">12:04</font> <b>tony</b> joined');
+InkMemo1.Append('<font color="clGray">12:04</font> <b>sam</b> joined');
 ```
 
 `TInkEdit` doesn't parse markup — it asks you per character instead:
@@ -664,14 +664,13 @@ browser over thirty-six thousand.
 
 ## Where it is going
 
-[ROADMAP.md](../ROADMAP.md) is the plan - only what is still open: runs
+Still to come: runs
 on the other widgetsets and on real touch hardware, an Online Package
 Manager listing, a small CSS round (zebra striping, text-overflow and
 friends), images floated beside text, scrolling speed on very long pages,
 and polish on the WYSIWYG Markdown editor - which reads, edits and writes
 Markdown whole, headings to tables, something nothing else for Lazarus
-does.  How everything already finished was built, and why, is
-[HISTORY.md](HISTORY.md).
+does.
 
 ## License
 

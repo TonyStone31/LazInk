@@ -85,7 +85,6 @@ interaction, Markdown, WebP. Apple Silicon has not been tried.
 
 * **[The guide](docs/GUIDE.md)** - every control, feature and limit, in detail.
 * **[Writing pages](docs/HTML_SUPPORT.md)** - every tag and CSS property it reads, with examples.
-* **[The roadmap](ROADMAP.md)** - open work; **[the history](docs/HISTORY.md)** - how it was built and the decisions made.
 
 ## License
 
