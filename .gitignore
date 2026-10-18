@@ -50,3 +50,8 @@ __pycache__/
 
 # Specifications stay private
 *SPEC*.md
+
+# Working notes stay private
+/ROADMAP.md
+/docs/HISTORY.md
+/bugs/

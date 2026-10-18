@@ -20,7 +20,7 @@
   /* Line pitches that come out whole in pixels (15px x 1.6 = 24), so
      the comparison is not dominated by sub-pixel line stacking: LazInk
      keeps whole-pixel line heights and loses half a pixel a line
-     against a browser's 22.5 - bugs/2026-10-11-halfpixel-lineheight. */
+     against a browser's 22.5 */
   body { background: #ffffff; color: #22262c; font-size: 15px;
          font-family: Arial, sans-serif; line-height: 1.6;
          padding: 14px 16px }
@@ -149,7 +149,7 @@ and <small>the small print</small>.</p>
 <div class="note"><b>How this page is used.</b> The demo shows it beside
 a browser&rsquo;s picture of the same file, crosshair on, scroll-locked.
 Where the two sides disagree by more than a few pixels of font metric,
-that is a bug worth a folder in <code>bugs/</code>.</div>
+that is a bug worth reporting.</div>
 
 <p>On this page: <a href="#build">1 what you could build</a>,
 <a href="#engine">2 the engine</a>, <a href="#chat">3 a chat
@@ -296,7 +296,7 @@ that align:</p>
 asks (<code>nowrap</code>, a clipping <code>overflow</code>,
 <code>text-overflow:&nbsp;ellipsis</code>):</p>
 
-<div class="clip">Indexing /home/tony/projects/lazarus/components/lazutils and seventeen other directories, 48,112 files seen, none skipped, no errors so far</div>
+<div class="clip">Indexing /home/user/projects/lazarus/components/lazutils and seventeen other directories, 48,112 files seen, none skipped, no errors so far</div>
 
 <p>And a word too long for any line parts only where
 <code>&lt;wbr&gt;</code> allows:</p>
