@@ -580,8 +580,7 @@ Since 18 September 2026, LazInk draws with `inkrender.pas` (the engine),
 `inkbox.pas` (the box tree) and `inkdraw.pas` (the API used by controls).
 The package is licensed under **0BSD**; see LICENSE.
 
-The engine separates tokenizing, styling, layout and painting. Its design
-and behavior are documented in `docs/RENDERER_SPEC.md`. The test suite checks
+The engine separates tokenizing, styling, layout and painting. The test suite checks
 rendering, measurement, hit testing, navigation, selection and real help pages.
 
 ### What the new renderer should learn

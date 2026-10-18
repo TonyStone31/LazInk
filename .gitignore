@@ -47,3 +47,6 @@ tests/compare/*-dryrun.png
 # Python bytecode from the page generator
 __pycache__/
 *.pyc
+
+# Specifications stay private
+*SPEC*.md
