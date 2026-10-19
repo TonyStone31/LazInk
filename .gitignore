@@ -57,3 +57,9 @@ __pycache__/
 
 # The maintainer's tools stay private
 /tools/
+
+# Tests, maintainer notes and design notes stay private
+/tests/
+/OPM.md
+/docs/GITHUB_SAMPLE.md
+/docs/MARKDOWN_ROUNDTRIP.md
