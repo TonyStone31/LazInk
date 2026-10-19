@@ -336,6 +336,9 @@ type
 { FNV-1a over the identity, the face and the source.  The hash only decides
   which entry to compare properly; a collision costs a comparison, never the
   wrong text. }
+{ FNV-1a wraps on purpose; a host built with overflow checks must not
+  stop on it, as HashSource says too. }
+{$push}{$R-}{$Q-}
 function IdentityHash(const AIdent: TLayoutIdentity; const AFace, ASource: string): QWord;
 const
   Prime = QWord(1099511628211);
@@ -352,6 +355,7 @@ begin
   for I := 1 to Length(AFace) do Result := (Result xor byte(AFace[I])) * Prime;
   for I := 1 to Length(ASource) do Result := (Result xor byte(ASource[I])) * Prime;
 end;
+{$pop}
 
 destructor TLayoutEntry.Destroy;
 begin
