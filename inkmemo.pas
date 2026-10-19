@@ -211,6 +211,8 @@ type
     property MouseDrag;
     property ScrollBars;
     property SelectionColor;
+    property Zoom;
+    property OnZoom;
     property OnSelectionChange;
     property CopyMenu;
     property OnCopyMenu;
@@ -616,8 +618,9 @@ begin
   if (B.Entry >= 0) and (B.Entry <= High(FEntries)) then E := FEntries[B.Entry];
   B.Indent := E.Indent;
   { negative: pixels, the way every other block spells its size - positive
-    read as points and drew the memo's text a third too big }
-  B.PointSize := -Max(1, Round(FLayoutBase * FHTMLScale / 100));
+    read as points and drew the memo's text a third too big.  The control's
+    own size: the renderer applies HTMLScale and the zoom (Options) }
+  B.PointSize := -ControlFontPixels(False);
   B.Bold := False;
   B.FaceName := '';
   B.Pre := False;
@@ -646,7 +649,7 @@ end;
 function TInkMemo.Options: THTMLOptions;
 begin
   { the borders are the layout's business here, not the renderer's }
-  Result := InkOptions(FSuperSubScriptRatio, FHTMLScale, FLineSpacing, FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, 0);
+  Result := InkOptions(FSuperSubScriptRatio, Round(FHTMLScale * Zoom / 100), FLineSpacing, FNoBorders, FImages, FLinkStyle, FLinkHoverStyle, 0);
 end;
 
 function TInkMemo.BlockOptions(Index: integer): THTMLOptions;

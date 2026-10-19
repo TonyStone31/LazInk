@@ -1115,6 +1115,8 @@ begin
           if (AV <> '') and (AV[1] = '+') then N := 3 + N;
           if (N >= 1) and (N <= 7) then S.Size := -cFontLadder[N]
           else if N <> 0 then S.Size := N;
+          { a size of its own grows with Scale, as the rest of the text does }
+          if (N <> 0) and (Options.Scale > 0) and (Options.Scale <> 100) then S.Size := InkRenderSmaller(S.Size, Options.Scale / 100);
           S.Color := InkRenderColor(InkRenderAttr(T.Attributes, 'color'), S.Color);
           S.BackColor := InkRenderColor(InkRenderAttr(T.Attributes, 'bgcolor'), S.BackColor);
           { a pill: pad="V H" (CSS order), radius, and a border color }

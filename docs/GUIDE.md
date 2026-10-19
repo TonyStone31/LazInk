@@ -309,6 +309,22 @@ as you type, Enter or F3 goes to the next match and Shift with either to the
 one before, Esc closes it. From code: `Find(Text, Options)`, `FindCount`,
 `ShowFindBar`, `ScrollIntoView`.
 
+**Zoom:** Ctrl+wheel, Ctrl+plus (or Ctrl+=), Ctrl+minus and Ctrl+0 zoom the
+page, the memo, `TInkRichEdit` and `TInkCodeMemo`, in the steps a browser
+uses, from 25% to 500%. On a page, text, spacing, borders and pictures grow
+together and `@media` widths follow, as in a browser; the editors zoom the
+text, indents, table spacing and pictures and leave the document as it is.
+`Zoom` sets it from code (100 is normal), and `OnZoom` fires on every change
+so a program can show the value or save it:
+
+```pascal
+procedure TForm1.PageZoom(Sender: TObject);
+begin
+  StatusBar1.SimpleText := Format('%d%%', [InkPage1.Zoom]);
+  Editor.Zoom := InkPage1.Zoom;           // keep a preview and its editor in step
+end;
+```
+
 **Back and Forward:** `Back`, `Forward`, `CanGoBack` and `CanGoForward` are
 there for buttons, and `OnNavigate` fires after each new document so the
 buttons can follow. The mouse's own back and forward buttons work too - on
