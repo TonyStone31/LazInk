@@ -500,10 +500,7 @@ line up.  The showcase is written around what you could build with
 LazInk - a help viewer, release notes, a chat window, a log console, a
 Markdown notes app - while using the vocabulary once each: tables with
 spans, flex cards, grid, pills, a mocked chat and log, `text-overflow`,
-`<wbr>`, nested folds, highlighted code, entities.  After editing it,
-remake the picture with `tools/browser_shot.sh demo/showcase.html
-demo/showcase-browser.png 548 7560` (shoot tall once and read off the
-new height if the page grew).
+`<wbr>`, nested folds, highlighted code, entities.
 
 ![The side by side tab](../images/demo-compare.png)
 
@@ -593,14 +590,7 @@ tests/html5lib_check html5lib-tests/tree-construction      # add 20 to see failu
 rest are the 2025 `<select>` rules and stray NUL bytes.
 
 Computed styles are measured against a real browser's `getComputedStyle`,
-element by element, for 27 properties:
-
-```sh
-LAZARUS_DIR=... FPC=... tools/style_compare.sh page.html [more.html ...]
-SHOW=20 LAZARUS_DIR=... FPC=... tools/style_compare.sh page.html   # and the first 20 differences
-```
-
-On 9 October 2026, saved copies of a Wikipedia article (157,950 values), an
+element by element, for 27 properties.  On 9 October 2026, saved copies of a Wikipedia article (157,950 values), an
 MDN reference page (157,113), Hacker News, the FPC reference and every page
 of the Heckers Sketch manual agreed in every value but one - an element
 styled from inside its own shadow root, which LazInk does not do yet.  Given a file listing HTML pages and an
@@ -619,47 +609,23 @@ To put LazInk up beside a real browser's rendering, open the demo's
 **Side by side** tab: the browser's picture of `demo/showcase.html` on the
 left, a live `TInkPage` on the right, scroll-locked, crosshair on, and the
 showcase's sections numbered so a difference can be named rather than
-described.  (The old standalone viewer, its launcher and its generated
-long page lived in `tools/compare.sh`, `tools/sidebyside.pas`,
-`tools/make_long_page.py` and `tests/compare/`; the demo tab replaced
-them, and git history keeps them.)
+described.
 
-For Markdown, GitHub is the reference.  This shows any `.md` file as
-GitHub renders it - its own HTML, from its API, in its own stylesheet, in a
-browser - beside `TInkPage` and `TInkRichEdit`, scrolling together, the
-headings numbered on all three:
-
-```sh
-LAZARUS_DIR=... FPC=... tools/github_side.sh README.md
-```
-
-It needs `gh` logged in, a Chromium-family browser, and Python for the
-numbering.
+For Markdown, GitHub is the reference: a document is compared as GitHub
+renders it - its own HTML, in its own stylesheet, in a browser - beside
+`TInkPage` and `TInkRichEdit`, scrolling together, the headings numbered on
+all three.
 
 A page keeps its blocks' finished geometry, so painting, measuring and hit
 testing share one layout rather than each rebuilding it.
 `tests/layout_cache_checks.pas` renders the same markup with and without that
 cache and compares painted pixels and the run callbacks, not merely that a
-render happened.  To measure rather than check:
+render happened.
 
-```sh
-LAZARUS_DIR=... FPC=... tools/run_render_bench.sh table 250
-```
-
-What is still worth doing for scrolling speed is written in the
-roadmap's section H.
-
-To find *where* a page disagrees with a browser rather than looking for it:
-
-```sh
-LAZARUS_DIR=... FPC=... tools/drift.sh demo/showcase.html
-```
-
-It asks a browser where every heading of the page landed - with a script
-injected into a copy of it, so the numbers are the browser's own layout and
-not something read off a picture - asks LazInk the same, and prints the two
-beside each other with the drift at each heading and how much each section
-grew between them.  The long page is currently within thirteen pixels of the
+Where a page disagrees with a browser is found heading by heading: a
+browser reports where every heading of the page landed - its own layout,
+not something read off a picture - LazInk reports the same, and the two are
+compared with the drift at each heading.  The long page is currently within thirteen pixels of the
 browser over thirty-six thousand.
 
 ## Where it is going
