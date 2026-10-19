@@ -239,7 +239,7 @@ var
     { the items shrink to fit, no narrower than their longest word }
     Load('<!DOCTYPE html><style>body{margin:0} .r{display:flex;width:100px} .r>div{width:80px}</style>' + '<div class=r><div id=a>aaaaaaaa</div><div id=b>b</div></div>');
     Eq(BoxOf('#a').W, 64, 'shrunk to its longest word');
-    Eq(BoxOf('#b').W, 36, 'and its neighbour takes the rest');
+    Eq(BoxOf('#b').W, 36, 'and its neighbor takes the rest');
   end;
 
   function PseudoBox(const Selector, Which: string): TInkBox;
