@@ -28,7 +28,7 @@ var
   Doc: TInkDocument;
   Styler: TInkStyler;
 
-  procedure Load(const HTML: string; AWidth: integer = 1024; ADark: boolean = False);
+  procedure Load(const HTML: string; AWidth: integer = 1024; ADark: boolean = False; AZoom: double = 1);
   begin
     FreeAndNil(Styler);
     FreeAndNil(Doc);
@@ -37,6 +37,7 @@ var
     Styler.Media.Width := AWidth;
     Styler.Media.Height := 800;
     Styler.Media.Dark := ADark;
+    Styler.Media.Zoom := AZoom;
     Styler.AddDocumentSheets(Doc, 'file:///page/index.html');
     Styler.Compute(Doc);
   end;
@@ -322,6 +323,25 @@ const
     PxIs('#p', 'border-top-width', 0);
   end;
 
+  { At 200% a CSS pixel is two device pixels; ems follow the zoomed font,
+    a percentage does not zoom again, and a length computed and read back
+    is zoomed once.  A 1000-pixel window is 500 CSS pixels wide. }
+  procedure ZoomChecks;
+  begin
+    Load('<style>p { font-size: 10px; padding-top: 3pt; margin-top: 1em; width: 50%; border-top: thin solid;' +
+      ' text-indent: 2em; line-height: 1.5em } span { text-indent: inherit }' + ' @media (max-width: 600px) { p { color: green } }</style><p id=p><span id=s>x</span></p>',
+      1000, False, 2);
+    PxIs('#p', 'font-size', 20);
+    PxIs('#p', 'padding-top', 2 * 3 * 96 / 72);
+    PxIs('#p', 'margin-top', 20);
+    PxIs('#p', 'width', 200, 400);
+    PxIs('#p', 'border-top-width', 2);
+    PxIs('#p', 'line-height', 30);
+    PxIs('#s', 'text-indent', 40);
+    PxIs('#s', 'font-size', 20);
+    ColorIs('#p', 'color', Opaque or $008000);
+  end;
+
   procedure MediaChecks;
   const
     Sheet = '<style>p { color: red } @media (max-width: 600px) { p { color: green } }' + ' @media screen and (min-width: 601px) and (max-width: 900px) { p { color: blue } }' +
@@ -501,6 +521,7 @@ begin
   VariableChecks;
   ShorthandChecks;
   LengthChecks;
+  ZoomChecks;
   MediaChecks;
   LayerChecks;
   HintChecks;

@@ -143,6 +143,9 @@ type
 
 { a list marker's text for a list-style-type and a number: "3.", "c.", "•" }
 function InkListMarker(const AType: string; ANumber: Integer): string;
+{ a border width in whole pixels; one that is there stays at least a pixel,
+  however far the page is zoomed out }
+function BorderPx(S: TInkStyle; const AProp: string): Integer;
 
 implementation
 
@@ -728,6 +731,13 @@ begin
   Result := Round(S.Length(V, Max(0, APercentOf), ADefault));
 end;
 
+function BorderPx(S: TInkStyle; const AProp: string): Integer;
+var W: Double;
+begin
+  W := S.Px(AProp);
+  if W > 0 then Result := Max(1, Round(W)) else Result := 0;
+end;
+
 function IsAuto(S: TInkStyle; const AProp: string): Boolean; inline;
 var V: string;
 begin
@@ -749,10 +759,10 @@ begin
   B.Margin.Right := Len(S, 'margin-right', ACBW, 0);
   B.Margin.Top := Len(S, 'margin-top', ACBW, 0);
   B.Margin.Bottom := Len(S, 'margin-bottom', ACBW, 0);
-  B.Border.Left := Round(S.Px('border-left-width'));
-  B.Border.Right := Round(S.Px('border-right-width'));
-  B.Border.Top := Round(S.Px('border-top-width'));
-  B.Border.Bottom := Round(S.Px('border-bottom-width'));
+  B.Border.Left := BorderPx(S, 'border-left-width');
+  B.Border.Right := BorderPx(S, 'border-right-width');
+  B.Border.Top := BorderPx(S, 'border-top-width');
+  B.Border.Bottom := BorderPx(S, 'border-bottom-width');
   B.Padding.Left := Max(0, Len(S, 'padding-left', ACBW, 0));
   B.Padding.Right := Max(0, Len(S, 'padding-right', ACBW, 0));
   B.Padding.Top := Max(0, Len(S, 'padding-top', ACBW, 0));

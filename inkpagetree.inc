@@ -37,8 +37,13 @@ begin
   if (B <> nil) and (B.Picture.Graphic <> nil) then
   begin
     AWidth := B.Picture.Width; AHeight := B.Picture.Height;
+    { a picture's pixels are CSS pixels, so they zoom with the page }
+    if Page.ImageFit <> iifWindow then
+    begin
+      AWidth := Round(AWidth * Page.Zoom / 100); AHeight := Round(AHeight * Page.Zoom / 100);
+    end
     { a window for one picture: as large as fits in it, up or down }
-    if (Page.ImageFit = iifWindow) and (AWidth > 0) and (AHeight > 0) then
+    else if (AWidth > 0) and (AHeight > 0) then
     begin
       Fit := Min((Page.TreeViewWidth - 16) / AWidth, (Max(1, Page.ClientHeight) - 16) / AHeight);
       if Fit > 0 then
@@ -69,6 +74,7 @@ begin
     if AWidth = 0 then AWidth := 300;
     if AHeight = 0 then AHeight := 150;
   end;
+  AWidth := Round(AWidth * Page.Zoom / 100); AHeight := Round(AHeight * Page.Zoom / 100);
 end;
 
 { ---------------------------------------------------------- the words }
@@ -79,6 +85,7 @@ var O: THTMLOptions; Sz: TSize; TextW: Integer;
 begin
   BlockFont(Canvas, B);
   O := Options;
+  O.Scale := 100;
   O.LineHeight := B.LineHeight;
   O.NoWrap := B.NoWrap;
   O.Ellipsis := B.Ellipsize;
@@ -117,6 +124,7 @@ begin
   if B.WidthsKnown then begin AMin := B.TextMinW; AMax := B.TextMaxW; Exit end;
   BlockFont(Canvas, B);
   O := Options;
+  O.Scale := 100;
   O.LineHeight := B.LineHeight;
   O.NoWrap := True;
   O.CSSLines := True;
@@ -377,7 +385,7 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
     if (S.Keyword('mask-image') <> 'none') and (S.Keyword('mask-image') <> '') then Bg := 0;
     if (Bg shr 24) > 0 then
       Attrs := Attrs + ' bgcolor="' + ColorAttr(InkToColor(Bg, BackCol)) + '"';
-    Bw := Round(S.Px('border-top-width'));
+    Bw := BorderPx(S, 'border-top-width');
     if S.Keyword('border-top-style') = 'none' then Bw := 0;
     PadV := Round(S.Px('padding-top')) + Bw; PadH := Round(S.Px('padding-left')) + Bw;
     Rad := Round(S.Px('border-top-left-radius'));
@@ -838,6 +846,7 @@ begin
   FStyler.CanvasColor := Cardinal(ColorToRGB(Color)) or $FF000000;
   FStyler.CanvasTextColor := Cardinal(ColorToRGB(Font.Color)) or $FF000000;
   FStyler.MediumFont := ControlFontPixels;
+  FStyler.Media.Zoom := FZoom / 100;
   FCanvasBack := Color;
 end;
 
@@ -848,11 +857,12 @@ begin
   if ClientWidth <= 0 then Result := 1024;
 end;
 
-function TInkCustomPage.ControlFontPixels: Integer;
+function TInkCustomPage.ControlFontPixels(AZoomed: Boolean): Integer;
 begin
   if Font.Height <> 0 then Result := Abs(Font.Height)
   else if Font.Size > 0 then Result := Round(Font.Size * 4 / 3)
   else Result := 16;
+  if AZoomed then Result := Max(1, Round(Result * FZoom / 100));
 end;
 
 { the canvas: the root's background, or the body's when the root has none }

@@ -61,6 +61,7 @@ type
     procedure Paint; override;
     procedure Resize; override;
     procedure FontChanged(Sender: TObject); override;
+    procedure ZoomChanged; override;
     procedure CMWantSpecialKey(var Message: TCMWantSpecialKey); message CM_WANTSPECIALKEY;
   public
     constructor Create(AOwner: TComponent); override;
@@ -172,6 +173,12 @@ begin
   AdjustHeight;
 end;
 
+procedure TInkCodeMemo.ZoomChanged;
+begin
+  inherited ZoomChanged;
+  AdjustHeight;
+end;
+
 procedure TInkCodeMemo.AdjustHeight;
 var
   TH, Frame, Want: integer;
@@ -179,7 +186,7 @@ begin
   if not FAutoHeight or FAdjusting or not HandleAllocated then Exit;
   FAdjusting := True;
   try
-    Canvas.Font := Font;
+    UseControlFont;
     TH := Canvas.TextHeight('Ag') + 1;
     Frame := Height - ClientHeight + 6;   // the border, and the margins
     Want := EnsureRange(DocumentHeight, Max(1, FMinLines) * TH, Max(FMinLines, FMaxLines) * TH) + Frame;
@@ -353,7 +360,7 @@ begin
   inherited Paint;
   if (PlainText <> '') or (FTextHint = '') then Exit;
   { the hint in the empty box, dimmed, under the caret }
-  Canvas.Font := Font;
+  UseControlFont;
   if FTextHintColor = clDefault then
     Canvas.Font.Color := RGBToColor((Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2, (Green(ColorToRGB(Font.Color)) +
       Green(ColorToRGB(Color))) div 2, (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)

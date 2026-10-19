@@ -120,6 +120,10 @@ type
     FDocHeight: integer;
     FScrollY: integer;
     FWheelRest: double;
+    { the zoom in percent, and the part of a Ctrl+wheel step not yet taken }
+    FZoom: integer;
+    FZoomRest: double;
+    FOnZoom: TNotifyEvent;
     FVScroll: TScrollBar;
     FTypingAttr: TInkAttr;        // what the next typed character will wear
     FHasTypingAttr: boolean;
@@ -196,12 +200,16 @@ type
     procedure RebuildFromMarkup;
     procedure SetReadOnly(AValue: boolean);
     procedure SetWordWrap(AValue: boolean);
+    procedure SetZoom(AValue: integer);
     procedure SetParagraphSpacing(AValue: boolean);
     { layout }
     procedure InvalidateLayout;
     procedure Relayout;
     procedure NeedLayout;
     procedure ApplyAttrToCanvas(const A: TInkAttr);
+    function FontPoints: integer;
+    procedure CanvasPoints(Sz: integer);
+    function Zoomed(V: integer): integer;
     function ParaKindAt(AIndex: integer): TInkParaKind;
     function ParaLevelAt(AIndex: integer): integer;
     function ParaIndent(AKind: TInkParaKind; ALevel: integer): integer;
@@ -248,6 +256,10 @@ type
     procedure InsertPlainText(const AText: string);
     { the laid-out document's height in pixels, for a box that grows }
     function DocumentHeight: integer;
+    { the control's font on the canvas, at the zoom }
+    procedure UseControlFont;
+    { Zoom changed: lay the text out again }
+    procedure ZoomChanged; virtual;
     procedure CreateWnd; override;
     procedure Paint; override;
     procedure Resize; override;
@@ -371,6 +383,13 @@ type
     property ParagraphSpacing: boolean read FParagraphSpacing write SetParagraphSpacing default False;
     { the size of <sup> and <sub> text as a fraction of the font's size }
     property SuperSubScriptRatio: double read FSuperSubScriptRatio write FSuperSubScriptRatio;
+    { How large the text is drawn, in percent, pictures and table spacing
+      with it; the document itself is not changed.  Ctrl+wheel, Ctrl+plus
+      and Ctrl+minus step it from 25 to 500; Ctrl+0 puts it back to 100. }
+    property Zoom: integer read FZoom write SetZoom default 100;
+    { Zoom changed, from the keys, the wheel or code - so a program can
+      show it or remember it }
+    property OnZoom: TNotifyEvent read FOnZoom write FOnZoom;
     { the editor's own right-click menu - Undo, Redo, Cut, Copy, Paste,
       Delete, Select All; a PopupMenu of the host's own still wins }
     property EditMenu: boolean read FEditMenu write FEditMenu default True;
@@ -532,6 +551,7 @@ begin
   Color := clWindow;
   Font.Color := clWindowText;
   FWordWrap := True;
+  FZoom := 100;
   FSuperSubScriptRatio := 0.7;
   FCaret := 0;
   FAnchor := 0;
@@ -594,7 +614,7 @@ function TInkRichEdit.FontEm: integer;
 var
   tm: TLCLTextMetric;
 begin
-  Canvas.Font := Font;
+  UseControlFont;
   Result := -Canvas.Font.Height;
   if (Result <= 0) and Canvas.GetTextMetrics(tm) then Result := tm.Height * 4 div 5;
   if Result <= 0 then Result := 12;
@@ -966,6 +986,39 @@ begin
   if not FLayoutValid then Relayout;
 end;
 
+{ the control's font size in points, wherever the platform keeps it }
+function TInkRichEdit.FontPoints: integer;
+begin
+  Result := Font.Size;
+  if Result = 0 then Result := Screen.SystemFont.Size;
+  { GTK2 gives the system font no size; the handle knows it, in pixels }
+  if Result = 0 then
+  begin
+    if FDefaultSize = 0 then FDefaultSize := Max(1, Round(Abs(GetFontData(Font.Handle).Height) * 72 / Font.PixelsPerInch));
+    Result := FDefaultSize;
+  end;
+end;
+
+{ Sz points on the canvas at the zoom - in pixels then, as whole points
+  would make neighboring steps the same size }
+procedure TInkRichEdit.CanvasPoints(Sz: integer);
+begin
+  if FZoom = 100 then Canvas.Font.Size := Sz
+  else
+    Canvas.Font.Height := -Max(1, Round(Sz * Canvas.Font.PixelsPerInch / 72 * FZoom / 100));
+end;
+
+procedure TInkRichEdit.UseControlFont;
+begin
+  Canvas.Font := Font;
+  if FZoom <> 100 then CanvasPoints(FontPoints);
+end;
+
+function TInkRichEdit.Zoomed(V: integer): integer;
+begin
+  Result := Round(V * FZoom / 100);
+end;
+
 procedure TInkRichEdit.ApplyAttrToCanvas(const A: TInkAttr);
 const
   { a browser's own heading factors }
@@ -981,14 +1034,7 @@ begin
     Canvas.Font.Name := Font.Name;
   if A.Size > 0 then Sz := A.Size
   else
-    Sz := Font.Size;
-  if Sz = 0 then Sz := Screen.SystemFont.Size;
-  { GTK2 gives the system font no size; the handle knows it, in pixels }
-  if Sz = 0 then
-  begin
-    if FDefaultSize = 0 then FDefaultSize := Max(1, Round(Abs(GetFontData(Font.Handle).Height) * 72 / Font.PixelsPerInch));
-    Sz := FDefaultSize;
-  end;
+    Sz := FontPoints;
   { a heading's size and weight come from its kind, unless the character
     picked its own size }
   if (A.Kind in [ipkH1..ipkH6]) and (A.Size = 0) then
@@ -996,7 +1042,7 @@ begin
   if A.Script <> isNormal then
     Sz := Round(Sz * FSuperSubScriptRatio);
   if Sz < 1 then Sz := 1;
-  Canvas.Font.Size := Sz;
+  CanvasPoints(Sz);
   if A.Kind in [ipkH1..ipkH6, ipkTableHead] then
     Canvas.Font.Style := A.Style + [fsBold]
   else
@@ -1048,7 +1094,7 @@ end;
   which it leaves on the canvas. }
 function TInkRichEdit.ParaIndent(AKind: TInkParaKind; ALevel: integer): integer;
 begin
-  Canvas.Font := Font;
+  UseControlFont;
   case AKind of
     ipkBullet, ipkNumber: Result := Canvas.TextWidth('99. ') * (ALevel + 1);
     ipkQuote: Result := QuoteBarWidth + FontEm;
@@ -1197,6 +1243,7 @@ begin
   if (W = 0) and (FAttrs[AIndex].ImageHeight > 0) and (Picture.Height > 0) then
     W := Max(1, Round(Picture.Width * (FAttrs[AIndex].ImageHeight / Picture.Height)));
   if W = 0 then W := Picture.Width;
+  W := Zoomed(W);
   if W > 0 then Result := Min(W, LineTextWidth)
   else
     Result := Min(LineTextWidth, Max(32, Canvas.TextWidth(FAttrs[AIndex].ImageAlt) + 8));
@@ -1214,7 +1261,7 @@ begin
   if (H > 0) and (Asked > 0) then
     Result := Max(1, Round(H * (W / Asked)))        { the tag's shape, scaled with a cut width }
   else if (H > 0) and (Picture.Height = 0) then
-    Result := H
+    Result := Zoomed(H)
   else if (H > 0) and (Asked = 0) then
     Result := Max(1, Round(H * (W / Max(1, Round(Picture.Width * (H / Picture.Height))))))
   else if Picture.Width > 0 then Result := Max(1, Round(Picture.Height * (W / Picture.Width)))
@@ -1501,7 +1548,7 @@ var
     L: TInkVisLine;
     Al: TAlignment;
   begin
-    Canvas.Font := Font;
+    UseControlFont;
     if Canvas.GetTextMetrics(tm) then
     begin
       MaxH := tm.Height;
@@ -1551,8 +1598,8 @@ var
     L.Ascent := MaxAsc;
     if TableRowW > 0 then
     begin
-      Inc(L.Height, 2 * cRowPad);
-      Inc(L.Ascent, cRowPad);
+      Inc(L.Height, 2 * Zoomed(cRowPad));
+      Inc(L.Ascent, Zoomed(cRowPad));
     end;
     if ACount > 0 then
       L.Width := FCharX[AFirst + ACount - 1] + FCharW[AFirst + ACount - 1]
@@ -1600,7 +1647,7 @@ var
       if (c >= NCols) or (CellFirst >= AEnd) then Exit;
       A := '-';
       if c < Length(FAttrs[CellFirst].TableAlign) then A := FAttrs[CellFirst].TableAlign[c + 1];
-      Extra := Max(0, ColX[c + 1] - cCellPad - X);
+      Extra := Max(0, ColX[c + 1] - Zoomed(cCellPad) - X);
       if A = 'c' then Extra := Extra div 2
       else if A <> 'r' then Exit;
       for K := CellFirst to AEnd - 1 do Inc(FCharX[K], Extra);
@@ -1660,14 +1707,14 @@ var
     SetLength(ColX, NCols + 1);
     ColX[0] := 0;
     for c := 0 to NCols - 1 do
-      ColX[c + 1] := ColX[c] + Max(ColW[c], 16) + 2 * cCellPad;
+      ColX[c + 1] := ColX[c] + Max(ColW[c], 16) + 2 * Zoomed(cCellPad);
     TableRowW := ColX[NCols];
 
     { pass 2: place each row and emit its line }
     RowStart := i;
     CellFirst := i;
     c := 0;
-    X := ColX[0] + cCellPad;
+    X := ColX[0] + Zoomed(cCellPad);
     for j := i to GEnd - 1 do
     begin
       if FChars[j] = #10 then
@@ -1679,7 +1726,7 @@ var
         RowStart := j + 1;
         CellFirst := j + 1;
         c := 0;
-        X := ColX[0] + cCellPad;
+        X := ColX[0] + Zoomed(cCellPad);
         Continue;
       end;
       if IsCellBreak(j) then
@@ -1688,8 +1735,8 @@ var
         CellFirst := j + 1;
         FCharX[j] := X;
         ColCount := Min(c + 1, NCols);
-        FCharW[j] := Max(0, ColX[ColCount] + cCellPad - X);
-        X := ColX[ColCount] + cCellPad;
+        FCharW[j] := Max(0, ColX[ColCount] + Zoomed(cCellPad) - X);
+        X := ColX[ColCount] + Zoomed(cCellPad);
         c := ColCount;
         Continue;
       end;
@@ -1733,7 +1780,7 @@ begin
   Gap := 0;
   WordText := '';
   WordW := 0;
-  Canvas.Font := Font;
+  UseControlFont;
   Em := FontEm;
   CodePad := Em * 2 div 5;
   CurKind := ParaKindAt(0);
@@ -1971,6 +2018,12 @@ function TInkRichEdit.DoMouseWheel(Shift: TShiftState; WheelDelta: integer; Mous
 begin
   Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);
   if Result then Exit;
+  if Shift * [ssCtrl, ssAlt, ssMeta] = [ssCtrl] then
+  begin
+    { wheel up is larger }
+    Zoom := InkZoomStep(FZoom, InkWheelPixels(WheelDelta, -1, FZoomRest));
+    Exit(True);
+  end;
   if not FVScroll.Visible then Exit;
   FScrollY := FScrollY + InkWheelPixels(WheelDelta, 45, FWheelRest);
   if FScrollY > FDocHeight - ClientHeight then
@@ -2080,13 +2133,13 @@ begin
         { and a line where each '|' hands one cell to the next }
         for BX := L.First to L.First + L.Count - 1 do
           if (BX < CharCount) and IsCellBreak(BX) then
-            Canvas.Line(L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LT,
-              L.Left + FCharX[BX] + FCharW[BX] - cCellPad, LB);
+            Canvas.Line(L.Left + FCharX[BX] + FCharW[BX] - Zoomed(cCellPad), LT,
+              L.Left + FCharX[BX] + FCharW[BX] - Zoomed(cCellPad), LB);
       end;
       ipkBullet, ipkNumber:
         if (L.First = 0) or ((L.First > 0) and (L.First <= CharCount) and (FChars[L.First - 1] = #10)) then
         begin
-          Canvas.Font := Font;
+          UseControlFont;
           Canvas.Font.Color := Font.Color;
           Canvas.Brush.Style := bsClear;
           if Canvas.GetTextMetrics(tm) then
@@ -2124,7 +2177,7 @@ begin
 
       if FAttrs[i].TaskState >= 0 then
       begin
-        Canvas.Font := Font;
+        UseControlFont;
         HTMLDrawOpt(Canvas, Rect(L.Left + FCharX[i], L.Top - FScrollY, L.Left + FCharX[i] + FCharW[i], L.Top - FScrollY + L.Height), [],
           InkCheckboxMarkup(FAttrs[i].TaskState = 1), DefaultHTMLOptions);
         Inc(i);
@@ -2149,7 +2202,7 @@ begin
           Canvas.Brush.Style := bsClear;
           Canvas.Pen.Color := clGray;
           Canvas.Rectangle(L.Left + FCharX[i], RunTop, L.Left + FCharX[i] + FCharW[i], BaseY);
-          Canvas.Font := Font;
+          UseControlFont;
           Canvas.Font.Color := Font.Color;
           Canvas.TextOut(L.Left + FCharX[i] + 4, RunTop + 4, FAttrs[i].ImageAlt);
         end;
@@ -3153,6 +3206,12 @@ var
 begin
   inherited KeyDown(Key, Shift);
   if Key = 0 then Exit;
+  if InkZoomKey(Key, Shift, FZoom, i) then
+  begin
+    Zoom := i;
+    Key := 0;
+    Exit;
+  end;
   if (Key = VK_F) and (Shift = [ssCtrl]) then
   begin
     ShowFindBar;
@@ -4072,6 +4131,25 @@ begin
   if FWordWrap = AValue then Exit;
   FWordWrap := AValue;
   InvalidateLayout;
+end;
+
+procedure TInkRichEdit.ZoomChanged;
+begin
+  InvalidateLayout;
+end;
+
+procedure TInkRichEdit.SetZoom(AValue: integer);
+var
+  Old: integer;
+begin
+  AValue := EnsureRange(AValue, InkZoomMin, InkZoomMax);
+  if FZoom = AValue then Exit;
+  Old := FZoom;
+  FZoom := AValue;
+  { the same place stays at the top }
+  FScrollY := Round(FScrollY * FZoom / Old);
+  ZoomChanged;
+  if Assigned(FOnZoom) then FOnZoom(Self);
 end;
 
 procedure TInkRichEdit.SetParagraphSpacing(AValue: boolean);

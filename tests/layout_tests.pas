@@ -94,7 +94,7 @@ var
   Fake: TFake;
   Lay: TInkLayout;
 
-  procedure Load(const HTML: string; AWidth: integer = 800);
+  procedure Load(const HTML: string; AWidth: integer = 800; AZoom: double = 1);
   begin
     FreeAndNil(Lay);
     FreeAndNil(Styler);
@@ -103,6 +103,7 @@ var
     Styler := TInkStyler.Create;
     Styler.Media.Width := AWidth;
     Styler.Media.Height := 600;
+    Styler.Media.Zoom := AZoom;
     Styler.AddDocumentSheets(Doc, '');
     Styler.Compute(Doc);
     Lay := TInkLayout.Create(Styler, Fake);
@@ -422,6 +423,18 @@ var
     Check(Ms < 3000, 'a long page lays out in good time');
   end;
 
+  { zoomed out to a quarter, a 1px border stays a pixel; spacing shrinks }
+  procedure ZoomChecks;
+  var
+    B: TInkBox;
+  begin
+    Load('<div id=d style="border: 1px solid; padding: 8px; margin: 0">x</div>', 800, 0.25);
+    B := BoxOf('#d');
+    if B = nil then Exit;
+    Check(B.Border.Top = 1, Format('a zoomed-out border keeps a pixel (%d)', [B.Border.Top]));
+    Check(B.Padding.Top = 2, Format('padding zooms (%d)', [B.Padding.Top]));
+  end;
+
 begin
   Failures := 0;
   Checks := 0;
@@ -437,6 +450,7 @@ begin
   TableChecks;
   PositionChecks;
   ListAndImageChecks;
+  ZoomChecks;
   SpeedCheck;
   FreeAndNil(Lay);
   FreeAndNil(Styler);

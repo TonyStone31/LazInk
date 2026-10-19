@@ -216,6 +216,10 @@ type
       reached the screen }
     FWheelRest: double;
     FLastPaint: QWord;
+    { the zoom in percent, and the part of a Ctrl+wheel step not yet taken }
+    FZoom: integer;
+    FZoomRest: double;
+    FOnZoom: TNotifyEvent;
     { pictures decoded for the page at FImageCacheFor, by address }
     FImageCache: TStringList;
     FImageCacheFor: string;
@@ -341,6 +345,7 @@ type
     function GetSelectionStart: TInkPagePosition;
     function GetSelectionEnd: TInkPagePosition;
     procedure SetSelectionColor(AValue: TColor);
+    procedure SetZoom(AValue: integer);
     procedure DoSelectAll(Sender: TObject);
     function BlockAt(X, Y: integer): integer;
   private
@@ -418,7 +423,8 @@ type
       between two cells of a row, else a line end }
     function BlockJoint(I: integer): string;
     { the control's font in pixels: what medium means, and a memo's lines }
-    function ControlFontPixels: integer;
+    { the control's font in pixels, at the zoom unless AZoomed is False }
+    function ControlFontPixels(AZoomed: boolean = True): integer;
     function ItemCount: integer;
     function PageItem(Index: integer): TObject;
     { items from AFrom on freed and forgotten - how a memo replaces its
@@ -693,6 +699,13 @@ type
       the page, so the words stay readable.  A page's ::selection
       background wins. }
     property SelectionColor: TColor read FSelectionColor write SetSelectionColor default clDefault;
+    { How large the page is drawn, in percent: text, spacing and pictures
+      alike, as a browser zooms.  Ctrl+wheel, Ctrl+plus and Ctrl+minus step
+      it from 25 to 500; Ctrl+0 puts it back to 100. }
+    property Zoom: integer read FZoom write SetZoom default 100;
+    { Zoom changed, from the keys, the wheel or code - so a program can
+      show it or remember it }
+    property OnZoom: TNotifyEvent read FOnZoom write FOnZoom;
     { the selected text changed, or the selection was cleared }
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
     { after a new document is shown - a link, Back, Forward or a load from
@@ -732,6 +745,8 @@ type
     property ScrollBars;
     property ColorScheme;
     property SelectionColor;
+    property Zoom;
+    property OnZoom;
     property OnSelectionChange;
     property OnNavigate;
     property CopyMenu;
@@ -1081,6 +1096,7 @@ begin
   FAutoScroll.Interval := 40;
   FAutoScroll.OnTimer := @AutoScrollTimer;
   FSelectionColor := clDefault;
+  FZoom := 100;
   FCopyMenu := True;
   FCopyMenuHost := TInkCopyMenu.Create(Self);
   FCodeHeader := True;
@@ -1304,6 +1320,8 @@ begin
   { a link in the tree layout wears what its CSS says, underline and all }
   if B.Tree then
   begin
+    { the styler's sizes are final: a memo's scale is in them already }
+    Result.Scale := 100;
     Result.LinkKeepsColor := True;
     Result.LinkUnderline := False;
     Result.CSSLines := True;
@@ -3609,6 +3627,26 @@ begin
   Invalidate;
 end;
 
+procedure TInkCustomPage.SetZoom(AValue: integer);
+var
+  Old, Keep: integer;
+begin
+  AValue := EnsureRange(AValue, InkZoomMin, InkZoomMax);
+  if FZoom = AValue then Exit;
+  Old := FZoom;
+  FZoom := AValue;
+  if not (csLoading in ComponentState) then
+  begin
+    { styled again at the new size; the same place stays at the top }
+    Keep := ScrollY;
+    Parse;
+    Layout;
+    FScroll.Position := Round(Keep * FZoom / Old);
+    Invalidate;
+  end;
+  if Assigned(FOnZoom) then FOnZoom(Self);
+end;
+
 procedure TInkCustomPage.PaintSelection(ACanvas: TCanvas; Index: integer; B: TInkPageBlock; const AFrom, ATo: TInkPagePosition);
 var
   K, A, Z, SelA, SelZ, X1, X2, RunEnd: integer;
@@ -3696,6 +3734,12 @@ end;
 
 function TInkCustomPage.DoMouseWheel(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean;
 begin
+  if Shift * [ssCtrl, ssAlt, ssMeta] = [ssCtrl] then
+  begin
+    { wheel up is larger }
+    Zoom := InkZoomStep(FZoom, InkWheelPixels(WheelDelta, -1, FZoomRest));
+    Exit(True);
+  end;
   { forty pixels a notch, and a fast wheel's fractions in proportion }
   FScroll.Position := EnsureRange(FScroll.Position + InkWheelPixels(WheelDelta, 40, FWheelRest), 0, Max(0, FContentHeight - ClientHeight));
   KeepPainting;
@@ -3710,10 +3754,16 @@ end;
 
 procedure TInkCustomPage.KeyDown(var Key: word; Shift: TShiftState);
 var
-  Delta: integer;
+  Delta, NewZoom: integer;
 begin
   inherited;
   Delta := 0;
+  if InkZoomKey(Key, Shift, FZoom, NewZoom) then
+  begin
+    Zoom := NewZoom;
+    Key := 0;
+    Exit;
+  end;
   if ssCtrl in Shift then
     case Key of
       VK_A: begin

@@ -20,7 +20,9 @@
   buttons many mice have (buttons 8 and 9).  Windows, and Qt, deliver them
   to a control as MouseDown / MouseUp with mbExtra1 and mbExtra2; the
   Lazarus GTK3 backend throws them away.  A hooked control gets them the
-  same way as on the other platforms. }
+  same way as on the other platforms.
+
+  The wheel and zoom arithmetic the scrolling controls share is here too. }
 unit InkTouch;
 {$mode objfpc}{$H+}
 interface
@@ -57,12 +59,26 @@ function InkWheelNotches(WheelDelta: integer): double;
   pixel left over to the next event, so slow turning still moves. }
 function InkWheelPixels(WheelDelta, PerNotch: integer; var Rest: double): integer;
 
+const
+  { the zooms a control takes, in percent }
+  InkZoomMin = 25;
+  InkZoomMax = 500;
+
+{ The zoom ASteps steps up from AZoom (down when negative), on the ladder
+  browsers use: 25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200,
+  250, 300, 400, 500.  A zoom between two steps goes to the next one. }
+function InkZoomStep(AZoom, ASteps: integer): integer;
+{ Ctrl with plus or equals, minus, or 0, on the main keys or the keypad:
+  True, with the zoom they ask for from AZoom.  Shift may be held, as plus
+  needs it on many keyboards. }
+function InkZoomKey(Key: word; Shift: TShiftState; AZoom: integer; out ANew: integer): boolean;
+
 implementation
 
 uses
   {$IFDEF WINDOWS}Windows,{$ENDIF}
   {$IFDEF LCLGTK3}Types, LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
-  LMessages, LCLType;
+  Math, LMessages, LCLType;
 
 {$IFDEF WINDOWS}
 
@@ -114,6 +130,68 @@ begin
   Rest := Rest + InkWheelNotches(WheelDelta) * PerNotch;
   Result := Trunc(Rest);
   Rest := Rest - Result;
+end;
+
+function InkZoomStep(AZoom, ASteps: integer): integer;
+const
+  Ladder: array[0..16] of integer = (25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500);
+var
+  I: integer;
+begin
+  Result := AZoom;
+  while ASteps > 0 do
+  begin
+    I := 0;
+    while (I < High(Ladder)) and (Ladder[I] <= Result) do Inc(I);
+    Result := Max(Result, Ladder[I]);
+    Dec(ASteps);
+  end;
+  while ASteps < 0 do
+  begin
+    I := High(Ladder);
+    while (I > 0) and (Ladder[I] >= Result) do Dec(I);
+    Result := Min(Result, Ladder[I]);
+    Inc(ASteps);
+  end;
+end;
+
+{$IFDEF LCLGTK3}
+{ The Lazarus GTK3 backend has no key code for "=" and hands that key a
+  spare OEM code, so Ctrl+= is told by the GDK event's own key }
+function EqualsKeyPressed: boolean;
+var E: PGdkEvent;
+begin
+  Result := False;
+  E := gtk_get_current_event;
+  if E = nil then Exit;
+  try
+    Result := (E^.type_ = GDK_KEY_PRESS) and ((E^.key.keyval = GDK_KEY_equal) or (E^.key.keyval = GDK_KEY_plus));
+  finally
+    gdk_event_free(E);
+  end;
+end;
+{$ELSE}
+
+function EqualsKeyPressed: boolean;
+begin
+  Result := False;
+end;
+{$ENDIF}
+
+function InkZoomKey(Key: word; Shift: TShiftState; AZoom: integer; out ANew: integer): boolean;
+begin
+  ANew := AZoom;
+  Result := Shift * [ssCtrl, ssAlt, ssMeta] = [ssCtrl];
+  if not Result then Exit;
+  case Key of
+    VK_OEM_PLUS, VK_ADD: ANew := InkZoomStep(AZoom, 1);
+    VK_OEM_MINUS, VK_SUBTRACT: ANew := InkZoomStep(AZoom, -1);
+    VK_0, VK_NUMPAD0: ANew := 100;
+    else
+      if EqualsKeyPressed then ANew := InkZoomStep(AZoom, 1)
+      else
+        Result := False;
+  end;
 end;
 
 { what the left mouse button would have sent }

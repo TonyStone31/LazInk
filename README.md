@@ -22,6 +22,9 @@ browser engine, no dependencies beyond the LCL, and **0BSD licensed**.
 * **Selection.** Drag, double-click a word, Shift+arrows, a right-click copy
   menu, Ctrl+C as text and HTML - in the page, the memo, the list box, and
   the label when enabled.
+* **Zoom.** Ctrl+wheel, Ctrl+plus, Ctrl+minus and Ctrl+0 zoom the page, the
+  memo and both editors, as in a browser; a `Zoom` property and an `OnZoom`
+  event let a program set it and remember it.
 * **Chat logs.** `TInkMemo.AppendBlock` appends a message with lists, tables
   and highlighted code as one entry with its own background color;
   `ReplaceLast` updates the last entry while a reply streams in.

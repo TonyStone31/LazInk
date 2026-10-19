@@ -139,6 +139,7 @@ type
     procedure Press(X, Y: integer; Shift: TShiftState = []);
     procedure Key(K: word; Shift: TShiftState);
     procedure SelChanged(Sender: TObject);
+    procedure Wheel(Delta: integer; Shift: TShiftState);
     procedure AddToMenu(Sender: TObject; Menu: TPopupMenu; X, Y: integer);
     procedure Tick;
     procedure LoadURLForTest(const URL: string);
@@ -177,6 +178,11 @@ type
   procedure TPageProbe.Key(K: word; Shift: TShiftState);
   begin
     KeyDown(K, Shift);
+  end;
+
+  procedure TPageProbe.Wheel(Delta: integer; Shift: TShiftState);
+  begin
+    DoMouseWheel(Shift, Delta, Point(10, 10));
   end;
 
   procedure TPageProbe.LinkActivated(Sender: TObject; const Link: TInkLinkInfo; var Handled: boolean);
@@ -437,6 +443,18 @@ type
     procedure TypeText(const S: string);
     procedure Down(X, Y: integer; Shift: TShiftState);
     procedure Drag(X, Y: integer);
+    procedure Wheel(Delta: integer; Shift: TShiftState);
+    function Tall: integer;
+  end;
+
+  procedure TRichProbe.Wheel(Delta: integer; Shift: TShiftState);
+  begin
+    DoMouseWheel(Shift, Delta, Point(10, 10));
+  end;
+
+  function TRichProbe.Tall: integer;
+  begin
+    Result := DocumentHeight;
   end;
 
   procedure TRichProbe.Key(AKey: word; AShift: TShiftState);
@@ -3765,6 +3783,96 @@ type
   end;
 
   { --- tables in the rich editor: layout, keys, and the Markdown trip --- }
+  { Ctrl+wheel, Ctrl+plus, Ctrl+minus and Ctrl+0 on a page and an editor }
+  procedure ZoomChecks;
+  var
+    P: TPageProbe;
+    E: TRichProbe;
+    C: TInkCodeMemo;
+    S, MD: string;
+    J, H100, Fires: integer;
+  begin
+    Check(InkZoomStep(100, 1) = 110, 'one step up from 100 is 110');
+    Check(InkZoomStep(100, -1) = 90, 'one step down from 100 is 90');
+    Check(InkZoomStep(100, 3) = 150, 'three steps up from 100 is 150');
+    Check(InkZoomStep(120, 1) = 125, 'from between two steps, up is the next step');
+    Check(InkZoomStep(120, -1) = 110, 'and down the one below');
+    Check((InkZoomStep(500, 1) = 500) and (InkZoomStep(25, -1) = 25), 'the ends of the ladder hold');
+    Check(not InkZoomKey(VK_OEM_PLUS, [], 100, J), 'plus alone is typing, not zoom');
+    Check(not InkZoomKey(VK_0, [ssCtrl, ssAlt], 100, J), 'Ctrl+Alt+0 is not zoom');
+    Check(InkZoomKey(VK_OEM_PLUS, [ssCtrl, ssShift], 100, J) and (J = 110), 'Ctrl+Shift+= zooms in');
+    Check(InkZoomKey(VK_SUBTRACT, [ssCtrl], 100, J) and (J = 90), 'Ctrl+keypad minus zooms out');
+
+    P := TPageProbe.Create(F);
+    try
+      P.Parent := F;
+      P.SetBounds(0, 0, 400, 200);
+      P.OnZoom := @P.Navigated;
+      S := '<html><body style="margin: 0"><canvas width=60 height=300></canvas>';
+      for J := 1 to 40 do S := S + '<p style="margin: 10px 0">Line ' + IntToStr(J) + '</p>';
+      P.LoadHTML(S + '</body></html>');
+      P.ScrollTo(0);
+      H100 := P.ContentHeight;
+      Fires := P.Navigations;
+      P.Key(VK_OEM_PLUS, [ssCtrl]);
+      Check(P.Zoom = 110, Format('Ctrl+= zooms the page in (%d)', [P.Zoom]));
+      P.Key(VK_0, [ssCtrl]);
+      Check(P.Zoom = 100, 'Ctrl+0 puts it back');
+      P.Wheel(120, [ssCtrl]);
+      Check(P.Zoom = 110, Format('Ctrl+wheel up zooms in (%d)', [P.Zoom]));
+      P.Wheel(-120, [ssCtrl]);
+      Check(P.Zoom = 100, 'Ctrl+wheel down zooms out');
+      Check(P.Navigations - Fires = 4, Format('OnZoom fires for each change (%d)', [P.Navigations - Fires]));
+      P.Wheel(-120, []);
+      Check((P.Zoom = 100) and (P.ScrollY > 0), 'the wheel alone still scrolls');
+      P.ScrollTo(300);
+      P.Zoom := 200;
+      Check(Abs(P.ContentHeight - 2 * H100) < H100 div 10, Format('at 200%% the page is twice as tall (%d, %d)', [H100, P.ContentHeight]));
+      Check(Abs(P.ScrollY - 600) <= 2, Format('and the same place stays at the top (%d)', [P.ScrollY]));
+      P.Zoom := 1000;
+      Check(P.Zoom = 500, 'Zoom stops at 500');
+      P.Zoom := 100;
+      Check(P.ContentHeight = H100, 'back at 100 the page is as it was');
+    finally
+      P.Free;
+    end;
+
+    E := TRichProbe.Create(F);
+    try
+      E.Parent := F;
+      E.SetBounds(0, 0, 420, 300);
+      MD := '# Title' + LineEnding + LineEnding + 'Some **bold** words.' + LineEnding + LineEnding + '| A | B |' + LineEnding + '| --- | --- |' +
+        LineEnding + '| 1 | 2 |';
+      E.LoadMarkdown(MD);
+      S := E.AsMarkdown;
+      H100 := E.Tall;
+      E.Key(VK_OEM_PLUS, [ssCtrl]);
+      Check(E.Zoom = 110, Format('Ctrl+= zooms the editor in (%d)', [E.Zoom]));
+      E.Wheel(-120, [ssCtrl]);
+      Check(E.Zoom = 100, 'Ctrl+wheel down zooms it out');
+      E.Zoom := 200;
+      Check(E.Tall > H100 * 17 div 10, Format('at 200%% the text is about twice as tall (%d, %d)', [H100, E.Tall]));
+      E.Key(VK_0, [ssCtrl]);
+      Check((E.Zoom = 100) and (E.Tall = H100), Format('Ctrl+0 puts the editor back (%d)', [E.Tall]));
+      Check(E.AsMarkdown = S, 'zooming changed nothing in the document');
+    finally
+      E.Free;
+    end;
+
+    C := TInkCodeMemo.Create(F);
+    try
+      C.Parent := F;
+      C.Width := 300;
+      C.AutoHeight := True;
+      C.Text := 'one' + LineEnding + 'two';
+      H100 := C.Height;
+      C.Zoom := 200;
+      Check(C.Height > H100 * 3 div 2, Format('an AutoHeight memo grows with its zoom (%d, %d)', [H100, C.Height]));
+    finally
+      C.Free;
+    end;
+  end;
+
   procedure RichEditTableChecks;
   var
     E: TRichProbe;
@@ -5162,6 +5270,7 @@ begin
     SchemeAndMoreChecks;
     RichEditMarkdownChecks;
     RichEditTableChecks;
+    ZoomChecks;
     EditAndPlainChecks;
     ClickSelectChecks;
     ChatWindowChecks;

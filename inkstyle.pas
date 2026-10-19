@@ -35,6 +35,8 @@ type
     Width, Height: integer;
     Dark: boolean;
     Print: boolean;
+    { device pixels to a CSS pixel - the page's zoom; 1 at 100% }
+    Zoom: double;
     { set by Compute from the document: the old page rules apply }
     Quirks: boolean;
   end;
@@ -916,6 +918,8 @@ type
   { what a length is measured against }
   TLengthContext = record
     Font, Root, VW, VH, Percent: double;
+    { device pixels to a CSS pixel }
+    Zoom: double;
   end;
 
   TCalc = class
@@ -933,17 +937,17 @@ function UnitPx(const U: string; const Ctx: TLengthContext; out F: double): bool
 begin
   Result := True;
   case U of
-    '', 'px': F := 1;
+    '', 'px': F := Ctx.Zoom;
     'em': F := Ctx.Font;
     'rem': F := Ctx.Root;
     'ex', 'ch': F := Ctx.Font / 2;
     '%': F := Ctx.Percent / 100;
-    'pt': F := 96 / 72;
-    'pc': F := 16;
-    'in': F := 96;
-    'cm': F := 96 / 2.54;
-    'mm': F := 96 / 25.4;
-    'q': F := 96 / 101.6;
+    'pt': F := Ctx.Zoom * 96 / 72;
+    'pc': F := Ctx.Zoom * 16;
+    'in': F := Ctx.Zoom * 96;
+    'cm': F := Ctx.Zoom * 96 / 2.54;
+    'mm': F := Ctx.Zoom * 96 / 25.4;
+    'q': F := Ctx.Zoom * 96 / 101.6;
     'vw', 'svw', 'lvw', 'dvw': F := Ctx.VW / 100;
     'vh', 'svh', 'lvh', 'dvh': F := Ctx.VH / 100;
     'vmin': F := Min(Ctx.VW, Ctx.VH) / 100;
@@ -3138,18 +3142,20 @@ var
   L: string;
 begin
   L := LowTrim(AValue);
-  if (L = 'thin') then Exit(1);
-  if (L = 'medium') then Exit(3);
-  if (L = 'thick') then Exit(5);
   Ctx.Font := FontSize;
   Ctx.Root := RootFontSize;
   Ctx.VW := 1024;
   Ctx.VH := 768;
+  Ctx.Zoom := 1;
   if FStyler <> nil then
   begin
     Ctx.VW := FStyler.Media.Width;
     Ctx.VH := FStyler.Media.Height;
+    Ctx.Zoom := FStyler.Media.Zoom;
   end;
+  if (L = 'thin') then Exit(Ctx.Zoom);
+  if (L = 'medium') then Exit(3 * Ctx.Zoom);
+  if (L = 'thick') then Exit(5 * Ctx.Zoom);
   Ctx.Percent := APercentOf;
   if not EvalLength(L, Ctx, Result) then Result := ADefault;
 end;
@@ -3223,6 +3229,7 @@ begin
   FRegistered := NewCustomList;
   Media.Width := 1024;
   Media.Height := 768;
+  Media.Zoom := 1;
   MediumFont := 16;
   CanvasColor := RGBA($FFFFFF, 255);
   CanvasTextColor := RGBA($000000, 255);
@@ -3932,6 +3939,7 @@ var
     Ctx.Root := 16;
     Ctx.VW := M.Width;
     Ctx.VH := M.Height;
+    Ctx.Zoom := M.Zoom;
     Ctx.Percent := 0;
     Result := EvalLength(S, Ctx, D);
   end;
@@ -4072,7 +4080,7 @@ begin
     'device-pixel-ratio':
     begin
       Want := StrToFloatDef(V, 1, CSSFormat);
-      Have := 1;
+      Have := M.Zoom;
       if Op = '>=' then Exit(Have >= Want);
       if Op = '<=' then Exit(Have <= Want);
       Exit(Have = Want);
@@ -4906,17 +4914,20 @@ begin
       Ctx.Percent := ParentFont;
       Ctx.VW := Media.Width;
       Ctx.VH := Media.Height;
+      Ctx.Zoom := Media.Zoom;
       if AIsRoot then Ctx.Root := ParentFont;
       if not EvalLength(V, Ctx, F) then F := ParentFont;
     end;
   end;
   Result.FontSize := Max(0, F);
   if AIsRoot then Result.RootFontSize := Result.FontSize;
-  Result.FValues[PFontSize] := FormatPx(Result.FontSize);
+  { computed lengths are kept in CSS pixels, so reading them back zooms once }
+  Result.FValues[PFontSize] := FormatPx(Result.FontSize / Media.Zoom);
   Ctx.Font := Result.FontSize;
   Ctx.Root := Result.RootFontSize;
   Ctx.VW := Media.Width;
   Ctx.VH := Media.Height;
+  Ctx.Zoom := Media.Zoom;
   Ctx.Percent := 0;
   { every other property: specified, inherited or initial }
   for I := 0 to PropCount - 1 do
@@ -4966,7 +4977,7 @@ begin
         Ctx.Percent := Result.FontSize;
         if EvalLength(L, Ctx, F) then
         begin
-          if HasUnit(L) then V := FormatPx(F)
+          if HasUnit(L) then V := FormatPx(F / Media.Zoom)
           else
             V := FloatToStrF(F, ffGeneral, 7, 0, CSSFormat);
         end;
@@ -4982,7 +4993,7 @@ begin
       begin
         if Pos(' ', L) = 0 then
         begin
-          if EvalLength(L, Ctx, F) then V := FormatPx(F);
+          if EvalLength(L, Ctx, F) then V := FormatPx(F / Media.Zoom);
         end;
       end;
     end;
