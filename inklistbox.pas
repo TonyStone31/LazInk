@@ -618,7 +618,8 @@ end;
   item's natural width when it may not scroll sideways, which puts the
   vertical scrollbar past the right edge as soon as an item is wider than
   the box.  Markup items nearly always are.  An external policy keeps the
-  width at the control's own. }
+  width at the control's own.  Fixed in Lazarus main on 19 Oct 2026
+  (issue 42659); this stays until a released Lazarus has the fix. }
 procedure TInkListBox.CreateWnd;
 begin
   inherited CreateWnd;
