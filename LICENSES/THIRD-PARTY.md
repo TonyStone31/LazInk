@@ -9,7 +9,7 @@ published standards, and are credited here as their licenses ask.
   Rendering section - the rules LazInk lays out, some shortened or
   left out.
 - `inkentities.inc`: the table of named character references, generated
-  from it by `tools/make_entities.py`.
+  from it.
 
 HTML Living Standard, https://html.spec.whatwg.org/ - Copyright WHATWG
 (Apple, Google, Mozilla, Microsoft).  Licensed under the Creative Commons

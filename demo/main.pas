@@ -462,8 +462,7 @@ begin
     pgCompareBrowser.LoadHTML('<html><body style="margin:0;background:#fff">' + '<img src="' + ExtractFileName(S) + '" alt="the browser''s picture"></body></html>',
       FilenameToURI(ExtractFilePath(S)))
   else
-    pgCompareBrowser.LoadHTML('<body style="font-family: sans-serif">' + '<p><b>showcase-browser.png</b> was not found beside the program. ' +
-      'Make the browser''s picture once with:</p>' + '<pre>tools/browser_shot.sh demo/showcase.html \' + LineEnding + '  demo/showcase-browser.png 548 7560</pre></body>');
+    pgCompareBrowser.LoadHTML('<body style="font-family: sans-serif">' + '<p><b>showcase-browser.png</b> was not found beside the program.</p></body>');
   SetStatus('Select some text and press <b>B</b>, or just start typing.');
 end;
 
