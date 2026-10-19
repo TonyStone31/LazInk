@@ -3265,7 +3265,7 @@ begin
     Parser.ResetMode;
     if Parser.State <> tsData then
     begin
-      { the whole of it is text }
+      { all of it is text }
       repeat
         T := Parser.NextToken;
         if T.Kind = tkText then Parser.InsertText(T.Data);
