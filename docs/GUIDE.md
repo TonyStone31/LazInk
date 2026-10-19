@@ -377,8 +377,7 @@ with images, task checkboxes and table alignment, and `AsMarkdown` gives
 it back.  Blocks that were not edited come back byte for byte; an edited
 one is spliced into its original text where that parses the same, and
 written fresh with `**bold**`, `*italic*`, `~~strike~~`, code spans, links,
-fenced code and pipe tables otherwise - see
-[Markdown editing and round trips](MARKDOWN_ROUNDTRIP.md).  A table row's
+fenced code and pipe tables otherwise.  A table row's
 cells are split by dividers that draw as the grid rather than as glyphs; a
 `|` typed into a cell stays text.  Consecutive rows share their column widths, the head row
 is bold on a band, **Tab** hops to the next cell (a new row past the last
@@ -445,14 +444,6 @@ narrow controls may not fit the minimum cell padding.  Use `TInkPage` for a
 full document with headings, lists and code blocks.
 
 The demo's **Markdown source** tab shows a live preview of what you type.
-Renderer tests run on Linux x86-64 with a display available:
-
-```sh
-LAZARUS_DIR=/path/to/lazarus FPC=/path/to/fpc tests/run.sh
-```
-
-The test script defaults to GTK3; set `LCL_WIDGETSET` for another built widgetset.
-This change has been built and tested with FPC 3.3.1 and Lazarus trunk on GTK3.
 
 ## The demo
 
@@ -540,7 +531,6 @@ from the repository root after registering the package link. Keep `demo/tour.md`
 `demo/code.md`, this guide, and its relative images/docs alongside the demo.
 
 Dependencies are the Lazarus-supplied `LCL`, `LazUtils`, and `FCL` packages.
-See [OPM.md](../OPM.md) for release and submission notes.
 
 ## Limits
 
@@ -585,74 +575,29 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
 **[HTML_SUPPORT.md](HTML_SUPPORT.md) is the reference for writing
 pages** - every tag and every CSS property LazInk reads, with examples.
 
-## Tests
+## How it is checked
 
-```sh
-LAZARUS_DIR=/path/to/lazarus FPC=/path/to/fpc tests/run.sh
-```
+* The HTML parser builds the same tree as the html5lib tree-construction
+  tests in 1706 of their 1784 cases (9 October 2026); most of the rest are
+  the 2025 `<select>` rules and stray NUL bytes.
+* Computed styles are compared with a real browser's `getComputedStyle`,
+  element by element, for 27 properties. On 9 October 2026, saved copies of
+  a Wikipedia article (157,950 values), an MDN reference page (157,113),
+  Hacker News, the FPC reference and every page of the Heckers Sketch
+  manual agreed in every value but one - an element styled from inside its
+  own shadow root, which LazInk does not do yet.
+* Every page of a help site is rendered at several widths, every picture
+  must decode, and every visible piece of text in the source must survive
+  into the rendered page.
+* Painting from the kept layout is compared pixel for pixel with painting
+  from scratch.
+* Where a page drifts from a browser is measured heading by heading; the
+  long showcase page is within thirteen pixels of the browser over
+  thirty-six thousand. The demo's **Side by side** tab puts the two next to
+  each other.
+* Markdown is compared with GitHub's own rendering of the same document.
 
-runs the document-tree checks (`tests/dom_tests.pas`, no widgetset needed),
-then the renderer and Markdown checks.  The parser is also measured against
-the html5lib tree-construction tests, which are not in this repository:
-
-```sh
-git clone https://github.com/html5lib/html5lib-tests
-git -C html5lib-tests checkout 224991e^ -- tree-construction
-fpc -Fu. -Fu$LAZARUS_DIR/components/lazutils/lib/x86_64-linux tests/html5lib_check.pas
-tests/html5lib_check html5lib-tests/tree-construction      # add 20 to see failures
-```
-
-1706 of their 1784 cases build the same tree (9 October 2026); most of the
-rest are the 2025 `<select>` rules and stray NUL bytes.
-
-Computed styles are measured against a real browser's `getComputedStyle`,
-element by element, for 27 properties.  On 9 October 2026, saved copies of a Wikipedia article (157,950 values), an
-MDN reference page (157,113), Hacker News, the FPC reference and every page
-of the Heckers Sketch manual agreed in every value but one - an element
-styled from inside its own shadow root, which LazInk does not do yet.  Given a file listing HTML pages and an
-output folder, it also loads and renders every page at several widths and
-checks every image decodes:
-
-```sh
-LAZARUS_DIR=... FPC=... tests/run.sh pages.txt results/
-```
-
-Given those two, it also checks that every visible piece of text in the source
-pages survived into the rendered page (`tests/check_help_text.pas`, which reads
-the pages with the FCL's own HTML reader rather than LazInk's).
-
-To put LazInk up beside a real browser's rendering, open the demo's
-**Side by side** tab: the browser's picture of `demo/showcase.html` on the
-left, a live `TInkPage` on the right, scroll-locked, crosshair on, and the
-showcase's sections numbered so a difference can be named rather than
-described.
-
-For Markdown, GitHub is the reference: a document is compared as GitHub
-renders it - its own HTML, in its own stylesheet, in a browser - beside
-`TInkPage` and `TInkRichEdit`, scrolling together, the headings numbered on
-all three.
-
-A page keeps its blocks' finished geometry, so painting, measuring and hit
-testing share one layout rather than each rebuilding it.
-`tests/layout_cache_checks.pas` renders the same markup with and without that
-cache and compares painted pixels and the run callbacks, not merely that a
-render happened.
-
-Where a page disagrees with a browser is found heading by heading: a
-browser reports where every heading of the page landed - its own layout,
-not something read off a picture - LazInk reports the same, and the two are
-compared with the drift at each heading.  The long page is currently within thirteen pixels of the
-browser over thirty-six thousand.
-
-## Where it is going
-
-Still to come: runs
-on the other widgetsets and on real touch hardware, an Online Package
-Manager listing, a small CSS round (zebra striping, text-overflow and
-friends), images floated beside text, scrolling speed on very long pages,
-and polish on the WYSIWYG Markdown editor - which reads, edits and writes
-Markdown whole, headings to tables, something nothing else for Lazarus
-does.
+All of this runs on Linux x86-64, GTK3, with FPC 3.3.1 and Lazarus trunk.
 
 ## License
 
