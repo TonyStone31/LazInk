@@ -2978,7 +2978,7 @@ var
   I, J, DX, DY, Pass, TextY, CheckRad, CheckW: integer;
   L: TInkRenderLine;
   R: TInkRenderRun;
-  Clip: TRect;
+  Clip, CanvasClip: TRect;
   C, BG: TColor;
   DrawRect, Fill, CheckR: TRect;
   BoxAttrs: TStringList;
@@ -3042,7 +3042,11 @@ var
 
 begin
   Clip := Bounds;
-  IntersectRect(Clip, Clip, Canvas.ClipRect);
+  { Runs outside the canvas's clip are skipped, not drawn.  Qt reports an
+    empty clip box once clipping has been switched off (GTK and Cocoa report
+    the window), and an empty box would skip every run: treat it as no clip. }
+  CanvasClip := Canvas.ClipRect;
+  if not IsRectEmpty(CanvasClip) then IntersectRect(Clip, Clip, CanvasClip);
   { the offsets move the text inside Bounds; the clip does not move with it,
     which is what makes them a scroll rather than a second layout }
   DX := Bounds.Left + AOffsetX;
