@@ -757,8 +757,15 @@ begin
       TInkPageBlock(Made[I]).Section := S;
       TInkPageBlock(Made[I]).Entry := S.Item;
       FBlocks.Insert(S.BlockFrom + I, Made[I]);
+      { a moving picture: the tick starts }
+      if Assigned(TInkPageBlock(Made[I]).WebP) or Assigned(TInkPageBlock(Made[I]).Animation) then
+      begin
+        FAnimated.Add(Made[I]);
+        FTimer.Enabled := True;
+      end;
     end;
     S.BlockCount := Made.Count;
+    S.Laid := False;
   finally Made.Free end;
 end;
 
@@ -774,7 +781,6 @@ begin
   end;
   S.BlockCount := 0;
   if FRenderCache <> nil then FRenderCache.Clear;
-  SetLength(FTreePaint, 0);
   FHoverBlock := -1; FRunBlock := nil;
 end;
 
@@ -814,22 +820,25 @@ end;
 
 function TInkCustomPage.AddSection(ADoc: TInkDocument; AOwns: Boolean): TInkTreeSection;
 begin
+  Result := InsertSection(FItems.Count, ADoc, AOwns);
+end;
+
+function TInkCustomPage.InsertSection(AItem: Integer; ADoc: TInkDocument; AOwns: Boolean): TInkTreeSection;
+begin
   Result := TInkTreeSection.Create;
   Result.Doc := ADoc; Result.OwnsDoc := AOwns;
-  Result.Item := FItems.Count;
-  Result.BlockFrom := FBlocks.Count;
+  Result.Item := AItem;
+  Result.BlockFrom := ItemBlockFrom(AItem);
   Result.Back := clNone;
-  FItems.Add(Result);
+  FItems.Insert(AItem, Result);
   if FStyler = nil then ResetStyler;
   { the page's own document was styled with its sheets; anything else is
     styled now, with what the styler has }
-  if ADoc <> FDocument then
-  begin
-    Result.StyleMark := FStyler.Mark;
-    FStyler.Include(ADoc);
-  end;
+  if ADoc <> FDocument then FStyler.Include(ADoc);
   BuildSection(Result);
+  ShiftSelection(Result.BlockFrom, Result.BlockCount);
   Renumber(Result.Item);
+  InvalidateItem(AItem);
 end;
 
 procedure TInkCustomPage.ResetStyler;
@@ -905,7 +914,7 @@ end;
 { a document at Y: its boxes laid out at the column's width and moved
   there, and its blocks put where their boxes are }
 procedure TInkCustomPage.LaySection(S: TInkTreeSection; ALeft, AWidth: Integer;
-  var Y, Pending: Integer);
+  var Y, Pending: Integer; AMayMove: Boolean);
 
   procedure Place(Box: TInkBox);
   var I: Integer; B: TInkPageBlock;
@@ -934,15 +943,29 @@ procedure TInkCustomPage.LaySection(S: TInkTreeSection; ALeft, AWidth: Integer;
 begin
   StyleSection(S);
   Inc(Y, Max(Pending, S.GapBefore)); Pending := 0;
-  S.Left := ALeft + S.Indent; S.Top := Y;
-  S.Width := Max(20, AWidth - S.Indent);
-  S.Height := 0;
-  if (S.Layout <> nil) and (S.Layout.Root <> nil) then
+  S.PaintKept := S.PaintKept and AMayMove and S.Laid;
+  if AMayMove and S.Laid then
   begin
-    S.Layout.Run(S.Width, Max(1, ClientHeight));
-    S.Layout.Root.Shift(S.Left, S.Top);
-    Place(S.Layout.Root);
-    S.Height := S.Layout.Height;
+    if (S.Layout <> nil) and (S.Layout.Root <> nil) and (Y <> S.Top) then
+    begin
+      S.Layout.Root.Shift(0, Y - S.Top);
+      Place(S.Layout.Root);
+    end;
+    S.Top := Y;
+  end
+  else
+  begin
+    S.Left := ALeft + S.Indent; S.Top := Y;
+    S.Width := Max(20, AWidth - S.Indent);
+    S.Height := 0;
+    if (S.Layout <> nil) and (S.Layout.Root <> nil) then
+    begin
+      S.Layout.Run(S.Width, Max(1, ClientHeight));
+      S.Layout.Root.Shift(S.Left, S.Top);
+      Place(S.Layout.Root);
+      S.Height := S.Layout.Height;
+    end;
+    S.Laid := True;
   end;
   Inc(Y, S.Height); Pending := S.GapAfter;
 end;
@@ -962,8 +985,9 @@ end;
 
 { the order CSS paints in: each box's background under its words, floats
   over the flow, positioned boxes last, by z-index - and what a box with
-  overflow: hidden holds, cut to it }
-procedure TInkCustomPage.TreePaintOrder;
+  overflow: hidden holds, cut to it.  Items before AFrom were not laid out
+  again, so their part is kept and only the rest is gathered. }
+procedure TInkCustomPage.TreePaintOrder(AFrom: Integer);
 var N: Integer;
 
   procedure Push(ABox: TInkBox; ABlock: Integer; const AClip: TRect; AClipped: Boolean);
@@ -1055,26 +1079,53 @@ var N: Integer;
     finally Decos.Free; Texts.Free; Floats.Free; Later.Free end;
   end;
 
-var I: Integer; It: TObject; S: TInkTreeSection;
+var I, K, N0: Integer; It: TObject; S: TInkTreeSection; Old: array of TInkTreePaint;
 begin
-  N := 0;
-  for I := 0 to FItems.Count - 1 do
+  { emptied when blocks were taken away: gathered whole }
+  if (AFrom > 0) and (AFrom < Length(FTreePaintAt)) and (FTreePaintCount > 0) then N := FTreePaintAt[AFrom]
+  else
   begin
+    N := 0; AFrom := 0;
+  end;
+  { the entries from there on, for the documents that were only moved }
+  N0 := N;
+  Old := Copy(FTreePaint, N0, FTreePaintCount - N0);
+  SetLength(FTreePaintAt, FItems.Count + 1);
+  for I := AFrom to FItems.Count - 1 do
+  begin
+    FTreePaintAt[I] := N;
     It := TObject(FItems[I]);
     if It is TInkTreeSection then
     begin
       S := TInkTreeSection(It);
-      if S.Back <> clNone then
+      if S.PaintKept then
+        { its entries move with it: other block numbers, clips lower down }
+        for K := S.PaintFrom - N0 to S.PaintFrom - N0 + S.PaintCount - 1 do
+        begin
+          if N = Length(FTreePaint) then SetLength(FTreePaint, N * 2 + 64);
+          FTreePaint[N] := Old[K];
+          if FTreePaint[N].Block >= 0 then Inc(FTreePaint[N].Block, S.BlockFrom - S.PaintBlock);
+          if FTreePaint[N].Clipped then OffsetRect(FTreePaint[N].Clip, 0, S.Top - S.PaintTop);
+          Inc(N);
+        end
+      else
       begin
-        Push(nil, -1, Rect(0, 0, 0, 0), False);
-        FTreePaint[N - 1].Section := S;
+        if S.Back <> clNone then
+        begin
+          Push(nil, -1, Rect(0, 0, 0, 0), False);
+          FTreePaint[N - 1].Section := S;
+        end;
+        if (S.Layout <> nil) and (S.Layout.Root <> nil) then
+          Atomic(S.Layout.Root, Rect(0, 0, 0, 0), False);
       end;
-      if (S.Layout <> nil) and (S.Layout.Root <> nil) then
-        Atomic(S.Layout.Root, Rect(0, 0, 0, 0), False);
+      S.PaintKept := True;
+      S.PaintFrom := FTreePaintAt[I]; S.PaintCount := N - S.PaintFrom;
+      S.PaintTop := S.Top; S.PaintBlock := S.BlockFrom;
     end
     else Push(nil, TInkPageBlock(It).Index, Rect(0, 0, 0, 0), False);
   end;
-  SetLength(FTreePaint, N);
+  FTreePaintAt[FItems.Count] := N;
+  FTreePaintCount := N;
 end;
 
 { a box's background and borders }
@@ -1259,7 +1310,7 @@ begin
   ACanvas.Brush.Style := bsSolid;
   ACanvas.FillRect(ClientRect);
   ViewTop := FScroll.Position; ViewBottom := ViewTop + ClientHeight;
-  for I := 0 to High(FTreePaint) do
+  for I := 0 to FTreePaintCount - 1 do
   begin
     It := FTreePaint[I];
     if It.Section <> nil then
@@ -1346,7 +1397,7 @@ begin
   Result := nil;
   Layout;
   P := Point(X, DocY);
-  for I := High(FTreePaint) downto 0 do
+  for I := FTreePaintCount - 1 downto 0 do
   begin
     It := FTreePaint[I];
     if It.Section <> nil then Continue;
@@ -1389,5 +1440,5 @@ begin
   BuildSection(S);
   Renumber(S.Item);
   FindAnimations;
-  InvalidateLayout(S.Item);
+  InvalidateItem(S.Item);
 end;

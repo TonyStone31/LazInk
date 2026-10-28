@@ -154,6 +154,8 @@ type
       (nil for a line of markup of its own) }
     Index: integer;
     Section: TObject;
+    { a line of markup laid out and not changed since: moved, not laid again }
+    Laid: boolean;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -168,8 +170,12 @@ type
     Layout: TInkLayout;
     { the <details> each summary in it opens and shuts }
     Folds: array of TInkNode;
-    { how many elements the styler had before this one's }
-    StyleMark: integer;
+    { laid out and not changed since: moved, not laid out again }
+    Laid: boolean;
+    { its part of the paint order, gathered when it was last laid out:
+      where, how long, and its top and first block then }
+    PaintKept: boolean;
+    PaintFrom, PaintCount, PaintTop, PaintBlock: integer;
     Item, BlockFrom, BlockCount: integer;
     { where it was laid out, page pixels }
     Left, Top, Width, Height: integer;
@@ -207,7 +213,11 @@ type
     FPageSection: TInkTreeSection;
     FTreeMeasure: TObject;
     FTreeKey: string;
+    { the paint order: its first FTreePaintCount entries, and where each
+      item's part starts, the end last }
     FTreePaint: array of TInkTreePaint;
+    FTreePaintCount: integer;
+    FTreePaintAt: array of integer;
     { the clip a block being painted is inside, in window pixels }
     FPaintClip: TRect;
     FPaintClipped: boolean;
@@ -220,6 +230,7 @@ type
     FZoom: integer;
     FZoomRest: double;
     FOnZoom: TNotifyEvent;
+    FOnScroll: TNotifyEvent;
     { pictures decoded for the page at FImageCacheFor, by address }
     FImageCache: TStringList;
     FImageCacheFor: string;
@@ -243,9 +254,16 @@ type
     function PageStyle(ABody: boolean): TInkStyle;
     { a property the root sets, or else the body }
     function PageValue(const AProp: string): string;
-    procedure LayLine(B: TInkPageBlock; ALeft, AWidth: integer; var Y, Pending: integer; var O: THTMLOptions);
-    procedure LaySection(S: TInkTreeSection; ALeft, AWidth: integer; var Y, Pending: integer);
-    procedure TreePaintOrder;
+    { an item laid out at Y; with AMayMove one laid before and not changed
+      since is only moved there }
+    procedure LayLine(B: TInkPageBlock; ALeft, AWidth: integer; var Y, Pending: integer; var O: THTMLOptions; AMayMove: boolean);
+    procedure LaySection(S: TInkTreeSection; ALeft, AWidth: integer; var Y, Pending: integer; AMayMove: boolean);
+    { the first block of item AItem, or the end }
+    function ItemBlockFrom(AItem: integer): integer;
+    { selection places from block AFrom on moved by ADelta blocks; one in
+      blocks taken away goes to where they were }
+    procedure ShiftSelection(AFrom, ADelta: integer);
+    procedure TreePaintOrder(AFrom: integer);
     procedure TreePaintBox(ACanvas: TCanvas; ABox: TInkBox);
     procedure TreeRender(ACanvas: TCanvas);
     function TreePaintMarker(ACanvas: TCanvas; B: TInkPageBlock; const TR: TRect): boolean;
@@ -386,6 +404,9 @@ type
   protected
     { layout, worked out once per layout and shared by the blocks }
     FLayoutBase, FLayoutWidth, FLayoutFrom: integer;
+    { the first item changed since the last layout, when the ones after it
+      only move }
+    FMoveFrom: integer;
     FBodyText, FCodeBack: TColor;
     FColumnWidth: integer;
     procedure SetHighlightCode(AValue: boolean);
@@ -427,11 +448,18 @@ type
     function ControlFontPixels(AZoomed: boolean = True): integer;
     function ItemCount: integer;
     function PageItem(Index: integer): TObject;
-    { items from AFrom on freed and forgotten - how a memo replaces its
-      growing last entry without touching the rest }
-    procedure TruncateItems(AFrom: integer);
+    { a line of markup or a document put in as item AItem, and item AItem
+      taken out and freed; what follows is moved, not laid out again }
+    procedure InsertLine(AItem: integer; B: TInkPageBlock);
+    function InsertSection(AItem: integer; ADoc: TInkDocument; AOwns: boolean): TInkTreeSection;
+    procedure DeleteItem(AItem: integer);
+    { the pictures decoded so far forgotten }
+    procedure ClearPictures;
     { items from Index on are laid out again when next needed; 0 for all }
     procedure InvalidateLayout(FromItem: integer = 0);
+    { item AIndex is laid out again when next needed, and those after it
+      only moved }
+    procedure InvalidateItem(AIndex: integer);
     { the item block ABlock belongs to, and everything after it }
     procedure InvalidateBlock(ABlock: integer);
     procedure Layout;
@@ -500,6 +528,10 @@ type
     { Document was changed: show it, keeping the scroll where it was.  The
       nodes held stay valid; Source becomes the document's HTML. }
     procedure DocumentChanged;
+    { The bytes for URL can be had now, or have changed: every picture from
+      URL is asked for again through OnResource and its document laid out
+      again.  For a picture the program fetches after the page asked. }
+    procedure ResourceChanged(const URL: string); virtual;
     { An element's computed style - the cascade a browser runs, with the
       page's sheets, the host's StyleSheet and the browser's defaults, at
       the page's width.  nil for anything not an element of Document. }
@@ -706,6 +738,8 @@ type
     { Zoom changed, from the keys, the wheel or code - so a program can
       show it or remember it }
     property OnZoom: TNotifyEvent read FOnZoom write FOnZoom;
+    { ScrollY changed - by the wheel, the bar, the keys, a finger or code }
+    property OnScroll: TNotifyEvent read FOnScroll write FOnScroll;
     { the selected text changed, or the selection was cleared }
     property OnSelectionChange: TNotifyEvent read FOnSelectionChange write FOnSelectionChange;
     { after a new document is shown - a link, Back, Forward or a load from
@@ -1082,6 +1116,7 @@ begin
   FScroll.OnChange := @ScrollChanged;
   FLayoutDirty := True;
   FLayoutFrom := 0;
+  FMoveFrom := MaxInt;
   FTimer := TTimer.Create(Self);
   FTimer.Interval := 20;
   FTimer.OnTimer := @Animate;
@@ -1208,46 +1243,78 @@ begin
   FBlocks.Clear;
   FPageSection := nil;
   SetLength(FTreePaint, 0);
+  FTreePaintCount := 0;
 end;
 
-procedure TInkCustomPage.TruncateItems(AFrom: integer);
+function TInkCustomPage.ItemBlockFrom(AItem: integer): integer;
 var
-  I, K: integer;
   It: TObject;
 begin
-  if AFrom >= FItems.Count then Exit;
-  if FRenderCache <> nil then FRenderCache.Clear;
-  SetLength(FTreePaint, 0);
-  It := TObject(FItems[AFrom]);
-  if It is TInkTreeSection then K := TInkTreeSection(It).BlockFrom
+  if AItem >= FItems.Count then Exit(FBlocks.Count);
+  It := TObject(FItems[AItem]);
+  if It is TInkTreeSection then Result := TInkTreeSection(It).BlockFrom
   else
-    K := TInkPageBlock(It).Index;
-  if FAnimated <> nil then
-    for I := FAnimated.Count - 1 downto 0 do
-      if TInkPageBlock(FAnimated[I]).Index >= K then FAnimated.Delete(I);
-  { the styles of the documents going, while their elements are still there }
-  for I := AFrom to FItems.Count - 1 do
-    if (FStyler <> nil) and (TObject(FItems[I]) is TInkTreeSection) then
-    begin
-      FStyler.ReleaseTo(TInkTreeSection(FItems[I]).StyleMark);
-      Break;
-    end;
-  for I := FItems.Count - 1 downto AFrom do
+    Result := TInkPageBlock(It).Index;
+end;
+
+procedure TInkCustomPage.ShiftSelection(AFrom, ADelta: integer);
+
+  procedure Fix(var P: TInkPagePosition);
   begin
-    if TObject(FItems[I]) is TInkTreeSection then TObject(FItems[I]).Free;
-    FItems.Delete(I);
+    if P.Block >= AFrom then P.Block := Max(0, Min(Max(AFrom, P.Block + ADelta), FBlocks.Count - 1));
   end;
-  for I := FBlocks.Count - 1 downto K do
+
+begin
+  Fix(FSelAnchor);
+  Fix(FSelCaret);
+  if FHoverBlock >= AFrom then FHoverBlock := -1;
+end;
+
+procedure TInkCustomPage.InsertLine(AItem: integer; B: TInkPageBlock);
+var
+  K: integer;
+begin
+  K := ItemBlockFrom(AItem);
+  B.Section := nil;
+  FBlocks.Insert(K, B);
+  FItems.Insert(AItem, B);
+  ShiftSelection(K, 1);
+  Renumber(AItem);
+  InvalidateItem(AItem);
+end;
+
+procedure TInkCustomPage.DeleteItem(AItem: integer);
+var
+  It: TObject;
+  K, N: integer;
+begin
+  It := TObject(FItems[AItem]);
+  K := ItemBlockFrom(AItem);
+  if It is TInkTreeSection then
   begin
-    TObject(FBlocks[I]).Free;
-    FBlocks.Delete(I);
+    N := TInkTreeSection(It).BlockCount;
+    { its styles go while its elements are still there }
+    if (FStyler <> nil) and (TInkTreeSection(It).Doc <> FDocument) then FStyler.Forget(TInkTreeSection(It).Doc);
+    ClearSectionBlocks(TInkTreeSection(It));
+  end
+  else
+  begin
+    N := 1;
+    FAnimated.Remove(It);
+    FBlocks.Delete(K);
+    FRunBlock := nil;
   end;
-  { nothing may keep pointing past the end }
-  if FHoverBlock >= FBlocks.Count then FHoverBlock := -1;
-  if FRunBlock <> nil then FRunBlock := nil;
-  FSelAnchor := Clamp(FSelAnchor);
-  FSelCaret := Clamp(FSelCaret);
-  InvalidateLayout(AFrom);
+  It.Free;
+  FItems.Delete(AItem);
+  ShiftSelection(K, -N);
+  Renumber(AItem);
+  FTimer.Enabled := FAnimated.Count > 0;
+  InvalidateItem(AItem);
+end;
+
+procedure TInkCustomPage.ClearPictures;
+begin
+  FImageCache.Clear;
 end;
 
 function TInkCustomPage.FoldOpen(Index: integer): boolean;
@@ -1268,11 +1335,7 @@ end;
 
 procedure TInkCustomPage.AddBlock(B: TInkPageBlock);
 begin
-  B.Index := FBlocks.Count;
-  B.Entry := FItems.Count;
-  B.Section := nil;
-  FBlocks.Add(B);
-  FItems.Add(B);
+  InsertLine(FItems.Count, B);
 end;
 
 function TInkCustomPage.ItemCount: integer;
@@ -1293,6 +1356,18 @@ begin
   Invalidate;
 end;
 
+procedure TInkCustomPage.InvalidateItem(AIndex: integer);
+begin
+  if AIndex < FItems.Count then
+    if TObject(FItems[AIndex]) is TInkTreeSection then TInkTreeSection(FItems[AIndex]).Laid := False
+    else
+      TInkPageBlock(FItems[AIndex]).Laid := False;
+  if FRenderCache <> nil then FRenderCache.Clear;
+  if not FLayoutDirty or (AIndex < FMoveFrom) then FMoveFrom := Max(0, AIndex);
+  FLayoutDirty := True;
+  Invalidate;
+end;
+
 procedure TInkCustomPage.InvalidateBlock(ABlock: integer);
 var
   B: TInkPageBlock;
@@ -1303,9 +1378,9 @@ begin
     Exit;
   end;
   B := TInkPageBlock(FBlocks[ABlock]);
-  if B.Section <> nil then InvalidateLayout(TInkTreeSection(B.Section).Item)
+  if B.Section <> nil then InvalidateItem(TInkTreeSection(B.Section).Item)
   else
-    InvalidateLayout(B.Entry);
+    InvalidateItem(B.Entry);
 end;
 
 function TInkCustomPage.BlockOptions(Index: integer): THTMLOptions;
@@ -1438,6 +1513,7 @@ end;
 procedure TInkCustomPage.ScrollChanged(Sender: TObject);
 begin
   Invalidate;
+  if Assigned(FOnScroll) then FOnScroll(Self);
 end;
 
 procedure TInkCustomPage.SetTextFormat(AValue: TInkTextFormat);
@@ -1605,6 +1681,31 @@ begin
   FTextFormat := itfHTML;
   FKeepDocument := True;
   Reread;
+end;
+
+procedure TInkCustomPage.ResourceChanged(const URL: string);
+var
+  I, J: integer;
+  S: TInkTreeSection;
+begin
+  I := FImageCache.IndexOf(URL);
+  if I >= 0 then FImageCache.Delete(I);
+  for I := 0 to FItems.Count - 1 do
+    if TObject(FItems[I]) is TInkTreeSection then
+    begin
+      S := TInkTreeSection(FItems[I]);
+      for J := S.BlockFrom to S.BlockFrom + S.BlockCount - 1 do
+        if TInkPageBlock(FBlocks[J]).ImageSrc = URL then
+        begin
+          { the same boxes and blocks again, so a selection stays valid }
+          ClearSectionBlocks(S);
+          BuildSection(S);
+          Renumber(S.Item);
+          InvalidateItem(S.Item);
+          Break;
+        end;
+    end;
+  FindAnimations;
 end;
 
 procedure TInkCustomPage.LoadMarkdown(const Markdown: string; const BaseURL: string);
@@ -2115,9 +2216,9 @@ procedure TInkCustomPage.StyleSection(S: TInkTreeSection);
 begin
 end;
 { a line of markup at Y, wrapped to the column }
-procedure TInkCustomPage.LayLine(B: TInkPageBlock; ALeft, AWidth: integer; var Y, Pending: integer; var O: THTMLOptions);
+procedure TInkCustomPage.LayLine(B: TInkPageBlock; ALeft, AWidth: integer; var Y, Pending: integer; var O: THTMLOptions; AMayMove: boolean);
 var
-  TextW: integer;
+  TextW, DY: integer;
   Sz: TSize;
 begin
   B.RunsReady := False;
@@ -2125,6 +2226,17 @@ begin
   { margins collapse: the larger of the two, not both }
   Inc(Y, Max(Pending, B.GapBefore));
   Pending := 0;
+  if AMayMove and B.Laid then
+  begin
+    DY := Y - B.Bounds.Top;
+    OffsetRect(B.Bounds, 0, DY);
+    OffsetRect(B.TextBounds, 0, DY);
+    OffsetRect(B.ImageRect, 0, DY);
+    Inc(Y, B.Bounds.Bottom - B.Bounds.Top);
+    Pending := B.GapAfter;
+    Exit;
+  end;
+  B.Laid := True;
   BlockFont(Canvas, B);
   O.LineHeight := B.LineHeight;
   O.NoWrap := B.NoWrap;
@@ -2144,7 +2256,7 @@ end;
 
 procedure TInkCustomPage.Layout;
 var
-  I, Y, W, ColLeft, Start, Pending: integer;
+  I, Y, W, ColLeft, Start, LayAll, Pending: integer;
   O: THTMLOptions;
   It: TObject;
 begin
@@ -2162,11 +2274,13 @@ begin
   { the shades a code block's header takes from the page }
   FBodyText := Font.Color;
   FCodeBack := HTMLShadeColor(FCanvasBack, 7);
-  { only the items from FLayoutFrom on, unless the column changed }
-  Start := FLayoutFrom;
-  if (W <> FColumnWidth) or (ColLeft <> FColumnLeft) or (FLayoutWidth <> ClientWidth) then Start := 0;
-  Start := Min(Start, FItems.Count);
+  { the items from FLayoutFrom on, unless the column changed, and from
+    FMoveFrom the ones changed - the rest only move }
+  LayAll := FLayoutFrom;
+  if (W <> FColumnWidth) or (ColLeft <> FColumnLeft) or (FLayoutWidth <> ClientWidth) then LayAll := 0;
+  Start := Min(Min(LayAll, FMoveFrom), FItems.Count);
   FLayoutFrom := MaxInt;
+  FMoveFrom := MaxInt;
   FColumnLeft := ColLeft;
   FColumnWidth := W;
   FLayoutWidth := ClientWidth;
@@ -2190,15 +2304,16 @@ begin
   for I := Start to FItems.Count - 1 do
   begin
     It := TObject(FItems[I]);
-    if It is TInkTreeSection then LaySection(TInkTreeSection(It), ColLeft, W, Y, Pending)
+    if It is TInkTreeSection then LaySection(TInkTreeSection(It), ColLeft, W, Y, Pending, I < LayAll)
     else
-      LayLine(TInkPageBlock(It), ColLeft, W, Y, Pending, O);
+      LayLine(TInkPageBlock(It), ColLeft, W, Y, Pending, O, I < LayAll);
   end;
   { the last item's own bottom margin still ends the page }
   Inc(Y, Pending);
   FContentHeight := Y;
+  TreePaintOrder(Start);
+  { last: it may fire OnScroll, and the handler may change the items }
   FScroll.SetParams(Min(FScroll.Position, Max(0, Y - ClientHeight)), 0, Max(ClientHeight, Y), Max(1, ClientHeight));
-  TreePaintOrder;
 end;
 { ---------------------------------------------------------- code blocks }
 

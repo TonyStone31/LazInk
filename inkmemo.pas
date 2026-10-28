@@ -9,15 +9,14 @@
   It is drawn by the same engine as TInkPage, so its text is selected the
   way a browser's is - drag, double-click a word, triple-click a line,
   Ctrl+A and Ctrl+C - and it has the copy menu, find (Ctrl+F) and finger
-  scrolling.  Unlike the page, it reads no stylesheet: its look is its
-  Font, Color, Borders and LineSpacing, and a message added whole
-  (AppendBlock) is laid out as a browser lays out a page with no CSS of
-  its own.
+  scrolling.  Its look is its Font, Color, Borders and LineSpacing, and a
+  message added whole (AppendBlock) is laid out as a browser lays out a
+  page whose only CSS is the memo's StyleSheet.
 
-  It is a viewer, not an editor: text changes through Lines, Append and
-  LoadDocument.  Append keeps the view on the newest line when it was
-  already showing the end, and leaves it alone when the reader has scrolled
-  back.
+  It is a viewer, not an editor: text changes through Lines, the Append
+  calls, InsertBlock, ReplaceBlock, DeleteBlock and LoadDocument.  Append
+  keeps the view on the newest line when it was already showing the end,
+  and leaves it alone when the reader has scrolled back.
 
   When to use it, and when not:
     - the program adds lines as things happen (a log, a chat, an event
@@ -87,6 +86,12 @@ type
     FOnLinkEnter: TInkMemoLinkEvent;
     FOnLinkLeave: TInkMemoLinkEvent;
     FOnLinkRightClick: TInkMemoLinkEvent;
+    FUpdateCount: integer;
+    { the view while entries change: following the end, or an item and
+      how far into it the view's top is }
+    FViewKept, FFollow: boolean;
+    FAnchor: TObject;
+    FAnchorOffset: integer;
     function GetLines: TStrings;
     procedure SetLines(AValue: TStrings);
     procedure LinesChanged(Sender: TObject);
@@ -103,8 +108,15 @@ type
     function AtEnd: boolean;
     function DefaultEntry: TInkMemoEntry;
     function EntryFormat(const E: TInkMemoEntry): TInkTextFormat;
+    function BlockEntry(AFormat: TInkTextFormat; AColor: TColor; AIndent: integer): TInkMemoEntry;
     procedure MakeEntry(AIndex: integer);
-    procedure AddEntry(const AText: string; const E: TInkMemoEntry);
+    procedure InsertEntry(AIndex: integer; const AText: string; const E: TInkMemoEntry);
+    procedure ReplaceEntry(AIndex: integer; const AText: string; const E: TInkMemoEntry);
+    function ItemTop(AItem: TObject): integer;
+    { before a change: whether the view follows the end, else the item at
+      its top; after: the view put back there, laid out once }
+    procedure KeepView;
+    procedure RestoreView;
     procedure MemoStyler;
   protected
     procedure Parse; override;
@@ -139,6 +151,21 @@ type
       answer arriving a word at a time.  The view follows only when it was
       already at the end, and a selection elsewhere stays put. }
     procedure ReplaceLast(const AText: string);
+    { An entry put in at AIndex (0 is the top), laid out as AppendBlock
+      lays one out - for older messages loaded above.  The reader keeps
+      seeing what they were looking at. }
+    procedure InsertBlock(AIndex: integer; const AText: string; AFormat: TInkTextFormat; AColor: TColor = clNone; AIndent: integer = 0);
+    { entry AIndex's text replaced, laid out as AppendBlock lays one out -
+      an edited message, a new reaction.  Only that entry is laid out again
+      and the view does not jump.  An index out of range does nothing. }
+    procedure ReplaceBlock(AIndex: integer; const AText: string; AFormat: TInkTextFormat; AColor: TColor = clNone; AIndent: integer = 0);
+    { entry AIndex taken out; an index out of range does nothing }
+    procedure DeleteBlock(AIndex: integer);
+    { Changes between BeginUpdate and EndUpdate are laid out once, at
+      EndUpdate, and the view kept across all of them - for fifty older
+      messages put in at the top in a row. }
+    procedure BeginUpdate;
+    procedure EndUpdate;
     { the entry under a client point, -1 for none - for "Copy this answer"
       on a right click }
     function EntryAt(X, Y: integer): integer;
@@ -147,6 +174,7 @@ type
     { one complete HTML or Markdown document as the only line - a table or
       a list cannot be split across lines }
     procedure LoadDocument(const ADocument: string);
+    { every entry gone, and the pictures decoded for them forgotten }
     procedure Clear;
     { line ALine with all markup stripped }
     function GetPlainText(ALine: integer): string;
@@ -154,6 +182,9 @@ type
     function PlainText: string;
     procedure SaveAsPlain(const FileName: string);
     procedure SaveAsHTML(const FileName: string);
+    { as on TInkPage; the view stays at the end when it was there, else on
+      what the reader was looking at }
+    procedure ResourceChanged(const URL: string); override;
     { how many lines there are }
     function Count: integer;
     { The href under the mouse, '' when none }
@@ -161,6 +192,9 @@ type
     property HoverLinkText: string read FHoverLinkText;
   published
     property TextFormat;
+    { CSS applied to every AppendBlock entry after the memo's own rules, so
+      these win: hide, space and color the parts of a message's HTML }
+    property StyleSheet;
     { the entries, one per line, each read as TextFormat says }
     property Lines: TStrings read GetLines write SetLines;
     property HighlightCode;
@@ -183,6 +217,10 @@ type
     property Borders: TInkBorders read FBorders write SetBorders;
     { Supplies <img src="n">, where n is an index into this list. }
     property Images: TCustomImageList read FImages write SetImages;
+    { Asked for the bytes of every <img src> in an AppendBlock entry, with
+      src as written: write them to Destination and set Handled.  A picture
+      fetched later is shown by calling ResourceChanged with the URL. }
+    property OnResource;
     { how a link is drawn }
     property LinkStyle: TInkLinkStyle read FLinkStyle write SetLinkStyle;
     { how a link is drawn while the pointer is over it }
@@ -213,6 +251,10 @@ type
     property SelectionColor;
     property Zoom;
     property OnZoom;
+    { ScrollY changed - by the wheel, the bar, the keys, a finger or code.
+      At ScrollY 0 the reader is at the top, where older entries can be
+      loaded with InsertBlock. }
+    property OnScroll;
     property OnSelectionChange;
     property CopyMenu;
     property OnCopyMenu;
@@ -315,8 +357,8 @@ begin
   Result.Source := InkToHTML(FLines[AIndex], EntryFormat(FEntries[AIndex]));
 end;
 
-{ the styler the messages are styled with: no sheets but the browser's own
-  and the memo's, which lets a message sit flush in its entry }
+{ the styler the messages are styled with: the browser's sheet, the
+  memo's, which lets a message sit flush in its entry, then the host's }
 procedure TInkMemo.MemoStyler;
 begin
   ResetStyler;
@@ -324,6 +366,7 @@ begin
   Styler.AddSheet(ImageFitSheet);
   Styler.AddSheet(MarkdownSheet);
   Styler.AddSheet('html, body { margin: 0; padding: 0 } ' + 'body > :first-child { margin-top: 0 } body > :last-child { margin-bottom: 0 }');
+  if StyleSheet.Count > 0 then Styler.AddSheet(StyleSheet.Text);
 end;
 
 { entry AIndex as the memo's item AIndex: a line of inline markup, or a
@@ -339,10 +382,10 @@ begin
     if EntryFormat(FEntries[AIndex]) = itfMarkdown then S := MarkdownToHTML(FLines[AIndex])
     else
       S := FLines[AIndex];
-    AddSection(InkParseHTML('<!doctype html>' + S), True);
+    InsertSection(AIndex, InkParseHTML('<!doctype html>' + S), True);
   end
   else
-    AddBlock(MakeLine(AIndex));
+    InsertLine(AIndex, MakeLine(AIndex));
 end;
 
 { every entry's items, and the view stays where it was }
@@ -351,6 +394,8 @@ var
   I: integer;
 begin
   if FLines = nil then Exit;
+  { the items go; a view kept on one of them is kept on nothing }
+  FAnchor := nil;
   BeginDocument;
   MemoStyler;
   if Length(FEntries) <> FLines.Count then
@@ -389,33 +434,105 @@ begin
   Result := ScrollY >= ContentHeight - ClientHeight - 2;
 end;
 
-{ one new entry and only its blocks laid out, not the whole memo again }
-procedure TInkMemo.AddEntry(const AText: string; const E: TInkMemoEntry);
-var
-  Follow: boolean;
+function TInkMemo.ItemTop(AItem: TObject): integer;
 begin
-  Follow := AtEnd;
+  if AItem is TInkTreeSection then Result := TInkTreeSection(AItem).Top
+  else
+    Result := TInkPageBlock(AItem).Bounds.Top;
+end;
+
+procedure TInkMemo.KeepView;
+var
+  Lo, Hi, Mid: integer;
+begin
+  if FViewKept then Exit;
+  FViewKept := True;
+  FFollow := AtEnd;
+  FHoverBlock := -1;
+  FAnchor := nil;
+  if ItemCount = 0 then Exit;
+  { the last item whose top is at or above the view's }
+  Lo := 0;
+  Hi := ItemCount - 1;
+  while Lo < Hi do
+  begin
+    Mid := (Lo + Hi + 1) div 2;
+    if ItemTop(PageItem(Mid)) <= ScrollY then Lo := Mid
+    else
+      Hi := Mid - 1;
+  end;
+  FAnchor := PageItem(Lo);
+  FAnchorOffset := ScrollY - ItemTop(FAnchor);
+end;
+
+procedure TInkMemo.RestoreView;
+begin
+  if (FUpdateCount > 0) or not FViewKept then Exit;
+  FViewKept := False;
+  Layout;
+  if FFollow then ScrollTo(MaxInt)
+  else if FAnchor <> nil then ScrollTo(ItemTop(FAnchor) + FAnchorOffset);
+end;
+
+procedure TInkMemo.BeginUpdate;
+begin
+  Inc(FUpdateCount);
+end;
+
+procedure TInkMemo.EndUpdate;
+begin
+  if FUpdateCount > 0 then Dec(FUpdateCount);
+  RestoreView;
+end;
+
+{ one new entry and only its blocks laid out; the entries after it are
+  only moved }
+procedure TInkMemo.InsertEntry(AIndex: integer; const AText: string; const E: TInkMemoEntry);
+begin
+  KeepView;
   FLines.OnChange := nil;
   try
-    FLines.Add(AText);
+    FLines.Insert(AIndex, AText);
   finally
     FLines.OnChange := @LinesChanged;
   end;
-  SetLength(FEntries, FLines.Count);
-  FEntries[FLines.Count - 1] := E;
+  SetLength(FEntries, FLines.Count - 1);
+  Insert(E, FEntries, AIndex);
   { a memo filled before it had a styler gets one now }
   if ItemCount <> FLines.Count - 1 then Parse
   else
-  begin
-    MakeEntry(FLines.Count - 1);
-    InvalidateLayout(FLines.Count - 1);
+    MakeEntry(AIndex);
+  RestoreView;
+end;
+
+{ only entry AIndex is rebuilt and laid out; everything before it - and a
+  selection in it - stays exactly where it was }
+procedure TInkMemo.ReplaceEntry(AIndex: integer; const AText: string; const E: TInkMemoEntry);
+var
+  Old: TObject;
+begin
+  KeepView;
+  FLines.OnChange := nil;
+  try
+    FLines[AIndex] := AText;
+  finally
+    FLines.OnChange := @LinesChanged;
   end;
-  if Follow then ScrollTo(MaxInt);
+  FEntries[AIndex] := E;
+  if ItemCount <> FLines.Count then Parse
+  else
+  begin
+    Old := PageItem(AIndex);
+    DeleteItem(AIndex);
+    MakeEntry(AIndex);
+    if FAnchor = Old then FAnchor := PageItem(AIndex);
+  end;
+  RestoreView;
 end;
 
 procedure TInkMemo.Append(const ALine: string);
 begin
-  AddEntry(ALine, DefaultEntry);
+  InsertEntry(FLines.Count, ALine, DefaultEntry);
 end;
 
 procedure TInkMemo.AppendPlain(const AText: string);
@@ -424,25 +541,63 @@ var
 begin
   E := DefaultEntry;
   E.Plain := True;
-  AddEntry(AText, E);
+  InsertEntry(FLines.Count, AText, E);
+end;
+
+function TInkMemo.BlockEntry(AFormat: TInkTextFormat; AColor: TColor; AIndent: integer): TInkMemoEntry;
+begin
+  Result := DefaultEntry;
+  Result.Block := True;
+  Result.Format := AFormat;
+  Result.UseFormat := True;
+  Result.Color := AColor;
+  Result.Indent := Max(0, AIndent);
 end;
 
 procedure TInkMemo.AppendBlock(const AText: string; AFormat: TInkTextFormat; AColor: TColor; AIndent: integer);
-var
-  E: TInkMemoEntry;
 begin
-  E := DefaultEntry;
-  E.Block := True;
-  E.Format := AFormat;
-  E.UseFormat := True;
-  E.Color := AColor;
-  E.Indent := Max(0, AIndent);
-  AddEntry(AText, E);
+  InsertEntry(FLines.Count, AText, BlockEntry(AFormat, AColor, AIndent));
+end;
+
+procedure TInkMemo.InsertBlock(AIndex: integer; const AText: string; AFormat: TInkTextFormat; AColor: TColor; AIndent: integer);
+begin
+  InsertEntry(EnsureRange(AIndex, 0, FLines.Count), AText, BlockEntry(AFormat, AColor, AIndent));
+end;
+
+procedure TInkMemo.ReplaceBlock(AIndex: integer; const AText: string; AFormat: TInkTextFormat; AColor: TColor; AIndent: integer);
+begin
+  if (AIndex < 0) or (AIndex >= FLines.Count) then Exit;
+  ReplaceEntry(AIndex, AText, BlockEntry(AFormat, AColor, AIndent));
+end;
+
+procedure TInkMemo.DeleteBlock(AIndex: integer);
+begin
+  if (AIndex < 0) or (AIndex >= FLines.Count) then Exit;
+  KeepView;
+  FLines.OnChange := nil;
+  try
+    FLines.Delete(AIndex);
+  finally
+    FLines.OnChange := @LinesChanged;
+  end;
+  Delete(FEntries, AIndex, 1);
+  if ItemCount <> FLines.Count + 1 then Parse
+  else
+  begin
+    { a view kept on the entry going is kept on the one after it }
+    if FAnchor = PageItem(AIndex) then
+    begin
+      FAnchor := nil;
+      FAnchorOffset := 0;
+      if AIndex + 1 < ItemCount then FAnchor := PageItem(AIndex + 1);
+    end;
+    DeleteItem(AIndex);
+  end;
+  RestoreView;
 end;
 
 procedure TInkMemo.ReplaceLast(const AText: string);
 var
-  Follow: boolean;
   N: integer;
 begin
   N := FLines.Count - 1;
@@ -452,23 +607,7 @@ begin
     Exit;
   end;
   if FLines[N] = AText then Exit;
-  Follow := AtEnd;
-  FLines.OnChange := nil;
-  try
-    FLines[N] := AText;
-  finally
-    FLines.OnChange := @LinesChanged;
-  end;
-  { only the last entry is rebuilt and laid out; everything before it - and
-    a selection in it - stays exactly where it was }
-  if ItemCount <> FLines.Count then Parse
-  else
-  begin
-    TruncateItems(N);
-    MakeEntry(N);
-    InvalidateLayout(N);
-  end;
-  if Follow then ScrollTo(MaxInt);
+  ReplaceEntry(N, AText, FEntries[N]);
 end;
 
 function TInkMemo.EntryAt(X, Y: integer): integer;
@@ -515,6 +654,7 @@ end;
 procedure TInkMemo.Clear;
 begin
   FLines.Clear;
+  ClearPictures;
 end;
 
 function TInkMemo.Count: integer;
@@ -599,6 +739,13 @@ begin
     FImages := nil;
     SubPropChanged(nil);
   end;
+end;
+
+procedure TInkMemo.ResourceChanged(const URL: string);
+begin
+  KeepView;
+  inherited ResourceChanged(URL);
+  RestoreView;
 end;
 
 { --- how it is laid out and drawn --------------------------------------- }

@@ -147,6 +147,9 @@ type
     { how many elements have styles; ReleaseTo forgets those added after }
     function Mark: integer;
     procedure ReleaseTo(AMark: integer);
+    { ARoot's elements forgotten, wherever they are among the others - a
+      memo's message taken out of the middle }
+    procedure Forget(ARoot: TInkNode);
     { what Compute hung on the tree is taken off it again; with
       ATouchNodes off, only forgotten - for a tree that may have lost nodes
       since, as a document changed by its program has }
@@ -4293,6 +4296,33 @@ begin
     Dispose(PInfo(FInfos[I]));
     FInfos.Delete(I);
   end;
+end;
+
+procedure TInkStyler.Forget(ARoot: TInkNode);
+var
+  N: TInkNode;
+  I, K: integer;
+begin
+  N := ARoot;
+  while N <> nil do
+  begin
+    if (N.Kind = inkElement) and (N.Info <> nil) then
+    begin
+      { marked to go: a styled element's Index is never below 1 }
+      PInfo(N.Info)^.Index := -1;
+      N.Info := nil;
+    end;
+    N := N.NextInTree(ARoot);
+  end;
+  K := 0;
+  for I := 0 to FInfos.Count - 1 do
+    if PInfo(FInfos[I])^.Index = -1 then Dispose(PInfo(FInfos[I]))
+    else
+    begin
+      FInfos[K] := FInfos[I];
+      Inc(K);
+    end;
+  FInfos.Count := K;
 end;
 
 procedure TInkStyler.BuildInfos(ARoot: TInkNode; AFrom: integer);
