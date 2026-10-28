@@ -1918,8 +1918,7 @@ function MatchSel(const M: TMatcher; S: TSel; Idx: integer; N: TInkNode): boolea
 
 function IsFormControl(N: TInkNode): boolean;
 begin
-  Result := (N.Name = 'input') or (N.Name = 'button') or (N.Name = 'select') or (N.Name = 'textarea') or (N.Name = 'option') or
-    (N.Name = 'optgroup') or (N.Name = 'fieldset');
+  Result := (N.Name = 'input') or (N.Name = 'button') or (N.Name = 'select') or (N.Name = 'textarea') or (N.Name = 'option') or (N.Name = 'optgroup') or (N.Name = 'fieldset');
 end;
 
 function HasMatch(const M: TMatcher; const L: TSelList; N: TInkNode): boolean;
@@ -2045,8 +2044,7 @@ begin
     pkOptional: Result := IsFormControl(N) and not N.HasAttribute('required');
     pkReadOnly, pkReadWrite:
     begin
-      Result := (((N.Name = 'input') or (N.Name = 'textarea')) and not N.HasAttribute('readonly') and not N.HasAttribute('disabled')) or
-        N.HasAttribute('contenteditable');
+      Result := (((N.Name = 'input') or (N.Name = 'textarea')) and not N.HasAttribute('readonly') and not N.HasAttribute('disabled')) or N.HasAttribute('contenteditable');
       if Ps.Kind = pkReadOnly then Result := not Result;
     end;
     pkPlaceholderShown:
@@ -2369,8 +2367,8 @@ var
   L: string;
 begin
   L := LowerCase(W);
-  Result := InkParseColor(W, C) or (L = 'currentcolor') or (Copy(L, 1, 4) = 'var(') or (Copy(L, 1, 10) = 'color-mix(') or
-    (Copy(L, 1, 4) = 'lab(') or (Copy(L, 1, 6) = 'oklch(') or (Copy(L, 1, 6) = 'oklab(') or (Copy(L, 1, 4) = 'lch(') or (Copy(L, 1, 4) = 'hwb(');
+  Result := InkParseColor(W, C) or (L = 'currentcolor') or (Copy(L, 1, 4) = 'var(') or (Copy(L, 1, 10) = 'color-mix(') or (Copy(L, 1, 4) = 'lab(') or
+    (Copy(L, 1, 6) = 'oklch(') or (Copy(L, 1, 6) = 'oklab(') or (Copy(L, 1, 4) = 'lch(') or (Copy(L, 1, 4) = 'hwb(');
 end;
 
 const

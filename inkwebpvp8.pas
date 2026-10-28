@@ -773,7 +773,8 @@ begin
   Luma := 19077 * (Y - 16) + 8192;
   Dec(U, 128);
   Dec(V, 128);
-  Result := $FF000000 or (longword(Clip(ASR(Luma + 26149 * V, 14))) shl 16) or (longword(Clip(ASR(Luma - 6419 * U - 13320 * V, 14))) shl 8) or longword(Clip(ASR(Luma + 33050 * U, 14)));
+  Result := $FF000000 or (longword(Clip(ASR(Luma + 26149 * V, 14))) shl 16) or (longword(Clip(ASR(Luma - 6419 * U - 13320 * V, 14))) shl 8) or
+    longword(Clip(ASR(Luma + 33050 * U, 14)));
 end;
 
 function TDecoder.Pixels(W, H: integer): TInkWebPPixels;

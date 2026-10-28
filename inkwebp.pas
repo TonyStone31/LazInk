@@ -180,8 +180,8 @@ begin
       FValid := False;
       Exit;
     end;
-    if ((Name = 'VP8X') and (Size <> 10)) or ((Name = 'VP8 ') and (Size < 10)) or ((Name = 'VP8L') and (Size < 5)) or
-      ((Name = 'ANIM') and (Size <> 6)) or ((Name = 'ANMF') and (Size < 16)) then
+    if ((Name = 'VP8X') and (Size <> 10)) or ((Name = 'VP8 ') and (Size < 10)) or ((Name = 'VP8L') and (Size < 5)) or ((Name = 'ANIM') and (Size <> 6)) or
+      ((Name = 'ANMF') and (Size < 16)) then
     begin
       FValid := False;
       Exit;

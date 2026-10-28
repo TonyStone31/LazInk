@@ -245,8 +245,7 @@ type
     { Transfer the finished geometry without retaining tokens, box trees or
       measurement caches. The caller owns the result. }
     function DetachLayout: TInkRenderLayout;
-    procedure PaintLayout(Canvas: TCanvas; const Bounds: TRect; const Options: TInkRenderOptions; ALayout: TInkRenderLayout;
-      AOffsetX: integer = 0; AOffsetY: integer = 0);
+    procedure PaintLayout(Canvas: TCanvas; const Bounds: TRect; const Options: TInkRenderOptions; ALayout: TInkRenderLayout; AOffsetX: integer = 0; AOffsetY: integer = 0);
     procedure ReportLayoutRuns(const Options: TInkRenderOptions; ALayout: TInkRenderLayout; AOffsetX: integer = 0; AOffsetY: integer = 0);
     function HitTestLayout(const Canvas: TCanvas; X, Y: integer; ALayout: TInkRenderLayout; AOffsetX: integer = 0; AOffsetY: integer = 0): TInkRenderHit;
     property CachedLayout: TInkRenderLayout read FLayout;
@@ -739,8 +738,8 @@ end;
 function TInkRenderer.IsKnownTag(const N: string): boolean;
 begin
   Result := (N = 'b') or (N = 'i') or (N = 'u') or (N = 's') or (N = 'sup') or (N = 'sub') or (N = 'font') or (N = 'a') or (N = 'br') or
-    (N = 'hr') or (N = 'p') or (N = 'center') or (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'img') or (N = 'table') or
-    (N = 'tr') or (N = 'td') or (N = 'th') or (N = 'vgap') or (N = 'checkbox') or (N = 'sp') or (N = 'wbr');
+    (N = 'hr') or (N = 'p') or (N = 'center') or (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'img') or (N = 'table') or (N = 'tr') or
+    (N = 'td') or (N = 'th') or (N = 'vgap') or (N = 'checkbox') or (N = 'sp') or (N = 'wbr');
 end;
 
 function TInkRenderer.IsStyleTag(const N: string): boolean;
@@ -882,10 +881,9 @@ begin
   if fsUnderline in Options.BaseFont.Style then Inc(StyleBits, 4);
   if fsStrikeOut in Options.BaseFont.Style then Inc(StyleBits, 8);
   S := Options.BaseFont.Name + '|' + IntToStr(Options.BaseFont.Height) + '|' + IntToStr(Options.BaseFont.Color) + '|' + IntToStr(StyleBits) +
-    '|' + IntToStr(Options.Scale) + '|' + IntToStr(Options.LineSpacing) + '|' + IntToStr(Options.LineHeight) + '|' +
-    IntToStr(Ord(Options.NoWrap)) + '|' + IntToStr(Ord(Options.Ellipsis)) + Options.EllipsisText + '|' + IntToStr(Options.Height) +
-    '|' + IntToStr(integer(Options.VertAlign)) + '|' + IntToStr(Options.Borders.Left) + '|' + IntToStr(Options.Borders.Top) + '|' +
-    IntToStr(Options.Borders.Right) + '|' + IntToStr(Options.Borders.Bottom);
+    '|' + IntToStr(Options.Scale) + '|' + IntToStr(Options.LineSpacing) + '|' + IntToStr(Options.LineHeight) + '|' + IntToStr(Ord(Options.NoWrap)) +
+    '|' + IntToStr(Ord(Options.Ellipsis)) + Options.EllipsisText + '|' + IntToStr(Options.Height) + '|' + IntToStr(integer(Options.VertAlign)) +
+    '|' + IntToStr(Options.Borders.Left) + '|' + IntToStr(Options.Borders.Top) + '|' + IntToStr(Options.Borders.Right) + '|' + IntToStr(Options.Borders.Bottom);
   Result := HashSource(S);
 end;
 
@@ -3274,8 +3272,8 @@ begin
               CheckW := CheckR.Right - CheckR.Left;
               Canvas.Pen.Color := clWhite;
               Canvas.Pen.Width := Max(2, InkRenderScalePx(2, Options.Scale));
-              Canvas.Polyline([Point(CheckR.Left + (CheckW * 22) div 100, CheckR.Top + (CheckW * 52) div 100),
-                Point(CheckR.Left + (CheckW * 41) div 100, CheckR.Top + (CheckW * 71) div 100), Point(CheckR.Left + (CheckW * 78) div 100, CheckR.Top + (CheckW * 30) div 100)]);
+              Canvas.Polyline([Point(CheckR.Left + (CheckW * 22) div 100, CheckR.Top + (CheckW * 52) div 100), Point(CheckR.Left +
+                (CheckW * 41) div 100, CheckR.Top + (CheckW * 71) div 100), Point(CheckR.Left + (CheckW * 78) div 100, CheckR.Top + (CheckW * 30) div 100)]);
               Canvas.Pen.Width := 1;
             end;
             Canvas.Brush.Style := bsClear;
