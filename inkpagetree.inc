@@ -199,6 +199,69 @@ begin
   Result := StrToIntDef(S.Value('font-weight'), 400);
 end;
 
+function TInkCustomPage.InlinePicture(B: TInkPageBlock; E: TInkNode; S: TInkStyle): string;
+var
+  Tmp: TInkPageBlock;
+  Pic: TPicture;
+  W, H, IW, IH: integer;
+  Src, V: string;
+begin
+  Src := ResolveURL(E.GetAttribute('src'));
+  Pic := nil;
+  Tmp := TInkPageBlock.Create;
+  try
+    Tmp.ImageSrc := Src;
+    if Src <> '' then LoadPicture(Tmp);
+    if Tmp.Picture.Graphic <> nil then
+    begin
+      Pic := TPicture.Create;
+      Pic.Assign(Tmp.Picture);
+    end;
+  finally
+    Tmp.Free;
+  end;
+  { the size CSS asks for, the rest from the picture's own shape }
+  IW := 0;
+  IH := 0;
+  if Pic <> nil then
+  begin
+    IW := Round(Pic.Width * Zoom / 100);
+    IH := Round(Pic.Height * Zoom / 100);
+  end;
+  W := -1;
+  H := -1;
+  V := S.Keyword('width');
+  if (V <> 'auto') and (Pos('%', V) = 0) then W := Round(S.Px('width'));
+  V := S.Keyword('height');
+  if (V <> 'auto') and (Pos('%', V) = 0) then H := Round(S.Px('height'));
+  if (W < 0) and (H < 0) then
+  begin
+    W := IW;
+    H := IH;
+  end
+  else if W < 0 then
+  begin
+    W := 0;
+    if IH > 0 then W := Round(H * IW / IH);
+  end
+  else if H < 0 then
+  begin
+    H := 0;
+    if IW > 0 then H := Round(W * IH / IW);
+  end;
+  { kept even with no size yet, so ResourceChanged finds the block }
+  if B.InlinePics = nil then
+  begin
+    B.InlinePics := TStringList.Create;
+    B.InlinePics.OwnsObjects := True;
+  end;
+  B.InlinePics.AddObject(Src, Pic);
+  if (W <= 0) or (H <= 0) then Exit('');
+  Result := Format('<img src="-1" pic="%d" width="%d" height="%d"', [B.InlinePics.Count - 1, W, H]);
+  if S.Keyword('vertical-align') = 'middle' then Result := Result + ' style="vertical-align: middle"';
+  Result := Result + '>';
+end;
+
 { the block's markup, made from the inline content of ABox }
 procedure TInkCustomPage.TreeText(ABox: TInkBox; B: TInkPageBlock);
 var
@@ -404,8 +467,17 @@ var
     end;
     if E.Name = 'img' then
     begin
-      V2 := E.GetAttribute('alt');
-      if V2 <> '' then Words(V2, S);
+      V2 := InlinePicture(B, E, S);
+      if V2 = '' then
+      begin
+        V2 := E.GetAttribute('alt');
+        if V2 <> '' then Words(V2, S);
+        Exit;
+      end;
+      if PendingSpace then Put(' ');
+      PendingSpace := False;
+      AtStart := False;
+      Put(V2);
       Exit;
     end;
     if E.Name = 'input' then
@@ -1010,12 +1082,35 @@ begin
   if ClientHeight > 0 then FStyler.Media.Height := ClientHeight
   else
     FStyler.Media.Height := 768;
-  FStyler.Media.Dark := GetActiveColorScheme = icsDark;
-  FStyler.CanvasColor := cardinal(ColorToRGB(Color)) or $FF000000;
-  FStyler.CanvasTextColor := cardinal(ColorToRGB(Font.Color)) or $FF000000;
+  StylerColors;
   FStyler.MediumFont := ControlFontPixels;
   FStyler.Media.Zoom := FZoom / 100;
   FCanvasBack := Color;
+end;
+
+procedure TInkCustomPage.StylerColors;
+begin
+  FStyler.Media.Dark := GetActiveColorScheme = icsDark;
+  { the page's colors stand for the system ones a page names }
+  FStyler.CanvasColor := cardinal(ColorToRGB(Color)) or $FF000000;
+  FStyler.CanvasTextColor := cardinal(ColorToRGB(FontInk)) or $FF000000;
+  { links a browser's own colors for the scheme: light ones on dark }
+  if FStyler.Media.Dark then
+  begin
+    FStyler.LinkColor := cardinal(RGBToColor($9E, $9E, $FF)) or $FF000000;
+    FStyler.VisitedColor := cardinal(RGBToColor($D0, $AD, $F0)) or $FF000000;
+  end
+  else
+  begin
+    FStyler.LinkColor := cardinal(RGBToColor($00, $00, $EE)) or $FF000000;
+    FStyler.VisitedColor := cardinal(RGBToColor($55, $1A, $8B)) or $FF000000;
+  end;
+end;
+
+function TInkCustomPage.FontInk: TColor;
+begin
+  Result := Font.Color;
+  if Result = clDefault then Result := clWindowText;
 end;
 
 { the window's width less the scrollbar: what the page is laid out in }

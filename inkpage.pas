@@ -156,6 +156,9 @@ type
     Section: TObject;
     { a line of markup laid out and not changed since: moved, not laid again }
     Laid: boolean;
+    { the pictures standing among its words, <img pic="k">: their addresses,
+      each with its TPicture (nil until it comes); nil when there are none }
+    InlinePics: TStringList;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -271,6 +274,12 @@ type
     function TreeElementAt(X, DocY: integer): TInkNode;
     procedure TreeToggleFold(Index: integer);
     procedure LoadPicture(B: TInkPageBlock);
+    { the styler's system colors - canvas, text and links - from the
+      control's own and its color scheme }
+    procedure StylerColors;
+    { an <img> among words: the markup that stands it in their line, its
+      picture kept in B; '' when it has no size to stand at }
+    function InlinePicture(B: TInkPageBlock; E: TInkNode; S: TInkStyle): string;
     procedure Animate(Sender: TObject);
     procedure SetImageFit(AValue: TInkImageFit);
     procedure SetScrollBars(AValue: TInkScrollBarStyle);
@@ -446,6 +455,9 @@ type
     { the control's font in pixels: what medium means, and a memo's lines }
     { the control's font in pixels, at the zoom unless AZoomed is False }
     function ControlFontPixels(AZoomed: boolean = True): integer;
+    { the text color: the Font's, or the window's text color where the Font
+      leaves it at clDefault, so the default reads in a dark theme too }
+    function FontInk: TColor;
     function ItemCount: integer;
     function PageItem(Index: integer): TObject;
     { a line of markup or a document put in as item AItem, and item AItem
@@ -1078,6 +1090,7 @@ begin
   WebP.Free;
   Animation.Free;
   Picture.Free;
+  InlinePics.Free;
   inherited;
 end;
 
@@ -1400,6 +1413,7 @@ begin
     Result.LinkKeepsColor := True;
     Result.LinkUnderline := False;
     Result.CSSLines := True;
+    Result.Pictures := B.InlinePics;
   end;
 end;
 
@@ -1429,8 +1443,7 @@ var
 begin
   Paper := Color;
   if Paper = clDefault then Paper := clWindow;
-  Ink := Font.Color;
-  if Ink = clDefault then Ink := clWindowText;
+  Ink := FontInk;
   Result :=
     'blockquote { margin: 0 0 1em; padding: 0 1em; border-left: 0.25em solid ' + ColorToHTMLHex(MixColor(Ink, Paper, 0.6)) + '; color: ' +
     ColorToHTMLHex(MixColor(Ink, Paper, 0.3)) + ' } ' + 'pre { background: ' + ColorToHTMLHex(HTMLShadeColor(Paper, 7)) +
@@ -1650,10 +1663,7 @@ begin
     if ClientHeight > 0 then FStyler.Media.Height := ClientHeight
     else
       FStyler.Media.Height := 768;
-    FStyler.Media.Dark := GetActiveColorScheme = icsDark;
-    { the page's colors stand for the system ones a page names }
-    FStyler.CanvasColor := cardinal(ColorToRGB(Color)) or $FF000000;
-    FStyler.CanvasTextColor := cardinal(ColorToRGB(Font.Color)) or $FF000000;
+    StylerColors;
     if FStyleSheet.Count > 0 then FStyler.AddSheet(FStyleSheet.Text, FLocation);
     FStyler.AddDocumentSheets(FDocument, FLocation);
     FStyler.Compute(FDocument);
@@ -1695,7 +1705,8 @@ begin
     begin
       S := TInkTreeSection(FItems[I]);
       for J := S.BlockFrom to S.BlockFrom + S.BlockCount - 1 do
-        if TInkPageBlock(FBlocks[J]).ImageSrc = URL then
+        if (TInkPageBlock(FBlocks[J]).ImageSrc = URL) or ((TInkPageBlock(FBlocks[J]).InlinePics <> nil) and
+          (TInkPageBlock(FBlocks[J]).InlinePics.IndexOf(URL) >= 0)) then
         begin
           { the same boxes and blocks again, so a selection stays valid }
           ClearSectionBlocks(S);
@@ -1813,11 +1824,19 @@ end;
 
 function TInkCustomPage.ImageCount: integer;
 var
-  I: integer;
+  I, K: integer;
+  B: TInkPageBlock;
 begin
   Result := 0;
   for I := 0 to FBlocks.Count - 1 do
-    if TInkPageBlock(FBlocks[I]).Picture.Graphic <> nil then Inc(Result);
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    if B.Picture.Graphic <> nil then Inc(Result);
+    { and those standing among its words }
+    if B.InlinePics <> nil then
+      for K := 0 to B.InlinePics.Count - 1 do
+        if B.InlinePics.Objects[K] <> nil then Inc(Result);
+  end;
 end;
 
 function TInkCustomPage.BlockCount: integer;
@@ -2092,7 +2111,7 @@ var
 
 begin
   Track := ColorToRGB(FCanvasBack);
-  TextColor := ColorToRGB(Font.Color);
+  TextColor := ColorToRGB(FontInk);
   if PageStyle(True) <> nil then TextColor := ColorToRGB(InkToColor(PageStyle(True).Color('color'), Track));
   Thumb := RGBToColor((Red(Track) + Red(TextColor)) div 2, (Green(Track) + Green(TextColor)) div 2, (Blue(Track) + Blue(TextColor)) div 2);
   { Root declarations take priority. Body is a native-viewer convenience
@@ -2203,13 +2222,9 @@ begin
 end;
 
 procedure TInkCustomPage.StyleBlock(B: TInkPageBlock);
-var
-  C: TColor;
 begin
   B.PointSize := -Max(1, FLayoutBase);
-  C := Font.Color;
-  if C = clDefault then C := clWindowText;
-  B.TextColor := C;
+  B.TextColor := FontInk;
 end;
 
 procedure TInkCustomPage.StyleSection(S: TInkTreeSection);
@@ -2272,7 +2287,7 @@ begin
   LayoutColumn(ColLeft, W);
   FLayoutBase := ControlFontPixels;
   { the shades a code block's header takes from the page }
-  FBodyText := Font.Color;
+  FBodyText := FontInk;
   FCodeBack := HTMLShadeColor(FCanvasBack, 7);
   { the items from FLayoutFrom on, unless the column changed, and from
     FMoveFrom the ones changed - the rest only move }
@@ -4258,7 +4273,7 @@ var
 begin
   Bar := FindBarRect;
   PageBack := FCanvasBack;
-  Fore := Font.Color;
+  Fore := FontInk;
   if PageStyle(True) <> nil then Fore := InkToColor(PageStyle(True).Color('color'), PageBack);
   ACanvas.Brush.Style := bsSolid;
   ACanvas.Brush.Color := HTMLShadeColor(PageBack, 10);

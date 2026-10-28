@@ -52,6 +52,8 @@ type
     HorzAlign: TInkHorzAlign;
     { supplies <img src="n"> }
     Images: TCustomImageList;
+    { the pictures <img pic="k"> draws: a TPicture in each line's Objects }
+    Pictures: TStrings;
     { how <a href=..> spans are painted }
     LinkColor: TColor;
     LinkBackColor: TColor;
@@ -275,6 +277,7 @@ begin
   FillChar(Result, SizeOf(Result), 0);
   Result.BaseFont := Canvas.Font;
   Result.Images := Options.Images;
+  Result.Pictures := Options.Pictures;
   Result.Width := AWidth;
   Result.Height := AHeight;
   case Options.VertAlign of
@@ -537,6 +540,7 @@ begin
   Result.VertAlign := ivaTop;
   Result.HorzAlign := ihaLeft;
   Result.Images := nil;
+  Result.Pictures := nil;
   Result.LinkColor := clDefault;
   Result.LinkBackColor := clNone;
   Result.LinkUnderline := False;

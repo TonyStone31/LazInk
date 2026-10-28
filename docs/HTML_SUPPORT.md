@@ -182,6 +182,10 @@ in the same way, wrapping to fewer columns when the window is narrow.
 * `<picture>` and `<source>` are stepped over, so the `<img>` inside a
   `<picture>` is what gets drawn - write the fallback and it will be right in
   both a browser and LazInk.
+* A picture among words - an icon, an avatar before a name - stands in
+  their line, its bottom on the baseline, or centered on the words with
+  `vertical-align: middle`. There it does not animate. A picture with no
+  words beside it, or inside a link, is a block of its own.
 * `alt` text is shown when the file will not load, so it is worth writing.
 * A picture inside a table cell is drawn as its `alt` text, not as a picture.
 
