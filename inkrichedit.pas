@@ -506,8 +506,8 @@ begin
   Result := (A.Color = B.Color) and (A.BackColor = B.BackColor) and (A.Size = B.Size) and (A.Face = B.Face) and (A.Style = B.Style) and
     (A.Script = B.Script) and (A.Link = B.Link) and (A.Align = B.Align) and (A.Kind = B.Kind) and (A.Level = B.Level) and (A.Lang = B.Lang) and
     (A.TableAlign = B.TableAlign) and (A.CellBreak = B.CellBreak) and (A.ImageSource = B.ImageSource) and (A.ImageAlt = B.ImageAlt) and
-    (A.ImageTitle = B.ImageTitle) and (A.ImageWidth = B.ImageWidth) and (A.ImageHeight = B.ImageHeight) and
-    (A.LinkTitle = B.LinkTitle) and (A.TaskState = B.TaskState) and (A.HardBreak = B.HardBreak);
+    (A.ImageTitle = B.ImageTitle) and (A.ImageWidth = B.ImageWidth) and (A.ImageHeight = B.ImageHeight) and (A.LinkTitle = B.LinkTitle) and
+    (A.TaskState = B.TaskState) and (A.HardBreak = B.HardBreak);
 end;
 
 { '#RRGGBB' for a real color, '' for the sentinels }
@@ -1424,7 +1424,8 @@ begin
     begin
       BlockRange(FOpenBlock, First, Last);
       if Keep >= Last then Inc(Keep, CloseBlock(FOpenBlock))
-      else CloseBlock(FOpenBlock);
+      else
+        CloseBlock(FOpenBlock);
     end;
     if LockedAt(Min(Keep, CharCount - 1)) then
     begin
@@ -2061,9 +2062,9 @@ var
   { the grid's color: the background mixed a sixth toward the text }
   function BlendToText(ANum, ADen: integer): TColor;
   begin
-    Result := RGBToColor(Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) * ANum div ADen,
-      Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) * ANum div ADen, Blue(ColorToRGB(Color)) +
-      (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) * ANum div ADen);
+    Result := RGBToColor(Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) * ANum div ADen, Green(ColorToRGB(Color)) +
+      (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) * ANum div ADen, Blue(ColorToRGB(Color)) + (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) *
+      ANum div ADen);
   end;
 
   function IsSel(AIdx: integer): boolean;
@@ -2100,8 +2101,8 @@ begin
       begin
           { the background mixed a twelfth toward the text color, so the
             band shows on a light editor and a dark one alike }
-        Canvas.Brush.Color := RGBToColor(Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) div
-          12, Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) div 12, Blue(ColorToRGB(Color)) +
+        Canvas.Brush.Color := RGBToColor(Red(ColorToRGB(Color)) + (Red(ColorToRGB(Font.Color)) - Red(ColorToRGB(Color))) div 12,
+          Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) div 12, Blue(ColorToRGB(Color)) +
           (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) div 12);
         Canvas.Brush.Style := bsSolid;
         Canvas.FillRect(cMargin, L.Top - FScrollY,
@@ -5159,8 +5160,12 @@ var
         for B := A downto 1 do
           if (RunNames[B] < RunNames[B - 1]) xor Run then
           begin
-            T := RunNames[B]; RunNames[B] := RunNames[B - 1]; RunNames[B - 1] := T;
-            T := RunTags[B]; RunTags[B] := RunTags[B - 1]; RunTags[B - 1] := T;
+            T := RunNames[B];
+            RunNames[B] := RunNames[B - 1];
+            RunNames[B - 1] := T;
+            T := RunTags[B];
+            RunTags[B] := RunTags[B - 1];
+            RunTags[B - 1] := T;
           end
           else
             Break;
@@ -5660,8 +5665,7 @@ const
     Result := False;
     if (ATo - AFrom <> 2) or (ParaKindAt(AFrom) <> ipkText) or (ParaLevelAt(AFrom) > 0) then Exit;
     for K := AFrom to ATo do
-      if (FChars[K] <> #$E2#$80#$95) or (FAttrs[K].Link <> '') or
-        (FAttrs[K].ImageSource <> '') or (FAttrs[K].Face <> '') or (FAttrs[K].Style <> []) then Exit;
+      if (FChars[K] <> #$E2#$80#$95) or (FAttrs[K].Link <> '') or (FAttrs[K].ImageSource <> '') or (FAttrs[K].Face <> '') or (FAttrs[K].Style <> []) then Exit;
     Result := True;
   end;
 
@@ -5775,10 +5779,11 @@ begin
             Lines.Add(Back);
           end;
         end;
-        else if IsRule(PS, i - 1) then
-          Lines.Add('---')
         else
-          Lines.Add(InlineMD(PS, i - 1));
+          if IsRule(PS, i - 1) then
+            Lines.Add('---')
+          else
+            Lines.Add(InlineMD(PS, i - 1));
       end;
       PrevKind := Kind;
       PrevLevel := ParaLevelAt(PS);

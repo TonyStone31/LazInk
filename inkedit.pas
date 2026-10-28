@@ -226,7 +226,8 @@ begin
   if ACount = 0 then Exit;
   if AFrom = ACount then Dec(AFrom);
   { a click on the space or line end just after a word takes the word }
-  if not IsWordChar(AChars[AFrom]) and (AFrom > 0) and IsWordChar(AChars[AFrom - 1]) and ((AChars[AFrom] = ' ') or (AChars[AFrom] = #9) or (AChars[AFrom] = #10) or (AIndex = ACount)) then Dec(AFrom);
+  if not IsWordChar(AChars[AFrom]) and (AFrom > 0) and IsWordChar(AChars[AFrom - 1]) and ((AChars[AFrom] = ' ') or (AChars[AFrom] = #9) or
+    (AChars[AFrom] = #10) or (AIndex = ACount)) then Dec(AFrom);
   ATo := AFrom;
   if AChars[AFrom] = #10 then Exit;
   Inc(ATo);
@@ -235,7 +236,7 @@ begin
   while (ATo < ACount) and IsWordChar(AChars[ATo]) do Inc(ATo);
 end;
 
-  { TInkEdit }
+{ TInkEdit }
 
 procedure TInkEdit.CreateWnd;
 begin

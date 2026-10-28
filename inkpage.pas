@@ -1433,8 +1433,8 @@ begin
   if Ink = clDefault then Ink := clWindowText;
   Result :=
     'blockquote { margin: 0 0 1em; padding: 0 1em; border-left: 0.25em solid ' + ColorToHTMLHex(MixColor(Ink, Paper, 0.6)) + '; color: ' +
-    ColorToHTMLHex(MixColor(Ink, Paper, 0.3)) + ' } ' + 'pre { background: ' + ColorToHTMLHex(HTMLShadeColor(Paper, 7)) + '; padding: 1em; border-radius: 6px } ' +
-    'code { background: ' + ColorToHTMLHex(HTMLShadeColor(Paper, 7)) + '; padding: 0.2em 0.4em; border-radius: 6px } ' +
+    ColorToHTMLHex(MixColor(Ink, Paper, 0.3)) + ' } ' + 'pre { background: ' + ColorToHTMLHex(HTMLShadeColor(Paper, 7)) +
+    '; padding: 1em; border-radius: 6px } ' + 'code { background: ' + ColorToHTMLHex(HTMLShadeColor(Paper, 7)) + '; padding: 0.2em 0.4em; border-radius: 6px } ' +
     'pre code { background: transparent; padding: 0 } ' + 'table { border-collapse: collapse } ' + 'th, td { border: 1px solid ' +
     ColorToHTMLHex(MixColor(Ink, Paper, 0.75)) + '; padding: 6px 13px } ' + 'hr { height: 0.25em; padding: 0; margin: 24px 0; border: 0; background: currentcolor; color: ' +
     ColorToHTMLHex(MixColor(Ink, Paper, 0.85)) + ' } ';

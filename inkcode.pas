@@ -156,7 +156,8 @@ begin
   P := Pos(' ', S);
   if P > 0 then S := Copy(S, 1, P - 1);
   if S = '' then Exit('');
-  if (S = 'pas') or (S = 'pp') or (S = 'dpr') or (S = 'lpr') or (S = 'inc') or (S = 'delphi') or (S = 'objectpascal') or (S = 'object-pascal') or (S = 'fpc') or (S = 'lazarus') then S := 'pascal'
+  if (S = 'pas') or (S = 'pp') or (S = 'dpr') or (S = 'lpr') or (S = 'inc') or (S = 'delphi') or (S = 'objectpascal') or (S = 'object-pascal') or
+    (S = 'fpc') or (S = 'lazarus') then S := 'pascal'
   else if (S = 'c++') or (S = 'cxx') or (S = 'cc') or (S = 'hpp') or (S = 'h') or (S = 'cpp') then S := 'cpp'
   else if (S = 'cs') or (S = 'c#') then S := 'csharp'
   else if (S = 'js') or (S = 'jsx') or (S = 'mjs') or (S = 'node') then S := 'javascript'
@@ -708,8 +709,8 @@ begin
       Continue;
     end;
     { a string may wear a prefix: f"", r'', b"", rb"" - it is part of it }
-    if R.Triples and (ACode[P] in ['f', 'r', 'b', 'u', 'F', 'R', 'B', 'U']) and (P < Len) and (Pos(ACode[P + 1], R.Quotes) > 0) and Closes(ACode[P + 1], P + 1) and
-      ((P = 1) or not (ACode[P - 1] in ['a'..'z', 'A'..'Z', '0'..'9', '_'])) then
+    if R.Triples and (ACode[P] in ['f', 'r', 'b', 'u', 'F', 'R', 'B', 'U']) and (P < Len) and (Pos(ACode[P + 1], R.Quotes) > 0) and
+      Closes(ACode[P + 1], P + 1) and ((P = 1) or not (ACode[P - 1] in ['a'..'z', 'A'..'Z', '0'..'9', '_'])) then
     begin
       Flush;
       Q := P;

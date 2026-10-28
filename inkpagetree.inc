@@ -12,35 +12,43 @@ type
   TPageMeasure = class(TInkLayoutMeasure)
   public
     Page: TInkCustomPage;
-    function TextHeight(ABox: TInkBox; AWidth: Integer): Integer; override;
-    procedure TextWidths(ABox: TInkBox; out AMin, AMax: Integer); override;
-    procedure ImageSize(ABox: TInkBox; out AWidth, AHeight: Integer); override;
+    function TextHeight(ABox: TInkBox; AWidth: integer): integer; override;
+    procedure TextWidths(ABox: TInkBox; out AMin, AMax: integer); override;
+    procedure ImageSize(ABox: TInkBox; out AWidth, AHeight: integer); override;
   end;
 
-function TPageMeasure.TextHeight(ABox: TInkBox; AWidth: Integer): Integer;
+function TPageMeasure.TextHeight(ABox: TInkBox; AWidth: integer): integer;
 begin
   if ABox.Data = nil then Exit(0);
   Result := Page.TreeTextHeight(TInkPageBlock(ABox.Data), AWidth);
 end;
 
-procedure TPageMeasure.TextWidths(ABox: TInkBox; out AMin, AMax: Integer);
+procedure TPageMeasure.TextWidths(ABox: TInkBox; out AMin, AMax: integer);
 begin
-  AMin := 0; AMax := 0;
+  AMin := 0;
+  AMax := 0;
   if ABox.Data <> nil then Page.TreeTextWidths(TInkPageBlock(ABox.Data), AMin, AMax);
 end;
 
-procedure TPageMeasure.ImageSize(ABox: TInkBox; out AWidth, AHeight: Integer);
-var B: TInkPageBlock; N: TInkNode; VB: TStringArray; Fit: Double;
+procedure TPageMeasure.ImageSize(ABox: TInkBox; out AWidth, AHeight: integer);
+var
+  B: TInkPageBlock;
+  N: TInkNode;
+  VB: TStringArray;
+  Fit: double;
 begin
-  AWidth := 0; AHeight := 0;
+  AWidth := 0;
+  AHeight := 0;
   B := TInkPageBlock(ABox.Data);
   if (B <> nil) and (B.Picture.Graphic <> nil) then
   begin
-    AWidth := B.Picture.Width; AHeight := B.Picture.Height;
+    AWidth := B.Picture.Width;
+    AHeight := B.Picture.Height;
     { a picture's pixels are CSS pixels, so they zoom with the page }
     if Page.ImageFit <> iifWindow then
     begin
-      AWidth := Round(AWidth * Page.Zoom / 100); AHeight := Round(AHeight * Page.Zoom / 100);
+      AWidth := Round(AWidth * Page.Zoom / 100);
+      AHeight := Round(AHeight * Page.Zoom / 100);
     end
     { a window for one picture: as large as fits in it, up or down }
     else if (AWidth > 0) and (AHeight > 0) then
@@ -48,7 +56,8 @@ begin
       Fit := Min((Page.TreeViewWidth - 16) / AWidth, (Max(1, Page.ClientHeight) - 16) / AHeight);
       if Fit > 0 then
       begin
-        AWidth := Max(1, Round(AWidth * Fit)); AHeight := Max(1, Round(AHeight * Fit));
+        AWidth := Max(1, Round(AWidth * Fit));
+        AHeight := Max(1, Round(AHeight * Fit));
       end;
     end;
     Exit;
@@ -60,28 +69,30 @@ begin
   AHeight := StrToIntDef(N.GetAttribute('height'), 0);
   if (AWidth = 0) and (AHeight = 0) and N.HasAttribute('viewBox') then
   begin
-    VB := Trim(StringReplace(N.GetAttribute('viewBox'), ',', ' ', [rfReplaceAll])).Split([' '],
-      TStringSplitOptions.ExcludeEmpty);
+    VB := Trim(StringReplace(N.GetAttribute('viewBox'), ',', ' ', [rfReplaceAll])).Split([' '], TStringSplitOptions.ExcludeEmpty);
     if Length(VB) = 4 then
     begin
       AWidth := Round(StrToFloatDef(VB[2], 0, DefaultFormatSettings));
       AHeight := Round(StrToFloatDef(VB[3], 0, DefaultFormatSettings));
     end;
   end;
-  if (N.Name = 'iframe') or (N.Name = 'video') or (N.Name = 'canvas') or (N.Name = 'embed') or
-    (N.Name = 'object') then
+  if (N.Name = 'iframe') or (N.Name = 'video') or (N.Name = 'canvas') or (N.Name = 'embed') or (N.Name = 'object') then
   begin
     if AWidth = 0 then AWidth := 300;
     if AHeight = 0 then AHeight := 150;
   end;
-  AWidth := Round(AWidth * Page.Zoom / 100); AHeight := Round(AHeight * Page.Zoom / 100);
+  AWidth := Round(AWidth * Page.Zoom / 100);
+  AHeight := Round(AHeight * Page.Zoom / 100);
 end;
 
 { ---------------------------------------------------------- the words }
 
 { how tall a block's words are at a width, with a code block's header }
-function TInkCustomPage.TreeTextHeight(B: TInkPageBlock; AWidth: Integer): Integer;
-var O: THTMLOptions; Sz: TSize; TextW: Integer;
+function TInkCustomPage.TreeTextHeight(B: TInkPageBlock; AWidth: integer): integer;
+var
+  O: THTMLOptions;
+  Sz: TSize;
+  TextW: integer;
 begin
   BlockFont(Canvas, B);
   O := Options;
@@ -95,7 +106,8 @@ begin
   B.CodeHead := 0;
   TextW := Max(1, AWidth);
   if B.NoWrap then B.Wrapped := B.Source
-  else B.Wrapped := HTMLWordWrap(Canvas, B.Source, TextW, O.SuperSubScriptRatio, O.Scale);
+  else
+    B.Wrapped := HTMLWordWrap(Canvas, B.Source, TextW, O.SuperSubScriptRatio, O.Scale);
   if FCodeHeader and (B.Code <> '') then
   begin
     B.CodeHead := Max(16, Round(FLayoutBase * 1.9));
@@ -106,11 +118,11 @@ begin
       B.CodeFoldSet := True;
     end;
     if B.CodeFolded and (FCodeFoldLines > 0) and (B.CodeLines > FCodeFoldLines) then
-      B.Wrapped := FirstCodeLines(B.Wrapped, FCodeFoldLines) + '<br><font color="' +
-        ColorToHTMLHex(MixColor(B.TextColor, FCanvasBack, 0.5)) + '">...</font>';
+      B.Wrapped := FirstCodeLines(B.Wrapped, FCodeFoldLines) + '<br><font color="' + ColorToHTMLHex(MixColor(B.TextColor, FCanvasBack, 0.5)) + '">...</font>';
   end;
   if B.Source = '' then Sz.cy := 0
-  else Sz := HTMLTextExtentOpt(Canvas, Rect(0, 0, TextW, 0), [], B.Wrapped, O);
+  else
+    Sz := HTMLTextExtentOpt(Canvas, Rect(0, 0, TextW, 0), [], B.Wrapped, O);
   B.WrapWidth := AWidth;
   B.TreeTextH := B.CodeHead + Sz.cy;
   Result := B.TreeTextH;
@@ -118,10 +130,18 @@ end;
 
 { the narrowest a block's words can be - their longest word - and the
   widest - all on one line }
-procedure TInkCustomPage.TreeTextWidths(B: TInkPageBlock; out AMin, AMax: Integer);
-var O: THTMLOptions; Sz: TSize; Src: string;
+procedure TInkCustomPage.TreeTextWidths(B: TInkPageBlock; out AMin, AMax: integer);
+var
+  O: THTMLOptions;
+  Sz: TSize;
+  Src: string;
 begin
-  if B.WidthsKnown then begin AMin := B.TextMinW; AMax := B.TextMaxW; Exit end;
+  if B.WidthsKnown then
+  begin
+    AMin := B.TextMinW;
+    AMax := B.TextMaxW;
+    Exit;
+  end;
   BlockFont(Canvas, B);
   O := Options;
   O.Scale := 100;
@@ -145,9 +165,12 @@ begin
   end;
   if (B.Marker <> '') and not B.MarkerHangs then
   begin
-    Inc(AMin, Canvas.TextWidth(B.Marker + ' ')); Inc(AMax, Canvas.TextWidth(B.Marker + ' '));
+    Inc(AMin, Canvas.TextWidth(B.Marker + ' '));
+    Inc(AMax, Canvas.TextWidth(B.Marker + ' '));
   end;
-  B.TextMinW := AMin; B.TextMaxW := AMax; B.WidthsKnown := True;
+  B.TextMinW := AMin;
+  B.TextMaxW := AMax;
+  B.WidthsKnown := True;
 end;
 
 function FontFamilyFace(const AStack: string): string;
@@ -158,27 +181,36 @@ begin
 end;
 
 { a computed line-height in whole pixels, or -1 for normal }
-function LinePixels(S: TInkStyle): Integer;
-var V: string; LH: Double;
+function LinePixels(S: TInkStyle): integer;
+var
+  V: string;
+  LH: double;
 begin
   V := S.Keyword('line-height');
   Result := -1;
   if (V = '') or (V = 'normal') then Exit;
   if Pos('px', V) > 0 then Result := Round(S.Px('line-height'))
-  else if TryStrToFloat(V, LH, DefaultFormatSettings) or
-    TryStrToFloat(StringReplace(V, '.', DefaultFormatSettings.DecimalSeparator, []), LH) then
+  else if TryStrToFloat(V, LH, DefaultFormatSettings) or TryStrToFloat(StringReplace(V, '.', DefaultFormatSettings.DecimalSeparator, []), LH) then
     Result := Round(LH * S.FontSize);
 end;
 
-function WeightOf(S: TInkStyle): Integer;
+function WeightOf(S: TInkStyle): integer;
 begin
   Result := StrToIntDef(S.Value('font-weight'), 400);
 end;
 
 { the block's markup, made from the inline content of ABox }
 procedure TInkCustomPage.TreeText(ABox: TInkBox; B: TInkPageBlock);
-var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpace, AtStart: Boolean;
-  Targets, Titles: TStringList; BackCol: TColor; I: Integer; N: TInkNode; Faded: TInkBox;
+var
+  OwnerEl: TInkNode;
+  Base: TInkStyle;
+  Out_, V, Head, Tail: string;
+  PendingSpace, AtStart: boolean;
+  Targets, Titles: TStringList;
+  BackCol: TColor;
+  I: integer;
+  N: TInkNode;
+  Faded: TInkBox;
 
   procedure Put(const AText: string);
   begin
@@ -187,7 +219,11 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
 
   { words, white space collapsed or kept as their own element says }
   procedure Words(const T: string; S: TInkStyle);
-  var WS, Tr, Chunk: string; P, Col, K: Integer; C: Char; Keep: Boolean;
+  var
+    WS, Tr, Chunk: string;
+    P, Col, K: integer;
+    C: char;
+    Keep: boolean;
   begin
     { hidden words are left out, not kept as room: a run cannot hold a gap }
     WS := S.Keyword('visibility');
@@ -206,27 +242,37 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       while P <= Length(Chunk) do
       begin
         C := Chunk[P];
-        if C = #10 then begin Put('<br>'); Col := 0 end
+        if C = #10 then
+        begin
+          Put('<br>');
+          Col := 0;
+        end
         else if C = #13 then
         else if C = #9 then
         begin
           if WS = 'pre-line' then Put(' ')
-          else repeat Put(' '); Inc(Col) until Col mod 8 = 0;
+          else
+            repeat
+              Put(' ');
+              Inc(Col)
+            until Col mod 8 = 0;
         end
         else if (C = ' ') and (WS = 'pre-line') then
         begin
           if not PendingSpace then Put(' ');
           PendingSpace := True;
-          Inc(P); Continue;
+          Inc(P);
+          Continue;
         end
         else
         begin
           K := P;
-          while (K <= Length(Chunk)) and not (Chunk[K] in [#10, #13, #9]) and
-            not ((WS = 'pre-line') and (Chunk[K] = ' ')) do Inc(K);
+          while (K <= Length(Chunk)) and not (Chunk[K] in [#10, #13, #9]) and not ((WS = 'pre-line') and (Chunk[K] = ' ')) do Inc(K);
           Put(HTMLEscape(Copy(Chunk, P, K - P)));
           Inc(Col, UTF8Length(Copy(Chunk, P, K - P)));
-          P := K; PendingSpace := False; AtStart := False;
+          P := K;
+          PendingSpace := False;
+          AtStart := False;
           Continue;
         end;
         PendingSpace := False;
@@ -247,7 +293,8 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       K := P;
       while (K <= Length(Chunk)) and not (Chunk[K] in [' ', #9, #10, #12, #13]) do Inc(K);
       if PendingSpace then Put(' ');
-      PendingSpace := False; AtStart := False;
+      PendingSpace := False;
+      AtStart := False;
       Put(HTMLEscape(Copy(Chunk, P, K - P)));
       P := K;
     end;
@@ -255,19 +302,26 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
 
   { generated text: content: "..." in ::before and ::after }
   procedure Generated(E: TInkNode; const APseudo: string);
-  var PS: TInkStyle; C: string; Q: Char; P, K: Integer; Txt: string;
+  var
+    PS: TInkStyle;
+    C: string;
+    Q: char;
+    P, K: integer;
+    Txt: string;
   begin
     PS := FStyler.PseudoStyleOf(E, APseudo);
     if (PS = nil) or (PS.Keyword('display') = 'none') then Exit;
     if CSSFloat(PS.Value('opacity'), 1) <= 0 then Exit;
     C := Trim(PS.Value('content'));
     if (C = '') or (LowerCase(C) = 'none') or (LowerCase(C) = 'normal') then Exit;
-    Txt := ''; P := 1;
+    Txt := '';
+    P := 1;
     while P <= Length(C) do
     begin
       if C[P] in ['"', ''''] then
       begin
-        Q := C[P]; K := P + 1;
+        Q := C[P];
+        K := P + 1;
         while (K <= Length(C)) and (C[K] <> Q) do
         begin
           if (C[K] = '\') and (K < Length(C)) then
@@ -288,15 +342,24 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
         end;
         P := K + 1;
       end
-      else if LowerCase(Copy(C, P, 10)) = 'open-quote' then begin Txt := Txt + '“'; Inc(P, 10) end
-      else if LowerCase(Copy(C, P, 11)) = 'close-quote' then begin Txt := Txt + '”'; Inc(P, 11) end
+      else if LowerCase(Copy(C, P, 10)) = 'open-quote' then
+      begin
+        Txt := Txt + '“';
+        Inc(P, 10);
+      end
+      else if LowerCase(Copy(C, P, 11)) = 'close-quote' then
+      begin
+        Txt := Txt + '”';
+        Inc(P, 11);
+      end
       else if LowerCase(Copy(C, P, 5)) = 'attr(' then
       begin
         K := PosEx(')', C, P);
         Txt := Txt + E.GetAttribute(Trim(Copy(C, P + 5, K - P - 5)));
         P := K + 1;
       end
-      else Inc(P);
+      else
+        Inc(P);
     end;
     if Txt <> '' then Words(Txt, PS);
   end;
@@ -311,8 +374,13 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
 
   { an element inside the run: what it changes, around its content }
   procedure Element(E: TInkNode; P: TInkStyle; Deco: string);
-  var S: TInkStyle; Open, Close, Attrs, Ty, V2, Href: string; C: TInkNode; Bg: TInkRGBA;
-    PadV, PadH, Rad, Bw, SpL, SpR, BoxW, BoxH, MarkLen: Integer; Sub, Atomic: Boolean;
+  var
+    S: TInkStyle;
+    Open, Close, Attrs, Ty, V2, Href: string;
+    C: TInkNode;
+    Bg: TInkRGBA;
+    PadV, PadH, Rad, Bw, SpL, SpR, BoxW, BoxH, MarkLen: integer;
+    Sub, Atomic: boolean;
   begin
     S := FStyler.StyleOf(E);
     if S = nil then S := P;
@@ -323,7 +391,8 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
     if CSSFloat(S.Value('opacity'), 1) <= 0 then Exit;
     if E.Name = 'br' then
     begin
-      Put('<br>'); PendingSpace := False;
+      Put('<br>');
+      PendingSpace := False;
       Exit;
     end;
     if E.Name = 'wbr' then
@@ -345,7 +414,8 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       if (Ty = 'checkbox') or (Ty = 'radio') then
       begin
         if PendingSpace then Put(' ');
-        PendingSpace := False; AtStart := False;
+        PendingSpace := False;
+        AtStart := False;
         Put(InkCheckboxMarkup(E.HasAttribute('checked')) + ' ');
       end
       else if Ty <> 'hidden' then
@@ -356,7 +426,8 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       end;
       Exit;
     end;
-    Open := ''; Close := '';
+    Open := '';
+    Close := '';
     Sub := False;
     { font, size and color where they change }
     Attrs := '';
@@ -364,8 +435,16 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
     if (V2 = 'sub') or (V2 = 'super') then
     begin
       Sub := True;
-      if V2 = 'sub' then begin Open := Open + '<sub>'; Close := '</sub>' + Close end
-      else begin Open := Open + '<sup>'; Close := '</sup>' + Close end;
+      if V2 = 'sub' then
+      begin
+        Open := Open + '<sub>';
+        Close := '</sub>' + Close;
+      end
+      else
+      begin
+        Open := Open + '<sup>';
+        Close := '</sup>' + Close;
+      end;
     end
     else if Abs(S.FontSize - P.FontSize) > 0.4 then
       Attrs := Attrs + ' size="' + IntToStr(-Max(1, Round(S.FontSize))) + '"';
@@ -387,14 +466,15 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       Attrs := Attrs + ' bgcolor="' + ColorAttr(InkToColor(Bg, BackCol)) + '"';
     Bw := BorderPx(S, 'border-top-width');
     if S.Keyword('border-top-style') = 'none' then Bw := 0;
-    PadV := Round(S.Px('padding-top')) + Bw; PadH := Round(S.Px('padding-left')) + Bw;
+    PadV := Round(S.Px('padding-top')) + Bw;
+    PadH := Round(S.Px('padding-left')) + Bw;
     Rad := Round(S.Px('border-top-left-radius'));
     { an inline-block is an atomic box: its width and height are law, its
       border styles real, and it stands even empty }
     V2 := S.Keyword('display');
-    Atomic := (V2 = 'inline-block') or (V2 = 'inline-flex') or
-      (V2 = 'inline-grid') or (V2 = 'inline-table');
-    BoxW := 0; BoxH := 0;
+    Atomic := (V2 = 'inline-block') or (V2 = 'inline-flex') or (V2 = 'inline-grid') or (V2 = 'inline-table');
+    BoxW := 0;
+    BoxH := 0;
     if Atomic then
     begin
       if S.Keyword('width') <> 'auto' then BoxW := Round(S.Px('width'));
@@ -406,11 +486,11 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
     end;
     { the room around it: its margins, and its padding too when there is
       nothing to paint in that - a pill keeps its words on one line }
-    SpL := Max(0, Round(S.Px('margin-left'))); SpR := Max(0, Round(S.Px('margin-right')));
+    SpL := Max(0, Round(S.Px('margin-left')));
+    SpR := Max(0, Round(S.Px('margin-right')));
     if ((Bg shr 24) > 0) or (Bw > 0) or (Atomic and ((BoxW > 0) or (BoxH > 0))) then
     begin
-      if (PadV > 0) or (PadH > 0) or (Rad > 0) or
-        (Atomic and ((BoxW > 0) or (BoxH > 0))) then
+      if (PadV > 0) or (PadH > 0) or (Rad > 0) or (Atomic and ((BoxW > 0) or (BoxH > 0))) then
       begin
         Attrs := Attrs + Format(' pad="%d %d"', [PadV, PadH]);
         if Rad > 0 then Attrs := Attrs + ' radius="' + IntToStr(Rad) + '"';
@@ -421,8 +501,8 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
           Attrs := Attrs + ' pillbox="1"';
           { the attribute carries the border box: CSS width plus the
             padding and border already folded into PadH and PadV }
-          if BoxW > 0 then Attrs := Attrs + ' minw="' + IntToStr(BoxW + 2*PadH) + '"';
-          if BoxH > 0 then Attrs := Attrs + ' minh="' + IntToStr(BoxH + 2*PadV) + '"';
+          if BoxW > 0 then Attrs := Attrs + ' minw="' + IntToStr(BoxW + 2 * PadH) + '"';
+          if BoxH > 0 then Attrs := Attrs + ' minh="' + IntToStr(BoxH + 2 * PadV) + '"';
           if S.Keyword('text-align') = 'center' then Attrs := Attrs + ' pillc="1"';
           { its vertical margins count into the line, as a browser's do }
           if Round(S.Px('margin-top')) > 0 then
@@ -438,36 +518,53 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
     end
     else
     begin
-      Inc(SpL, Max(0, Round(S.Px('padding-left')))); Inc(SpR, Max(0, Round(S.Px('padding-right'))));
+      Inc(SpL, Max(0, Round(S.Px('padding-left'))));
+      Inc(SpR, Max(0, Round(S.Px('padding-right'))));
     end;
     if SpL > 0 then Open := '<sp w="' + IntToStr(SpL) + '">' + Open;
     if SpR > 0 then Close := Close + '<sp w="' + IntToStr(SpR) + '">';
-    if Attrs <> '' then begin Open := Open + '<font' + Attrs + '>'; Close := '</font>' + Close end;
-    if (WeightOf(S) >= 600) and (WeightOf(P) < 600) then begin Open := Open + '<b>'; Close := '</b>' + Close end;
+    if Attrs <> '' then
+    begin
+      Open := Open + '<font' + Attrs + '>';
+      Close := '</font>' + Close;
+    end;
+    if (WeightOf(S) >= 600) and (WeightOf(P) < 600) then
+    begin
+      Open := Open + '<b>';
+      Close := '</b>' + Close;
+    end;
     if (S.Keyword('font-style') <> 'normal') and (P.Keyword('font-style') = 'normal') then
     begin
-      Open := Open + '<i>'; Close := '</i>' + Close;
+      Open := Open + '<i>';
+      Close := '</i>' + Close;
     end;
     { underline and strike-through reach every descendant }
     V2 := S.Keyword('text-decoration-line');
     if (Pos('underline', V2) > 0) and (Pos('u', Deco) = 0) then
     begin
-      Open := Open + '<u>'; Close := '</u>' + Close; Deco := Deco + 'u';
+      Open := Open + '<u>';
+      Close := '</u>' + Close;
+      Deco := Deco + 'u';
     end;
     if (Pos('line-through', V2) > 0) and (Pos('s', Deco) = 0) then
     begin
-      Open := Open + '<s>'; Close := '</s>' + Close; Deco := Deco + 's';
+      Open := Open + '<s>';
+      Close := '</s>' + Close;
+      Deco := Deco + 's';
     end;
     if (E.Name = 'a') and E.HasAttribute('href') then
     begin
       Href := StringReplace(HTMLEscape(E.GetAttribute('href')), '"', '&quot;', [rfReplaceAll]);
-      Open := '<a href="' + Href + '">' + Open; Close := Close + '</a>';
-      Targets.Add(E.GetAttribute('target')); Titles.Add(E.GetAttribute('title'));
+      Open := '<a href="' + Href + '">' + Open;
+      Close := Close + '</a>';
+      Targets.Add(E.GetAttribute('target'));
+      Titles.Add(E.GetAttribute('title'));
     end;
     if PendingSpace and (Open <> '') then
     begin
       { the space before an element belongs before it, not inside its pill }
-      Put(' '); PendingSpace := False;
+      Put(' ');
+      PendingSpace := False;
     end;
     Put(Open);
     MarkLen := Length(Out_);
@@ -483,13 +580,16 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
       spacer.  A zero-width space gives the engine a run to size. }
     if Atomic and ((BoxW > 0) or (BoxH > 0)) and (Length(Out_) = MarkLen) then
       Put('&#8203;');
-    if Sub then ;
+    if Sub then;
     Put(Close);
   end;
 
   { the text decorations a block and its block ancestors carry to it }
   function BlockDeco: string;
-  var X: TInkNode; St: TInkStyle; D: string;
+  var
+    X: TInkNode;
+    St: TInkStyle;
+    D: string;
   begin
     Result := '';
     X := OwnerEl;
@@ -509,7 +609,8 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
 
   { a link round the whole block, the way a card is written: <a><div>... }
   function BlockLink: TInkNode;
-  var X: TInkNode;
+  var
+    X: TInkNode;
   begin
     X := OwnerEl;
     while (X <> nil) and (X.Kind = inkElement) do
@@ -522,7 +623,8 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
 
   { what is behind the words: the nearest background that is not clear }
   function BackOf(X: TInkBox): TColor;
-  var C: TInkRGBA;
+  var
+    C: TInkRGBA;
   begin
     while X <> nil do
     begin
@@ -536,7 +638,11 @@ var OwnerEl: TInkNode; Base: TInkStyle; Out_, V, Head, Tail: string; PendingSpac
     Result := FCanvasBack;
   end;
 
-var Deco: string; LinkNode: TInkNode; LangCls: string; Kid: TInkNode;
+var
+  Deco: string;
+  LinkNode: TInkNode;
+  LangCls: string;
+  Kid: TInkNode;
 begin
   { the element the run belongs to: its own, or its parent box's }
   OwnerEl := ABox.Node;
@@ -550,25 +656,35 @@ begin
   B.Tree := True;
   B.TreeBox := ABox;
   B.FoldHead := -1;
-  if OwnerEl <> nil then begin B.Tag := OwnerEl.Name; B.CSSClass := OwnerEl.GetAttribute('class') end
-  else B.Tag := 'p';
+  if OwnerEl <> nil then
+  begin
+    B.Tag := OwnerEl.Name;
+    B.CSSClass := OwnerEl.GetAttribute('class');
+  end
+  else
+    B.Tag := 'p';
   B.PointSize := -Max(1, Round(Base.FontSize));
   B.TextColor := InkToColor(Base.Color('color'), BackCol);
   B.FaceName := FontFamilyFace(Base.Value('font-family'));
   B.Bold := False;
   B.BackColor := clNone;
-  B.Indent := 0; B.Padding := 0; B.GapBefore := 0; B.GapAfter := 0;
+  B.Indent := 0;
+  B.Padding := 0;
+  B.GapBefore := 0;
+  B.GapAfter := 0;
   B.LineHeight := Max(0, LinePixels(Base));
   V := Base.Keyword('white-space');
   B.NoWrap := (V = 'pre') or (V = 'nowrap');
   B.Pre := (V = 'pre') or (V = 'pre-wrap') or (V = 'break-spaces');
   { text-overflow: ellipsis - only on a line that cannot wrap and whose
     box clips, which is the condition a browser puts on it }
-  B.Ellipsize := B.NoWrap and (Base.Keyword('text-overflow') = 'ellipsis') and
-    (Base.Keyword('overflow-x') <> 'visible');
-  Targets := TStringList.Create; Titles := TStringList.Create;
+  B.Ellipsize := B.NoWrap and (Base.Keyword('text-overflow') = 'ellipsis') and (Base.Keyword('overflow-x') <> 'visible');
+  Targets := TStringList.Create;
+  Titles := TStringList.Create;
   try
-    Out_ := ''; PendingSpace := False; AtStart := True;
+    Out_ := '';
+    PendingSpace := False;
+    AtStart := True;
     B.Marker := '';
     B.MarkerHangs := True;
     if ABox.Marker <> '' then
@@ -578,7 +694,8 @@ begin
         Put(HTMLEscape(ABox.Marker) + ' ');
         B.MarkerHangs := False;
       end
-      else B.Marker := ABox.Marker;
+      else
+        B.Marker := ABox.Marker;
     end;
     Deco := BlockDeco;
     { in a see-through box the words are not there to read or find }
@@ -589,39 +706,62 @@ begin
     begin
       if ABox.PseudoOf <> nil then Generated(ABox.PseudoOf, ABox.Pseudo)
       else if ABox.InlineBefore and (OwnerEl <> nil) then Generated(OwnerEl, 'before');
-      for I := 0 to High(ABox.Inline) do
+      for I := 0 to High(ABox.inline) do
       begin
-        N := ABox.Inline[I];
+        N := ABox.inline[I];
         if N.Kind = inkText then Words(N.Data, FStyler.StyleOf(N.Parent))
         else if FStyler.StyleOf(N.Parent) <> nil then Element(N, FStyler.StyleOf(N.Parent), Deco)
-        else Element(N, Base, Deco);
+        else
+          Element(N, Base, Deco);
       end;
       if (ABox.PseudoOf = nil) and ABox.InlineAfter and (OwnerEl <> nil) then Generated(OwnerEl, 'after');
     end;
     { the run as a whole: its alignment, its own weight and slant, the
       decoration and link it is wrapped in }
-    Head := ''; Tail := '';
+    Head := '';
+    Tail := '';
     V := Base.Keyword('text-align');
     if (V = 'center') or (V = '-webkit-center') then Head := '<center>'
     else if (V = 'right') or (V = 'end') or (V = '-webkit-right') then Head := '<right>';
-    if WeightOf(Base) >= 600 then begin Head := Head + '<b>'; Tail := '</b>' + Tail end;
-    if Base.Keyword('font-style') <> 'normal' then begin Head := Head + '<i>'; Tail := '</i>' + Tail end;
-    if Pos('u', Deco) > 0 then begin Head := Head + '<u>'; Tail := '</u>' + Tail end;
-    if Pos('s', Deco) > 0 then begin Head := Head + '<s>'; Tail := '</s>' + Tail end;
+    if WeightOf(Base) >= 600 then
+    begin
+      Head := Head + '<b>';
+      Tail := '</b>' + Tail;
+    end;
+    if Base.Keyword('font-style') <> 'normal' then
+    begin
+      Head := Head + '<i>';
+      Tail := '</i>' + Tail;
+    end;
+    if Pos('u', Deco) > 0 then
+    begin
+      Head := Head + '<u>';
+      Tail := '</u>' + Tail;
+    end;
+    if Pos('s', Deco) > 0 then
+    begin
+      Head := Head + '<s>';
+      Tail := '</s>' + Tail;
+    end;
     LinkNode := BlockLink;
     if LinkNode <> nil then
     begin
-      Head := Head + '<a href="' + StringReplace(HTMLEscape(LinkNode.GetAttribute('href')), '"', '&quot;',
-        [rfReplaceAll]) + '">';
+      Head := Head + '<a href="' + StringReplace(HTMLEscape(LinkNode.GetAttribute('href')), '"', '&quot;', [rfReplaceAll]) + '">';
       Tail := '</a>' + Tail;
-      Targets.Insert(0, LinkNode.GetAttribute('target')); Titles.Insert(0, LinkNode.GetAttribute('title'));
+      Targets.Insert(0, LinkNode.GetAttribute('target'));
+      Titles.Insert(0, LinkNode.GetAttribute('title'));
     end;
-    if Out_ = '' then B.Source := '' else B.Source := Head + Out_ + Tail;
+    if Out_ = '' then B.Source := ''
+    else
+      B.Source := Head + Out_ + Tail;
     SetLength(B.LinkTargets, Targets.Count);
     for I := 0 to Targets.Count - 1 do B.LinkTargets[I] := Targets[I];
     SetLength(B.LinkTitles, Titles.Count);
     for I := 0 to Titles.Count - 1 do B.LinkTitles[I] := Titles[I];
-  finally Targets.Free; Titles.Free end;
+  finally
+    Targets.Free;
+    Titles.Free
+  end;
   { a code block: its text for the header's Copy, and colored when the
     page wrote <pre><code> and colored nothing itself }
   if (OwnerEl <> nil) and (OwnerEl.Name = 'pre') and (ABox.Node = OwnerEl) then
@@ -644,7 +784,7 @@ end;
 
 { ---------------------------------------------------------- building }
 
-procedure TInkCustomPage.TreeStyle(AWidth: Integer);
+procedure TInkCustomPage.TreeStyle(AWidth: integer);
 begin
   ResetStyler;
   FStyler.Media.Width := AWidth;
@@ -661,7 +801,10 @@ end;
 { a document's boxes, and a block for each run of words and each picture in
   them, put among the page's blocks at S.BlockFrom }
 procedure TInkCustomPage.BuildSection(S: TInkTreeSection);
-var PendingIds: string; Made: TList; I: Integer;
+var
+  PendingIds: string;
+  Made: TList;
+  I: integer;
 
   procedure Ids(N: TInkNode);
   begin
@@ -670,17 +813,21 @@ var PendingIds: string; Made: TList; I: Integer;
   end;
 
   procedure Walk(Box: TInkBox);
-  var I: Integer; B: TInkPageBlock; LinkNode: TInkNode; Det: TInkNode;
+  var
+    I: integer;
+    B: TInkPageBlock;
+    LinkNode: TInkNode;
+    Det: TInkNode;
   begin
     Ids(Box.Node);
     if Box.Kind = ibkText then
     begin
       B := TInkPageBlock.Create;
       TreeText(Box, B);
-      B.Anchor := Trim(PendingIds + ' ' + B.Anchor); PendingIds := '';
+      B.Anchor := Trim(PendingIds + ' ' + B.Anchor);
+      PendingIds := '';
       { a <summary>: the fold it opens and shuts }
-      if (Box.Node <> nil) and (Box.Node.Name = 'summary') and (Box.Node.Parent <> nil) and
-        (Box.Node.Parent.Name = 'details') then
+      if (Box.Node <> nil) and (Box.Node.Name = 'summary') and (Box.Node.Parent <> nil) and (Box.Node.Parent.Name = 'details') then
       begin
         Det := Box.Node.Parent;
         B.FoldHead := Length(S.Folds);
@@ -693,18 +840,19 @@ var PendingIds: string; Made: TList; I: Integer;
     else if Box.Kind = ibkImage then
     begin
       B := TInkPageBlock.Create;
-      B.Tree := True; B.TreeBox := Box;
+      B.Tree := True;
+      B.TreeBox := Box;
       B.FoldHead := -1;
       B.Tag := Box.Node.Name;
-      B.Anchor := PendingIds; PendingIds := '';
+      B.Anchor := PendingIds;
+      PendingIds := '';
       B.BackColor := clNone;
       if Box.Node.Name = 'img' then
       begin
         B.ImageSrc := ResolveURL(Box.Node.GetAttribute('src'));
         if B.ImageSrc <> '' then LoadPicture(B);
         LinkNode := Box.Node.Parent;
-        while (LinkNode <> nil) and (LinkNode.Kind = inkElement) and not
-          ((LinkNode.Name = 'a') and LinkNode.HasAttribute('href')) do LinkNode := LinkNode.Parent;
+        while (LinkNode <> nil) and (LinkNode.Kind = inkElement) and not ((LinkNode.Name = 'a') and LinkNode.HasAttribute('href')) do LinkNode := LinkNode.Parent;
         if (LinkNode <> nil) and (LinkNode.Kind = inkElement) then
         begin
           B.LinkHref := StringReplace(HTMLEscape(LinkNode.GetAttribute('href')), '"', '&quot;', [rfReplaceAll]);
@@ -719,7 +867,8 @@ var PendingIds: string; Made: TList; I: Integer;
           if B.LinkHref <> '' then
           begin
             B.Source := '<a href="' + B.LinkHref + '">' + B.Source + '</a>';
-            SetLength(B.LinkTargets, 1); B.LinkTargets[0] := B.LinkTarget;
+            SetLength(B.LinkTargets, 1);
+            B.LinkTargets[0] := B.LinkTarget;
             B.LinkHref := '';
           end;
         end;
@@ -766,12 +915,15 @@ begin
     end;
     S.BlockCount := Made.Count;
     S.Laid := False;
-  finally Made.Free end;
+  finally
+    Made.Free
+  end;
 end;
 
 { a document's blocks taken out of the page's and freed }
 procedure TInkCustomPage.ClearSectionBlocks(S: TInkTreeSection);
-var I: Integer;
+var
+  I: integer;
 begin
   for I := S.BlockFrom + S.BlockCount - 1 downto S.BlockFrom do
   begin
@@ -781,19 +933,23 @@ begin
   end;
   S.BlockCount := 0;
   if FRenderCache <> nil then FRenderCache.Clear;
-  FHoverBlock := -1; FRunBlock := nil;
+  FHoverBlock := -1;
+  FRunBlock := nil;
 end;
 
 { where each item's blocks start, and each block's place, from AFromItem on }
-procedure TInkCustomPage.Renumber(AFromItem: Integer);
-var I, K, N: Integer; It: TObject;
+procedure TInkCustomPage.Renumber(AFromItem: integer);
+var
+  I, K, N: integer;
+  It: TObject;
 begin
   N := 0;
   if AFromItem > 0 then
   begin
     It := TObject(FItems[AFromItem - 1]);
     if It is TInkTreeSection then N := TInkTreeSection(It).BlockFrom + TInkTreeSection(It).BlockCount
-    else N := TInkPageBlock(It).Index + 1;
+    else
+      N := TInkPageBlock(It).Index + 1;
   end;
   for I := AFromItem to FItems.Count - 1 do
   begin
@@ -818,15 +974,16 @@ begin
   end;
 end;
 
-function TInkCustomPage.AddSection(ADoc: TInkDocument; AOwns: Boolean): TInkTreeSection;
+function TInkCustomPage.AddSection(ADoc: TInkDocument; AOwns: boolean): TInkTreeSection;
 begin
   Result := InsertSection(FItems.Count, ADoc, AOwns);
 end;
 
-function TInkCustomPage.InsertSection(AItem: Integer; ADoc: TInkDocument; AOwns: Boolean): TInkTreeSection;
+function TInkCustomPage.InsertSection(AItem: integer; ADoc: TInkDocument; AOwns: boolean): TInkTreeSection;
 begin
   Result := TInkTreeSection.Create;
-  Result.Doc := ADoc; Result.OwnsDoc := AOwns;
+  Result.Doc := ADoc;
+  Result.OwnsDoc := AOwns;
   Result.Item := AItem;
   Result.BlockFrom := ItemBlockFrom(AItem);
   Result.Back := clNone;
@@ -850,33 +1007,37 @@ begin
   end;
   FStyler.Clear;
   FStyler.Media.Width := TreeViewWidth;
-  if ClientHeight > 0 then FStyler.Media.Height := ClientHeight else FStyler.Media.Height := 768;
+  if ClientHeight > 0 then FStyler.Media.Height := ClientHeight
+  else
+    FStyler.Media.Height := 768;
   FStyler.Media.Dark := GetActiveColorScheme = icsDark;
-  FStyler.CanvasColor := Cardinal(ColorToRGB(Color)) or $FF000000;
-  FStyler.CanvasTextColor := Cardinal(ColorToRGB(Font.Color)) or $FF000000;
+  FStyler.CanvasColor := cardinal(ColorToRGB(Color)) or $FF000000;
+  FStyler.CanvasTextColor := cardinal(ColorToRGB(Font.Color)) or $FF000000;
   FStyler.MediumFont := ControlFontPixels;
   FStyler.Media.Zoom := FZoom / 100;
   FCanvasBack := Color;
 end;
 
 { the window's width less the scrollbar: what the page is laid out in }
-function TInkCustomPage.TreeViewWidth: Integer;
+function TInkCustomPage.TreeViewWidth: integer;
 begin
   Result := Max(40, ClientWidth - FScroll.Width);
   if ClientWidth <= 0 then Result := 1024;
 end;
 
-function TInkCustomPage.ControlFontPixels(AZoomed: Boolean): Integer;
+function TInkCustomPage.ControlFontPixels(AZoomed: boolean): integer;
 begin
   if Font.Height <> 0 then Result := Abs(Font.Height)
   else if Font.Size > 0 then Result := Round(Font.Size * 4 / 3)
-  else Result := 16;
+  else
+    Result := 16;
   if AZoomed then Result := Max(1, Round(Result * FZoom / 100));
 end;
 
 { the canvas: the root's background, or the body's when the root has none }
 function TInkCustomPage.TreeCanvasBack: TColor;
-var C: TInkRGBA;
+var
+  C: TInkRGBA;
 begin
   Result := Color;
   if (FDocument = nil) or (FStyler = nil) then Exit;
@@ -894,12 +1055,13 @@ end;
 
 { ---------------------------------------------------------- laying out }
 
-function TInkCustomPage.PageStyle(ABody: Boolean): TInkStyle;
+function TInkCustomPage.PageStyle(ABody: boolean): TInkStyle;
 begin
   Result := nil;
   if (FDocument = nil) or (FStyler = nil) or not FStyled then Exit;
   if ABody then Result := FStyler.StyleOf(FDocument.Body)
-  else Result := FStyler.StyleOf(FDocument.DocumentElement);
+  else
+    Result := FStyler.StyleOf(FDocument.DocumentElement);
 end;
 
 function TInkCustomPage.PageValue(const AProp: string): string;
@@ -913,11 +1075,12 @@ end;
 
 { a document at Y: its boxes laid out at the column's width and moved
   there, and its blocks put where their boxes are }
-procedure TInkCustomPage.LaySection(S: TInkTreeSection; ALeft, AWidth: Integer;
-  var Y, Pending: Integer; AMayMove: Boolean);
+procedure TInkCustomPage.LaySection(S: TInkTreeSection; ALeft, AWidth: integer; var Y, Pending: integer; AMayMove: boolean);
 
   procedure Place(Box: TInkBox);
-  var I: Integer; B: TInkPageBlock;
+  var
+    I: integer;
+    B: TInkPageBlock;
   begin
     B := TInkPageBlock(Box.Data);
     if B <> nil then
@@ -942,7 +1105,8 @@ procedure TInkCustomPage.LaySection(S: TInkTreeSection; ALeft, AWidth: Integer;
 
 begin
   StyleSection(S);
-  Inc(Y, Max(Pending, S.GapBefore)); Pending := 0;
+  Inc(Y, Max(Pending, S.GapBefore));
+  Pending := 0;
   S.PaintKept := S.PaintKept and AMayMove and S.Laid;
   if AMayMove and S.Laid then
   begin
@@ -955,7 +1119,8 @@ begin
   end
   else
   begin
-    S.Left := ALeft + S.Indent; S.Top := Y;
+    S.Left := ALeft + S.Indent;
+    S.Top := Y;
     S.Width := Max(20, AWidth - S.Indent);
     S.Height := 0;
     if (S.Layout <> nil) and (S.Layout.Root <> nil) then
@@ -967,17 +1132,18 @@ begin
     end;
     S.Laid := True;
   end;
-  Inc(Y, S.Height); Pending := S.GapAfter;
+  Inc(Y, S.Height);
+  Pending := S.GapAfter;
 end;
 
 { ----------------------------------------------------------- painting }
 
-function Positioned(B: TInkBox): Boolean;
+function Positioned(B: TInkBox): boolean;
 begin
   Result := not B.Anon and (B.Style.Keyword('position') <> 'static');
 end;
 
-function ZIndex(B: TInkBox): Integer;
+function ZIndex(B: TInkBox): integer;
 begin
   Result := 0;
   if not B.Anon then Result := StrToIntDef(B.Style.Keyword('z-index'), 0);
@@ -987,53 +1153,76 @@ end;
   over the flow, positioned boxes last, by z-index - and what a box with
   overflow: hidden holds, cut to it.  Items before AFrom were not laid out
   again, so their part is kept and only the rest is gathered. }
-procedure TInkCustomPage.TreePaintOrder(AFrom: Integer);
-var N: Integer;
+procedure TInkCustomPage.TreePaintOrder(AFrom: integer);
+var
+  N: integer;
 
-  procedure Push(ABox: TInkBox; ABlock: Integer; const AClip: TRect; AClipped: Boolean);
+  procedure Push(ABox: TInkBox; ABlock: integer; const AClip: TRect; AClipped: boolean);
   begin
     if N = Length(FTreePaint) then SetLength(FTreePaint, N * 2 + 64);
-    FTreePaint[N].Box := ABox; FTreePaint[N].Block := ABlock;
-    FTreePaint[N].Clip := AClip; FTreePaint[N].Clipped := AClipped;
+    FTreePaint[N].Box := ABox;
+    FTreePaint[N].Block := ABlock;
+    FTreePaint[N].Clip := AClip;
+    FTreePaint[N].Clipped := AClipped;
     FTreePaint[N].Section := nil;
     Inc(N);
   end;
 
-  procedure Atomic(Root: TInkBox; const AClip: TRect; AClipped: Boolean);
-  var Decos, Texts, Floats, Later: TFPList; Clips: array of TRect; Clipped: array of Boolean;
-    I, J, K: Integer; X: TInkBox;
+  procedure Atomic(Root: TInkBox; const AClip: TRect; AClipped: boolean);
+  var
+    Decos, Texts, Floats, Later: TFPList;
+    Clips: array of TRect;
+    Clipped: array of boolean;
+    I, J, K: integer;
+    X: TInkBox;
 
-    procedure Note(L: TFPList; B: TInkBox; const C: TRect; HasClip: Boolean);
+    procedure Note(L: TFPList; B: TInkBox; const C: TRect; HasClip: boolean);
     begin
       L.Add(B);
-      SetLength(Clips, Length(Clips) + 1); SetLength(Clipped, Length(Clipped) + 1);
-      Clips[High(Clips)] := C; Clipped[High(Clipped)] := HasClip;
+      SetLength(Clips, Length(Clips) + 1);
+      SetLength(Clipped, Length(Clipped) + 1);
+      Clips[High(Clips)] := C;
+      Clipped[High(Clipped)] := HasClip;
       B.Tag := High(Clips);
     end;
 
-    procedure Gather(B: TInkBox; const C: TRect; HasClip, IsRoot: Boolean);
-    var Q: Integer; NC: TRect; NH, Seen: Boolean; O: string;
+    procedure Gather(B: TInkBox; const C: TRect; HasClip, IsRoot: boolean);
+    var
+      Q: integer;
+      NC: TRect;
+      NH, Seen: boolean;
+      O: string;
     begin
       { a box made fully transparent takes everything in it along }
       if not B.Anon and (CSSFloat(B.Style.Value('opacity'), 1) <= 0) then Exit;
-      if not IsRoot and (Positioned(B) or B.Absolute) then begin Note(Later, B, C, HasClip); Exit end;
-      if not IsRoot and B.Floating then begin Note(Floats, B, C, HasClip); Exit end;
+      if not IsRoot and (Positioned(B) or B.Absolute) then
+      begin
+        Note(Later, B, C, HasClip);
+        Exit;
+      end;
+      if not IsRoot and B.Floating then
+      begin
+        Note(Floats, B, C, HasClip);
+        Exit;
+      end;
       { a hidden one keeps its room, and what is in it may still show }
       O := '';
       if B.Style <> nil then O := B.Style.Keyword('visibility');
       Seen := (O <> 'hidden') and (O <> 'collapse');
       { a masked box is most often an icon: its color cut to a picture's
         shape.  Without the mask it is a solid block, so it goes unpainted }
-      if Seen and ((B.Style = nil) or (B.Style.Keyword('mask-image') = 'none') or
-        (B.Style.Keyword('mask-image') = '')) then Note(Decos, B, C, HasClip);
+      if Seen and ((B.Style = nil) or (B.Style.Keyword('mask-image') = 'none') or (B.Style.Keyword('mask-image') = '')) then Note(Decos, B, C, HasClip);
       if Seen and (B.Data <> nil) then Note(Texts, B, C, HasClip);
-      NC := C; NH := HasClip;
+      NC := C;
+      NH := HasClip;
       if not B.Anon then
       begin
         O := B.Style.Keyword('overflow-x') + ' ' + B.Style.Keyword('overflow-y');
         if (Pos('hidden', O) > 0) or (Pos('clip', O) > 0) then
         begin
-          if NH then IntersectRect(NC, NC, B.PaddingRect) else NC := B.PaddingRect;
+          if NH then IntersectRect(NC, NC, B.PaddingRect)
+          else
+            NC := B.PaddingRect;
           NH := True;
         end;
       end;
@@ -1041,9 +1230,13 @@ var N: Integer;
     end;
 
   begin
-    Decos := TFPList.Create; Texts := TFPList.Create; Floats := TFPList.Create; Later := TFPList.Create;
+    Decos := TFPList.Create;
+    Texts := TFPList.Create;
+    Floats := TFPList.Create;
+    Later := TFPList.Create;
     try
-      Clips := nil; Clipped := nil;
+      Clips := nil;
+      Clipped := nil;
       Gather(Root, AClip, AClipped, True);
       for I := 0 to Decos.Count - 1 do
       begin
@@ -1063,10 +1256,12 @@ var N: Integer;
       { positioned boxes by z-index, in the order written within one }
       for I := 1 to Later.Count - 1 do
       begin
-        X := TInkBox(Later[I]); J := I - 1;
+        X := TInkBox(Later[I]);
+        J := I - 1;
         while (J >= 0) and (ZIndex(TInkBox(Later[J])) > ZIndex(X)) do
         begin
-          Later[J + 1] := Later[J]; Dec(J);
+          Later[J + 1] := Later[J];
+          Dec(J);
         end;
         Later[J + 1] := X;
       end;
@@ -1076,16 +1271,26 @@ var N: Integer;
         K := X.Tag;
         Atomic(X, Clips[K], Clipped[K]);
       end;
-    finally Decos.Free; Texts.Free; Floats.Free; Later.Free end;
+    finally
+      Decos.Free;
+      Texts.Free;
+      Floats.Free;
+      Later.Free
+    end;
   end;
 
-var I, K, N0: Integer; It: TObject; S: TInkTreeSection; Old: array of TInkTreePaint;
+var
+  I, K, N0: integer;
+  It: TObject;
+  S: TInkTreeSection;
+  Old: array of TInkTreePaint;
 begin
   { emptied when blocks were taken away: gathered whole }
   if (AFrom > 0) and (AFrom < Length(FTreePaintAt)) and (FTreePaintCount > 0) then N := FTreePaintAt[AFrom]
   else
   begin
-    N := 0; AFrom := 0;
+    N := 0;
+    AFrom := 0;
   end;
   { the entries from there on, for the documents that were only moved }
   N0 := N;
@@ -1119,10 +1324,13 @@ begin
           Atomic(S.Layout.Root, Rect(0, 0, 0, 0), False);
       end;
       S.PaintKept := True;
-      S.PaintFrom := FTreePaintAt[I]; S.PaintCount := N - S.PaintFrom;
-      S.PaintTop := S.Top; S.PaintBlock := S.BlockFrom;
+      S.PaintFrom := FTreePaintAt[I];
+      S.PaintCount := N - S.PaintFrom;
+      S.PaintTop := S.Top;
+      S.PaintBlock := S.BlockFrom;
     end
-    else Push(nil, TInkPageBlock(It).Index, Rect(0, 0, 0, 0), False);
+    else
+      Push(nil, TInkPageBlock(It).Index, Rect(0, 0, 0, 0), False);
   end;
   FTreePaintAt[FItems.Count] := N;
   FTreePaintCount := N;
@@ -1130,24 +1338,35 @@ end;
 
 { a box's background and borders }
 procedure TInkCustomPage.TreePaintBox(ACanvas: TCanvas; ABox: TInkBox);
-var S: TInkStyle; R, P: TRect; Bg: TInkRGBA; Behind, Col: TColor; Radius, I, W, X, Len_: Integer;
-  St, Img: string; Up: TInkBox; Words: TStringArray;
+var
+  S: TInkStyle;
+  R, P: TRect;
+  Bg: TInkRGBA;
+  Behind, Col: TColor;
+  Radius, I, W, X, Len_: integer;
+  St, Img: string;
+  Up: TInkBox;
+  Words: TStringArray;
 
   function SideColor(const ASide: string): TColor;
   begin
     Result := InkToColor(S.Color('border-' + ASide + '-color'), Behind);
   end;
 
-  function Shade(C: TColor; ADark: Boolean): TColor;
+  function Shade(C: TColor; ADark: boolean): TColor;
   begin
     C := ColorToRGB(C);
     if ADark then Result := RGBToColor(Red(C) * 2 div 3, Green(C) * 2 div 3, Blue(C) * 2 div 3)
-    else Result := MixColor(C, clWhite, 0.6);
+    else
+      Result := MixColor(C, clWhite, 0.6);
   end;
 
   { one side, in the style it asks for }
-  procedure Side(const ASide: string; ARect: TRect; AWidth: Integer; AHorizontal: Boolean; ADarkInset: Boolean);
-  var Style_: string; C: TColor; K, Step: Integer;
+  procedure Side(const ASide: string; ARect: TRect; AWidth: integer; AHorizontal: boolean; ADarkInset: boolean);
+  var
+    Style_: string;
+    C: TColor;
+    K, Step: integer;
   begin
     if AWidth <= 0 then Exit;
     Style_ := S.Keyword('border-' + ASide + '-style');
@@ -1155,10 +1374,13 @@ var S: TInkStyle; R, P: TRect; Bg: TInkRGBA; Behind, Col: TColor; Radius, I, W, 
     C := SideColor(ASide);
     if (Style_ = 'inset') or (Style_ = 'groove') then C := Shade(C, ADarkInset)
     else if (Style_ = 'outset') or (Style_ = 'ridge') then C := Shade(C, not ADarkInset);
-    ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := C;
+    ACanvas.Brush.Style := bsSolid;
+    ACanvas.Brush.Color := C;
     if (Style_ = 'dashed') or (Style_ = 'dotted') then
     begin
-      if Style_ = 'dotted' then Step := AWidth else Step := AWidth * 3;
+      if Style_ = 'dotted' then Step := AWidth
+      else
+        Step := AWidth * 3;
       Step := Max(2, Step);
       if AHorizontal then
       begin
@@ -1192,7 +1414,8 @@ var S: TInkStyle; R, P: TRect; Bg: TInkRGBA; Behind, Col: TColor; Radius, I, W, 
         ACanvas.FillRect(Rect(ARect.Right - AWidth div 3, ARect.Top, ARect.Right, ARect.Bottom));
       end;
     end
-    else ACanvas.FillRect(ARect);
+    else
+      ACanvas.FillRect(ARect);
   end;
 
 begin
@@ -1220,8 +1443,7 @@ begin
     Img := S.Value('background-image');
     if Pos('gradient(', LowerCase(Img)) > 0 then
     begin
-      Words := StringReplace(StringReplace(Copy(Img, Pos('(', Img) + 1, MaxInt), ',', ' ', [rfReplaceAll]),
-        ')', ') ', [rfReplaceAll]).Split([' '], TStringSplitOptions.ExcludeEmpty);
+      Words := StringReplace(StringReplace(Copy(Img, Pos('(', Img) + 1, MaxInt), ',', ' ', [rfReplaceAll]), ')', ') ', [rfReplaceAll]).Split([' '], TStringSplitOptions.ExcludeEmpty);
       for I := 0 to High(Words) do
         if InkParseColor(Words[I], Bg, FStyler.Media.Dark) then Break;
     end;
@@ -1237,24 +1459,29 @@ begin
   if (Bg shr 24) > 0 then
   begin
     Col := InkToColor(Bg, Behind);
-    ACanvas.Brush.Style := bsSolid; ACanvas.Brush.Color := Col;
+    ACanvas.Brush.Style := bsSolid;
+    ACanvas.Brush.Color := Col;
     if Radius > 0 then
     begin
-      ACanvas.Pen.Color := Col; ACanvas.Pen.Width := 1;
+      ACanvas.Pen.Color := Col;
+      ACanvas.Pen.Width := 1;
       ACanvas.RoundRect(R.Left, R.Top, R.Right, R.Bottom, Radius * 2, Radius * 2);
     end
-    else ACanvas.FillRect(R);
+    else
+      ACanvas.FillRect(R);
   end;
   with ABox.Border do
     if (Left > 0) or (Top > 0) or (Right > 0) or (Bottom > 0) then
     begin
-      if (Radius > 0) and (Left = Top) and (Top = Right) and (Right = Bottom) and
-        (S.Keyword('border-top-style') <> 'none') and (S.Keyword('border-top-style') <> 'hidden') then
+      if (Radius > 0) and (Left = Top) and (Top = Right) and (Right = Bottom) and (S.Keyword('border-top-style') <> 'none') and
+        (S.Keyword('border-top-style') <> 'hidden') then
       begin
         { a round box with one border all round }
         ACanvas.Brush.Style := bsClear;
-        ACanvas.Pen.Color := SideColor('top'); ACanvas.Pen.Width := Top;
-        P := R; InflateRect(P, -(Top div 2), -(Top div 2));
+        ACanvas.Pen.Color := SideColor('top');
+        ACanvas.Pen.Width := Top;
+        P := R;
+        InflateRect(P, -(Top div 2), -(Top div 2));
         ACanvas.RoundRect(P.Left, P.Top, P.Right, P.Bottom, Radius * 2, Radius * 2);
         ACanvas.Pen.Width := 1;
       end
@@ -1267,31 +1494,46 @@ begin
       end;
     end;
   ACanvas.Brush.Style := bsClear;
-  St := ''; W := 0; X := 0; Len_ := 0;
-  if (St <> '') or (W <> 0) or (X <> 0) or (Len_ <> 0) then ;
+  St := '';
+  W := 0;
+  X := 0;
+  Len_ := 0;
+  if (St <> '') or (W <> 0) or (X <> 0) or (Len_ <> 0) then;
 end;
 
 { disc, circle and square markers are shapes sized from the font, as a
   browser draws them, not the font's own bullet glyphs }
-function TInkCustomPage.TreePaintMarker(ACanvas: TCanvas; B: TInkPageBlock;
-  const TR: TRect): Boolean;
-var TM: TTextMetric; Asc, Desc, Base, D, CX, CY, Em: Integer;
+function TInkCustomPage.TreePaintMarker(ACanvas: TCanvas; B: TInkPageBlock; const TR: TRect): boolean;
+var
+  TM: TTextMetric;
+  Asc, Desc, Base, D, CX, CY, Em: integer;
 begin
   Result := (B.Marker = '•') or (B.Marker = '◦') or (B.Marker = '▪');
   if not Result then Exit;
   if GetTextMetrics(ACanvas.Handle, TM) then
   begin
-    Asc := TM.tmAscent - TM.tmInternalLeading; Desc := TM.tmDescent;
+    Asc := TM.tmAscent - TM.tmInternalLeading;
+    Desc := TM.tmDescent;
   end
-  else begin Asc := Round(ACanvas.TextHeight('Tg') * 0.78); Desc := ACanvas.TextHeight('Tg') - Asc end;
+  else
+  begin
+    Asc := Round(ACanvas.TextHeight('Tg') * 0.78);
+    Desc := ACanvas.TextHeight('Tg') - Asc;
+  end;
   Base := TR.Top + Asc;
   if B.LineHeight > 0 then Inc(Base, (B.LineHeight - Asc - Desc) div 2);
-  if B.PointSize < 0 then Em := -B.PointSize else Em := Max(1, Round(B.PointSize * 96 / 72));
+  if B.PointSize < 0 then Em := -B.PointSize
+  else
+    Em := Max(1, Round(B.PointSize * 96 / 72));
   D := Max(3, Round(Em * 0.3) + 1);
-  CX := TR.Left - Round(Em * 0.95); CY := Base - Round(Em * 0.33);
-  ACanvas.Pen.Color := B.TextColor; ACanvas.Pen.Width := 1;
+  CX := TR.Left - Round(Em * 0.95);
+  CY := Base - Round(Em * 0.33);
+  ACanvas.Pen.Color := B.TextColor;
+  ACanvas.Pen.Width := 1;
   ACanvas.Brush.Color := B.TextColor;
-  if B.Marker = '◦' then ACanvas.Brush.Style := bsClear else ACanvas.Brush.Style := bsSolid;
+  if B.Marker = '◦' then ACanvas.Brush.Style := bsClear
+  else
+    ACanvas.Brush.Style := bsSolid;
   if B.Marker = '▪' then
     ACanvas.FillRect(Rect(CX - D div 2, CY - D div 2, CX - D div 2 + D, CY - D div 2 + D))
   else
@@ -1300,16 +1542,24 @@ begin
 end;
 
 procedure TInkCustomPage.TreeRender(ACanvas: TCanvas);
-var I: Integer; R: TRect; It: TInkTreePaint; SelFrom, SelTo: TInkPagePosition; Selected: Boolean;
-  B: TInkPageBlock; ViewTop, ViewBottom: Integer;
+var
+  I: integer;
+  R: TRect;
+  It: TInkTreePaint;
+  SelFrom, SelTo: TInkPagePosition;
+  Selected: boolean;
+  B: TInkPageBlock;
+  ViewTop, ViewBottom: integer;
 begin
   Layout;
   Selected := HasSelection;
-  SelFrom := SelectionStart; SelTo := SelectionEnd;
+  SelFrom := SelectionStart;
+  SelTo := SelectionEnd;
   ACanvas.Brush.Color := FCanvasBack;
   ACanvas.Brush.Style := bsSolid;
   ACanvas.FillRect(ClientRect);
-  ViewTop := FScroll.Position; ViewBottom := ViewTop + ClientHeight;
+  ViewTop := FScroll.Position;
+  ViewBottom := ViewTop + ClientHeight;
   for I := 0 to FTreePaintCount - 1 do
   begin
     It := FTreePaint[I];
@@ -1355,7 +1605,9 @@ begin
       FPaintClip := Rect(It.Clip.Left, It.Clip.Top - ViewTop, It.Clip.Right, It.Clip.Bottom - ViewTop);
       try
         PaintBlock(ACanvas, It.Block, Selected, SelFrom, SelTo);
-      finally FPaintClipped := False end;
+      finally
+        FPaintClipped := False
+      end;
     end;
   end;
   if FScroll.Visible then
@@ -1366,10 +1618,14 @@ end;
 { ------------------------------------------------------- finding things }
 
 { the block under a point of the page: the one it is in, or the nearest }
-function TInkCustomPage.TreeBlockAt(X, DocY: Integer; ANearest: Boolean): Integer;
-var I, D, Best: Integer; B: TInkPageBlock; R: TRect;
+function TInkCustomPage.TreeBlockAt(X, DocY: integer; ANearest: boolean): integer;
+var
+  I, D, Best: integer;
+  B: TInkPageBlock;
+  R: TRect;
 begin
-  Result := -1; Best := MaxInt;
+  Result := -1;
+  Best := MaxInt;
   for I := FBlocks.Count - 1 downto 0 do
   begin
     B := TInkPageBlock(FBlocks[I]);
@@ -1380,9 +1636,15 @@ begin
     begin
       if DocY < R.Top then D := (R.Top - DocY) * 4
       else if DocY >= R.Bottom then D := (DocY - R.Bottom + 1) * 4
-      else D := 0;
-      if X < R.Left then Inc(D, R.Left - X) else if X >= R.Right then Inc(D, X - R.Right + 1);
-      if D <= Best then begin Best := D; Result := I end;
+      else
+        D := 0;
+      if X < R.Left then Inc(D, R.Left - X)
+      else if X >= R.Right then Inc(D, X - R.Right + 1);
+      if D <= Best then
+      begin
+        Best := D;
+        Result := I;
+      end;
     end;
   end;
 end;
@@ -1391,8 +1653,14 @@ end;
   last thing painted there is on top, as a browser's elementFromPoint
   answers.  An anonymous box answers the element it belongs to, a
   ::before or ::after the element it decorates. }
-function TInkCustomPage.TreeElementAt(X, DocY: Integer): TInkNode;
-var I: Integer; It: TInkTreePaint; Box: TInkBox; B: TInkPageBlock; R: TRect; P: TPoint;
+function TInkCustomPage.TreeElementAt(X, DocY: integer): TInkNode;
+var
+  I: integer;
+  It: TInkTreePaint;
+  Box: TInkBox;
+  B: TInkPageBlock;
+  R: TRect;
+  P: TPoint;
 begin
   Result := nil;
   Layout;
@@ -1424,14 +1692,19 @@ begin
   end;
 end;
 
-procedure TInkCustomPage.TreeToggleFold(Index: Integer);
-var B: TInkPageBlock; S: TInkTreeSection; D: TInkNode;
+procedure TInkCustomPage.TreeToggleFold(Index: integer);
+var
+  B: TInkPageBlock;
+  S: TInkTreeSection;
+  D: TInkNode;
 begin
   B := TInkPageBlock(FBlocks[Index]);
   S := TInkTreeSection(B.Section);
   if (S = nil) or (B.FoldHead < 0) or (B.FoldHead > High(S.Folds)) then Exit;
   D := S.Folds[B.FoldHead];
-  if D.HasAttribute('open') then D.RemoveAttribute('open') else D.SetAttribute('open', '');
+  if D.HasAttribute('open') then D.RemoveAttribute('open')
+  else
+    D.SetAttribute('open', '');
   { only this document is styled and laid out again; the selection's
     blocks may be gone }
   ClearSelection;

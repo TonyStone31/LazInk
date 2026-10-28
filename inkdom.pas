@@ -764,7 +764,8 @@ end;
 
 function InkIsVoidElement(const ATag: string): boolean;
 begin
-  Result := InList(ATag, ['area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'image', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+  Result := InList(ATag, ['area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'image', 'img', 'input', 'keygen',
+    'link', 'meta', 'param', 'source', 'track', 'wbr']);
 end;
 
 function IsHeading(const T: string): boolean;
@@ -784,11 +785,11 @@ begin
   if N.Namespace = insMathML then
     Exit((NodeTag(N) in [tgMi, tgMo, tgMn, tgMs, tgMtext, tgAnnotation_xml]));
   Result := (NodeTag(N) in [tgH1, tgH2, tgH3, tgH4, tgH5, tgH6, tgAddress, tgApplet, tgArea, tgArticle, tgAside, tgBase, tgBasefont,
-    tgBgsound, tgBlockquote, tgBody, tgBr, tgButton, tgCaption, tgCenter, tgCol, tgColgroup, tgDd, tgDetails, tgDir, tgDiv, tgDl, tgDt, tgEmbed,
-    tgFieldset, tgFigcaption, tgFigure, tgFooter, tgForm, tgFrame, tgFrameset, tgHead, tgHeader, tgHgroup, tgHr, tgHtml, tgIframe, tgImg,
-    tgInput, tgKeygen, tgLi, tgLink, tgListing, tgMain, tgMarquee, tgMenu, tgMeta, tgNav, tgNoembed, tgNoframes, tgNoscript, tgObject, tgOl,
-    tgP, tgParam, tgPlaintext, tgPre, tgScript, tgSearch, tgSection, tgSelect, tgSource, tgStyle, tgSummary, tgTable, tgTbody, tgTd, tgTemplate,
-    tgTextarea, tgTfoot, tgTh, tgThead, tgTitle, tgTr, tgTrack, tgUl, tgWbr, tgXmp]);
+    tgBgsound, tgBlockquote, tgBody, tgBr, tgButton, tgCaption, tgCenter, tgCol, tgColgroup, tgDd, tgDetails, tgDir, tgDiv, tgDl, tgDt,
+    tgEmbed, tgFieldset, tgFigcaption, tgFigure, tgFooter, tgForm, tgFrame, tgFrameset, tgHead, tgHeader, tgHgroup, tgHr, tgHtml, tgIframe,
+    tgImg, tgInput, tgKeygen, tgLi, tgLink, tgListing, tgMain, tgMarquee, tgMenu, tgMeta, tgNav, tgNoembed, tgNoframes, tgNoscript, tgObject,
+    tgOl, tgP, tgParam, tgPlaintext, tgPre, tgScript, tgSearch, tgSection, tgSelect, tgSource, tgStyle, tgSummary, tgTable, tgTbody, tgTd,
+    tgTemplate, tgTextarea, tgTfoot, tgTh, tgThead, tgTitle, tgTr, tgTrack, tgUl, tgWbr, tgXmp]);
 end;
 
 { the block elements a start tag closes an open <p> for }
@@ -2597,8 +2598,8 @@ end;
 procedure TParser.EndTemplate;
 begin
   if not TemplateOpen then Exit;
-  while (Current <> nil) and (Current.Namespace = insHTML) and (ImpliedEnd(NodeTag(Current)) or (NodeTag(Current) in
-      [tgCaption, tgColgroup, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr])) do Pop;
+  while (Current <> nil) and (Current.Namespace = insHTML) and (ImpliedEnd(NodeTag(Current)) or (NodeTag(Current) in [tgCaption,
+      tgColgroup, tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr])) do Pop;
   PopUntil(tgTemplate);
   ClearFormattingToMarker;
   if Length(TemplateModes) > 0 then SetLength(TemplateModes, Length(TemplateModes) - 1);
@@ -2645,8 +2646,8 @@ begin
       if (T.Tag in BreakoutSet) or IsFontBreak then
       begin
         { the drawing was never closed: back out to HTML }
-        while (Current <> nil) and (Current.Namespace <> insHTML) and not ((Current.Namespace = insSVG) and
-            (NodeTag(Current) in [tgForeignObject, tgDesc, tgTitle])) do Pop;
+        while (Current <> nil) and (Current.Namespace <> insHTML) and not ((Current.Namespace = insSVG) and (NodeTag(Current) in [tgForeignObject, tgDesc, tgTitle]))
+          do Pop;
         Reprocess := True;
         Exit;
       end;
@@ -2853,8 +2854,8 @@ begin
         InTable(T, Again);
       imInCaption:
       begin
-        if ((T.Kind = tkEnd) and (T.Tag = tgCaption)) or ((T.Kind = tkStart) and (T.Tag in [tgCaption, tgCol, tgColgroup,
-          tgTbody, tgTd, tgTfoot, tgTh, tgThead, tgTr])) or ((T.Kind = tkEnd) and (T.Tag = tgTable)) then
+        if ((T.Kind = tkEnd) and (T.Tag = tgCaption)) or ((T.Kind = tkStart) and (T.Tag in [tgCaption, tgCol, tgColgroup, tgTbody,
+          tgTd, tgTfoot, tgTh, tgThead, tgTr])) or ((T.Kind = tkEnd) and (T.Tag = tgTable)) then
         begin
           if not InTableScope(tgCaption) then Exit;
           GenerateImpliedEnd;
@@ -3007,8 +3008,7 @@ begin
       end;
       imInSelect, imInSelectInTable:
       begin
-        if (Mode = imInSelectInTable) and (((T.Kind = tkStart) or (T.Kind = tkEnd)) and (T.Tag in [tgCaption, tgTable, tgTbody,
-          tgTfoot, tgThead, tgTr, tgTd, tgTh])) then
+        if (Mode = imInSelectInTable) and (((T.Kind = tkStart) or (T.Kind = tkEnd)) and (T.Tag in [tgCaption, tgTable, tgTbody, tgTfoot, tgThead, tgTr, tgTd, tgTh])) then
         begin
           if (T.Kind = tkEnd) and not InTableScope(T.Tag) then Exit;
           PopUntil(tgSelect);
@@ -3113,8 +3113,8 @@ begin
           Mode := imInHead;
           Exit;
         end;
-        if (T.Kind = tkComment) or ((T.Kind = tkText) and AllSpace(T.Data)) or ((T.Kind = tkStart) and
-          (T.Tag in [tgBasefont, tgBgsound, tgLink, tgMeta, tgNoframes, tgStyle])) then
+        if (T.Kind = tkComment) or ((T.Kind = tkText) and AllSpace(T.Data)) or ((T.Kind = tkStart) and (T.Tag in
+          [tgBasefont, tgBgsound, tgLink, tgMeta, tgNoframes, tgStyle])) then
         begin
           InHead(T, Again);
           Exit;
@@ -3356,8 +3356,8 @@ begin
       Out_ := Out_ + '>';
       if (N.Namespace = insHTML) and InkIsVoidElement(N.Name) then Exit;
       { a newline that opens a <pre> would be eaten by the next parser }
-      if (N.Namespace = insHTML) and (NodeTag(N) in [tgPre, tgTextarea, tgListing]) and (N.FirstChild <> nil) and
-        (N.FirstChild.Kind = inkText) and (N.FirstChild.Data <> '') and (N.FirstChild.Data[1] = #10) then
+      if (N.Namespace = insHTML) and (NodeTag(N) in [tgPre, tgTextarea, tgListing]) and (N.FirstChild <> nil) and (N.FirstChild.Kind = inkText) and
+        (N.FirstChild.Data <> '') and (N.FirstChild.Data[1] = #10) then
         Out_ := Out_ + #10;
       C := N.FirstChild;
       while C <> nil do

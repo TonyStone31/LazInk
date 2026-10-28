@@ -362,8 +362,8 @@ begin
   { the hint in the empty box, dimmed, under the caret }
   UseControlFont;
   if FTextHintColor = clDefault then
-    Canvas.Font.Color := RGBToColor((Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2, (Green(ColorToRGB(Font.Color)) +
-      Green(ColorToRGB(Color))) div 2, (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)
+    Canvas.Font.Color := RGBToColor((Red(ColorToRGB(Font.Color)) + Red(ColorToRGB(Color))) div 2, (Green(ColorToRGB(Font.Color)) + Green(ColorToRGB(Color))) div
+      2, (Blue(ColorToRGB(Font.Color)) + Blue(ColorToRGB(Color))) div 2)
   else
     Canvas.Font.Color := FTextHintColor;
   Canvas.Brush.Style := bsClear;
