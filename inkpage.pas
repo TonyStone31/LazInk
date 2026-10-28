@@ -2482,9 +2482,9 @@ procedure TInkCustomPage.PaintCodeHead(ACanvas: TCanvas; Index: integer; B: TInk
 var
   H, BR: TRect;
   Btns: TInkCodeButtons;
-  I, TY: integer;
+  I, TY, TX, Room: integer;
   HeadBack, HeadFore: TColor;
-  Lang: string;
+  Lang, Full: string;
   Hot: boolean;
 begin
   Btns := CodeButtons(Index);
@@ -2501,11 +2501,23 @@ begin
   ACanvas.Brush.Style := bsClear;
   Lang := B.CodeLanguage;
   if Lang = '' then Lang := 'code';
-  if B.CodeLines = 1 then Lang := Lang + '  -  1 line'
+  if B.CodeLines = 1 then Full := Lang + '  -  1 line'
   else
-    Lang := Lang + '  -  ' + IntToStr(B.CodeLines) + ' lines';
+    Full := Lang + '  -  ' + IntToStr(B.CodeLines) + ' lines';
+  { the label gives way to the buttons: the line count goes first, then
+    the language is cut short }
+  TX := H.Left + Max(B.Padding, Scale96ToFont(8));
+  Room := H.Right - TX;
+  if Length(Btns) > 0 then Room := Btns[High(Btns)].R.Left - ACanvas.TextWidth('n') - TX;
+  if ACanvas.TextWidth(Full) <= Room then Lang := Full
+  else if ACanvas.TextWidth(Lang) > Room then
+  begin
+    while (Lang <> '') and (ACanvas.TextWidth(Lang + #$E2#$80#$A6) > Room) do
+      Lang := UTF8Copy(Lang, 1, UTF8Length(Lang) - 1);
+    if Lang <> '' then Lang := Lang + #$E2#$80#$A6;
+  end;
   ACanvas.Font.Color := MixColor(HeadFore, HeadBack, 0.45);
-  ACanvas.TextOut(H.Left + Max(B.Padding, Scale96ToFont(8)), TY, Lang);
+  ACanvas.TextOut(TX, TY, Lang);
   for I := 0 to High(Btns) do
   begin
     BR := Btns[I].R;

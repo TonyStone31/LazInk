@@ -89,6 +89,9 @@ type
     Part: integer;
     IsImage: boolean;
     ImageIndex: integer;
+    { a picture with vertical-align: middle, centered on the text rather
+      than standing on its baseline }
+    ImageMiddle: boolean;
     { 0 none, 1 an empty checkbox, 2 a checked one - drawn, not a glyph -
       3 an empty space ImageIndex pixels wide }
     Check: byte;
@@ -1002,6 +1005,7 @@ begin
   FStyled[N].Line := -1;
   FStyled[N].IsImage := False;
   FStyled[N].ImageIndex := -1;
+  FStyled[N].ImageMiddle := False;
   FStyled[N].Check := 0;
   FStyled[N].Control := 0;
   FStyled[N].Meta := '';
@@ -1054,6 +1058,7 @@ var
     FStyled[Z].Line := -1;
     FStyled[Z].IsImage := False;
     FStyled[Z].ImageIndex := -1;
+    FStyled[Z].ImageMiddle := False;
     FStyled[Z].Check := 0;
     FStyled[Z].Control := Kind;
     FStyled[Z].Meta := Meta;
@@ -1156,6 +1161,7 @@ begin
           N := Length(FStyled) - 1;
           FStyled[N].IsImage := True;
           FStyled[N].ImageIndex := StrToIntDef(InkRenderAttr(T.Attributes, 'src'), -1);
+          FStyled[N].ImageMiddle := Pos('vertical-align:middle', StringReplace(Lower(InkRenderAttr(T.Attributes, 'style')), ' ', '', [rfReplaceAll])) > 0;
         end
         else if T.Name = 'checkbox' then
         begin
@@ -2297,6 +2303,7 @@ begin
       R.Part := Cells[I].Row * 1000 + Cells[I].Col;
       R.IsImage := False;
       R.ImageIndex := -1;
+      R.ImageMiddle := False;
       R.Check := 0;
       R.Control := 8;
       R.Meta := CellAttrs.Text;
@@ -2627,7 +2634,17 @@ begin
         breaking there put the stop alone at the start of the next line. }
       if (Count > 0) and CanBreak and not FOpt.NoWrap and (X + W > FOpt.Width - FOpt.Borders.Right) and (Atom[1] <> ' ') and (Atom[1] <> #9) then FinishLine;
       if Count = 0 then First := Length(FLayout.FRuns);
-      if R.IsImage then
+      if R.IsImage and R.ImageMiddle then
+      begin
+        { vertical-align: middle - its middle half an x-height above the
+          baseline, the x-height taken as half the font's em }
+        PillRun := R;
+        PillRun.Style.LineHeight := -1;
+        Metrics(Canvas, PillRun, RunAsc, RunDesc);
+        RunAsc := Sz.cy div 2 + (RunAsc + RunDesc) div 4;
+        RunDesc := Max(0, Sz.cy - RunAsc);
+      end
+      else if R.IsImage then
       begin
         { a picture sits on the baseline, as one does in a browser }
         RunAsc := Max(1, Sz.cy);

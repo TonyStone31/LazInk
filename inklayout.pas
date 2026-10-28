@@ -813,6 +813,38 @@ begin
   Result := Max(Result, EdgesH(B));
 end;
 
+{ a min or max size as a content-box length: no min is 0, no max no limit }
+function ContentLimit(ASpec, AEdges: Integer; AIsMax: Boolean): Double;
+begin
+  if ASpec >= 0 then Result := Max(0, ASpec - AEdges)
+  else if AIsMax then Result := MaxInt
+  else Result := 0;
+end;
+
+{ a picture of AW x AH kept within its min and max sizes with its shape
+  kept: the table in CSS 2.1 section 10.4 }
+procedure FitRatio(AW, AH, MinW, MaxW, MinH, MaxH: Double; out W, H: Double);
+begin
+  MaxW := Max(MinW, MaxW); MaxH := Max(MinH, MaxH);
+  W := AW; H := AH;
+  if (AW > MaxW) and (AH > MaxH) then
+  begin
+    if MaxW / AW <= MaxH / AH then begin W := MaxW; H := Max(MinH, MaxW * AH / AW) end
+    else begin W := Max(MinW, MaxH * AW / AH); H := MaxH end;
+  end
+  else if (AW < MinW) and (AH < MinH) then
+  begin
+    if MinW / AW <= MinH / AH then begin W := Min(MaxW, MinH * AW / AH); H := MinH end
+    else begin W := MinW; H := Min(MaxH, MinW * AH / AW) end;
+  end
+  else if (AW < MinW) and (AH > MaxH) then begin W := MinW; H := MaxH end
+  else if (AW > MaxW) and (AH < MinH) then begin W := MaxW; H := MinH end
+  else if AW > MaxW then begin W := MaxW; H := Max(MaxW * AH / AW, MinH) end
+  else if AW < MinW then begin W := MinW; H := Min(MinW * AH / AW, MaxH) end
+  else if AH > MaxH then begin W := Max(MaxH * AW / AH, MinW); H := MaxH end
+  else if AH < MinH then begin W := Min(MinH * AW / AH, MaxW); H := MinH end;
+end;
+
 function ClampH(B: TInkBox; AH, ACBH: Integer): Integer;
 var V: Integer;
 begin
@@ -1143,7 +1175,7 @@ end;
 procedure TFlow.LayBox(B: TInkBox; AX, AY, ACBW, ACBH: Integer; AFloats: TFloats;
   AForceW: Integer; AShrink: Boolean);
 var W, H, Avail, ContentH, SH, IW, IH, AutoL, AutoR, L, R, MinT: Integer; Own: TFloats;
-  Ratio: Double; MarginAutoL, MarginAutoR: Boolean; TA: string;
+  Ratio, FW, FH: Double; MarginAutoL, MarginAutoR: Boolean; TA: string;
 begin
   B.FWidthsKnown := False;
   Edges(B, ACBW);
@@ -1170,20 +1202,32 @@ begin
     H := SpecH(B, 'height', ACBH);
     Ratio := 0;
     if (IW > 0) and (IH > 0) then Ratio := IW / IH;
-    if (W < 0) and (H < 0) then begin W := IW + EdgesH(B); H := IH + EdgesV(B) end
-    else if (W >= 0) and (H < 0) then
+    if (W < 0) and (H < 0) and (Ratio > 0) then
     begin
-      if Ratio > 0 then H := Round((W - EdgesH(B)) / Ratio) + EdgesV(B) else H := EdgesV(B);
+      { both sizes the picture's own: min and max keep its shape }
+      FitRatio(IW, IH, ContentLimit(SpecW(B, 'min-width', ACBW), EdgesH(B), False),
+        ContentLimit(SpecW(B, 'max-width', ACBW), EdgesH(B), True),
+        ContentLimit(SpecH(B, 'min-height', ACBH), EdgesV(B), False),
+        ContentLimit(SpecH(B, 'max-height', ACBH), EdgesV(B), True), FW, FH);
+      W := Round(FW) + EdgesH(B); H := Round(FH) + EdgesV(B);
     end
-    else if (W < 0) and (H >= 0) then
-      W := Round((H - EdgesV(B)) * Ratio) + EdgesH(B);
-    { max-width, the way "img { max-width: 100% }" keeps a picture in its
-      column, and the shape kept when the height was left alone }
-    IW := ClampW(B, W, ACBW);
-    if (IW <> W) and IsAuto(B.Style, 'height') and (Ratio > 0) then
-      H := Round((IW - EdgesH(B)) / Ratio) + EdgesV(B);
-    W := IW;
-    H := ClampH(B, H, ACBH);
+    else
+    begin
+      if (W < 0) and (H < 0) then begin W := IW + EdgesH(B); H := IH + EdgesV(B) end
+      else if (W >= 0) and (H < 0) then
+      begin
+        if Ratio > 0 then H := Round((W - EdgesH(B)) / Ratio) + EdgesV(B) else H := EdgesV(B);
+      end
+      else if (W < 0) and (H >= 0) then
+        W := Round((H - EdgesV(B)) * Ratio) + EdgesH(B);
+      { max-width, the way "img { max-width: 100% }" keeps a picture in its
+        column, and the shape kept when the height was left alone }
+      IW := ClampW(B, W, ACBW);
+      if (IW <> W) and IsAuto(B.Style, 'height') and (Ratio > 0) then
+        H := Round((IW - EdgesH(B)) / Ratio) + EdgesV(B);
+      W := IW;
+      H := ClampH(B, H, ACBH);
+    end;
   end
   else if B.Kind = ibkTable then
   begin
