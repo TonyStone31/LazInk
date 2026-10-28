@@ -376,9 +376,10 @@ procedure TInkMemo.MakeEntry(AIndex: integer);
 var
   S: string;
 begin
+  { the styler also sets the canvas's color, lines of markup or not }
+  if Styler = nil then MemoStyler;
   if FEntries[AIndex].Block then
   begin
-    if Styler = nil then MemoStyler;
     if EntryFormat(FEntries[AIndex]) = itfMarkdown then S := MarkdownToHTML(FLines[AIndex])
     else
       S := FLines[AIndex];
@@ -758,7 +759,6 @@ end;
 
 procedure TInkMemo.StyleBlock(B: TInkPageBlock);
 var
-  C: TColor;
   E: TInkMemoEntry;
 begin
   E := DefaultEntry;
@@ -772,9 +772,7 @@ begin
   B.FaceName := '';
   B.Pre := False;
   B.NoWrap := not FWordWrap;
-  C := Font.Color;
-  if C = clDefault then C := clWindowText;
-  B.TextColor := C;
+  B.TextColor := FontInk;
   B.Padding := 0;
   B.GapBefore := FBorders.Top;
   B.GapAfter := FBorders.Bottom;

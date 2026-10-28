@@ -92,6 +92,9 @@ type
     { a picture with vertical-align: middle, centered on the text rather
       than standing on its baseline }
     ImageMiddle: boolean;
+    { <img pic="k" width="w" height="h">: picture k of the options'
+      Pictures (-1 none), at that size }
+    PicIndex, ImageW, ImageH: integer;
     { 0 none, 1 an empty checkbox, 2 a checked one - drawn, not a glyph -
       3 an empty space ImageIndex pixels wide }
     Check: byte;
@@ -131,6 +134,9 @@ type
       every line the height of the font in it. }
     LineHeight: integer;
     Borders: TRect;
+    { the pictures <img pic="k"> draws: a TPicture in each line's Objects,
+      nil for one that has not come }
+    Pictures: TStrings;
     LinkColor, LinkBackColor: TColor;
     LinkUnderline: boolean;
     LinkKeepsColor: boolean;
@@ -1006,6 +1012,9 @@ begin
   FStyled[N].IsImage := False;
   FStyled[N].ImageIndex := -1;
   FStyled[N].ImageMiddle := False;
+  FStyled[N].PicIndex := -1;
+  FStyled[N].ImageW := 0;
+  FStyled[N].ImageH := 0;
   FStyled[N].Check := 0;
   FStyled[N].Control := 0;
   FStyled[N].Meta := '';
@@ -1059,6 +1068,9 @@ var
     FStyled[Z].IsImage := False;
     FStyled[Z].ImageIndex := -1;
     FStyled[Z].ImageMiddle := False;
+    FStyled[Z].PicIndex := -1;
+    FStyled[Z].ImageW := 0;
+    FStyled[Z].ImageH := 0;
     FStyled[Z].Check := 0;
     FStyled[Z].Control := Kind;
     FStyled[Z].Meta := Meta;
@@ -1162,6 +1174,9 @@ begin
           FStyled[N].IsImage := True;
           FStyled[N].ImageIndex := StrToIntDef(InkRenderAttr(T.Attributes, 'src'), -1);
           FStyled[N].ImageMiddle := Pos('vertical-align:middle', StringReplace(Lower(InkRenderAttr(T.Attributes, 'style')), ' ', '', [rfReplaceAll])) > 0;
+          FStyled[N].PicIndex := StrToIntDef(InkRenderAttr(T.Attributes, 'pic'), -1);
+          FStyled[N].ImageW := StrToIntDef(InkRenderAttr(T.Attributes, 'width'), 0);
+          FStyled[N].ImageH := StrToIntDef(InkRenderAttr(T.Attributes, 'height'), 0);
         end
         else if T.Name = 'checkbox' then
         begin
@@ -2304,6 +2319,9 @@ begin
       R.IsImage := False;
       R.ImageIndex := -1;
       R.ImageMiddle := False;
+      R.PicIndex := -1;
+      R.ImageW := 0;
+      R.ImageH := 0;
       R.Check := 0;
       R.Control := 8;
       R.Meta := CellAttrs.Text;
@@ -2509,7 +2527,13 @@ begin
         character and measuring that would say nothing about the picture }
       ImgSz := Types.Size(InkRenderScalePx(16, FOpt.Scale), InkRenderScalePx(16, FOpt.Scale));
       if (FOpt.Images <> nil) and (R.ImageIndex >= 0) and (R.ImageIndex < FOpt.Images.Count) then
-        ImgSz := Types.Size(InkRenderScalePx(FOpt.Images.Width, FOpt.Scale), InkRenderScalePx(FOpt.Images.Height, FOpt.Scale));
+        ImgSz := Types.Size(InkRenderScalePx(FOpt.Images.Width, FOpt.Scale), InkRenderScalePx(FOpt.Images.Height, FOpt.Scale))
+      else if (R.ImageW > 0) and (R.ImageH > 0) then
+      begin
+        ImgSz := Types.Size(InkRenderScalePx(R.ImageW, FOpt.Scale), InkRenderScalePx(R.ImageH, FOpt.Scale));
+        { never wider than the line, its shape kept, as max-width: 100% does }
+        if ImgSz.cx > Avail then ImgSz := Types.Size(Avail, Max(1, ImgSz.cy * Avail div ImgSz.cx));
+      end;
       Text := #1;
     end
     else
@@ -3298,6 +3322,9 @@ begin
           end;
           if R.IsImage and (Options.Images <> nil) and (R.ImageIndex >= 0) and (R.ImageIndex < Options.Images.Count) then
             Options.Images.Draw(Canvas, DrawRect.Left, DrawRect.Top, R.ImageIndex)
+          else if R.IsImage and (Options.Pictures <> nil) and (R.PicIndex >= 0) and (R.PicIndex < Options.Pictures.Count) and
+            (Options.Pictures.Objects[R.PicIndex] <> nil) then
+            Canvas.StretchDraw(DrawRect, TPicture(Options.Pictures.Objects[R.PicIndex]).Graphic)
           else if not R.IsImage and ((R.Bounds.Right > R.Bounds.Left) or (Trim(R.Text) <> '')) then
           begin
           { on its baseline, not by the top of its cell.  The ascent a run

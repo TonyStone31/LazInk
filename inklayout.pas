@@ -453,7 +453,7 @@ begin
 end;
 
 procedure TInkLayout.FinishRun(AOwner: TInkBox; var ARun: TInkBox);
-var I: Integer; Visible: Boolean; N: TInkNode; T: string; K: Integer;
+var I: Integer; Visible: Boolean; N: TInkNode; T: string; K: Integer; B: TInkBox;
 begin
   if ARun = nil then Exit;
   { a run of nothing but white space between blocks is not a line }
@@ -461,6 +461,7 @@ begin
   for I := 0 to High(ARun.Inline) do
   begin
     N := ARun.Inline[I];
+    if (N.Kind = inkElement) and (N.Name = 'img') then Continue;
     if N.Kind = inkElement then begin Visible := True; Break end;
     T := N.Data;
     for K := 1 to Length(T) do
@@ -473,7 +474,18 @@ begin
       Visible := True; Break;
     end;
   end;
-  if Visible then AOwner.Add(ARun) else ARun.Free;
+  if Visible then AOwner.Add(ARun)
+  else
+  begin
+    { pictures with no words beside them stand as boxes of their own }
+    for I := 0 to High(ARun.Inline) do
+      if ARun.Inline[I].Kind = inkElement then
+      begin
+        B := MakeBox(ARun.Inline[I], AOwner);
+        if B <> nil then AOwner.Add(B);
+      end;
+    ARun.Free;
+  end;
   ARun := nil;
 end;
 
@@ -560,6 +572,10 @@ begin
             B := MakeBox(C, AOwner);
             if B <> nil then AOwner.Add(B);
           end
+          else if (C.Name = 'img') and IsInlineLevel(D) and (S.Keyword('float') = 'none') and
+            (S.Keyword('position') <> 'absolute') and (S.Keyword('position') <> 'fixed') then
+            { a picture joins the words beside it; one with none stays a box }
+            AddInline(AOwner, Words_, C)
           else if IsInlineLevel(D) and not IsReplaced(C) and (S.Keyword('float') = 'none') and
             (S.Keyword('position') <> 'absolute') and (S.Keyword('position') <> 'fixed') then
           begin
