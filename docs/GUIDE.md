@@ -24,7 +24,7 @@ RichMemo, no widgetset-specific backends, no browser engine.
 | ![](../images/TInkEdit.png) | `TInkEdit` | A single-line edit box where **every character can have its own color and style**, supplied by the `OnGetCharAttrs` event. The text stays plain — great for password-strength coloring, highlighting digits/symbols, or syntax-coloring markup as it is typed. Full editing: caret, selection, clipboard, MaxLength, ReadOnly, alignment, `TextHint` for the empty box, undo/redo (Ctrl+Z, one step per typed word), its own right-click menu, and `PasswordChar` for a secret (drawn as bullets, never copied). |
 | ![](../images/TInkRichEdit.png) | `TInkRichEdit` | A **multi-line WYSIWYG editor**. The caret and the selection sit inside the rendered text: select a word, call `ToggleStyle(fsBold)`, and that run stops being plain. Per-character color, background, size, face, style, super/subscript and links; paragraph kinds - headings, bullet and numbered lists (nested: Tab and Shift+Tab change the depth), quotes, code lines with their fence language, **tables** (`ApplyParaKind`, `InsertTable`; Tab hops cells, Enter adds a row); **Markdown in and out** (`LoadMarkdown`, `AsMarkdown`); the same find bar as `TInkPage` (Ctrl+F, `Find`, `FindCount`); `ParagraphSpacing` for the space a browser leaves between blocks; word wrap; paragraph alignment; undo/redo; a `Markup` property that round-trips to the markup below. |
 | ![](../images/TInkCodeMemo.png) | `TInkCodeMemo` | A **plain multi-line editor** — the notes field on a form. `Text` and `Lines`, `TextHint`, `MaxLength`, `WantReturns`/`WantTabs`, word wrap, undo, the right-click menu, pasting that brings in plain text only, and `AutoHeight` between `MinLines` and `MaxLines` - a question box that starts as one line and opens up as it is written. Its one decoration is yours: `OnGetCharAttrs` colors every character as it is drawn — how the demo will color Markdown source, without the control knowing any language. |
-| ![](../images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. For a chat, `AppendBlock` makes a whole message - paragraphs, lists, tables, highlighted code - one entry with its own band color and indent, `ReplaceLast` grows the last entry in place for an answer arriving a word at a time, `AppendPlain` shows a stranger's text exactly as written, and `EntryAt` says which message is under the mouse. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
+| ![](../images/TInkMemo.png) | `TInkMemo` | A scrollable multi-line **viewer** — a log, a transcript, formatted help. Each line of `Lines` is one paragraph of markup, lines can differ in height, optional `WordWrap`; `Append` follows the end when the view is there. For a chat, `AppendBlock` makes a whole message - paragraphs, lists, tables, highlighted code - one entry with its own band color and indent, `ReplaceLast` grows the last entry in place for an answer arriving a word at a time, `InsertBlock`, `ReplaceBlock` and `DeleteBlock` change entries anywhere (older messages above, an edited message) without moving what the reader is looking at, `AppendPlain` shows a stranger's text exactly as written, and `EntryAt` says which message is under the mouse. Drawn by the same engine as `TInkPage`, so its text is selected and copied the same way. |
 | | `TInkPage` | A scrolling **document viewer** for complete HTML or Markdown pages: headings, lists, tables, code and key labels, PNG, animated GIF and WebP images, relative links, anchors, Back and Forward, text selection, find in page, touch scrolling, laid out from the page's CSS the way a browser does it. See [Complete help pages](#complete-help-pages). |
 | ![](../images/TInkListBox.png) | `TInkListBox` | An HTML-rendering listbox with an in-place editor that floats over the clicked item, holding either its plain text or (with `EditRawHTML`) its markup. Optional `AlternateColor` striping. A drag inside one item selects its characters for copying. |
 
@@ -58,7 +58,8 @@ The ones that are easy to mix up:
 * **`TInkMemo` or `TInkPage`?** Both are scrolling, read-only and selectable,
   and share one engine. A memo is made of **lines you add** with `Append` -
   each line is small inline markup, lines never merge into lists or tables,
-  there is no stylesheet, and the view follows new lines as they arrive. A
+  only the program's `StyleSheet` styles a message added with `AppendBlock`,
+  and the view follows new lines as they arrive. A
   page is **one document you load** - it is laid out as a whole, with
   headings, nested lists, code blocks, CSS and navigation between pages.
   If you would call `Append`, it is a memo; if you would call
@@ -77,6 +78,68 @@ The ones that are easy to mix up:
 `<img src="n">`, `Borders` and `LineSpacing`, a `LinkStyle` / `LinkHoverStyle`
 pair so links light up under the mouse, `AutoOpenLink`, and the full set of link
 events — `OnLinkClick`, `OnLinkEnter`, `OnLinkLeave`, `OnLinkRightClick`.
+
+### Pictures and styles in a memo
+
+A message added with `AppendBlock` asks `OnResource` for every
+`<img src>` in it, with `src` as written (`/f/abc/cat.png`); LazInk does no
+networking. Supply the bytes if the program has them. If it has to fetch
+them first, leave `Handled` False, fetch, and call `ResourceChanged(URL)`
+when they are there: the entries that show that picture are laid out again,
+and the view stays at the end, or on what the reader was looking at. A picture is decoded once per
+URL and kept, so painting and new entries do not ask again.
+
+```pascal
+procedure TForm1.MemoResource(Sender: TObject; const URL: string;
+  Destination: TStream; var Handled: boolean);
+begin
+  if Pictures.Have(URL) then          // the program's own store
+  begin
+    Pictures.CopyTo(URL, Destination);
+    Handled := True;
+  end
+  else
+    Pictures.Fetch(URL);              // calls Memo.ResourceChanged(URL) when done
+end;
+```
+
+`StyleSheet` is CSS for those messages, applied after the memo's own rules
+so it wins: `.codebar { display: none }`, `p { margin: 2px 0 }`, colors for
+a server's highlighting classes. Changing it styles every entry again.
+
+### Changing a chat's entries
+
+Each entry has an index, from 0 at the top. `ReplaceBlock(N, ...)` replaces
+entry N (an edited message, a new reaction), `InsertBlock(0, ...)` puts an
+older message above the others, and `DeleteBlock(N)` takes one out. Only
+that entry is laid out again; the ones after it are moved. The view does
+not jump: at the end it stays at the end, anywhere else it stays on the
+message the reader was looking at. Indexes after a change shift with it.
+
+`OnScroll` fires whenever `ScrollY` changes; at `ScrollY = 0` the reader has
+reached the top, the moment to fetch older messages. Put a batch in between
+`BeginUpdate` and `EndUpdate` so it is laid out once:
+
+```pascal
+procedure TForm1.MemoScroll(Sender: TObject);
+begin
+  if Memo.ScrollY = 0 then FetchOlder;   // asks the server, then calls ShowOlder
+end;
+
+procedure TForm1.ShowOlder(Older: TStrings);  // oldest last
+var I: Integer;
+begin
+  Memo.BeginUpdate;
+  try
+    for I := 0 to Older.Count - 1 do
+      Memo.InsertBlock(0, Older[I], itfHTML);
+  finally
+    Memo.EndUpdate;
+  end;
+end;
+```
+
+`Clear` also forgets the pictures decoded for the entries.
 
 ## Supported markup
 
