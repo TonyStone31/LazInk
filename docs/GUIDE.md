@@ -75,7 +75,9 @@ The ones that are easy to mix up:
   one, apart from its links.
 
 `TInkLabel`, `TInkMemo` and `TInkListBox` also share: an `Images` list for
-`<img src="n">`, `Borders` and `LineSpacing`, a `LinkStyle` / `LinkHoverStyle`
+`<img src="n">`, `Borders` and `LineSpacing`, `AlternateColor` and `HoverColor`
+(a band behind every other entry, and behind the one under the pointer),
+a `LinkStyle` / `LinkHoverStyle`
 pair so links light up under the mouse, `AutoOpenLink`, and the full set of link
 events — `OnLinkClick`, `OnLinkEnter`, `OnLinkLeave`, `OnLinkRightClick`.
 
