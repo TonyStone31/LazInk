@@ -76,6 +76,9 @@ type
     FImages: TCustomImageList;
     FLinkStyle: TInkLinkStyle;
     FLinkHoverStyle: TInkLinkStyle;
+    FAlternateColor, FHoverColor: TColor;
+    { the entry under the pointer, -1 for none - see HoverColor }
+    FHoverEntry: integer;
     FAutoOpenLink: boolean;
     FHoverLine: integer;     // -1 when the mouse is not over a link
     FHoverBlock: integer;    // the block it is in
@@ -103,6 +106,13 @@ type
     procedure SetImages(AValue: TCustomImageList);
     procedure SetLinkStyle(AValue: TInkLinkStyle);
     procedure SetLinkHoverStyle(AValue: TInkLinkStyle);
+    procedure SetAlternateColor(AValue: TColor);
+    procedure SetHoverColor(AValue: TColor);
+    { the band behind entry AIndex: its own color, else HoverColor under the
+      pointer, else AlternateColor on every other entry }
+    function BandOf(AIndex: integer; AColor: TColor): TColor;
+    { every block's band decided again, and the memo repainted }
+    procedure Reband;
     procedure SubPropChanged(Sender: TObject);
     function MakeLine(AIndex: integer): TInkPageBlock;
     function AtEnd: boolean;
@@ -130,6 +140,8 @@ type
     function CopyBlockCaption(AIndex: integer): string; override;
     function MenuBlockText(AIndex: integer): string; override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
+    procedure MouseLeave; override;
     { the messages are styled with the font: it changes, and the memo is
       read again }
     procedure FontChanged(Sender: TObject); override;
@@ -225,6 +237,13 @@ type
     property LinkStyle: TInkLinkStyle read FLinkStyle write SetLinkStyle;
     { how a link is drawn while the pointer is over it }
     property LinkHoverStyle: TInkLinkStyle read FLinkHoverStyle write SetLinkHoverStyle;
+    { A band behind every other entry, so a list of messages reads in
+      stripes; clNone for none.  An entry's own color (AppendBlock's AColor)
+      wins. }
+    property AlternateColor: TColor read FAlternateColor write SetAlternateColor default clNone;
+    { A band behind the entry under the pointer, for a list of messages;
+      clNone for none.  An entry's own color wins. }
+    property HoverColor: TColor read FHoverColor write SetHoverColor default clNone;
     { Open a clicked link with the system browser. Only applies when no
       OnLinkClick handler is assigned - a handler always wins. }
     property AutoOpenLink: boolean read FAutoOpenLink write FAutoOpenLink default False;
@@ -309,6 +328,9 @@ begin
   FWordWrap := False;
   FHoverLine := -1;
   FHoverBlock := -1;
+  FHoverEntry := -1;
+  FAlternateColor := clNone;
+  FHoverColor := clNone;
   FBorders := TInkBorders.Create;
   FBorders.OnChange := @SubPropChanged;
   FNoBorders := TInkBorders.Create;
@@ -757,6 +779,64 @@ begin
   AWidth := Max(20, ClientWidth - ScrollBar.Width - FBorders.Left - FBorders.Right);
 end;
 
+function TInkMemo.BandOf(AIndex: integer; AColor: TColor): TColor;
+begin
+  Result := AColor;
+  if Result <> clNone then Exit;
+  if (FHoverColor <> clNone) and (AIndex >= 0) and (AIndex = FHoverEntry) then Exit(FHoverColor);
+  if (FAlternateColor <> clNone) and (AIndex >= 0) and Odd(AIndex) then Result := FAlternateColor;
+end;
+
+procedure TInkMemo.Reband;
+var
+  I: integer;
+  B: TInkPageBlock;
+  C: TColor;
+begin
+  for I := 0 to BlockCount - 1 do
+  begin
+    B := Block(I);
+    C := clNone;
+    if (B.Entry >= 0) and (B.Entry <= High(FEntries)) then C := FEntries[B.Entry].Color;
+    B.BackColor := BandOf(B.Entry, C);
+  end;
+  Invalidate;
+end;
+
+procedure TInkMemo.SetAlternateColor(AValue: TColor);
+begin
+  if FAlternateColor = AValue then Exit;
+  FAlternateColor := AValue;
+  Reband;
+end;
+
+procedure TInkMemo.SetHoverColor(AValue: TColor);
+begin
+  if FHoverColor = AValue then Exit;
+  FHoverColor := AValue;
+  Reband;
+end;
+
+procedure TInkMemo.MouseMove(Shift: TShiftState; X, Y: integer);
+var
+  E: integer;
+begin
+  inherited MouseMove(Shift, X, Y);
+  if FHoverColor = clNone then Exit;
+  E := EntryAt(X, Y);
+  if E = FHoverEntry then Exit;
+  FHoverEntry := E;
+  Reband;
+end;
+
+procedure TInkMemo.MouseLeave;
+begin
+  inherited MouseLeave;
+  if FHoverEntry < 0 then Exit;
+  FHoverEntry := -1;
+  if FHoverColor <> clNone then Reband;
+end;
+
 procedure TInkMemo.StyleBlock(B: TInkPageBlock);
 var
   E: TInkMemoEntry;
@@ -776,7 +856,7 @@ begin
   B.Padding := 0;
   B.GapBefore := FBorders.Top;
   B.GapAfter := FBorders.Bottom;
-  B.BackColor := E.Color;
+  B.BackColor := BandOf(B.Entry, E.Color);
 end;
 
 procedure TInkMemo.StyleSection(S: TInkTreeSection);
@@ -788,7 +868,7 @@ begin
   S.GapBefore := FBorders.Top;
   S.GapAfter := FBorders.Bottom;
   S.Indent := E.Indent;
-  S.Back := E.Color;
+  S.Back := BandOf(S.Item, E.Color);
 end;
 
 function TInkMemo.Options: THTMLOptions;
