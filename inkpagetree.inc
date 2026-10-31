@@ -1058,7 +1058,6 @@ begin
   Result.OwnsDoc := AOwns;
   Result.Item := AItem;
   Result.BlockFrom := ItemBlockFrom(AItem);
-  Result.Back := clNone;
   FItems.Insert(AItem, Result);
   if FStyler = nil then ResetStyler;
   { the page's own document was styled with its sheets; anything else is
@@ -1259,7 +1258,6 @@ var
     FTreePaint[N].Block := ABlock;
     FTreePaint[N].Clip := AClip;
     FTreePaint[N].Clipped := AClipped;
-    FTreePaint[N].Section := nil;
     Inc(N);
   end;
 
@@ -1408,16 +1406,8 @@ begin
           if FTreePaint[N].Clipped then OffsetRect(FTreePaint[N].Clip, 0, S.Top - S.PaintTop);
           Inc(N);
         end
-      else
-      begin
-        if S.Back <> clNone then
-        begin
-          Push(nil, -1, Rect(0, 0, 0, 0), False);
-          FTreePaint[N - 1].Section := S;
-        end;
-        if (S.Layout <> nil) and (S.Layout.Root <> nil) then
-          Atomic(S.Layout.Root, Rect(0, 0, 0, 0), False);
-      end;
+      else if (S.Layout <> nil) and (S.Layout.Root <> nil) then
+        Atomic(S.Layout.Root, Rect(0, 0, 0, 0), False);
       S.PaintKept := True;
       S.PaintFrom := FTreePaintAt[I];
       S.PaintCount := N - S.PaintFrom;
@@ -1659,16 +1649,6 @@ begin
   for I := 0 to FTreePaintCount - 1 do
   begin
     It := FTreePaint[I];
-    if It.Section <> nil then
-    begin
-      { a memo entry's band, behind the document it shows }
-      with TInkTreeSection(It.Section) do R := Rect(Left, Top, Left + Width, Top + Height);
-      if (R.Bottom < ViewTop) or (R.Top > ViewBottom) then Continue;
-      ACanvas.Brush.Style := bsSolid;
-      ACanvas.Brush.Color := TInkTreeSection(It.Section).Back;
-      ACanvas.FillRect(Rect(R.Left, R.Top - ViewTop, R.Right, R.Bottom - ViewTop));
-      Continue;
-    end;
     if It.Box <> nil then R := TInkBox(It.Box).BorderRect
     else
     begin
@@ -1764,7 +1744,6 @@ begin
   for I := FTreePaintCount - 1 downto 0 do
   begin
     It := FTreePaint[I];
-    if It.Section <> nil then Continue;
     if It.Clipped and not PtInRect(It.Clip, P) then Continue;
     if It.Box <> nil then
     begin
