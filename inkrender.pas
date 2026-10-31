@@ -600,6 +600,94 @@ begin
     Result := Max(1, Round(ASize * AFactor));
 end;
 
+const
+  { HTML's old font size ladder, in pixels, as browsers still draw it }
+  cFontLadder: array[1..7] of integer = (10, 13, 16, 18, 24, 32, 48);
+
+{ A style attribute's declarations applied to a run: color, background
+  (-color), font-size (px, pt, %, em, the keywords, smaller and larger),
+  font-weight, font-style and text-decoration.  Anything else is left
+  alone.  A size in pixels or points grows with Scale as a font tag's
+  does; a relative size needs a size to be relative to, and with none set
+  the ladder's normal step (16 px) stands in. }
+procedure ApplyInlineStyle(var S: TInkRenderStyle; const Css: string; Scale: integer);
+var
+  Decl, Name, Value: string;
+  P: integer;
+  V: double;
+  Base: integer;
+  Keywords: TStringList;
+
+  function Px(APixels: double): integer;
+  begin
+    Result := -Max(1, Round(APixels));
+    if (Scale > 0) and (Scale <> 100) then Result := InkRenderSmaller(Result, Scale / 100);
+  end;
+
+begin
+  Keywords := TStringList.Create;
+  try
+    Keywords.Delimiter := ';';
+    Keywords.StrictDelimiter := True;
+    Keywords.DelimitedText := Css;
+    for Decl in Keywords do
+    begin
+      P := Pos(':', Decl);
+      if P = 0 then Continue;
+      Name := LowerCase(Trim(Copy(Decl, 1, P - 1)));
+      Value := LowerCase(Trim(Copy(Decl, P + 1, MaxInt)));
+      if Value = '' then Continue;
+      if Name = 'color' then S.Color := InkRenderColor(Value, S.Color)
+      else if (Name = 'background-color') or (Name = 'background') then
+      begin
+        if (Value = 'none') or (Value = 'transparent') then S.BackColor := clNone
+        else
+          S.BackColor := InkRenderColor(Value, S.BackColor);
+      end
+      else if Name = 'font-weight' then
+      begin
+        if (Value = 'bold') or (Value = 'bolder') or (StrToIntDef(Value, 0) >= 600) then S.Styles := S.Styles + [fsBold]
+        else if (Value = 'normal') or (Value = 'lighter') or (StrToIntDef(Value, 0) > 0) then S.Styles := S.Styles - [fsBold];
+      end
+      else if Name = 'font-style' then
+      begin
+        if (Value = 'italic') or (Value = 'oblique') then S.Styles := S.Styles + [fsItalic]
+        else if Value = 'normal' then S.Styles := S.Styles - [fsItalic];
+      end
+      else if Name = 'text-decoration' then
+      begin
+        if Pos('underline', Value) > 0 then S.Styles := S.Styles + [fsUnderline];
+        if Pos('line-through', Value) > 0 then S.Styles := S.Styles + [fsStrikeOut];
+        if Value = 'none' then S.Styles := S.Styles - [fsUnderline, fsStrikeOut];
+      end
+      else if Name = 'font-size' then
+      begin
+        Base := S.Size;
+        if Base = 0 then Base := -cFontLadder[3];
+        if Value = 'xx-small' then S.Size := Px(cFontLadder[1] * 0.8)
+        else if Value = 'x-small' then S.Size := Px(cFontLadder[1])
+        else if Value = 'small' then S.Size := Px(cFontLadder[2])
+        else if Value = 'medium' then S.Size := Px(cFontLadder[3])
+        else if Value = 'large' then S.Size := Px(cFontLadder[4])
+        else if Value = 'x-large' then S.Size := Px(cFontLadder[5])
+        else if Value = 'xx-large' then S.Size := Px(cFontLadder[6])
+        else if Value = 'smaller' then S.Size := InkRenderSmaller(Base, 0.83)
+        else if Value = 'larger' then S.Size := InkRenderSmaller(Base, 1.2)
+        else if (Length(Value) > 2) and (Copy(Value, Length(Value) - 1, 2) = 'px') and TryStrToFloat(Copy(Value, 1, Length(Value) - 2), V) then S.Size := Px(V)
+        else if (Length(Value) > 2) and (Copy(Value, Length(Value) - 1, 2) = 'pt') and TryStrToFloat(Copy(Value, 1, Length(Value) - 2), V) then
+        begin
+          S.Size := Max(1, Round(V));
+          if (Scale > 0) and (Scale <> 100) then S.Size := InkRenderSmaller(S.Size, Scale / 100);
+        end
+        else if (Length(Value) > 2) and (Copy(Value, Length(Value) - 1, 2) = 'em') and TryStrToFloat(Copy(Value, 1, Length(Value) - 2), V) then S.Size := InkRenderSmaller(Base, V)
+        else if (Length(Value) > 1) and (Value[Length(Value)] = '%') and TryStrToFloat(Copy(Value, 1, Length(Value) - 1), V) then S.Size := InkRenderSmaller(Base, V / 100);
+      end;
+    end;
+  finally
+    Keywords.Free;
+  end;
+end;
+
 function InkRenderScalePx(Value, Scale: integer): integer;
 begin
   if Scale <= 0 then Scale := 100;
@@ -748,13 +836,13 @@ function TInkRenderer.IsKnownTag(const N: string): boolean;
 begin
   Result := (N = 'b') or (N = 'i') or (N = 'u') or (N = 's') or (N = 'sup') or (N = 'sub') or (N = 'font') or (N = 'a') or (N = 'br') or
     (N = 'hr') or (N = 'p') or (N = 'center') or (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'img') or (N = 'table') or (N = 'tr') or
-    (N = 'td') or (N = 'th') or (N = 'vgap') or (N = 'checkbox') or (N = 'sp') or (N = 'wbr');
+    (N = 'td') or (N = 'th') or (N = 'vgap') or (N = 'checkbox') or (N = 'sp') or (N = 'wbr') or (N = 'span');
 end;
 
 function TInkRenderer.IsStyleTag(const N: string): boolean;
 begin
   Result := (N = 'b') or (N = 'i') or (N = 'u') or (N = 's') or (N = 'sup') or (N = 'sub') or (N = 'font') or (N = 'a') or (N = 'center') or
-    (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'td') or (N = 'th');
+    (N = 'right') or (N = 'left') or (N = 'ind') or (N = 'td') or (N = 'th') or (N = 'span');
 end;
 
 procedure TInkRenderer.AddToken(AKind: TInkRenderTokenKind; const Name, Value: string; ASelfClosing: boolean; const Attrs: TStringList);
@@ -1021,9 +1109,6 @@ begin
 end;
 
 procedure TInkRenderer.BuildStyles(const Options: TInkRenderOptions);
-const
-  { HTML's old font size ladder, in pixels, as browsers still draw it }
-  cFontLadder: array[1..7] of integer = (10, 13, 16, 18, 24, 32, 48);
 var
   Stack: array of TInkRenderStyle;
   StackNames: array of string;
@@ -1205,6 +1290,9 @@ begin
           if T.Name = 'th' then S.Styles := S.Styles + [fsBold];
           AddControl(3, T.Attributes.Text);
         end;
+        { what a style attribute says, on any tag: the few properties an
+          inline run has - color, background, size, weight, slant, lines }
+        if InkRenderAttr(T.Attributes, 'style') <> '' then ApplyInlineStyle(S, InkRenderAttr(T.Attributes, 'style'), Options.Scale);
         if IsStyleTag(T.Name) and not T.SelfClosing then Push(S, T.Name)
         else if T.Name = 'p' then
         begin

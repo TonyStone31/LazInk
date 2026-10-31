@@ -1655,6 +1655,7 @@ begin
   ACanvas.FillRect(ClientRect);
   ViewTop := FScroll.Position;
   ViewBottom := ViewTop + ClientHeight;
+  PaintEntryBands(ACanvas, ViewTop, ViewBottom);
   for I := 0 to FTreePaintCount - 1 do
   begin
     It := FTreePaint[I];

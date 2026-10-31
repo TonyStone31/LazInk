@@ -47,6 +47,12 @@ InkPage1.StyleSheet.Text :=
 InkPage1.LoadMarkdown(ReleaseNotes);
 ```
 
+A `style` attribute on these inline tags is read too: `color`,
+`background-color`, `font-size` (px, pt, %, em, the keywords, `smaller`
+and `larger`), `font-weight`, `font-style` and `text-decoration`, on a
+`span` or any other inline tag. The rest of CSS belongs to the page and
+the memo, which lay out a document; a label and a list box draw lines.
+
 ![The WYSIWYG Markdown editor](images/demo-editor.png)
 
 ## The controls

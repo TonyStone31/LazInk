@@ -130,6 +130,7 @@ type
     procedure RestoreView;
     procedure MemoStyler;
   protected
+    function EntryBand(AEntry: integer): TColor; override;
     procedure Parse; override;
     procedure LayoutColumn(out ALeft, AWidth: integer); override;
     procedure StyleBlock(B: TInkPageBlock); override;
@@ -644,19 +645,40 @@ begin
   ReplaceEntry(N, AText, FEntries[N]);
 end;
 
+{ The entry at Y, counting the gaps: the space between two blocks of one
+  entry is that entry's, and the strip between two entries goes to the
+  nearer one, so a pointer crossing it never leaves every entry (the hover
+  band flickered on the way down a list).  Above the first entry and
+  below the last there is no entry. }
 function TInkMemo.EntryAt(X, Y: integer): integer;
 var
-  I: integer;
+  I, DocY, PrevEntry, PrevBottom: integer;
   R: TRect;
 begin
   Result := -1;
   Layout;
+  DocY := Y + ScrollY;
+  PrevEntry := -1;
+  PrevBottom := 0;
   for I := 0 to BlockCount - 1 do
   begin
     R := Block(I).Bounds;
-    if (Y + ScrollY >= R.Top) and (Y + ScrollY < R.Bottom) then
+    if DocY < R.Top then
+    begin
+      if PrevEntry < 0 then Exit;
+      if (Block(I).Entry = PrevEntry) or (DocY - PrevBottom < R.Top - DocY) then Exit(PrevEntry);
       Exit(Block(I).Entry);
+    end;
+    if DocY < R.Bottom then Exit(Block(I).Entry);
+    PrevEntry := Block(I).Entry;
+    PrevBottom := R.Bottom;
   end;
+end;
+
+function TInkMemo.EntryBand(AEntry: integer): TColor;
+begin
+  Result := clNone;
+  if (AEntry >= 0) and (AEntry <= High(FEntries)) then Result := BandOf(AEntry, FEntries[AEntry].Color);
 end;
 
 function TInkMemo.GetEntryText(AIndex: integer): string;

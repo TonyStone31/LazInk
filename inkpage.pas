@@ -429,6 +429,12 @@ type
     procedure PaintCodeHead(ACanvas: TCanvas; Index: integer; B: TInkPageBlock; const R: TRect);
     function CodeButtonAt(X, Y: integer; out ABlock, AButton: integer): boolean;
     procedure PaintBlock(ACanvas: TCanvas; I: integer; ASelected: boolean; const SelFrom, SelTo: TInkPagePosition);
+    { the band behind a whole entry (a memo's stripe or hover): clNone here,
+      a memo answers.  Painted before the blocks, over the entry's full
+      span, so the gaps between its blocks - a code block's margins - are
+      in the band too }
+    function EntryBand(AEntry: integer): TColor; virtual;
+    procedure PaintEntryBands(ACanvas: TCanvas; ViewTop, ViewBottom: integer);
     procedure PressCodeButton(ABlock, AButton: integer);
     { a code block's markup: the host's coloring, or the page's own }
     function CodeMarkup(const ACode, ALanguage: string): string;
@@ -1705,8 +1711,7 @@ begin
     begin
       S := TInkTreeSection(FItems[I]);
       for J := S.BlockFrom to S.BlockFrom + S.BlockCount - 1 do
-        if (TInkPageBlock(FBlocks[J]).ImageSrc = URL) or ((TInkPageBlock(FBlocks[J]).InlinePics <> nil) and
-          (TInkPageBlock(FBlocks[J]).InlinePics.IndexOf(URL) >= 0)) then
+        if (TInkPageBlock(FBlocks[J]).ImageSrc = URL) or ((TInkPageBlock(FBlocks[J]).InlinePics <> nil) and (TInkPageBlock(FBlocks[J]).InlinePics.IndexOf(URL) >= 0)) then
         begin
           { the same boxes and blocks again, so a selection stays valid }
           ClearSectionBlocks(S);
@@ -2564,6 +2569,45 @@ begin
 end;
 { one block: its band, then its words, marker, picture, selection and
   code header }
+function TInkCustomPage.EntryBand(AEntry: integer): TColor;
+begin
+  Result := clNone;
+  if AEntry < 0 then Exit;
+end;
+
+procedure TInkCustomPage.PaintEntryBands(ACanvas: TCanvas; ViewTop, ViewBottom: integer);
+var
+  I, J, E: integer;
+  B: TInkPageBlock;
+  R: TRect;
+  C: TColor;
+begin
+  I := 0;
+  while I < FBlocks.Count do
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    E := B.Entry;
+    R := B.Bounds;
+    J := I + 1;
+    while (J < FBlocks.Count) and (TInkPageBlock(FBlocks[J]).Entry = E) do
+    begin
+      UnionRect(R, R, TInkPageBlock(FBlocks[J]).Bounds);
+      Inc(J);
+    end;
+    if (E >= 0) and (R.Bottom >= ViewTop) and (R.Top <= ViewBottom) then
+    begin
+      C := EntryBand(E);
+      if C <> clNone then
+      begin
+        ACanvas.Brush.Color := C;
+        ACanvas.Brush.Style := bsSolid;
+        ACanvas.FillRect(Rect(R.Left, R.Top - ViewTop, R.Right, R.Bottom - ViewTop));
+      end;
+    end;
+    I := J;
+  end;
+end;
+
 procedure TInkCustomPage.PaintBlock(ACanvas: TCanvas; I: integer; ASelected: boolean; const SelFrom, SelTo: TInkPagePosition);
 var
   B: TInkPageBlock;
