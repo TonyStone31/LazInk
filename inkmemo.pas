@@ -112,7 +112,8 @@ type
       pointer, else AlternateColor on every other entry }
     function BandOf(AIndex: integer; AColor: TColor): TColor;
     { every block's band decided again, and the memo repainted }
-    procedure Reband;
+    { gives the bands from entry AFrom on their colors again (see BandOf) }
+    procedure Reband(AFrom: integer = 0);
     procedure SubPropChanged(Sender: TObject);
     function MakeLine(AIndex: integer): TInkPageBlock;
     function AtEnd: boolean;
@@ -417,8 +418,10 @@ var
   I: integer;
 begin
   if FLines = nil then Exit;
-  { the items go; a view kept on one of them is kept on nothing }
+  { the items go; a view kept on one of them is kept on nothing, and the
+    entry under the pointer is known again at its next move }
   FAnchor := nil;
+  FHoverEntry := -1;
   BeginDocument;
   MemoStyler;
   if Length(FEntries) <> FLines.Count then
@@ -525,6 +528,10 @@ begin
   if ItemCount <> FLines.Count - 1 then Parse
   else
     MakeEntry(AIndex);
+  { the entries after it moved down one: the pointer stays on the same
+    one, and every other band keeps its stripe }
+  if FHoverEntry >= AIndex then Inc(FHoverEntry);
+  if AIndex < FLines.Count - 1 then Reband(AIndex);
   RestoreView;
 end;
 
@@ -616,6 +623,10 @@ begin
     end;
     DeleteItem(AIndex);
   end;
+  { the entries after it moved up one, see InsertEntry }
+  if FHoverEntry = AIndex then FHoverEntry := -1
+  else if FHoverEntry > AIndex then Dec(FHoverEntry);
+  if AIndex < FLines.Count then Reband(AIndex);
   RestoreView;
 end;
 
@@ -787,7 +798,7 @@ begin
   if (FAlternateColor <> clNone) and (AIndex >= 0) and Odd(AIndex) then Result := FAlternateColor;
 end;
 
-procedure TInkMemo.Reband;
+procedure TInkMemo.Reband(AFrom: integer);
 var
   I: integer;
   B: TInkPageBlock;
@@ -796,6 +807,7 @@ begin
   for I := 0 to BlockCount - 1 do
   begin
     B := Block(I);
+    if B.Entry < AFrom then Continue;
     C := clNone;
     if (B.Entry >= 0) and (B.Entry <= High(FEntries)) then C := FEntries[B.Entry].Color;
     B.BackColor := BandOf(B.Entry, C);
