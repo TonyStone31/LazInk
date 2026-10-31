@@ -104,14 +104,19 @@ begin
   B.MarkerWidth := 0;
   if B.Marker <> '' then B.MarkerWidth := Canvas.TextWidth(B.Marker + ' ');
   B.CodeHead := 0;
-  TextW := Max(1, AWidth);
+  B.CodeGutter := 0;
+  if B.Code <> '' then B.CodeLines := CodeLineCount(B.Code);
+  { the numbers take their room from the code's width: as many digits as
+    the last line needs, two at least, and air either side }
+  if FCodeLineNumbers and (B.Code <> '') then
+    B.CodeGutter := Canvas.TextWidth(StringOfChar('0', Max(2, Length(IntToStr(B.CodeLines))))) + Scale96ToFont(14);
+  TextW := Max(1, AWidth - B.CodeGutter);
   if B.NoWrap then B.Wrapped := B.Source
   else
     B.Wrapped := HTMLWordWrap(Canvas, B.Source, TextW, O.SuperSubScriptRatio, O.Scale);
   if FCodeHeader and (B.Code <> '') then
   begin
     B.CodeHead := Max(16, Round(FLayoutBase * 1.9));
-    B.CodeLines := CodeLineCount(B.Code);
     if not B.CodeFoldSet then
     begin
       B.CodeFolded := (FCodeFoldLines > 0) and (B.CodeLines > FCodeFoldLines);
@@ -1184,7 +1189,7 @@ procedure TInkCustomPage.LaySection(S: TInkTreeSection; ALeft, AWidth: integer; 
       begin
         if B.WrapWidth <> Box.TextW then TreeTextHeight(B, Box.TextW);
         B.Bounds := Rect(Box.TextX, Box.TextY, Box.TextX + Box.TextW, Box.TextY + B.TreeTextH);
-        B.TextBounds := Rect(Box.TextX, Box.TextY + B.CodeHead, Box.TextX + Box.TextW, B.Bounds.Bottom);
+        B.TextBounds := Rect(Box.TextX + B.CodeGutter, Box.TextY + B.CodeHead, Box.TextX + Box.TextW, B.Bounds.Bottom);
       end
       else
       begin

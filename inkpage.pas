@@ -97,6 +97,9 @@ type
       was pressed, for the "Copied" it says for a moment. }
     CodeHead, CodeLines: integer;
     CodeFolded, CodeFoldSet: boolean;
+    { a code block with CodeLineNumbers: the width of the numbers down its
+      left side, which the code starts after; 0 for none }
+    CodeGutter: integer;
     CodeCopiedAt: QWord;
     { the ids that lead to this block, separated by spaces }
     Anchor: string;
@@ -307,6 +310,7 @@ type
     FOnHighlightCode: TInkHighlightEvent;
     FHighlightCode: boolean;
     FCodeHeader: boolean;
+    FCodeLineNumbers: boolean;
     FCodeFoldLines: integer;
     FCodeActions: TStringList;
     FOnCodeAction: TInkCodeActionEvent;
@@ -417,6 +421,7 @@ type
     FColumnWidth: integer;
     procedure SetHighlightCode(AValue: boolean);
     procedure SetCodeHeader(AValue: boolean);
+    procedure SetCodeLineNumbers(AValue: boolean);
     procedure SetCodeFoldLines(AValue: integer);
     function GetCodeActions: TStrings;
     procedure SetCodeActions(AValue: TStrings);
@@ -424,6 +429,7 @@ type
     procedure CodeTimerTick(Sender: TObject);
     procedure CodeHeadFont(ACanvas: TCanvas);
     procedure PaintCodeHead(ACanvas: TCanvas; Index: integer; B: TInkPageBlock; const R: TRect);
+    procedure PaintCodeGutter(ACanvas: TCanvas; B: TInkPageBlock; const R, TR: TRect);
     function CodeButtonAt(X, Y: integer; out ABlock, AButton: integer): boolean;
     procedure PaintBlock(ACanvas: TCanvas; I: integer; ASelected: boolean; const SelFrom, SelTo: TInkPagePosition);
     { the band behind a whole entry (a memo's stripe or hover): clNone here,
@@ -715,6 +721,9 @@ type
       and how many lines on the left; Copy, CodeActions and, for a long
       block, Show all / Show less on the right. }
     property CodeHeader: boolean read FCodeHeader write SetCodeHeader default True;
+    { a number down the left of every line of a code block, as editors
+      show them; the code moves right to make room }
+    property CodeLineNumbers: boolean read FCodeLineNumbers write SetCodeLineNumbers default False;
     { a code block longer than this many lines starts folded to them, with
       Show all on its header; 0 never folds }
     property CodeFoldLines: integer read FCodeFoldLines write SetCodeFoldLines default 0;
@@ -787,6 +796,7 @@ type
     property HighlightCode;
     property OnHighlightCode;
     property CodeHeader;
+    property CodeLineNumbers;
     property CodeFoldLines;
     property CodeActions;
     property OnCodeAction;
@@ -2261,6 +2271,7 @@ begin
   O.NoWrap := B.NoWrap;
   B.MarkerWidth := 0;
   B.CodeHead := 0;
+  B.CodeGutter := 0;
   TextW := Max(20, AWidth - B.Indent - B.Padding * 2);
   if B.NoWrap then B.Wrapped := B.Source
   else
@@ -2343,6 +2354,14 @@ procedure TInkCustomPage.SetCodeHeader(AValue: boolean);
 begin
   if FCodeHeader = AValue then Exit;
   FCodeHeader := AValue;
+  InvalidateLayout(0);
+  Invalidate;
+end;
+
+procedure TInkCustomPage.SetCodeLineNumbers(AValue: boolean);
+begin
+  if FCodeLineNumbers = AValue then Exit;
+  FCodeLineNumbers := AValue;
   InvalidateLayout(0);
   Invalidate;
 end;
@@ -2662,7 +2681,51 @@ begin
     if ASelected and (I >= SelFrom.Block) and (I <= SelTo.Block) then
       PaintSelection(ACanvas, I, B, SelFrom, SelTo);
   end;
+  if B.CodeGutter > 0 then PaintCodeGutter(ACanvas, B, R, TR);
   if B.CodeHead > 0 then PaintCodeHead(ACanvas, I, B, R);
+end;
+
+{ The line numbers of a code block, right-aligned in the gutter left of
+  the code, in the code's face and a quiet color.  A code block never
+  wraps, so its lines are its source lines, one under the other and all
+  the same height: the number of line N sits at N times that height. }
+procedure TInkCustomPage.PaintCodeGutter(ACanvas: TCanvas; B: TInkPageBlock; const R, TR: TRect);
+var
+  Ink, Paper: TColor;
+  Rows, Shown, N, Y, X, Pad: integer;
+  Label_: string;
+  P: integer;
+begin
+  { how many lines the block draws: one more than its line breaks; folded,
+    the last is the "..." and gets no number }
+  Rows := 1;
+  P := Pos('<br', B.Wrapped);
+  while P > 0 do
+  begin
+    Inc(Rows);
+    P := Pos('<br', B.Wrapped, P + 3);
+  end;
+  Shown := Min(Rows, B.CodeLines);
+  if B.CodeFolded and (FCodeFoldLines > 0) and (B.CodeLines > FCodeFoldLines) then Shown := Min(Shown, FCodeFoldLines);
+  if (Shown <= 0) or (TR.Bottom <= TR.Top) then Exit;
+  Paper := B.BackColor;
+  if Paper = clNone then Paper := FCodeBack;
+  Ink := B.TextColor;
+  if Ink = clNone then Ink := FBodyText;
+  BlockFont(ACanvas, B);
+  ACanvas.Font.Style := [];
+  ACanvas.Font.Color := MixColor(Ink, Paper, 0.45);
+  ACanvas.Brush.Style := bsClear;
+  Pad := Scale96ToFont(7);
+  for N := 1 to Shown do
+  begin
+    Y := TR.Top + Round((N - 1) * (TR.Bottom - TR.Top) / Rows);
+    if (Y > ACanvas.ClipRect.Bottom) and ACanvas.Clipping then Break;
+    Label_ := IntToStr(N);
+    X := TR.Left - Pad - ACanvas.TextWidth(Label_);
+    if X < R.Left then X := R.Left;
+    ACanvas.TextOut(X, Y, Label_);
+  end;
 end;
 
 procedure TInkCustomPage.RenderTo(ACanvas: TCanvas);
