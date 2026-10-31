@@ -16,8 +16,6 @@ type
     Block: integer;
     Clip: TRect;
     Clipped: boolean;
-    { a memo entry's band, behind the document it shows }
-    Section: TObject;
   end;
 
   TInkPageLinkEvent = procedure(Sender: TObject; const URL: string) of object;
@@ -182,9 +180,8 @@ type
     Item, BlockFrom, BlockCount: integer;
     { where it was laid out, page pixels }
     Left, Top, Width, Height: integer;
-    { set by StyleSection: room above and below, an inset, and a band }
+    { set by StyleSection: room above and below, and an inset }
     GapBefore, GapAfter, Indent: integer;
-    Back: TColor;
     destructor Destroy; override;
   end;
   { The engine behind TInkPage and TInkMemo: items laid out down a
@@ -430,9 +427,11 @@ type
     function CodeButtonAt(X, Y: integer; out ABlock, AButton: integer): boolean;
     procedure PaintBlock(ACanvas: TCanvas; I: integer; ASelected: boolean; const SelFrom, SelTo: TInkPagePosition);
     { the band behind a whole entry (a memo's stripe or hover): clNone here,
-      a memo answers.  Painted before the blocks, over the entry's full
-      span, so the gaps between its blocks - a code block's margins - are
-      in the band too }
+      a memo answers.  Asked at paint time and painted before the blocks,
+      over the entry's full span - a document's whole rectangle - so the
+      gaps between its blocks, a day line's rules and a code block's
+      margins are in the band too, and a band that changes under the
+      pointer changes everywhere at once }
     function EntryBand(AEntry: integer): TColor; virtual;
     procedure PaintEntryBands(ACanvas: TCanvas; ViewTop, ViewBottom: integer);
     procedure PressCodeButton(ABlock, AButton: integer);
@@ -487,7 +486,7 @@ type
     procedure LayoutColumn(out ALeft, AWidth: integer); virtual;
     { a line's font, colors, padding and gaps, before it is measured }
     procedure StyleBlock(B: TInkPageBlock); virtual;
-    { a document's gaps, inset and band }
+    { a document's gaps and inset }
     procedure StyleSection(S: TInkTreeSection); virtual;
     function Options: THTMLOptions; virtual;
     procedure FindAnimations;
@@ -2567,47 +2566,39 @@ begin
   RenderTo(Canvas);
   FLastPaint := GetTickCount64;
 end;
-{ one block: its band, then its words, marker, picture, selection and
-  code header }
+
 function TInkCustomPage.EntryBand(AEntry: integer): TColor;
 begin
   Result := clNone;
   if AEntry < 0 then Exit;
 end;
 
+{ the band of every item in view: a document's rectangle, a line's bounds }
 procedure TInkCustomPage.PaintEntryBands(ACanvas: TCanvas; ViewTop, ViewBottom: integer);
 var
-  I, J, E: integer;
-  B: TInkPageBlock;
+  I: integer;
+  It: TObject;
   R: TRect;
   C: TColor;
 begin
-  I := 0;
-  while I < FBlocks.Count do
+  for I := 0 to FItems.Count - 1 do
   begin
-    B := TInkPageBlock(FBlocks[I]);
-    E := B.Entry;
-    R := B.Bounds;
-    J := I + 1;
-    while (J < FBlocks.Count) and (TInkPageBlock(FBlocks[J]).Entry = E) do
-    begin
-      UnionRect(R, R, TInkPageBlock(FBlocks[J]).Bounds);
-      Inc(J);
-    end;
-    if (E >= 0) and (R.Bottom >= ViewTop) and (R.Top <= ViewBottom) then
-    begin
-      C := EntryBand(E);
-      if C <> clNone then
-      begin
-        ACanvas.Brush.Color := C;
-        ACanvas.Brush.Style := bsSolid;
-        ACanvas.FillRect(Rect(R.Left, R.Top - ViewTop, R.Right, R.Bottom - ViewTop));
-      end;
-    end;
-    I := J;
+    It := TObject(FItems[I]);
+    if It is TInkTreeSection then
+      with TInkTreeSection(It) do R := Rect(Left, Top, Left + Width, Top + Height)
+    else
+      R := TInkPageBlock(It).Bounds;
+    if (R.Bottom < ViewTop) or (R.Top > ViewBottom) then Continue;
+    C := EntryBand(I);
+    if C = clNone then Continue;
+    ACanvas.Brush.Color := C;
+    ACanvas.Brush.Style := bsSolid;
+    ACanvas.FillRect(Rect(R.Left, R.Top - ViewTop, R.Right, R.Bottom - ViewTop));
   end;
 end;
 
+{ one block: its band, then its words, marker, picture, selection and
+  code header }
 procedure TInkCustomPage.PaintBlock(ACanvas: TCanvas; I: integer; ASelected: boolean; const SelFrom, SelTo: TInkPagePosition);
 var
   B: TInkPageBlock;

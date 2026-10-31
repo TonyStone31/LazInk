@@ -902,7 +902,6 @@ begin
   S.GapBefore := FBorders.Top;
   S.GapAfter := FBorders.Bottom;
   S.Indent := E.Indent;
-  S.Back := BandOf(S.Item, E.Color);
 end;
 
 function TInkMemo.Options: THTMLOptions;
