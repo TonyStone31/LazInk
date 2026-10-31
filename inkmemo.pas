@@ -214,6 +214,7 @@ type
     property HighlightCode;
     property OnHighlightCode;
     property CodeHeader;
+    property CodeLineNumbers;
     property CodeFoldLines;
     property CodeActions;
     property OnCodeAction;
