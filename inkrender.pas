@@ -2462,9 +2462,75 @@ var
   EllRun: TInkRenderRun;
   EllSz: TSize;
   EllText: string;
-  Limit, EK: integer;
+  Limit, EK, WordW: integer;
   C: cardinal;
   L: TInkRenderLine;
+
+  { the width of a pill's words as they are laid out: its side padding
+    on, and no narrower than a width it is given }
+  function PillWidth(const ARun: TInkRenderRun): integer;
+  begin
+    Result := MeasureRun(Canvas, ARun).cx + 2 * ARun.Style.PillPadH;
+    if ARun.Style.PillMinW > Result then Result := ARun.Style.PillMinW;
+  end;
+
+  { How much wider the word that ends a run grows in the runs after it,
+    from AFrom on: their text up to where a line may break - a space, a
+    line end, a <wbr>, a CJK character (taken, as a break may follow it),
+    a picture or a checkbox - with each run in its own font.  A pill is
+    one thing and taken whole.  "metres (<code>abc</code>)." is one word,
+    and the break before it is decided by all of it, not by "(" alone. }
+  function FollowingWidth(AFrom: integer): integer;
+  var
+    J, Q, QBytes: integer;
+    CC: cardinal;
+    RR: TInkRenderRun;
+    T: string;
+    Ended: boolean;
+  begin
+    Result := 0;
+    J := AFrom;
+    while (J <= ABox.TagEnd) and (J <= High(FStyled)) do
+    begin
+      RR := FStyled[J];
+      Inc(J);
+      if RR.Control <> 0 then Continue;
+      if RR.IsImage or (RR.Check > 0) then Exit;
+      T := RR.Text;
+      if T = '' then Continue;
+      if (RR.Style.PillPadH > 0) or (RR.Style.PillPadV > 0) or (RR.Style.PillRadius > 0) or (RR.Style.PillBorder <> clNone) or
+        (RR.Style.PillMinW > 0) or (RR.Style.PillMinH > 0) then
+      begin
+        Q := Pos(#10, T);
+        if Q = 1 then Exit;
+        if Q > 0 then RR.Text := Copy(T, 1, Q - 1);
+        Inc(Result, PillWidth(RR));
+        if Q > 0 then Exit;
+        Continue;
+      end;
+      if T[1] in [' ', #9, #10, #11] then Exit;
+      Q := 1;
+      Ended := False;
+      while Q <= Length(T) do
+      begin
+        if T[Q] in [' ', #9, #10, #11] then
+        begin
+          Ended := True;
+          Break;
+        end;
+        CC := CodepointAt(T, Q, QBytes);
+        Inc(Q, QBytes);
+        if IsCJK(CC) then
+        begin
+          Ended := True;
+          Break;
+        end;
+      end;
+      RR.Text := Copy(T, 1, Q - 1);
+      Inc(Result, MeasureRun(Canvas, RR).cx);
+      if Ended then Exit;
+    end;
+  end;
   { every run on the line is placed so its baseline is at the same height:
     the largest ascent on the line.  The line is that plus the largest
     descent, which is what makes a heading and small text sit together. }
@@ -2743,8 +2809,18 @@ begin
       { a line breaks where the text allows it - after a space, or between
         two CJK characters - and nowhere else.  The end of a run is not a
         break: "<code>x</code>." is one word with a full stop on it, and
-        breaking there put the stop alone at the start of the next line. }
-      if (Count > 0) and CanBreak and not FOpt.NoWrap and (X + W > FOpt.Width - FOpt.Borders.Right) and (Atom[1] <> ' ') and (Atom[1] <> #9) then FinishLine;
+        breaking there put the stop alone at the start of the next line.
+        So the break before a word that goes on into the next runs is
+        decided by the whole word: one that would not fit moves down with
+        all of it, rather than its first run staying and the rest running
+        past the edge. }
+      if (Count > 0) and CanBreak and not FOpt.NoWrap and (Atom[1] <> ' ') and (Atom[1] <> #9) then
+      begin
+        WordW := W;
+        if (P > Length(Text)) and not R.IsImage and (R.Check = 0) and (X + W <= FOpt.Width - FOpt.Borders.Right) then
+          Inc(WordW, FollowingWidth(I + 1));
+        if X + WordW > FOpt.Width - FOpt.Borders.Right then FinishLine;
+      end;
       if Count = 0 then First := Length(FLayout.FRuns);
       if R.IsImage and R.ImageMiddle then
       begin
