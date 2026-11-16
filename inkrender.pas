@@ -2462,7 +2462,7 @@ var
   EllRun: TInkRenderRun;
   EllSz: TSize;
   EllText: string;
-  Limit, EK, WordW: integer;
+  Limit, EK, WordW, Tail, TailBytes: integer;
   C: cardinal;
   L: TInkRenderLine;
 
@@ -2813,11 +2813,16 @@ begin
         So the break before a word that goes on into the next runs is
         decided by the whole word: one that would not fit moves down with
         all of it, rather than its first run staying and the rest running
-        past the edge. }
+        past the edge.  A word that ends in a CJK character ends there:
+        a line may break after it, and looking on pulled it down with
+        the next run. }
       if (Count > 0) and CanBreak and not FOpt.NoWrap and (Atom[1] <> ' ') and (Atom[1] <> #9) then
       begin
         WordW := W;
-        if (P > Length(Text)) and not R.IsImage and (R.Check = 0) and (X + W <= FOpt.Width - FOpt.Borders.Right) then
+        Tail := Length(Atom);
+        while (Tail > 1) and ((Ord(Atom[Tail]) and $C0) = $80) do Dec(Tail);
+        if (P > Length(Text)) and not R.IsImage and (R.Check = 0) and not IsCJK(CodepointAt(Atom, Tail, TailBytes)) and
+          (X + W <= FOpt.Width - FOpt.Borders.Right) then
           Inc(WordW, FollowingWidth(I + 1));
         if X + WordW > FOpt.Width - FOpt.Borders.Right then FinishLine;
       end;
