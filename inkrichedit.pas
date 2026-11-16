@@ -28,7 +28,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Controls, Graphics, StdCtrls, Forms, LCLType,
-  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types, Menus, InkMarkdown, InkDraw, InkEdit;
+  LCLIntf, LMessages, Clipbrd, LazUTF8, ExtCtrls, Types, Menus, InkMarkdown, InkDraw, InkEdit, InkCode;
 
 type
   TInkScript = (isNormal, isSuperscript, isSubscript);
@@ -122,6 +122,10 @@ type
     FWheelRest: double;
     { the zoom in percent, and the part of a Ctrl+wheel step not yet taken }
     FZoom: integer;
+    { what each character of a code block is - comment, string, keyword,
+      a diff's added line - worked out with the layout }
+    FCodeKinds: array of TInkCodeKind;
+    FHighlightCode: boolean;
     FZoomRest: double;
     FOnZoom: TNotifyEvent;
     FVScroll: TScrollBar;
@@ -201,6 +205,8 @@ type
     procedure SetReadOnly(AValue: boolean);
     procedure SetWordWrap(AValue: boolean);
     procedure SetZoom(AValue: integer);
+    procedure SetHighlightCode(AValue: boolean);
+    procedure ReadCodeKinds;
     procedure SetParagraphSpacing(AValue: boolean);
     { layout }
     procedure InvalidateLayout;
@@ -244,6 +250,9 @@ type
     procedure CaretTimerTick(Sender: TObject);
     procedure RestartCaretBlink;
   protected
+    { what the character at AIndex is in its code block - comment, string,
+      keyword, a diff's line - as it is painted; ickPlain outside code }
+    function CodeKindAt(AIndex: integer): TInkCodeKind;
     procedure CMWantSpecialKey(var Message: TCMWantSpecialKey); message CM_WANTSPECIALKEY;
     procedure DoContextPopup(MousePos: TPoint; var Handled: boolean); override;
     { What a character is drawn and measured as: FAttrs[AIndex], passed
@@ -377,6 +386,10 @@ type
     property SelLocked: boolean read EditLocked;
     { re-flow each paragraph to the control's width }
     property WordWrap: boolean read FWordWrap write SetWordWrap default True;
+    { Colors a code block's comments, strings, numbers and keywords, and a
+      diff's added and removed lines, as TInkPage does, by the fence's
+      language; a character given a color of its own keeps it. }
+    property HighlightCode: boolean read FHighlightCode write SetHighlightCode default True;
     { space between paragraphs, headings, lists, quotes, code and tables, as
       a browser leaves it; list items, quote lines and code lines stay
       together.  Off, every paragraph sits right under the one before. }
@@ -552,6 +565,7 @@ begin
   Font.Color := clWindowText;
   FWordWrap := True;
   FZoom := 100;
+  FHighlightCode := True;
   FSuperSubScriptRatio := 0.7;
   FCaret := 0;
   FAnchor := 0;
@@ -974,6 +988,74 @@ begin
 end;
 
 { ------------------------------------------------------------------- layout }
+
+procedure TInkRichEdit.SetHighlightCode(AValue: boolean);
+begin
+  if FHighlightCode = AValue then Exit;
+  FHighlightCode := AValue;
+  InvalidateLayout;
+end;
+
+function TInkRichEdit.CodeKindAt(AIndex: integer): TInkCodeKind;
+begin
+  NeedLayout;
+  if (AIndex >= 0) and (AIndex < Length(FCodeKinds)) then Result := FCodeKinds[AIndex]
+  else
+    Result := ickPlain;
+end;
+
+{ Each code block - code lines in a row with one fence language - read by
+  the highlighter as one text, so a comment or string may cross its lines;
+  the pieces it colors go back onto the characters they came from. }
+procedure TInkRichEdit.ReadCodeKinds;
+var
+  I, First, Last, K, B, Bytes: integer;
+  Lang, Code: string;
+  Starts: array of integer;
+  Spans: TInkCodeSpans;
+begin
+  SetLength(FCodeKinds, CharCount);
+  for I := 0 to CharCount - 1 do FCodeKinds[I] := ickPlain;
+  if not FHighlightCode then Exit;
+  I := 0;
+  while I < CharCount do
+  begin
+    { a line break carries its own line's kind, so this is enough }
+    if FAttrs[I].Kind <> ipkCode then
+    begin
+      Inc(I);
+      Continue;
+    end;
+    { the block: from here while the characters are code in this language }
+    First := I;
+    Lang := FAttrs[I].Lang;
+    while (I < CharCount) and (FAttrs[I].Kind = ipkCode) and (FAttrs[I].Lang = Lang) do Inc(I);
+    Last := I - 1;
+    { a block's last line break is not part of its code }
+    if FChars[Last] = #10 then Dec(Last);
+    if Last < First then Continue;
+    Code := '';
+    SetLength(Starts, Last - First + 1);
+    for K := First to Last do
+    begin
+      Starts[K - First] := Length(Code) + 1;
+      Code := Code + FChars[K];
+    end;
+    Spans := InkCodeSpans(Code, Lang);
+    K := First;
+    for B := 0 to High(Spans) do
+    begin
+      { the characters whose first byte falls inside the piece }
+      while (K <= Last) and (Starts[K - First] < Spans[B].Start) do Inc(K);
+      Bytes := Spans[B].Start + Spans[B].Count;
+      while (K <= Last) and (Starts[K - First] < Bytes) do
+      begin
+        FCodeKinds[K] := Spans[B].Kind;
+        Inc(K);
+      end;
+    end;
+  end;
+end;
 
 procedure TInkRichEdit.InvalidateLayout;
 begin
@@ -1765,6 +1847,7 @@ var
 
 begin
   FLayoutValid := True;
+  ReadCodeKinds;
   N := CharCount;
   SetLength(FCharX, N);
   SetLength(FCharW, N);
@@ -2049,6 +2132,7 @@ var
   BX, LT, LB: integer;
   IsTbl: boolean;
   CodePad: integer;
+  CodeColors: TInkCodeColors;
 
 { the room in front of an inline code span's first letter }
   function CodeLead(AIndex: integer): integer;
@@ -2074,6 +2158,8 @@ var
 
 begin
   CodePad := FontEm * 2 div 5;
+  { the code colors that read on this background, light or dark }
+  CodeColors := InkCodeColors(ColorToRGB(Color));
   Canvas.Brush.Color := Color;
   Canvas.Brush.Style := bsSolid;
   Canvas.FillRect(ClientRect);
@@ -2220,10 +2306,12 @@ begin
       RunSel := IsSel(i);
       RunEnd := i;
       while (RunEnd + 1 < LineEndIdx) and (FChars[RunEnd + 1] <> #10) and not (IsTbl and IsCellBreak(RunEnd + 1)) and
-        SameInkAttr(EffAttr(RunEnd + 1), EffAttr(i)) and (IsSel(RunEnd + 1) = RunSel) do
+        SameInkAttr(EffAttr(RunEnd + 1), EffAttr(i)) and (IsSel(RunEnd + 1) = RunSel) and (CodeKindAt(RunEnd + 1) = CodeKindAt(i)) do
         Inc(RunEnd);
 
       ApplyAttrToCanvas(EffAttr(i));
+      if (CodeKindAt(i) in [ickComment..ickDeleted]) and (EffAttr(i).Color = clDefault) and (EffAttr(i).Link = '') then
+        Canvas.Font.Color := InkCodeKindColor(CodeKindAt(i), CodeColors);
       if Canvas.GetTextMetrics(tm) then
       begin
         RunAsc := tm.Ascender;

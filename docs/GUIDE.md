@@ -631,9 +631,12 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
   most languages share.  A diff (```` ```diff ```` or ```` ```patch ````,
   or an unnamed block that starts like git's output) is colored by lines:
   added green, removed red, the `@@` hunk lines blue, the file lines bold.
-  It is not a real highlighter and will not always be right;
-  `HighlightCode` turns it off, and `OnHighlightCode` lets a program color
-  the block itself (with SynEdit, say).  `demo/code.md` has a block of each.
+  `TInkRichEdit` colors its code blocks the same way as they are edited,
+  from the fence's language.  It is not a real highlighter and will not
+  always be right; `HighlightCode` turns it off on either control, and
+  `OnHighlightCode` lets a program color a page's block itself (with
+  SynEdit, say).  `InkCodeSpans` gives the same reading as pieces, for a
+  control that draws its own text.  `demo/code.md` has a block of each.
 * Every code block has a **header**, as code viewers draw one: the
   language and how many lines on the left, **Copy** on the right (it copies
   the code alone and says "Copied" for a moment).  `CodeFoldLines` folds a

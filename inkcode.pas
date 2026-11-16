@@ -46,6 +46,26 @@ function InkCodeKnown(const ALanguage: string): boolean;
 { colors that can be read on a page of this background: a light set on a
   light page, a lighter set on a dark one }
 function InkCodeColors(ABackground: TColor): TInkCodeColors;
+
+type
+  { what a piece of code is, for coloring it }
+  TInkCodeKind = (ickPlain, ickComment, ickQuoted, ickNumber, ickKeyword,
+    { a diff's added and removed lines, and its bold file lines }
+    ickInserted, ickDeleted, ickHeading);
+
+  TInkCodeSpan = record
+    { bytes of the code, from 1 }
+    Start, Count: integer;
+    Kind: TInkCodeKind;
+  end;
+  TInkCodeSpans = array of TInkCodeSpan;
+
+{ The colored pieces of the code, in order and not overlapping; what lies
+  between them is plain.  The reading InkHighlight writes as markup, for a
+  control that colors the characters it draws itself. }
+function InkCodeSpans(const ACode, ALanguage: string): TInkCodeSpans;
+{ the color a kind of piece is painted in }
+function InkCodeKindColor(AKind: TInkCodeKind; const AColors: TInkCodeColors): TColor;
 { The code as LazInk markup - <font color> around comments, strings,
   numbers and keywords, everything else escaped as it was.  ACode is plain
   text with its tabs already turned into spaces; its line breaks come back
@@ -566,23 +586,33 @@ begin
   Result := Leads(ALine, '@@') and Count('-', P, AOld) and Count('+', P, ANew);
 end;
 
+{ add a piece of kind K, Count bytes from Start; an empty one is nothing }
+procedure AddSpan(var ASpans: TInkCodeSpans; K: TInkCodeKind; Start, Count: integer);
+begin
+  if Count <= 0 then Exit;
+  SetLength(ASpans, Length(ASpans) + 1);
+  ASpans[High(ASpans)].Start := Start;
+  ASpans[High(ASpans)].Count := Count;
+  ASpans[High(ASpans)].Kind := K;
+end;
+
 { A diff, a line at a time.  Inside a hunk a line is read by its first
   character alone, for as many lines as its @@ line promised - so a removed
   line that says "-- note" is not taken for a file's --- line.  Outside one,
-  the file lines (diff, index, ---, +++ and the like) are bold. }
-function HighlightDiff(const ACode: string; const AColors: TInkCodeColors): string;
+  the file lines (diff, index, ---, +++ and the like) are headings. }
+function DiffSpans(const ACode: string): TInkCodeSpans;
 var
   P, Q, OldLeft, NewLeft: integer;
   Line: string;
   Counted, InHunk: boolean;
 
-  procedure Put(const ALine: string; C: TColor);
+  procedure Put(K: TInkCodeKind);
   begin
-    if ALine <> '' then Result := Result + '<font color="' + ColorText(C) + '">' + Escape(ALine) + '</font>';
+    AddSpan(Result, K, P, Length(Line));
   end;
 
 begin
-  Result := '';
+  Result := nil;
   InHunk := False;
   Counted := False;
   OldLeft := 0;
@@ -601,73 +631,57 @@ begin
     begin
       Counted := HunkCounts(Line, OldLeft, NewLeft);
       InHunk := True;
-      Put(Line, AColors.Number);
+      Put(ickNumber);
     end
     else if InHunk then
     begin
       if Leads(Line, '+') then
       begin
         Dec(NewLeft);
-        Put(Line, AColors.Inserted);
+        Put(ickInserted);
       end
       else if Leads(Line, '-') then
       begin
         Dec(OldLeft);
-        Put(Line, AColors.Deleted);
+        Put(ickDeleted);
       end
       else if Leads(Line, '\') then
         { "\ No newline at end of file" belongs to the line before it }
-        Put(Line, AColors.Comment)
+        Put(ickComment)
       else
       begin
         { context, in both files; an empty line is context whose space was trimmed }
         Dec(OldLeft);
         Dec(NewLeft);
-        Result := Result + Escape(Line);
       end;
     end
     else if Leads(Line, 'diff ') or Leads(Line, 'index ') or Leads(Line, '--- ') or Leads(Line, '+++ ') or Leads(Line, 'new file mode') or
       Leads(Line, 'deleted file mode') or Leads(Line, 'old mode') or Leads(Line, 'new mode') or Leads(Line, 'similarity index') or
       Leads(Line, 'rename from') or Leads(Line, 'rename to') or Leads(Line, 'Binary files') then
-    begin
-      if Line <> '' then Result := Result + '<b>' + Escape(Line) + '</b>';
-    end
+      Put(ickHeading)
     { a diff without its file lines, as people paste one: + and - still read }
-    else if Leads(Line, '+') then Put(Line, AColors.Inserted)
-    else if Leads(Line, '-') then Put(Line, AColors.Deleted)
-    else
-      Result := Result + Escape(Line);
-    if Q <= Length(ACode) then Result := Result + '<br>';
+    else if Leads(Line, '+') then Put(ickInserted)
+    else if Leads(Line, '-') then Put(ickDeleted);
     P := Q + 1;
   end;
 end;
 
-function InkHighlight(const ACode, ALanguage: string; const AColors: TInkCodeColors): string;
+function InkCodeSpans(const ACode, ALanguage: string): TInkCodeSpans;
 var
   R: TInkCodeRules;
   P, Q, Len, Start: integer;
-  Plain: string;
 
   function At(const What: string): boolean;
   begin
     Result := (What <> '') and (Copy(ACode, P, Length(What)) = What);
   end;
 
-  procedure Emit(C: TColor; const S: string);
+  procedure Emit(K: TInkCodeKind; AFrom, ACount: integer);
   begin
-    if S = '' then Exit;
-    Result := Result + '<font color="' + ColorText(C) + '">' + Escape(S) + '</font>';
+    AddSpan(Result, K, AFrom, ACount);
   end;
 
-  { everything not colored goes out as it was }
-  procedure Flush;
-  begin
-    if Plain = '' then Exit;
-    Result := Result + Escape(Plain);
-    Plain := '';
-  end;
-
-  procedure TakeTo(const Close: string; C: TColor);
+  procedure TakeTo(const Close: string; C: TInkCodeKind);
   var
     Q: integer;
   begin
@@ -685,7 +699,7 @@ var
       else
         P := Q + Length(Close);
     end;
-    Emit(C, Copy(ACode, Start, P - Start));
+    Emit(C, Start, P - Start);
   end;
 
   { A quote opens a string only if it closes again on the same line.  An
@@ -772,7 +786,7 @@ var
         Inc(P);
       end;
     end;
-    Emit(AColors.Quoted, Copy(ACode, Start, P - Start));
+    Emit(ickQuoted, Start, P - Start);
   end;
 
   procedure TakeNumber;
@@ -787,7 +801,7 @@ var
     end;
     { "see 1." ends a sentence; the dot is not part of the number }
     while (P > Start + 1) and (ACode[P - 1] = '.') do Dec(P);
-    Emit(AColors.Number, Copy(ACode, Start, P - Start));
+    Emit(ickNumber, Start, P - Start);
   end;
 
   procedure TakeWord;
@@ -804,18 +818,15 @@ var
       SetLength(W, Length(W) - 1);
     end;
     if (R.Words <> '') and ((Pos(' ' + W + ' ', R.Words) > 0) or (R.Fold and (Pos(' ' + LowerCase(W) + ' ', R.Words) > 0))) then
-      Emit(AColors.Keyword, W)
-    else
-      Plain := Plain + W;
+      Emit(ickKeyword, Start, Length(W));
   end;
 
 begin
-  Result := '';
-  Plain := '';
+  Result := nil;
   if (InkCodeLanguage(ALanguage) = 'diff') or ((InkCodeLanguage(ALanguage) = '') and LooksLikeDiff(ACode)) then
-    Exit(HighlightDiff(ACode, AColors));
+    Exit(DiffSpans(ACode));
   R := RulesFor(InkCodeLanguage(ALanguage));
-  if R.Off then Exit(Escape(ACode));
+  if R.Off then Exit;
   Len := Length(ACode);
   P := 1;
   while P <= Len do
@@ -824,55 +835,47 @@ begin
       C's #include }
     if (R.Directive <> #0) and (R.Open1 <> '') and At(R.Open1) and (Copy(ACode, P + Length(R.Open1), 1) = R.Directive) then
     begin
-      Flush;
-      TakeTo(R.Close1, AColors.Keyword);
+      TakeTo(R.Close1, ickKeyword);
       Continue;
     end;
     if (R.Directive = '#') and (ACode[P] = '#') and ((P = 1) or (ACode[P - 1] = #10) or (Trim(Copy(ACode, 1, P - 1)) = '')) then
     begin
-      Flush;
-      TakeTo('', AColors.Keyword);
+      TakeTo('', ickKeyword);
       Continue;
     end;
     if At(R.Line1) or At(R.Line2) or Loose(R.Loose1) or Loose(R.Loose2) then
     begin
-      Flush;
-      TakeTo('', AColors.Comment);
+      TakeTo('', ickComment);
       Continue;
     end;
     if At(R.Open1) then
     begin
-      Flush;
-      TakeTo(R.Close1, AColors.Comment);
+      TakeTo(R.Close1, ickComment);
       Continue;
     end;
     if At(R.Open2) then
     begin
-      Flush;
-      TakeTo(R.Close2, AColors.Comment);
+      TakeTo(R.Close2, ickComment);
       Continue;
     end;
     if At(R.Open3) then
     begin
-      Flush;
-      TakeTo(R.Close3, AColors.Comment);
+      TakeTo(R.Close3, ickComment);
       Continue;
     end;
     { @property, @Override: a decorator reads as a word of the language }
     if R.AtWords and (ACode[P] = '@') and (P < Len) and (ACode[P + 1] in ['a'..'z', 'A'..'Z', '_']) then
     begin
-      Flush;
       Start := P;
       Inc(P);
       while (P <= Len) and (ACode[P] in ['a'..'z', 'A'..'Z', '0'..'9', '_', '.']) do Inc(P);
-      Emit(AColors.Keyword, Copy(ACode, Start, P - Start));
+      Emit(ickKeyword, Start, P - Start);
       Continue;
     end;
     { a string may wear a prefix: f"", r'', b"", rb"" - it is part of it }
     if R.Triples and (ACode[P] in ['f', 'r', 'b', 'u', 'F', 'R', 'B', 'U']) and (P < Len) and (Pos(ACode[P + 1], R.Quotes) > 0) and
       Closes(ACode[P + 1], P + 1) and ((P = 1) or not (ACode[P - 1] in ['a'..'z', 'A'..'Z', '0'..'9', '_'])) then
     begin
-      Flush;
       Q := P;
       Inc(P);
       TakeString(ACode[P], Q);
@@ -881,23 +884,20 @@ begin
     { <div>, </div>: the tag's name is this language's keyword }
     if R.Tags and (ACode[P] = '<') and (P < Len) and (ACode[P + 1] in ['a'..'z', 'A'..'Z', '/', '!', '?']) then
     begin
-      Flush;
       Start := P;
       Inc(P);
       if ACode[P] in ['/', '!', '?'] then Inc(P);
       while (P <= Len) and (ACode[P] in ['a'..'z', 'A'..'Z', '0'..'9', '-', '_', ':']) do Inc(P);
-      Emit(AColors.Keyword, Copy(ACode, Start, P - Start));
+      Emit(ickKeyword, Start, P - Start);
       Continue;
     end;
     if (R.Quotes <> '') and (Pos(ACode[P], R.Quotes) > 0) and Closes(ACode[P], P) then
     begin
-      Flush;
       TakeString(ACode[P], P);
       Continue;
     end;
     if (ACode[P] in ['0'..'9']) and ((P = 1) or not (ACode[P - 1] in ['a'..'z', 'A'..'Z', '0'..'9', '_'])) then
     begin
-      Flush;
       TakeNumber;
       Continue;
     end;
@@ -905,7 +905,6 @@ begin
     if (R.Directive = '$') and (ACode[P] in ['$', '#']) and (P < Len) and (ACode[P + 1] in ['0'..'9', 'a'..'f', 'A'..'F']) and
       ((P = 1) or not (ACode[P - 1] in ['a'..'z', 'A'..'Z', '0'..'9', '_'])) then
     begin
-      Flush;
       TakeNumber;
       Continue;
     end;
@@ -917,19 +916,49 @@ begin
           as anything else }
         Start := P;
         while (P <= Len) and (ACode[P] in ['a'..'z', 'A'..'Z', '0'..'9', '_']) do Inc(P);
-        Plain := Plain + Copy(ACode, Start, P - Start);
       end
       else
-      begin
-        Flush;
         TakeWord;
-      end;
       Continue;
     end;
-    Plain := Plain + ACode[P];
     Inc(P);
   end;
-  Flush;
+end;
+
+function InkCodeKindColor(AKind: TInkCodeKind; const AColors: TInkCodeColors): TColor;
+begin
+  case AKind of
+    ickComment: Result := AColors.Comment;
+    ickQuoted: Result := AColors.Quoted;
+    ickNumber: Result := AColors.Number;
+    ickKeyword: Result := AColors.Keyword;
+    ickInserted: Result := AColors.Inserted;
+    ickDeleted: Result := AColors.Deleted;
+    else
+      Result := clNone;
+  end;
+end;
+
+function InkHighlight(const ACode, ALanguage: string; const AColors: TInkCodeColors): string;
+var
+  Spans: TInkCodeSpans;
+  I, P: integer;
+  Piece: string;
+begin
+  Result := '';
+  Spans := InkCodeSpans(ACode, ALanguage);
+  P := 1;
+  for I := 0 to High(Spans) do
+  begin
+    Result := Result + Escape(Copy(ACode, P, Spans[I].Start - P));
+    Piece := Escape(Copy(ACode, Spans[I].Start, Spans[I].Count));
+    { a diff's file lines are bold in the text color }
+    if Spans[I].Kind = ickHeading then Result := Result + '<b>' + Piece + '</b>'
+    else
+      Result := Result + '<font color="' + ColorText(InkCodeKindColor(Spans[I].Kind, AColors)) + '">' + Piece + '</font>';
+    P := Spans[I].Start + Spans[I].Count;
+  end;
+  Result := Result + Escape(Copy(ACode, P, MaxInt));
 end;
 
 end.
