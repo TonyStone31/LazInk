@@ -1457,15 +1457,18 @@ end;
 
 function TInkCustomPage.MarkdownSheet: string;
 var
-  Paper, Ink: TColor;
+  Paper, Ink, Shade: TColor;
 begin
   Paper := Color;
   if Paper = clDefault then Paper := clWindow;
   Ink := FontInk;
+  { code is shaded toward the text, so it shows on any page: shaded toward
+    white, it vanished on a white one }
+  Shade := MixColor(Paper, Ink, 0.07);
   Result :=
     'blockquote { margin: 0 0 1em; padding: 0 1em; border-left: 0.25em solid ' + ColorToHTMLHex(MixColor(Ink, Paper, 0.6)) + '; color: ' +
-    ColorToHTMLHex(MixColor(Ink, Paper, 0.3)) + ' } ' + 'pre { background: ' + ColorToHTMLHex(HTMLShadeColor(Paper, 7)) +
-    '; padding: 1em; border-radius: 6px } ' + 'code { background: ' + ColorToHTMLHex(HTMLShadeColor(Paper, 7)) + '; padding: 0.2em 0.4em; border-radius: 6px } ' +
+    ColorToHTMLHex(MixColor(Ink, Paper, 0.3)) + ' } ' + 'pre { background: ' + ColorToHTMLHex(Shade) +
+    '; padding: 1em; border-radius: 6px } ' + 'code { background: ' + ColorToHTMLHex(Shade) + '; padding: 0.2em 0.4em; border-radius: 6px } ' +
     'pre code { background: transparent; padding: 0 } ' + 'table { border-collapse: collapse } ' + 'th, td { border: 1px solid ' +
     ColorToHTMLHex(MixColor(Ink, Paper, 0.75)) + '; padding: 6px 13px } ' + 'hr { height: 0.25em; padding: 0; margin: 24px 0; border: 0; background: currentcolor; color: ' +
     ColorToHTMLHex(MixColor(Ink, Paper, 0.85)) + ' } ';
@@ -2306,7 +2309,7 @@ begin
   FLayoutBase := ControlFontPixels;
   { the shades a code block's header takes from the page }
   FBodyText := FontInk;
-  FCodeBack := HTMLShadeColor(FCanvasBack, 7);
+  FCodeBack := MixColor(FCanvasBack, FBodyText, 0.07);
   { the items from FLayoutFrom on, unless the column changed, and from
     FMoveFrom the ones changed - the rest only move }
   LayAll := FLayoutFrom;
