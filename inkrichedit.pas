@@ -2256,7 +2256,8 @@ begin
       else if IsCodeSpan(i) and (EffAttr(i).BackColor = clNone) then
       begin
         { inline code on its chip, as on TInkPage's Markdown page }
-        Canvas.Brush.Color := HTMLShadeColor(ColorToRGB(Color), 7);
+        { shaded toward the contrasting ink: toward white it vanished on a white page }
+        Canvas.Brush.Color := MixColor(ColorToRGB(Color), HTMLContrastColor(ColorToRGB(Color)), 0.07);
         Canvas.Brush.Style := bsSolid;
         Canvas.Pen.Color := Canvas.Brush.Color;
         Canvas.RoundRect(X, RunTop, L.Left + FCharX[RunEnd] + FCharW[RunEnd], RunTop + RunH, 6, 6);
@@ -3660,7 +3661,7 @@ begin
   Back := ColorToRGB(Color);
   Fore := ColorToRGB(Font.Color);
   Canvas.Brush.Style := bsSolid;
-  Canvas.Brush.Color := HTMLShadeColor(Back, 10);
+  Canvas.Brush.Color := MixColor(Back, HTMLContrastColor(Back), 0.08);
   Canvas.Pen.Color := MixColor(Back, Fore, 0.4);
   Canvas.RoundRect(Bar, 8, 8);
   Canvas.Font.Assign(Font);

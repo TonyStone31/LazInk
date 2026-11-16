@@ -4399,7 +4399,8 @@ begin
   Fore := FontInk;
   if PageStyle(True) <> nil then Fore := InkToColor(PageStyle(True).Color('color'), PageBack);
   ACanvas.Brush.Style := bsSolid;
-  ACanvas.Brush.Color := HTMLShadeColor(PageBack, 10);
+  { shaded toward the text, as code is: toward white it was white on a white page }
+  ACanvas.Brush.Color := MixColor(PageBack, Fore, 0.08);
   ACanvas.Pen.Color := MixColor(PageBack, Fore, 0.4);
   ACanvas.RoundRect(Bar, 8, 8);
   ACanvas.Font.Assign(Font);
