@@ -45,7 +45,8 @@ A page's own rules beat the program's stylesheet.
 | `<br>` | a line break |
 | `<wbr>` | a break opportunity inside a long word |
 | `<span style="...">` | whatever the style attribute says |
-| `<abbr title="...">` | its text (the title is not shown) |
+| `<abbr title="...">` | its text, underlined, the title as a tooltip |
+| `title="..."` on anything | the tooltip over it, as a browser shows one: a link's own title first, then the innermost titled element |
 
 **Entities:** `&amp; &lt; &gt; &quot; &nbsp; &copy; &reg; &trade; &euro;
 &mdash; &ndash; &hellip; &rarr; &larr; &times; &deg;` and about fifty more,
