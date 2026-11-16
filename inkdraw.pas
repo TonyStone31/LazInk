@@ -35,6 +35,7 @@ type
     LinkName: string;      { the href }
     LinkText: string;      { the words between <a> and </a> }
     LinkIndex: integer;    { the ordinal of the link, counting from 1 }
+    TipIndex: integer;     { the title under the point, from 1; 0 for none }
   end;
 
   { Everything about a render beyond the text itself, passed as one record. }
@@ -640,6 +641,7 @@ begin
   Result.LinkName := '';
   Result.LinkText := '';
   Result.LinkIndex := 0;
+  Result.TipIndex := 0;
   O := EngineOptions(Canvas, AOpts, Rect.Right - Rect.Left, Rect.Bottom - Rect.Top, []);
   L := PreparedLayout(Canvas, Aligned(Text, AOpts.HorzAlign), O, Cache);
   try
@@ -651,6 +653,7 @@ begin
   Result.LinkName := Hit.LinkName;
   Result.LinkText := Hit.LinkText;
   Result.LinkIndex := Hit.LinkIndex;
+  Result.TipIndex := Hit.TipIndex;
 end;
 
 procedure HTMLMeasureAndHit(Canvas: TCanvas; Rect: TRect; const Text: string; const AOpts: THTMLOptions; MouseX, MouseY: integer;
@@ -666,6 +669,7 @@ begin
   AHit.LinkName := '';
   AHit.LinkText := '';
   AHit.LinkIndex := 0;
+  AHit.TipIndex := 0;
   O := EngineOptions(Canvas, AOpts, Rect.Right - Rect.Left, Rect.Bottom - Rect.Top, []);
   Relay := nil;
   if Assigned(AOpts.OnRun) then
@@ -688,6 +692,7 @@ begin
         AHit.LinkName := Hit.LinkName;
         AHit.LinkText := Hit.LinkText;
         AHit.LinkIndex := Hit.LinkIndex;
+        AHit.TipIndex := Hit.TipIndex;
       end;
     finally
       if Cache <> nil then L.Release

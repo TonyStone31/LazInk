@@ -55,6 +55,9 @@ type
     Script: TInkRenderScript;
     LinkIndex: integer;
     LinkName: string;
+    { the title over these words, by its number in the block, counting from
+      1: what a pointer resting on them shows }
+    TipIndex: integer;
     Align: TInkRenderAlign;
     Indent: integer;
     { a pill: an inline box with its own padding, round corners and border,
@@ -113,6 +116,8 @@ type
   TInkRenderHit = record
     OnLink: boolean;
     LinkIndex: integer;
+    { the title under the point, link or not; 0 for none }
+    TipIndex: integer;
     LinkName, LinkText: string;
     RunIndex: integer;
     CharacterOffset: integer;
@@ -1001,6 +1006,7 @@ begin
   Result.Script := nsNormal;
   Result.LinkIndex := 0;
   Result.LinkName := '';
+  Result.TipIndex := 0;
   Result.Align := naLeft;
   Result.Indent := 0;
   Result.PillPadH := 0;
@@ -1036,6 +1042,7 @@ begin
   Result.Script := nsNormal;
   Result.LinkIndex := 0;
   Result.LinkName := '';
+  Result.TipIndex := 0;
   Result.Indent := 0;
   Result.PillPadH := 0;
   Result.PillPadV := 0;
@@ -1063,6 +1070,8 @@ begin
       Result.LinkIndex := Stack[I].LinkIndex;
       Result.LinkName := Stack[I].LinkName;
     end;
+    { the innermost title is the one shown }
+    if Stack[I].TipIndex > 0 then Result.TipIndex := Stack[I].TipIndex;
     if Stack[I].Align <> naLeft then Result.Align := Stack[I].Align;
     if Stack[I].Indent <> 0 then Result.Indent := Stack[I].Indent;
     if Stack[I].LineHeight <> 0 then Result.LineHeight := Stack[I].LineHeight;
@@ -1245,6 +1254,12 @@ begin
           if N > 0 then S.PillMarB := InkRenderScalePx(N, Options.Scale);
           N := StrToIntDef(InkRenderAttr(T.Attributes, 'lineheight'), 0);
           if N <> 0 then S.LineHeight := N;
+        end
+        else if T.Name = 'span' then
+        begin
+          { <span tip="n">: words with a title, the block's nth }
+          N := StrToIntDef(InkRenderAttr(T.Attributes, 'tip'), 0);
+          if N > 0 then S.TipIndex := N;
         end
         else if T.Name = 'a' then
         begin
@@ -3580,6 +3595,7 @@ var
 begin
   Result.OnLink := False;
   Result.LinkIndex := 0;
+  Result.TipIndex := 0;
   Result.LinkName := '';
   Result.LinkText := '';
   Result.RunIndex := -1;
@@ -3598,7 +3614,9 @@ begin
       for I := L.FirstRun to L.FirstRun + L.RunCount - 1 do
       begin
         R := ALayout.FRuns[I];
-        if not PtInRect(R.Bounds, Point(X, Y)) or (R.Style.LinkIndex = 0) then Continue;
+        if not PtInRect(R.Bounds, Point(X, Y)) then Continue;
+        if R.Style.TipIndex > 0 then Result.TipIndex := R.Style.TipIndex;
+        if R.Style.LinkIndex = 0 then Continue;
         Result.OnLink := True;
         Result.LinkIndex := R.Style.LinkIndex;
         Result.LinkName := R.Style.LinkName;

@@ -120,6 +120,9 @@ type
     LinkTargets: array of string;
     { the title of each text link, in the same order: its tooltip }
     LinkTitles: array of string;
+    { the titles of the other elements in the words - an <abbr>, a <span>,
+      a picture - numbered from 1 by the tip="n" the markup carries }
+    Tips: array of string;
     { a <summary>: the fold it opens and shuts, -1 for anything else }
     FoldHead: integer;
     { the block, and the part of it the words are drawn in; page coordinates }
@@ -272,6 +275,10 @@ type
     function TreePaintMarker(ACanvas: TCanvas; B: TInkPageBlock; const TR: TRect): boolean;
     function TreeBlockAt(X, DocY: integer; ANearest: boolean): integer;
     function TreeElementAt(X, DocY: integer): TInkNode;
+    { the title a browser would show as the tooltip at a point that is not
+      on a titled link: an element's in the words, else the nearest one
+      round the box under the point; '' for none }
+    function TitleAt(X, Y: integer): string;
     procedure TreeToggleFold(Index: integer);
     procedure LoadPicture(B: TInkPageBlock);
     { the styler's system colors - canvas, text and links - from the
@@ -2786,6 +2793,7 @@ begin
   AHit.LinkName := '';
   AHit.LinkText := '';
   AHit.LinkIndex := 0;
+  AHit.TipIndex := 0;
   Layout;
   for I := 0 to FBlocks.Count - 1 do
   begin
@@ -2816,6 +2824,38 @@ begin
       ABlock := I;
       Exit(True);
     end;
+  end;
+end;
+
+function TInkCustomPage.TitleAt(X, Y: integer): string;
+var
+  I: integer;
+  B: TInkPageBlock;
+  R: TRect;
+  Hit: THTMLHitInfo;
+  N: TInkNode;
+begin
+  Result := '';
+  Layout;
+  { the words first: the innermost titled element under the point }
+  for I := 0 to FBlocks.Count - 1 do
+  begin
+    B := TInkPageBlock(FBlocks[I]);
+    if (Length(B.Tips) = 0) or (B.Wrapped = '') then Continue;
+    R := B.TextBounds;
+    OffsetRect(R, 0, -FScroll.Position);
+    if not PtInRect(R, Point(X, Y)) then Continue;
+    BlockFont(Canvas, B);
+    Hit := HTMLHitTest(Canvas, R, B.Wrapped, BlockOptions(I), X, Y, FRenderCache);
+    if (Hit.TipIndex >= 1) and (Hit.TipIndex <= Length(B.Tips)) then Exit(B.Tips[Hit.TipIndex - 1]);
+  end;
+  { then the boxes: a titled paragraph, cell or picture, or anything
+    inside one, as a title reaches everything an element holds }
+  N := ElementAt(X, Y);
+  while (N <> nil) and (N.Kind = inkElement) do
+  begin
+    if N.GetAttribute('title') <> '' then Exit(N.GetAttribute('title'));
+    N := N.Parent;
   end;
 end;
 
@@ -3180,6 +3220,8 @@ begin
     if (HoverHit.LinkIndex >= 1) and (HoverHit.LinkIndex <= Length(B.LinkTitles)) then
       Tip := B.LinkTitles[HoverHit.LinkIndex - 1];
   end;
+  { and any other element's: an <abbr>, a picture, a cell }
+  if Tip = '' then Tip := TitleAt(X, Y);
   if Tip <> Hint then
   begin
     Hint := Tip;
@@ -3277,6 +3319,7 @@ begin
   NoHit.LinkName := '';
   NoHit.LinkText := '';
   NoHit.LinkIndex := 0;
+  NoHit.TipIndex := 0;
   HoverChanged(-1, NoHit);
 end;
 

@@ -648,6 +648,7 @@ begin
   Empty.LinkName := '';
   Empty.LinkText := '';
   Empty.LinkIndex := 0;
+  Empty.TipIndex := 0;
   UpdateHover(Empty);
 end;
 

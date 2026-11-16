@@ -778,6 +778,7 @@ begin
   Hit.LinkName := '';
   Hit.LinkText := '';
   Hit.LinkIndex := 0;
+  Hit.TipIndex := 0;
   Idx := GetIndexAtY(Y);
   if FHTMLEnabled and (Idx >= 0) and (Idx < Items.Count) then
   begin
@@ -799,6 +800,7 @@ begin
   Empty.LinkName := '';
   Empty.LinkText := '';
   Empty.LinkIndex := 0;
+  Empty.TipIndex := 0;
   UpdateHover(-1, Empty);
 end;
 

@@ -274,7 +274,7 @@ var
   Base: TInkStyle;
   Out_, V, Head, Tail: string;
   PendingSpace, AtStart: boolean;
-  Targets, Titles: TStringList;
+  Targets, Titles, Tips: TStringList;
   BackCol: TColor;
   I: integer;
   N: TInkNode;
@@ -434,6 +434,26 @@ var
 
   procedure Element(E: TInkNode; P: TInkStyle; Deco: string); forward;
 
+  { the markup that marks an element's words with its title, as the
+    block's next tip; '' for one without a title }
+  function TipOpen(E: TInkNode): string;
+  var
+    T: string;
+  begin
+    Result := '';
+    T := E.GetAttribute('title');
+    if T = '' then Exit;
+    Tips.Add(T);
+    Result := '<span tip="' + IntToStr(Tips.Count) + '">';
+  end;
+
+  function TipClose(E: TInkNode): string;
+  begin
+    if E.GetAttribute('title') = '' then Result := ''
+    else
+      Result := '</span>';
+  end;
+
   procedure Node(N: TInkNode; P: TInkStyle; const Deco: string);
   begin
     if N.Kind = inkText then Words(N.Data, P)
@@ -482,7 +502,7 @@ var
       if PendingSpace then Put(' ');
       PendingSpace := False;
       AtStart := False;
-      Put(V2);
+      Put(TipOpen(E) + V2 + TipClose(E));
       Exit;
     end;
     if E.Name = 'input' then
@@ -636,6 +656,12 @@ var
       Close := Close + '</a>';
       Targets.Add(E.GetAttribute('target'));
       Titles.Add(E.GetAttribute('title'));
+    end
+    else
+    begin
+      { any other element's title is the tooltip over its words }
+      Open := TipOpen(E) + Open;
+      Close := Close + TipClose(E);
     end;
     if PendingSpace and (Open <> '') then
     begin
@@ -758,6 +784,7 @@ begin
   B.Ellipsize := B.NoWrap and (Base.Keyword('text-overflow') = 'ellipsis') and (Base.Keyword('overflow-x') <> 'visible');
   Targets := TStringList.Create;
   Titles := TStringList.Create;
+  Tips := TStringList.Create;
   try
     Out_ := '';
     PendingSpace := False;
@@ -835,9 +862,12 @@ begin
     for I := 0 to Targets.Count - 1 do B.LinkTargets[I] := Targets[I];
     SetLength(B.LinkTitles, Titles.Count);
     for I := 0 to Titles.Count - 1 do B.LinkTitles[I] := Titles[I];
+    SetLength(B.Tips, Tips.Count);
+    for I := 0 to Tips.Count - 1 do B.Tips[I] := Tips[I];
   finally
     Targets.Free;
-    Titles.Free
+    Titles.Free;
+    Tips.Free
   end;
   { a code block: its text for the header's Copy, and colored when the
     page wrote <pre><code> and colored nothing itself }
