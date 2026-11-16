@@ -618,8 +618,12 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
   first color.
 * Tables have no `<col>`/`<colgroup>` widths.
 * The Markdown is GitHub's, as documents use it, not CommonMark-complete:
-  emphasis follows simpler rules than the specification, a link reference
-  definition has to fit on one line, and footnotes are not read.
+  emphasis follows simpler rules than the specification, and a link
+  reference definition has to fit on one line.  Footnotes are read the way
+  GitHub reads them: `[^1]` in the text, a `[^1]: note` definition anywhere,
+  the notes numbered as they are first referred to and listed at the end
+  of the page with a link back.  `TInkRichEdit` leaves them as the text
+  they are written as (`imoNoFootnotes`), so they come out unchanged.
 * LazInk colors code blocks a little - comments, strings, numbers and
   keywords.  Comment and quote rules cover about sixty language names;
   keyword lists exist for the dozen or so that turn up in documents, Pascal

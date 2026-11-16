@@ -15,12 +15,15 @@
   and GitHub's "> [!NOTE]" alerts, horizontal rules, pipe tables with their
   alignment, * _ ** __ *** and ~~ emphasis, code spans, inline, reference
   and angle-bracket links, bare http(s):// and www. links, images, entities
-  and backslash escapes.  HTML comments are dropped.  Other raw HTML is shown
-  as text unless imoRawHTML is given.
+  and backslash escapes, and GitHub's footnotes - [^label] in the text, a
+  "[^label]: note" definition anywhere, the notes numbered in the order they
+  are first referred to and listed at the end, each with a link back.  HTML
+  comments are dropped.  Other raw HTML is shown as text unless imoRawHTML
+  is given.
 
   CommonMark conformance is incomplete: emphasis follows simpler rules than
-  the specification's delimiter algorithm, a link reference definition has
-  to fit on one line, and footnotes are not read. }
+  the specification's delimiter algorithm, and a link reference definition
+  has to fit on one line. }
 unit InkMarkdown;
 {$mode objfpc}{$H+}
 interface
@@ -39,7 +42,11 @@ type
       and title; everything else - <folder> placeholders, block tags,
       scripts, anything malformed - stays visible text.  Safe for text that
       is not fully trusted.  imoRawHTML wins when both are given. }
-    imoInlineHTML);
+    imoInlineHTML,
+    { leave footnotes as the text they are written as - for an editor that
+      works a block at a time, where a note's definition and its marker
+      are converted apart }
+    imoNoFootnotes);
   TInkMarkdownOptions = set of TInkMarkdownOption;
   TInkMarkdownBlock = record
     First, Count: integer;  // byte range in the original source, starting at 1
@@ -535,8 +542,13 @@ type
     FOptions: TInkMarkdownOptions;
     FRefs: TStringList;     // label=destination#1title
     FSlugs: TStringList;
+    { footnotes: label=its Markdown, and the labels in the order they are
+      first referred to, which numbers them }
+    FNotes, FNoteOrder: TStringList;
     FBlockMap: TInkMarkdownBlocks;
     FOffsets: array of integer;
+    function TryFootnote(const S: string; P: Integer; var Output: string): Integer;
+    function FootnoteSection: string;
     function StartsBlock(const L: string): Boolean;
     function IsTable(Lines: TStrings; I: Integer; Aligns: TStrings): Boolean;
     procedure ReadDefinitions(Lines: TStrings);
@@ -562,12 +574,16 @@ begin
   FRefs := TStringList.Create;
   FSlugs := TStringList.Create;
   FSlugs.Sorted := True;
+  FNotes := TStringList.Create;
+  FNoteOrder := TStringList.Create;
 end;
 
 destructor TMarkdown.Destroy;
 begin
   FRefs.Free;
   FSlugs.Free;
+  FNotes.Free;
+  FNoteOrder.Free;
   inherited;
 end;
 
@@ -624,6 +640,46 @@ begin
       Inc(I); PrevBlank := False; Continue;
     end;
     T := Trim(L);
+    { a footnote: "[^label]: note", and the lines that go on with it - the
+      next lines of its paragraph, and after a blank line those indented
+      four spaces.  It may stand anywhere a line starts. }
+    if not (imoNoFootnotes in FOptions) and (LeadSpaces(L) <= 3) and (Copy(T, 1, 2) = '[^') then
+    begin
+      P := Pos(']:', T);
+      Name := NormalLabel(Copy(T, 3, P - 3));
+      if (P > 3) and (Pos(' ', Name) = 0) and (Pos(']', Copy(T, 3, P - 3)) = 0) then
+      begin
+        Dest := TrimLeft(Copy(T, P + 2, MaxInt));
+        Lines[I] := '';
+        Inc(I);
+        while I < Lines.Count do
+        begin
+          L := Lines[I];
+          if IsBlank(L) then
+          begin
+            Q := I + 1;
+            while (Q < Lines.Count) and IsBlank(Lines[Q]) do Inc(Q);
+            if (Q >= Lines.Count) or (LeadSpaces(Lines[Q]) < 4) then Break;
+            while I < Q do
+            begin
+              Dest := Dest + LF;
+              Lines[I] := '';
+              Inc(I);
+            end;
+            Continue;
+          end;
+          { a line that starts something else ends the note, unless it is
+            indented under it }
+          if (LeadSpaces(L) < 4) and ((Copy(Trim(L), 1, 2) = '[^') or StartsBlock(L)) then Break;
+          Dest := Dest + LF + Unindent(L, 4);
+          Lines[I] := '';
+          Inc(I);
+        end;
+        if FNotes.IndexOfName(Name) < 0 then FNotes.Add(Name + '=' + StringReplace(Dest, LF, #2, [rfReplaceAll]));
+        PrevBlank := True;
+        Continue;
+      end;
+    end;
     if PrevBlank and (LeadSpaces(L) <= 3) and (CharAt(T, 1) = '[') then
     begin
       P := Pos(']:', T);
@@ -1102,7 +1158,11 @@ begin
           if N > 0 then Inc(N);
         end;
       '[':
-        if Links then N := TryLink(S, P, False, Part);
+        if Links then
+        begin
+          if CharAt(S, P + 1) = '^' then N := TryFootnote(S, P, Part);
+          if N = 0 then N := TryLink(S, P, False, Part);
+        end;
       '*', '_', '~':
         N := TryEmphasis(S, P, Links, Part);
       '&':
@@ -1281,6 +1341,66 @@ end;
 
 { [text](destination "title"), [text][label], [label][] and [label]; with
   Image, the same after a "!".  P is on the "[". }
+{ [^label] where a note of that label was defined: its number, raised,
+  linking down to the note.  The first reference carries the id the note
+  links back to. }
+function TMarkdown.TryFootnote(const S: string; P: Integer; var Output: string): Integer;
+var Q, K: Integer; Name, Slug: string;
+begin
+  Result := 0;
+  Q := P + 2;
+  while (Q <= Length(S)) and not (S[Q] in [']', '[', ' ', LF]) do Inc(Q);
+  if (CharAt(S, Q) <> ']') or (Q = P + 2) then Exit;
+  Name := NormalLabel(Copy(S, P + 2, Q - P - 2));
+  if FNotes.IndexOfName(Name) < 0 then Exit;
+  Slug := MarkdownSlug(Name);
+  K := FNoteOrder.IndexOf(Name);
+  if K < 0 then
+  begin
+    K := FNoteOrder.Add(Name);
+    Output := '<sup><a href="#fn-' + Slug + '" id="fnref-' + Slug + '">' + IntToStr(K + 1) + '</a></sup>';
+  end
+  else
+    Output := '<sup><a href="#fn-' + Slug + '">' + IntToStr(K + 1) + '</a></sup>';
+  Result := Q - P + 1;
+end;
+
+{ The notes referred to, in the order they were first referred to, each
+  with a link back up to its reference - GitHub's list at the foot of the
+  page.  A note may refer to another, which joins the end of the list. }
+function TMarkdown.FootnoteSection: string;
+var I, K: Integer; Name, Slug, Body: string; NoteLines: TStringList;
+begin
+  Result := '';
+  if FNoteOrder.Count = 0 then Exit;
+  Result := '<section class="footnotes">' + LF + '<ol>' + LF;
+  NoteLines := TStringList.Create;
+  try
+    I := 0;
+    while I < FNoteOrder.Count do
+    begin
+      Name := FNoteOrder[I];
+      Slug := MarkdownSlug(Name);
+      NoteLines.Text := StringReplace(FNotes.Values[Name], #2, LF, [rfReplaceAll]);
+      Body := Blocks(NoteLines, False);
+      { the way back goes at the end of the note's last paragraph }
+      K := Length(Body);
+      while (K > 0) and (Body[K] in [LF, #13, ' ']) do Dec(K);
+      SetLength(Body, K);
+      K := Length(Body) - Length('</p>') + 1;
+      if (K > 0) and (Copy(Body, K, 4) = '</p>') then
+        Insert(' <a href="#fnref-' + Slug + '" class="footnote-backref">' + #$E2#$86#$A9 + '</a>', Body, K)
+      else
+        Body := Body + LF + '<p><a href="#fnref-' + Slug + '" class="footnote-backref">' + #$E2#$86#$A9 + '</a></p>';
+      Result := Result + '<li id="fn-' + Slug + '">' + LF + Body + LF + '</li>' + LF;
+      Inc(I);
+    end;
+  finally
+    NoteLines.Free;
+  end;
+  Result := Result + '</ol>' + LF + '</section>' + LF;
+end;
+
 function TMarkdown.TryLink(const S: string; P: Integer; Image: Boolean; var Output: string): Integer;
 var Q, E, K, Depth: Integer; Text, Dest, Title: string; Found: Boolean;
   Closer: Char;
@@ -1506,6 +1626,9 @@ begin
       SetLength(FOffsets, I + 1);
       FOffsets[I] := Length(S) + 1;
     end;
+    { block by block the editor maps its source: a note and its marker
+      would be read apart there, so footnotes stay as written }
+    if Capture then Include(FOptions, imoNoFootnotes);
     Lines.Text := S;
     { tabs count as spaces for indents and markers, but a fenced code
       block's lines are its content and keep them, as CommonMark says }
@@ -1526,6 +1649,7 @@ begin
       end;
     ReadDefinitions(Lines);
     Result := Blocks(Lines, False, Capture);
+    if not Capture then Result := Result + FootnoteSection;
   finally Lines.Free end;
 end;
 

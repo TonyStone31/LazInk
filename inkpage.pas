@@ -1488,7 +1488,10 @@ begin
     '; padding: 1em; border-radius: 6px } ' + 'code { background: ' + ColorToHTMLHex(Shade) + '; padding: 0.2em 0.4em; border-radius: 6px } ' +
     'pre code { background: transparent; padding: 0 } ' + 'table { border-collapse: collapse } ' + 'th, td { border: 1px solid ' +
     ColorToHTMLHex(MixColor(Ink, Paper, 0.75)) + '; padding: 6px 13px } ' + 'hr { height: 0.25em; padding: 0; margin: 24px 0; border: 0; background: currentcolor; color: ' +
-    ColorToHTMLHex(MixColor(Ink, Paper, 0.85)) + ' } ';
+    ColorToHTMLHex(MixColor(Ink, Paper, 0.85)) + ' } ' +
+    { footnotes at the foot, as GitHub sets them: smaller, quieter, under a rule }
+    'section.footnotes { margin-top: 2em; padding-top: 0.5em; border-top: 1px solid ' + ColorToHTMLHex(MixColor(Ink, Paper, 0.75)) +
+    '; font-size: 85%; color: ' + ColorToHTMLHex(MixColor(Ink, Paper, 0.3)) + ' } ';
 end;
 
 function TInkCustomPage.ImageFitSheet: string;

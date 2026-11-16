@@ -898,7 +898,7 @@ var
     Expected := UTF8Copy(DisplayText, 1, GetSelStart) + Marker + UTF8Copy(DisplayText, GetSelStart + 1, MaxInt);
     FirstByte := 1;
     EndByte := Length(Source) + 1;
-    Blocks := MarkdownBlocks(Source, [imoInlineHTML]);
+    Blocks := MarkdownBlocks(Source, [imoInlineHTML, imoNoFootnotes]);
     BlockID := 0;
     if GetSelStart < CharCount then BlockID := FAttrs[GetSelStart].MarkdownBlock
     else if CharCount > 0 then BlockID := FAttrs[CharCount - 1].MarkdownBlock;
@@ -1368,7 +1368,7 @@ begin
   if Src <> BlockSource(ABlock) then FMarkdownOriginals[ABlock - 1].Edited := Src;
   Lines := TStringList.Create;
   try
-    MarkdownHTMLToParagraphs(MarkdownToHTML(Src, [imoRawHTML]), Lines);
+    MarkdownHTMLToParagraphs(MarkdownToHTML(Src, [imoRawHTML, imoNoFootnotes]), Lines);
     if Lines.Count = 0 then
     begin
       FMarkdownOriginals[ABlock - 1].Locked := False;
@@ -5068,7 +5068,7 @@ var
   Needle, Replacement, Candidate, Wanted: string;
 begin
   Result := '';
-  Wanted := MarkdownToHTML(After, [imoInlineHTML]);
+  Wanted := MarkdownToHTML(After, [imoInlineHTML, imoNoFootnotes]);
   P := 1;
   while (P <= Length(Before)) and (P <= Length(After)) and (Before[P] = After[P]) do Inc(P);
   OldEnd := Length(Before);
@@ -5098,7 +5098,7 @@ begin
       while (K > 0) and (Tries < 16) do
       begin
         Candidate := Copy(Source, 1, K - 1) + Replacement + Copy(Source, K + Length(Needle), MaxInt);
-        if MarkdownToHTML(Candidate, [imoInlineHTML]) = Wanted then Exit(Candidate);
+        if MarkdownToHTML(Candidate, [imoInlineHTML, imoNoFootnotes]) = Wanted then Exit(Candidate);
         K := PosEx(Needle, Source, K + 1);
         Inc(Tries);
       end;
@@ -5258,7 +5258,7 @@ begin
   FImageBase := ABaseURI;
   FOpenBlock := 0;
   ClearImages;
-  Blocks := MarkdownBlocks(S, [imoInlineHTML]);
+  Blocks := MarkdownBlocks(S, [imoInlineHTML, imoNoFootnotes]);
   SetLength(Raw, Length(Blocks));
   SetLength(Locked, Length(Blocks));
   { an HTML block - a <p align="center"> of pictures, a <details>, an
@@ -5282,7 +5282,7 @@ begin
       begin
         I := Lines.Count;
         if Locked[B] then
-          MarkdownHTMLToParagraphs(MarkdownToHTML(Copy(S, Blocks[B].First, Blocks[B].Count), [imoRawHTML]), Lines);
+          MarkdownHTMLToParagraphs(MarkdownToHTML(Copy(S, Blocks[B].First, Blocks[B].Count), [imoRawHTML, imoNoFootnotes]), Lines);
         if Lines.Count = I then Locked[B] := False;  { nothing drawable in it: its source, then }
         if not Locked[B] then
           if Raw[B] then
@@ -5325,7 +5325,7 @@ begin
           I := Last[B];
           if (I > First[B]) and (I < CharCount) and (FChars[I - 1] = #10) then Dec(I);
           Canonical := MarkdownRange(Max(0, First[B]), Max(0, I));
-          Raw[B] := not Locked[B] and ((Comparable(MarkdownToHTML(Canonical, [imoInlineHTML])) <> Comparable(Blocks[B].HTML)) or
+          Raw[B] := not Locked[B] and ((Comparable(MarkdownToHTML(Canonical, [imoInlineHTML, imoNoFootnotes])) <> Comparable(Blocks[B].HTML)) or
             (Pos('<!--', Copy(S, Blocks[B].First, Blocks[B].Count)) > 0));
         end;
     end;
