@@ -707,13 +707,14 @@ type
       URL is read: write the bytes to Destination and set Handled to supply
       them from somewhere else, such as a resource or a database. }
     property OnResource: TInkPageResourceEvent read FOnResource write FOnResource;
-    { Colors a code block's comments, strings, numbers and keywords.  The
-      language comes from the fence (```pascal) or from
-      class="language-x"; a block that names none is colored by rules most
-      languages agree on, so every block gets something.  The colors
-      themselves suit the page's background, and CSS may name them:
-      a :root rule may name them - --ink-code-comment, --ink-code-string,
-      --ink-code-number, --ink-code-keyword. }
+    { Colors a code block's comments, strings, numbers and keywords, and a
+      diff's added and removed lines.  The language comes from the fence
+      (```pascal) or from class="language-x"; a block that names none is
+      colored by rules most languages agree on, so every block gets
+      something.  The colors themselves suit the page's background, and a
+      :root rule may name them - --ink-code-comment, --ink-code-string,
+      --ink-code-number, --ink-code-keyword, --ink-code-inserted,
+      --ink-code-deleted. }
     property HighlightCode: boolean read FHighlightCode write SetHighlightCode default True;
     { a host that would rather color code itself - see TInkHighlightEvent }
     property OnHighlightCode: TInkHighlightEvent read FOnHighlightCode write FOnHighlightCode;
@@ -1243,6 +1244,8 @@ begin
   Colors.Quoted := Named('--ink-code-string', Colors.Quoted);
   Colors.Number := Named('--ink-code-number', Colors.Number);
   Colors.Keyword := Named('--ink-code-keyword', Colors.Keyword);
+  Colors.Inserted := Named('--ink-code-inserted', Colors.Inserted);
+  Colors.Deleted := Named('--ink-code-deleted', Colors.Deleted);
   Result := InkHighlight(ACode, ALanguage, Colors);
 end;
 

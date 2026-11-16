@@ -290,6 +290,24 @@ REM and the old way of saying the same thing
 for %%f in (*.pas) do echo compiling %%f
 ```
 
+## A diff
+
+Colored by lines, not words: what was added, what was taken out, and the
+`@@` line each hunk starts with. A block that names no language but starts
+like git's output is read as a diff too.
+
+```diff
+diff --git a/greet.pas b/greet.pas
+--- a/greet.pas
++++ b/greet.pas
+@@ -3,4 +3,5 @@ procedure Greet(const Name: string);
+ begin
+-  WriteLn('Hello ', Name);
++  WriteLn('Hello, ', Name, '!');
++  Inc(Greeted);
+ end;
+```
+
 ## And one that says nothing
 
 No fence language, so the shared rules do what they can - which is most of it.

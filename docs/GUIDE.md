@@ -621,10 +621,12 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
   keywords.  Comment and quote rules cover about sixty language names;
   keyword lists exist for the dozen or so that turn up in documents, Pascal
   first among them.  A block that names no language is colored by the rules
-  most languages share.  It is not a real highlighter and will not always be
-  right; `HighlightCode` turns it off, and `OnHighlightCode` lets a program
-  color the block itself (with SynEdit, say).  `demo/code.md` has a block of
-  each.
+  most languages share.  A diff (```` ```diff ```` or ```` ```patch ````,
+  or an unnamed block that starts like git's output) is colored by lines:
+  added green, removed red, the `@@` hunk lines blue, the file lines bold.
+  It is not a real highlighter and will not always be right;
+  `HighlightCode` turns it off, and `OnHighlightCode` lets a program color
+  the block itself (with SynEdit, say).  `demo/code.md` has a block of each.
 * Every code block has a **header**, as code viewers draw one: the
   language and how many lines on the left, **Copy** on the right (it copies
   the code alone and says "Copied" for a moment).  `CodeFoldLines` folds a

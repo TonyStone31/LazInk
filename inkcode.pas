@@ -15,6 +15,11 @@
   It will be wrong here and there, which is the deal: some coloring on every
   block beats none, and naming the language in the fence makes it right.
 
+  A diff is the one block colored by lines rather than words: what was
+  added, what was taken out, and the @@ line each hunk starts with.  A
+  block that names no language but plainly is a diff - one starting with
+  "diff --git", or with ---, +++ and an @@ line - is read as one.
+
   A host that wants a real highlighter - SynEdit's, say - answers
   TInkCustomPage.OnHighlightCode instead; nothing here is in its way. }
 unit InkCode;
@@ -29,6 +34,8 @@ type
   { what a code block is painted with }
   TInkCodeColors = record
     Comment, Quoted, Number, Keyword: TColor;
+    { a diff's added and removed lines }
+    Inserted, Deleted: TColor;
   end;
 
 { 'language-pascal', 'PASCAL', 'pas' and '  pascal  ' all come back
@@ -172,6 +179,7 @@ begin
   else if (S = 'xml') or (S = 'svg') or (S = 'xhtml') or (S = 'htm') then S := 'html'
   else if (S = 'scss') or (S = 'less') then S := 'css'
   else if (S = 'conf') or (S = 'cfg') or (S = 'toml') or (S = 'dosini') then S := 'ini'
+  else if (S = 'patch') or (S = 'udiff') then S := 'diff'
   else if (S = 'md') or (S = 'text') or (S = 'txt') or (S = 'plain') or (S = 'plaintext') or (S = 'none') then S := 'markdown';
   Result := S;
 end;
@@ -198,6 +206,14 @@ begin
   if L = 'markdown' then
   begin
     Result.Quotes := '';
+    Result.Off := True;
+    Exit;
+  end;
+  { a diff is colored by its lines, in InkHighlight; there are no word rules }
+  if L = 'diff' then
+  begin
+    Result.Quotes := '';
+    Result.Known := True;
     Result.Off := True;
     Exit;
   end;
@@ -460,6 +476,8 @@ begin
     Result.Quoted := RGBToColor($03, $2F, $62);
     Result.Number := RGBToColor($00, $5C, $C5);
     Result.Keyword := RGBToColor($D7, $3A, $49);
+    Result.Inserted := RGBToColor($22, $86, $3A);
+    Result.Deleted := RGBToColor($B3, $1D, $28);
   end
   else
   begin
@@ -467,6 +485,8 @@ begin
     Result.Quoted := RGBToColor($A5, $D6, $FF);
     Result.Number := RGBToColor($79, $C0, $FF);
     Result.Keyword := RGBToColor($FF, $7B, $72);
+    Result.Inserted := RGBToColor($85, $E8, $9D);
+    Result.Deleted := RGBToColor($FD, $AE, $B7);
   end;
 end;
 
@@ -482,6 +502,145 @@ function ColorText(C: TColor): string;
 begin
   C := ColorToRGB(C);
   Result := Format('#%.2x%.2x%.2x', [Red(C), Green(C), Blue(C)]);
+end;
+
+{ does the line start with this }
+function Leads(const ALine, ALead: string): boolean;
+begin
+  Result := Copy(ALine, 1, Length(ALead)) = ALead;
+end;
+
+{ A block that said no language is a diff if it starts the way git's does,
+  or has a file's --- and +++ lines with an @@ line after them.  Anything
+  less certain stays code: a list of "- item" lines is not a diff. }
+function LooksLikeDiff(const ACode: string): boolean;
+var
+  Lines: TStringList;
+  I: integer;
+begin
+  Result := False;
+  if Leads(ACode, 'diff --git ') then Exit(True);
+  Lines := TStringList.Create;
+  try
+    Lines.Text := ACode;
+    for I := 0 to Lines.Count - 3 do
+      if Leads(Lines[I], '--- ') and Leads(Lines[I + 1], '+++ ') and Leads(Lines[I + 2], '@@ ') then Exit(True);
+  finally
+    Lines.Free;
+  end;
+end;
+
+{ the line counts an @@ line promises, "@@ -12,5 +12,7 @@": how many of the
+  lines after it are the old file's and how many the new one's.  A count
+  left out is one.  False when the line does not read that way. }
+function HunkCounts(const ALine: string; out AOld, ANew: integer): boolean;
+
+  function Count(const ALead: char; var P: integer; out N: integer): boolean;
+  var
+    Q: integer;
+  begin
+    Result := False;
+    while (P <= Length(ALine)) and (ALine[P] = ' ') do Inc(P);
+    if (P > Length(ALine)) or (ALine[P] <> ALead) then Exit;
+    Inc(P);
+    Q := P;
+    while (P <= Length(ALine)) and (ALine[P] in ['0'..'9']) do Inc(P);
+    if P = Q then Exit;
+    N := 1;
+    if (P <= Length(ALine)) and (ALine[P] = ',') then
+    begin
+      Inc(P);
+      Q := P;
+      while (P <= Length(ALine)) and (ALine[P] in ['0'..'9']) do Inc(P);
+      if P = Q then Exit;
+      N := StrToIntDef(Copy(ALine, Q, P - Q), -1);
+      if N < 0 then Exit;
+    end;
+    Result := True;
+  end;
+
+var
+  P: integer;
+begin
+  P := 3;
+  Result := Leads(ALine, '@@') and Count('-', P, AOld) and Count('+', P, ANew);
+end;
+
+{ A diff, a line at a time.  Inside a hunk a line is read by its first
+  character alone, for as many lines as its @@ line promised - so a removed
+  line that says "-- note" is not taken for a file's --- line.  Outside one,
+  the file lines (diff, index, ---, +++ and the like) are bold. }
+function HighlightDiff(const ACode: string; const AColors: TInkCodeColors): string;
+var
+  P, Q, OldLeft, NewLeft: integer;
+  Line: string;
+  Counted, InHunk: boolean;
+
+  procedure Put(const ALine: string; C: TColor);
+  begin
+    if ALine <> '' then Result := Result + '<font color="' + ColorText(C) + '">' + Escape(ALine) + '</font>';
+  end;
+
+begin
+  Result := '';
+  InHunk := False;
+  Counted := False;
+  OldLeft := 0;
+  NewLeft := 0;
+  P := 1;
+  while P <= Length(ACode) do
+  begin
+    Q := P;
+    while (Q <= Length(ACode)) and (ACode[Q] <> #10) do Inc(Q);
+    Line := Copy(ACode, P, Q - P);
+    { a hunk whose lines are all seen is over; one without counts runs on
+      until the next @@ or file }
+    if InHunk and Counted and (OldLeft <= 0) and (NewLeft <= 0) then InHunk := False;
+    if InHunk and not Counted and (Leads(Line, 'diff ') or Leads(Line, '@@')) then InHunk := False;
+    if not InHunk and Leads(Line, '@@') then
+    begin
+      Counted := HunkCounts(Line, OldLeft, NewLeft);
+      InHunk := True;
+      Put(Line, AColors.Number);
+    end
+    else if InHunk then
+    begin
+      if Leads(Line, '+') then
+      begin
+        Dec(NewLeft);
+        Put(Line, AColors.Inserted);
+      end
+      else if Leads(Line, '-') then
+      begin
+        Dec(OldLeft);
+        Put(Line, AColors.Deleted);
+      end
+      else if Leads(Line, '\') then
+        { "\ No newline at end of file" belongs to the line before it }
+        Put(Line, AColors.Comment)
+      else
+      begin
+        { context, in both files; an empty line is context whose space was trimmed }
+        Dec(OldLeft);
+        Dec(NewLeft);
+        Result := Result + Escape(Line);
+      end;
+    end
+    else if Leads(Line, 'diff ') or Leads(Line, 'index ') or Leads(Line, '--- ') or Leads(Line, '+++ ') or
+      Leads(Line, 'new file mode') or Leads(Line, 'deleted file mode') or Leads(Line, 'old mode') or
+      Leads(Line, 'new mode') or Leads(Line, 'similarity index') or Leads(Line, 'rename from') or
+      Leads(Line, 'rename to') or Leads(Line, 'Binary files') then
+    begin
+      if Line <> '' then Result := Result + '<b>' + Escape(Line) + '</b>';
+    end
+    { a diff without its file lines, as people paste one: + and - still read }
+    else if Leads(Line, '+') then Put(Line, AColors.Inserted)
+    else if Leads(Line, '-') then Put(Line, AColors.Deleted)
+    else
+      Result := Result + Escape(Line);
+    if Q <= Length(ACode) then Result := Result + '<br>';
+    P := Q + 1;
+  end;
 end;
 
 function InkHighlight(const ACode, ALanguage: string; const AColors: TInkCodeColors): string;
@@ -654,6 +813,8 @@ var
 begin
   Result := '';
   Plain := '';
+  if (InkCodeLanguage(ALanguage) = 'diff') or ((InkCodeLanguage(ALanguage) = '') and LooksLikeDiff(ACode)) then
+    Exit(HighlightDiff(ACode, AColors));
   R := RulesFor(InkCodeLanguage(ALanguage));
   if R.Off then Exit(Escape(ACode));
   Len := Length(ACode);
