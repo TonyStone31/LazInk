@@ -367,7 +367,10 @@ end;
 ```
 
 Pages given as text (`LoadHTML`, `LoadMarkdown`) are in the Back/Forward
-history too; `ClearHistory` forgets it.
+history too; `ClearHistory` forgets it.  A page that is a view of something
+else - a preview loaded again on every edit, a help pane - sets
+`KeepHistory := False`: only the page showing is held, so the loads do not
+pile up, and Back and Forward do nothing.
 
 **Finding:** Ctrl+F opens a find bar at the top right of the page - it finds
 as you type, Enter or F3 goes to the next match and Shift with either to the

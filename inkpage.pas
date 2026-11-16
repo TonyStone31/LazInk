@@ -300,6 +300,7 @@ type
     FImageFit: TInkImageFit;
     FHistory: TStringList;
     FHistoryIndex: integer;
+    FKeepHistory: boolean;
     FTextFormat: TInkTextFormat;
     FStyleSheet: TStringList;
     FMarkdownRawHTML, FMarkdownInlineHTML: boolean;
@@ -420,6 +421,7 @@ type
     FBodyText, FCodeBack: TColor;
     FColumnWidth: integer;
     procedure SetHighlightCode(AValue: boolean);
+    procedure SetKeepHistory(AValue: boolean);
     procedure SetCodeHeader(AValue: boolean);
     procedure SetCodeLineNumbers(AValue: boolean);
     procedure SetCodeFoldLines(AValue: integer);
@@ -716,6 +718,12 @@ type
       --ink-code-number, --ink-code-keyword, --ink-code-inserted,
       --ink-code-deleted. }
     property HighlightCode: boolean read FHighlightCode write SetHighlightCode default True;
+    { Whether what is shown is remembered for Back and Forward.  False for a
+      page that is a view of something else - a preview, a help pane - where
+      every load would otherwise be kept, its whole text too, and the
+      mouse's back button would step through them: only what is showing
+      is held, and Back and Forward do nothing. }
+    property KeepHistory: boolean read FKeepHistory write SetKeepHistory default True;
     { a host that would rather color code itself - see TInkHighlightEvent }
     property OnHighlightCode: TInkHighlightEvent read FOnHighlightCode write FOnHighlightCode;
     { A header on each code block, as code viewers draw one: the language
@@ -795,6 +803,7 @@ type
     property ImageFit;
     property OnResource;
     property HighlightCode;
+    property KeepHistory;
     property OnHighlightCode;
     property CodeHeader;
     property CodeLineNumbers;
@@ -1125,6 +1134,7 @@ begin
   TabStop := True;
   FHoverBlock := -1;
   FHighlightCode := True;
+  FKeepHistory := True;
   FBlocks := TList.Create;
   FItems := TList.Create;
   FAnimated := TList.Create;
@@ -1879,6 +1889,8 @@ type
 
 procedure TInkCustomPage.AddHistory(const URL: string; ADoc: TObject);
 begin
+  { without history only the page showing is held }
+  if not FKeepHistory then FHistoryIndex := -1;
   while FHistory.Count > FHistoryIndex + 1 do FHistory.Delete(FHistory.Count - 1);
   FHistory.AddObject(URL, ADoc);
   FHistoryIndex := FHistory.Count - 1;
@@ -1911,6 +1923,13 @@ begin
   end
   else
     Navigate(FHistory[Index], False);
+end;
+
+procedure TInkCustomPage.SetKeepHistory(AValue: boolean);
+begin
+  if FKeepHistory = AValue then Exit;
+  FKeepHistory := AValue;
+  if not AValue then ClearHistory;
 end;
 
 procedure TInkCustomPage.ClearHistory;
