@@ -2836,8 +2836,7 @@ begin
         WordW := W;
         Tail := Length(Atom);
         while (Tail > 1) and ((Ord(Atom[Tail]) and $C0) = $80) do Dec(Tail);
-        if (P > Length(Text)) and not R.IsImage and (R.Check = 0) and not IsCJK(CodepointAt(Atom, Tail, TailBytes)) and
-          (X + W <= FOpt.Width - FOpt.Borders.Right) then
+        if (P > Length(Text)) and not R.IsImage and (R.Check = 0) and not IsCJK(CodepointAt(Atom, Tail, TailBytes)) and (X + W <= FOpt.Width - FOpt.Borders.Right) then
           Inc(WordW, FollowingWidth(I + 1));
         if X + WordW > FOpt.Width - FOpt.Borders.Right then FinishLine;
       end;

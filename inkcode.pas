@@ -626,10 +626,9 @@ begin
         Result := Result + Escape(Line);
       end;
     end
-    else if Leads(Line, 'diff ') or Leads(Line, 'index ') or Leads(Line, '--- ') or Leads(Line, '+++ ') or
-      Leads(Line, 'new file mode') or Leads(Line, 'deleted file mode') or Leads(Line, 'old mode') or
-      Leads(Line, 'new mode') or Leads(Line, 'similarity index') or Leads(Line, 'rename from') or
-      Leads(Line, 'rename to') or Leads(Line, 'Binary files') then
+    else if Leads(Line, 'diff ') or Leads(Line, 'index ') or Leads(Line, '--- ') or Leads(Line, '+++ ') or Leads(Line, 'new file mode') or
+      Leads(Line, 'deleted file mode') or Leads(Line, 'old mode') or Leads(Line, 'new mode') or Leads(Line, 'similarity index') or
+      Leads(Line, 'rename from') or Leads(Line, 'rename to') or Leads(Line, 'Binary files') then
     begin
       if Line <> '' then Result := Result + '<b>' + Escape(Line) + '</b>';
     end
