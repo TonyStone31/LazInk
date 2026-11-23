@@ -118,7 +118,10 @@ type
     FCharW: array of integer;
     FLayoutValid: boolean;
     FDocHeight: integer;
+    { the widest line's right edge; a table that does not fit scrolls sideways }
+    FDocWidth: integer;
     FScrollY: integer;
+    FScrollX: integer;
     FWheelRest: double;
     { the zoom in percent, and the part of a Ctrl+wheel step not yet taken }
     FZoom: integer;
@@ -129,6 +132,7 @@ type
     FZoomRest: double;
     FOnZoom: TNotifyEvent;
     FVScroll: TScrollBar;
+    FHScroll: TScrollBar;
     FTypingAttr: TInkAttr;        // what the next typed character will wear
     FHasTypingAttr: boolean;
     FMarkup: TStrings;            // one paragraph per line
@@ -224,9 +228,13 @@ type
     function LineOfChar(AIndex: integer): integer;
     function CaretLine(ACaret: integer): integer;
     function LineTextWidth: integer;
+    { the client area less the scroll bars that are showing }
+    function ViewWidth: integer;
+    function ViewHeight: integer;
     procedure UpdateScrollBar;
     procedure ScrollBarChange(Sender: TObject);
     procedure ScrollToCaret;
+    function WheelSideways(APixels: integer): boolean;
     function CaretPoint(ACaret: integer): TPoint;   // document space
     function PointToCaret(X, Y: integer): integer;  // client space
     { document }
@@ -279,6 +287,7 @@ type
     procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
     procedure Click; override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean; override;
+    function DoMouseWheelHorz(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean; override;
     procedure DoEnter; override;
     procedure DoExit; override;
     class function GetControlClassDefaultSize: TSize; override;
@@ -291,6 +300,8 @@ type
     function JumpToAnchor(const Anchor: string): boolean;
     procedure ScrollTo(AY: integer);
     property ScrollY: integer read FScrollY;
+    { how far a document wider than the editor is scrolled to the left }
+    property ScrollX: integer read FScrollX;
     { where relative image paths are resolved from; a file:// URI }
     property ImageBaseURI: string read FImageBase write SetImageBaseURI;
     { the selection's bytes in AsMarkdown, from 1; False when no range
@@ -588,6 +599,14 @@ begin
   FVScroll.Width := cScrollBarWidth;
   FVScroll.OnChange := @ScrollBarChange;
 
+  FHScroll := TScrollBar.Create(Self);
+  FHScroll.Kind := sbHorizontal;
+  FHScroll.Parent := Self;
+  FHScroll.TabStop := False;
+  FHScroll.Visible := False;
+  FHScroll.Height := cScrollBarWidth;
+  FHScroll.OnChange := @ScrollBarChange;
+
   FCaretTimer := TTimer.Create(Self);
   FCaretTimer.Interval := 530;
   FCaretTimer.Enabled := False;
@@ -762,7 +781,7 @@ end;
 procedure TInkRichEdit.ScrollTo(AY: integer);
 begin
   NeedLayout;
-  FScrollY := EnsureRange(AY, 0, Max(0, FDocHeight - ClientHeight));
+  FScrollY := EnsureRange(AY, 0, Max(0, FDocHeight - ViewHeight));
   FVScroll.Position := FScrollY;
   Invalidate;
 end;
@@ -1565,6 +1584,20 @@ begin
   if Result < 16 then Result := 16;
 end;
 
+function TInkRichEdit.ViewWidth: integer;
+begin
+  Result := ClientWidth;
+  if Assigned(FVScroll) and FVScroll.Visible then Dec(Result, FVScroll.Width);
+  if Result < 1 then Result := 1;
+end;
+
+function TInkRichEdit.ViewHeight: integer;
+begin
+  Result := ClientHeight;
+  if Assigned(FHScroll) and FHScroll.Visible then Dec(Result, FHScroll.Height);
+  if Result < 1 then Result := 1;
+end;
+
 procedure TInkRichEdit.Relayout;
 var
   N, i, k, X, W, Avail, AvailP, Y, LineStart, LastSpace, BreakAt: integer;
@@ -1957,6 +1990,9 @@ begin
   EmitLine(LineStart, N - LineStart);
   SetLength(FLines, LineCount);
   FDocHeight := Y;
+  FDocWidth := 0;
+  for k := 0 to LineCount - 1 do
+    FDocWidth := Max(FDocWidth, FLines[k].Left + FLines[k].Width + cMargin);
   UpdateScrollBar;
 end;
 
@@ -2011,6 +2047,7 @@ begin
   NeedLayout;
   if Length(FLines) = 0 then Exit(0);
   DocY := Y + FScrollY;
+  Inc(X, FScrollX);
 
   L := High(FLines);
   for i := 0 to High(FLines) do
@@ -2039,39 +2076,63 @@ end;
 
 procedure TInkRichEdit.UpdateScrollBar;
 var
-  NeedBar: boolean;
+  NeedV, NeedH: boolean;
 begin
-  if FVScroll = nil then Exit;
-  NeedBar := FDocHeight > ClientHeight;
-  if NeedBar <> FVScroll.Visible then
+  if (FVScroll = nil) or (FHScroll = nil) then Exit;
+  { the sideways bar takes room from the height, the upright one from the
+    width, so each decides with the other's room in mind }
+  NeedH := FDocWidth > ViewWidth;
+  NeedV := FDocHeight > ClientHeight - Ord(NeedH) * cScrollBarWidth;
+  if NeedV <> FVScroll.Visible then
   begin
-    FVScroll.Visible := NeedBar;
+    FVScroll.Visible := NeedV;
     // the text column just got narrower or wider, so everything must re-flow
     FLayoutValid := False;
   end;
-  if NeedBar then
+  NeedH := FDocWidth > ViewWidth;
+  FHScroll.Visible := NeedH;
+  if NeedV then
   begin
-    FVScroll.SetBounds(ClientWidth - cScrollBarWidth, 0, cScrollBarWidth,
-      ClientHeight);
+    FVScroll.SetBounds(ClientWidth - cScrollBarWidth, 0, cScrollBarWidth, ViewHeight);
     FVScroll.Min := 0;
     FVScroll.Max := FDocHeight;
-    FVScroll.PageSize := ClientHeight;
-    FVScroll.LargeChange := ClientHeight;
+    FVScroll.PageSize := ViewHeight;
+    FVScroll.LargeChange := ViewHeight;
     FVScroll.SmallChange := 16;
-    if FScrollY > FDocHeight - ClientHeight then
-      FScrollY := FDocHeight - ClientHeight;
-    if FScrollY < 0 then FScrollY := 0;
+    FScrollY := EnsureRange(FScrollY, 0, Max(0, FDocHeight - ViewHeight));
     if FVScroll.Position <> FScrollY then
       FVScroll.Position := FScrollY;
   end
   else
     FScrollY := 0;
+  if NeedH then
+  begin
+    FHScroll.SetBounds(0, ClientHeight - cScrollBarWidth, ViewWidth, cScrollBarWidth);
+    FHScroll.Min := 0;
+    FHScroll.Max := FDocWidth;
+    FHScroll.PageSize := ViewWidth;
+    FHScroll.LargeChange := ViewWidth;
+    FHScroll.SmallChange := 16;
+    FScrollX := EnsureRange(FScrollX, 0, Max(0, FDocWidth - ViewWidth));
+    if FHScroll.Position <> FScrollX then
+      FHScroll.Position := FScrollX;
+  end
+  else
+    FScrollX := 0;
 end;
 
 procedure TInkRichEdit.ScrollBarChange(Sender: TObject);
 begin
-  if FScrollY = FVScroll.Position then Exit;
-  FScrollY := FVScroll.Position;
+  if Sender = FHScroll then
+  begin
+    if FScrollX = FHScroll.Position then Exit;
+    FScrollX := FHScroll.Position;
+  end
+  else
+  begin
+    if FScrollY = FVScroll.Position then Exit;
+    FScrollY := FVScroll.Position;
+  end;
   Invalidate;
 end;
 
@@ -2089,13 +2150,29 @@ begin
 
   if P.Y < FScrollY then
     FScrollY := P.Y
-  else if P.Y + H > FScrollY + ClientHeight then
-    FScrollY := P.Y + H - ClientHeight;
-  if FScrollY > FDocHeight - ClientHeight then
-    FScrollY := FDocHeight - ClientHeight;
-  if FScrollY < 0 then FScrollY := 0;
+  else if P.Y + H > FScrollY + ViewHeight then
+    FScrollY := P.Y + H - ViewHeight;
+  FScrollY := EnsureRange(FScrollY, 0, Max(0, FDocHeight - ViewHeight));
   if FVScroll.Visible and (FVScroll.Position <> FScrollY) then
     FVScroll.Position := FScrollY;
+  { sideways too, keeping a cell's inset in view on either side }
+  if P.X - Zoomed(cCellPad) < FScrollX then
+    FScrollX := P.X - Zoomed(cCellPad)
+  else if P.X + Zoomed(cCellPad) > FScrollX + ViewWidth then
+    FScrollX := P.X + Zoomed(cCellPad) - ViewWidth;
+  FScrollX := EnsureRange(FScrollX, 0, Max(0, FDocWidth - ViewWidth));
+  if FHScroll.Visible and (FHScroll.Position <> FScrollX) then
+    FHScroll.Position := FScrollX;
+end;
+
+{ the wheel sideways by APixels, when the document is wider than the view }
+function TInkRichEdit.WheelSideways(APixels: integer): boolean;
+begin
+  Result := FHScroll.Visible;
+  if not Result then Exit;
+  FScrollX := EnsureRange(FScrollX + APixels, 0, Max(0, FDocWidth - ViewWidth));
+  FHScroll.Position := FScrollX;
+  Invalidate;
 end;
 
 function TInkRichEdit.DoMouseWheel(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean;
@@ -2108,14 +2185,21 @@ begin
     Zoom := InkZoomStep(FZoom, InkWheelPixels(WheelDelta, -1, FZoomRest));
     Exit(True);
   end;
+  { Shift turns the wheel sideways, as in a browser }
+  if Shift * [ssShift, ssCtrl, ssAlt, ssMeta] = [ssShift] then
+    Exit(WheelSideways(InkWheelPixels(WheelDelta, 45, FWheelRest)));
   if not FVScroll.Visible then Exit;
-  FScrollY := FScrollY + InkWheelPixels(WheelDelta, 45, FWheelRest);
-  if FScrollY > FDocHeight - ClientHeight then
-    FScrollY := FDocHeight - ClientHeight;
-  if FScrollY < 0 then FScrollY := 0;
+  FScrollY := EnsureRange(FScrollY + InkWheelPixels(WheelDelta, 45, FWheelRest), 0, Max(0, FDocHeight - ViewHeight));
   FVScroll.Position := FScrollY;
   Invalidate;
   Result := True;
+end;
+
+{ a tilting wheel or a touchpad's sideways swipe; a positive delta is rightward }
+function TInkRichEdit.DoMouseWheelHorz(Shift: TShiftState; WheelDelta: integer; MousePos: TPoint): boolean;
+begin
+  Result := inherited DoMouseWheelHorz(Shift, WheelDelta, MousePos);
+  if not Result then Result := WheelSideways(-InkWheelPixels(WheelDelta, 45, FWheelRest));
 end;
 
 { ------------------------------------------------------------------ painting }
@@ -2175,6 +2259,7 @@ begin
     L := FLines[Li];
     if L.Top + L.Height - FScrollY < 0 then Continue;
     if L.Top - FScrollY > ClientHeight then Break;
+    Dec(L.Left, FScrollX);
 
     BaseY := L.Top - FScrollY + L.Ascent;
     LineEndIdx := L.First + L.Count;
@@ -2191,15 +2276,15 @@ begin
           Green(ColorToRGB(Color)) + (Green(ColorToRGB(Font.Color)) - Green(ColorToRGB(Color))) div 12, Blue(ColorToRGB(Color)) +
           (Blue(ColorToRGB(Font.Color)) - Blue(ColorToRGB(Color))) div 12);
         Canvas.Brush.Style := bsSolid;
-        Canvas.FillRect(cMargin, L.Top - FScrollY,
-          cMargin + LineTextWidth, L.Top - FScrollY + L.Height);
+        Canvas.FillRect(cMargin - FScrollX, L.Top - FScrollY,
+          cMargin - FScrollX + LineTextWidth, L.Top - FScrollY + L.Height);
       end;
       ipkQuote:
       begin
         Canvas.Brush.Color := MixColor(Font.Color, Color, 0.6);
         Canvas.Brush.Style := bsSolid;
-        Canvas.FillRect(cMargin, L.Top - FScrollY,
-          cMargin + QuoteBarWidth, L.Top - FScrollY + L.Height);
+        Canvas.FillRect(cMargin - FScrollX, L.Top - FScrollY,
+          cMargin - FScrollX + QuoteBarWidth, L.Top - FScrollY + L.Height);
       end;
       ipkTableHead, ipkTableRow:
       begin
@@ -2238,7 +2323,7 @@ begin
             S := #$E2#$80#$A2' '
           else
             S := IntToStr(ParaNumber(L.First)) + '. ';
-          Canvas.TextOut(cMargin + Canvas.TextWidth('99. ') * ParaLevelAt(L.First),
+          Canvas.TextOut(cMargin - FScrollX + Canvas.TextWidth('99. ') * ParaLevelAt(L.First),
             BaseY - RunAsc, S);
         end;
     end;
@@ -2392,7 +2477,7 @@ begin
     if Length(FLines) > 0 then
     begin
       Li := CaretLine(FCaret);
-      X := CaretPoint(FCaret).X;
+      X := CaretPoint(FCaret).X - FScrollX;
       BaseY := CaretPoint(FCaret).Y - FScrollY;
       Canvas.Pen.Color := Font.Color;
       Canvas.Line(X, BaseY + 1, X, BaseY + FLines[Li].Height - 1);
@@ -2644,6 +2729,7 @@ begin
   FCaret := 0;
   FAnchor := 0;
   FScrollY := 0;
+  FScrollX := 0;
   Changed;
 end;
 
@@ -3369,9 +3455,9 @@ begin
         case Key of
           VK_UP: Target := L - 1;
           VK_DOWN: Target := L + 1;
-          VK_PRIOR: Target := L - Max(1, ClientHeight div Max(FLines[L].Height, 1));
+          VK_PRIOR: Target := L - Max(1, ViewHeight div Max(FLines[L].Height, 1));
           else
-            Target := L + Max(1, ClientHeight div Max(FLines[L].Height, 1));
+            Target := L + Max(1, ViewHeight div Max(FLines[L].Height, 1));
         end;
         if Target < 0 then Target := 0;
         if Target > High(FLines) then Target := High(FLines);
@@ -3797,7 +3883,7 @@ begin
     if FAttrs[J].ImageSource <> '' then
     begin
       L := LineOfChar(J);
-      ImageLeft := FLines[L].Left + FCharX[J];
+      ImageLeft := FLines[L].Left + FCharX[J] - FScrollX;
       ImageBottom := FLines[L].Top + FLines[L].Ascent - FScrollY;
       if (X >= ImageLeft) and (X < ImageLeft + FCharW[J]) and (Y >= ImageBottom - ImageHeight(J)) and (Y < ImageBottom) then
       begin
@@ -3847,6 +3933,7 @@ begin
     if (I >= 0) and (FAttrs[I].TaskState >= 0) and (Shift = []) then
     begin
       P := CaretPoint(I);
+      Dec(P.X, FScrollX);
       if (X >= P.X) and (X < P.X + FCharW[I]) then
       begin
         FCaret := I;
@@ -4047,6 +4134,7 @@ begin
   if (P.X < 0) or (P.Y < 0) then
   begin
     P := CaretPoint(FCaret);
+    Dec(P.X, FScrollX);
     Dec(P.Y, FScrollY);
   end;
   P := ClientToScreen(P);
@@ -4238,6 +4326,7 @@ begin
   FZoom := AValue;
   { the same place stays at the top }
   FScrollY := Round(FScrollY * FZoom / Old);
+  FScrollX := Round(FScrollX * FZoom / Old);
   ZoomChanged;
   if Assigned(FOnZoom) then FOnZoom(Self);
 end;
@@ -4310,6 +4399,7 @@ begin
     FCaret := 0;
     FAnchor := 0;
     FScrollY := 0;
+    FScrollX := 0;
     FHasTypingAttr := False;
     FMarkupDirty := False;
     ClearUndoList(FUndo);
