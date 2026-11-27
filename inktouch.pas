@@ -51,9 +51,9 @@ function InkHookTouchAsMouse(AControl: TWinControl): boolean;
 function InkMouseIsTouch: boolean;
 { How far the wheel turned in the wheel event being handled, in notches,
   down positive - with the fraction a high-resolution or free-spinning wheel
-  or a touchpad sends.  The GTK3 backend rounds each such event up to a
-  whole notch of 120, so a fast wheel raced; elsewhere this is
-  -WheelDelta / 120. }
+  or a touchpad sends.  The GTK3 backend before Lazarus 5.0 rounds each such
+  event up to a whole notch of 120, so a fast wheel raced, and the event is
+  read instead; elsewhere this is -WheelDelta / 120. }
 function InkWheelNotches(WheelDelta: integer): double;
 { The same as pixels, PerNotch to a notch; Rest carries the part of a
   pixel left over to the next event, so slow turning still moves. }
@@ -78,7 +78,7 @@ implementation
 uses
   {$IFDEF WINDOWS}Windows,{$ENDIF}
   {$IFDEF LCLGTK3}Types, LazGLib2, LazGObject2, LazGdk3, LazGtk3, gtk3widgets,{$ENDIF}
-  Math, LMessages, LCLType;
+  Math, LMessages, LCLType, LCLVersion;
 
 {$IFDEF WINDOWS}
 
@@ -99,9 +99,11 @@ begin
 end;
 {$ENDIF}
 
-{$IFDEF LCLGTK3}
-function InkWheelNotches(WheelDelta: Integer): Double;
-var E: PGdkEvent;
+{ from 5.0.2 the backend adds the fractions up itself and sends whole notches }
+{$IF DEFINED(LCLGTK3) AND (LCL_FULLVERSION < 5000200)}
+function InkWheelNotches(WheelDelta: integer): double;
+var
+  E: PGdkEvent;
 begin
   Result := -WheelDelta / 120;
   E := gtk_get_current_event;
