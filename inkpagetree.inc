@@ -279,6 +279,19 @@ var
   I: integer;
   N: TInkNode;
   Faded: TInkBox;
+  BlockUnderline: TInkStyle;
+
+  function UnderlineOpen(St: TInkStyle): string;
+  var
+    C: TInkRGBA;
+    Color_: string;
+  begin
+    C := St.Color('text-decoration-color');
+    if (C shr 24) = 0 then Color_ := 'transparent'
+    else
+      Color_ := ColorToHTMLHex(InkToColor(C, BackCol));
+    Result := '<u style="text-decoration-style:' + St.Keyword('text-decoration-style') + ';text-decoration-color:' + Color_ + '">';
+  end;
 
   procedure Put(const AText: string);
   begin
@@ -639,7 +652,7 @@ var
     V2 := S.Keyword('text-decoration-line');
     if (Pos('underline', V2) > 0) and (Pos('u', Deco) = 0) then
     begin
-      Open := Open + '<u>';
+      Open := Open + UnderlineOpen(S);
       Close := '</u>' + Close;
       Deco := Deco + 'u';
     end;
@@ -695,6 +708,7 @@ var
     D: string;
   begin
     Result := '';
+    BlockUnderline := nil;
     X := OwnerEl;
     while (X <> nil) and (X.Kind = inkElement) do
     begin
@@ -702,7 +716,11 @@ var
       if St <> nil then
       begin
         D := St.Keyword('text-decoration-line');
-        if (Pos('underline', D) > 0) and (Pos('u', Result) = 0) then Result := Result + 'u';
+        if (Pos('underline', D) > 0) and (Pos('u', Result) = 0) then
+        begin
+          Result := Result + 'u';
+          BlockUnderline := St;
+        end;
         if (Pos('line-through', D) > 0) and (Pos('s', Result) = 0) then Result := Result + 's';
         if (St.Keyword('float') <> 'none') or (St.Keyword('position') = 'absolute') then Break;
       end;
@@ -839,7 +857,7 @@ begin
     end;
     if Pos('u', Deco) > 0 then
     begin
-      Head := Head + '<u>';
+      Head := Head + UnderlineOpen(BlockUnderline);
       Tail := '</u>' + Tail;
     end;
     if Pos('s', Deco) > 0 then
@@ -1164,22 +1182,19 @@ begin
 end;
 
 { the canvas: the root's background, or the body's when the root has none }
+function TInkCustomPage.TreeCanvasStyle: TInkStyle;
+begin
+  Result := PageStyle(False);
+  if (Result <> nil) and ((Result.Color('background-color') shr 24) = 0) and (Result.Keyword('background-image') = 'none') then Result := PageStyle(True);
+end;
+
 function TInkCustomPage.TreeCanvasBack: TColor;
 var
-  C: TInkRGBA;
+  S: TInkStyle;
 begin
   Result := Color;
-  if (FDocument = nil) or (FStyler = nil) then Exit;
-  if FDocument.DocumentElement <> nil then
-  begin
-    C := FStyler.StyleOf(FDocument.DocumentElement).Color('background-color');
-    if (C shr 24) > 0 then Exit(InkToColor(C, Color));
-  end;
-  if (FDocument.Body <> nil) and (FStyler.StyleOf(FDocument.Body) <> nil) then
-  begin
-    C := FStyler.StyleOf(FDocument.Body).Color('background-color');
-    if (C shr 24) > 0 then Exit(InkToColor(C, Color));
-  end;
+  S := TreeCanvasStyle;
+  if S <> nil then Result := InkToColor(S.Color('background-color'), Color);
 end;
 
 { ---------------------------------------------------------- laying out }
@@ -1463,10 +1478,9 @@ var
   R, P: TRect;
   Bg: TInkRGBA;
   Behind, Col: TColor;
-  Radius, I, W, X, Len_: integer;
-  St, Img: string;
+  Radius: integer;
+  CanvasBackground: boolean;
   Up: TInkBox;
-  Words: TStringArray;
 
   function SideColor(const ASide: string): TColor;
   begin
@@ -1557,21 +1571,11 @@ begin
     Up := Up.Parent;
   end;
   Bg := S.Color('background-color');
-  { a gradient is drawn as its first color }
-  if (Bg shr 24) = 0 then
-  begin
-    Img := S.Value('background-image');
-    if Pos('gradient(', LowerCase(Img)) > 0 then
-    begin
-      Words := StringReplace(StringReplace(Copy(Img, Pos('(', Img) + 1, MaxInt), ',', ' ', [rfReplaceAll]), ')', ') ', [rfReplaceAll]).Split([' '], TStringSplitOptions.ExcludeEmpty);
-      for I := 0 to High(Words) do
-        if InkParseColor(Words[I], Bg, FStyler.Media.Dark) then Break;
-    end;
-  end;
   { the root's background is the canvas's, and so is the body's when the
     root has none }
-  if (ABox.Parent = nil) or ((ABox.Node <> nil) and (ABox.Node.Name = 'body') and (ABox.Parent.Parent = nil) and
-    ((FStyler.StyleOf(ABox.Parent.Node).Color('background-color') shr 24) = 0)) then Bg := 0;
+  CanvasBackground := (FPageSection <> nil) and (ABox.Node <> nil) and ((ABox.Node = FDocument.DocumentElement) or
+    ((ABox.Node = FDocument.Body) and ((PageStyle(False).Color('background-color') shr 24) = 0) and (PageStyle(False).Keyword('background-image') = 'none')));
+  if CanvasBackground then Bg := 0;
   Radius := Round(S.Px('border-top-left-radius', ABox.W));
   Radius := Max(Radius, Round(S.Px('border-top-right-radius', ABox.W)));
   { a radius too big for the box is as round as the box can be: a pill }
@@ -1590,6 +1594,9 @@ begin
     else
       ACanvas.FillRect(R);
   end;
+  if not CanvasBackground then
+    InkPaintLinearGradient(ACanvas, R, ClientRect, Radius, S,
+      S.Value('background-image'), FStyler.Media.Dark);
   with ABox.Border do
     if (Left > 0) or (Top > 0) or (Right > 0) or (Bottom > 0) then
     begin
@@ -1614,11 +1621,6 @@ begin
       end;
     end;
   ACanvas.Brush.Style := bsClear;
-  St := '';
-  W := 0;
-  X := 0;
-  Len_ := 0;
-  if (St <> '') or (W <> 0) or (X <> 0) or (Len_ <> 0) then;
 end;
 
 { disc, circle and square markers are shapes sized from the font, as a
@@ -1670,6 +1672,7 @@ var
   Selected: boolean;
   B: TInkPageBlock;
   ViewTop, ViewBottom: integer;
+  CanvasStyle: TInkStyle;
 begin
   Layout;
   Selected := HasSelection;
@@ -1678,6 +1681,13 @@ begin
   ACanvas.Brush.Color := FCanvasBack;
   ACanvas.Brush.Style := bsSolid;
   ACanvas.FillRect(ClientRect);
+  if (FPageSection <> nil) and (FPageSection.Layout <> nil) then
+  begin
+    CanvasStyle := TreeCanvasStyle;
+    if CanvasStyle <> nil then
+      InkPaintLinearGradient(ACanvas, Rect(0, -FScroll.Position, TreeViewWidth, Max(ClientHeight, FPageSection.Layout.Height) - FScroll.Position),
+        ClientRect, 0, CanvasStyle, CanvasStyle.Value('background-image'), FStyler.Media.Dark);
+  end;
   ViewTop := FScroll.Position;
   ViewBottom := ViewTop + ClientHeight;
   PaintEntryBands(ACanvas, ViewTop, ViewBottom);

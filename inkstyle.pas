@@ -175,6 +175,8 @@ function InkQuerySelector(ARoot: TInkNode; const ASelector: string): TInkNode;
 function InkQuerySelectorAll(ARoot: TInkNode; const ASelector: string): TInkNodeArray;
 { a property's index in the computed style, -1 for one not known }
 function InkPropertyIndex(const AName: string): integer;
+{ Split a CSS value outside functions and strings; a space splits words. }
+function InkCSSParts(const S: string; ADelimiter: char): TStringArray;
 
 implementation
 
@@ -497,6 +499,13 @@ begin
     Result[N] := Copy(S, Start, P - Start);
     Inc(N);
   end;
+end;
+
+function InkCSSParts(const S: string; ADelimiter: char): TStringArray;
+begin
+  if ADelimiter = ' ' then Result := Words(S)
+  else
+    Result := SplitTop(S, ADelimiter);
 end;
 
 { -------------------------------------------------------------- colors }

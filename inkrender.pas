@@ -52,6 +52,8 @@ type
     Size: integer;
     Color, BackColor: TColor;
     Styles: TFontStyles;
+    UnderlineStyle: string;
+    UnderlineColor: TColor;
     Script: TInkRenderScript;
     LinkIndex: integer;
     LinkName: string;
@@ -266,6 +268,8 @@ type
   end;
 
 implementation
+
+uses InkStyle;
 
 function Lower(const S: string): string;
 begin
@@ -609,6 +613,18 @@ const
   { HTML's old font size ladder, in pixels, as browsers still draw it }
   cFontLadder: array[1..7] of integer = (10, 13, 16, 18, 24, 32, 48);
 
+function UnderlineColor(const Value: string; Default: TColor): TColor;
+var
+  C: TInkRGBA;
+begin
+  Result := Default;
+  if Value = 'currentcolor' then Exit(clDefault);
+  if not InkParseColor(Value, C) then Exit;
+  if (C shr 24) = 0 then Result := clNone
+  else
+    Result := TColor(C and $FFFFFF);
+end;
+
 { A style attribute's declarations applied to a run: color, background
   (-color), font-size (px, pt, %, em, the keywords, smaller and larger),
   font-weight, font-style and text-decoration.  Anything else is left
@@ -622,6 +638,9 @@ var
   V: double;
   Base: integer;
   Keywords: TStringList;
+  Parts: TStringArray;
+  Part: string;
+  OwnUnderline: boolean;
 
   function Px(APixels: double): integer;
   begin
@@ -630,6 +649,7 @@ var
   end;
 
 begin
+  OwnUnderline := (fsUnderline in S.Styles) and (S.UnderlineColor = clDefault);
   Keywords := TStringList.Create;
   try
     Keywords.Delimiter := ';';
@@ -659,11 +679,32 @@ begin
         if (Value = 'italic') or (Value = 'oblique') then S.Styles := S.Styles + [fsItalic]
         else if Value = 'normal' then S.Styles := S.Styles - [fsItalic];
       end
-      else if Name = 'text-decoration' then
+      else if (Name = 'text-decoration') or (Name = 'text-decoration-line') then
       begin
+        if Pos('underline', Value) > 0 then OwnUnderline := True;
         if Pos('underline', Value) > 0 then S.Styles := S.Styles + [fsUnderline];
         if Pos('line-through', Value) > 0 then S.Styles := S.Styles + [fsStrikeOut];
         if Value = 'none' then S.Styles := S.Styles - [fsUnderline, fsStrikeOut];
+        if Name = 'text-decoration' then
+        begin
+          S.UnderlineStyle := 'solid';
+          S.UnderlineColor := clDefault;
+          Parts := InkCSSParts(Value, ' ');
+          for Part in Parts do
+            if (Part = 'solid') or (Part = 'double') or (Part = 'dotted') or (Part = 'dashed') or (Part = 'wavy') then S.UnderlineStyle := Part
+            else if Part <> 'currentcolor' then
+              S.UnderlineColor := UnderlineColor(Part, S.UnderlineColor);
+        end;
+      end
+      else if Name = 'text-decoration-style' then
+      begin
+        if (Value = 'solid') or (Value = 'double') or (Value = 'dotted') or (Value = 'dashed') or (Value = 'wavy') then S.UnderlineStyle := Value;
+      end
+      else if Name = 'text-decoration-color' then
+      begin
+        if Value = 'currentcolor' then S.UnderlineColor := clDefault
+        else
+          S.UnderlineColor := UnderlineColor(Value, S.UnderlineColor);
       end
       else if Name = 'font-size' then
       begin
@@ -688,6 +729,7 @@ begin
         else if (Length(Value) > 1) and (Value[Length(Value)] = '%') and TryStrToFloat(Copy(Value, 1, Length(Value) - 1), V) then S.Size := InkRenderSmaller(Base, V / 100);
       end;
     end;
+    if OwnUnderline and (S.UnderlineColor = clDefault) then S.UnderlineColor := S.Color;
   finally
     Keywords.Free;
   end;
@@ -1003,6 +1045,8 @@ begin
   Result.Color := Options.BaseFont.Color;
   Result.BackColor := clNone;
   Result.Styles := Options.BaseFont.Style;
+  Result.UnderlineStyle := 'solid';
+  Result.UnderlineColor := clDefault;
   Result.Script := nsNormal;
   Result.LinkIndex := 0;
   Result.LinkName := '';
@@ -1039,6 +1083,8 @@ begin
   Result.BackColor := clNone;
   Result.Align := naLeft;
   Result.Styles := [];
+  Result.UnderlineStyle := '';
+  Result.UnderlineColor := clDefault;
   Result.Script := nsNormal;
   Result.LinkIndex := 0;
   Result.LinkName := '';
@@ -1064,6 +1110,11 @@ begin
     if Stack[I].Color <> clDefault then Result.Color := Stack[I].Color;
     if Stack[I].BackColor <> clNone then Result.BackColor := Stack[I].BackColor;
     Result.Styles := Result.Styles + Stack[I].Styles;
+    if Stack[I].UnderlineStyle <> '' then
+    begin
+      Result.UnderlineStyle := Stack[I].UnderlineStyle;
+      Result.UnderlineColor := Stack[I].UnderlineColor;
+    end;
     if Stack[I].Script <> nsNormal then Result.Script := Stack[I].Script;
     if Stack[I].LinkIndex > 0 then
     begin
@@ -3195,13 +3246,51 @@ begin
   Canvas.FillRect(Rect(R.Right - AW, R.Top, R.Right, R.Bottom));
 end;
 
+procedure PaintUnderline(Canvas: TCanvas; X1, X2, Y, Thickness, Origin: integer; const Style: string; Color: TColor);
+var
+  X, Offset_, Period, Mark, WaveY: integer;
+begin
+  if (Color = clNone) or (X2 <= X1) then Exit;
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := Color;
+  if (Style = 'dotted') or (Style = 'dashed') then
+  begin
+    if Style = 'dotted' then Mark := Thickness
+    else
+      Mark := Thickness * 3;
+    Period := Mark + Thickness * 2;
+    for X := X1 to X2 - 1 do
+    begin
+      Offset_ := (X - Origin) mod Period;
+      if Offset_ < 0 then Inc(Offset_, Period);
+      if Offset_ < Mark then Canvas.FillRect(X, Y, X + 1, Y + Thickness);
+    end;
+  end
+  else if Style = 'wavy' then
+  begin
+    Period := Max(4, Thickness * 6);
+    for X := X1 to X2 - 1 do
+    begin
+      WaveY := Y + Round(Sin((X - Origin) * 2 * Pi / Period) * Thickness);
+      Canvas.FillRect(X, WaveY, X + 1, WaveY + Thickness);
+    end;
+  end
+  else
+  begin
+    Canvas.FillRect(X1, Y, X2, Y + Thickness);
+    if Style = 'double' then
+      Canvas.FillRect(X1, Y + Thickness * 2, X2, Y + Thickness * 3);
+  end;
+  Canvas.Brush.Style := bsClear;
+end;
+
 procedure TInkRenderer.PaintLayout(Canvas: TCanvas; const Bounds: TRect; const Options: TInkRenderOptions; ALayout: TInkRenderLayout; AOffsetX: integer; AOffsetY: integer);
 var
   I, J, DX, DY, Pass, TextY, CheckRad, CheckW: integer;
   L: TInkRenderLine;
   R: TInkRenderRun;
   Clip, CanvasClip: TRect;
-  C, BG: TColor;
+  C, BG, LineColor: TColor;
   DrawRect, Fill, CheckR: TRect;
   BoxAttrs: TStringList;
   Sides: string;
@@ -3536,11 +3625,11 @@ begin
               else if PaintAscent > 0 then BaseY := TextY + PaintAscent
               else
                 BaseY := DrawRect.Bottom - LineOff - LineTh;
-              Canvas.Brush.Style := bsSolid;
-              Canvas.Brush.Color := C;
-              Canvas.FillRect(DrawRect.Left + R.Style.PillPadH, BaseY + LineOff,
-                DrawRect.Right - R.Style.PillPadH, BaseY + LineOff + LineTh);
-              Canvas.Brush.Style := bsClear;
+              LineColor := R.Style.UnderlineColor;
+              if (LineColor = clDefault) or (odSelected in Options.OwnerState) or (odDisabled in Options.OwnerState) then LineColor := C;
+              PaintUnderline(Canvas, DrawRect.Left + R.Style.PillPadH,
+                DrawRect.Right - R.Style.PillPadH, BaseY + LineOff, LineTh,
+                L.Bounds.Left + DX, R.Style.UnderlineStyle, LineColor);
             end;
           end;
         end;

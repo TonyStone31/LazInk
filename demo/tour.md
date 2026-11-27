@@ -32,6 +32,8 @@ reading a Markdown file that sits beside the demo.
 5. **Change the look** with the list above the page. That is
    `StyleSheet`: a program dressing a document that has no CSS of its own.
 6. On a **touch screen**, drag the page with a finger and flick it.
+7. Open [gradients and underline styles](gradients.html) for colored
+   backgrounds, repeating stripes, and five kinds of underline.
 
 ## What a page can hold
 

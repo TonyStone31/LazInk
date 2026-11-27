@@ -14,6 +14,9 @@ browser engine, no dependencies beyond the LCL, and **0BSD licensed**.
   and WebP (decoded in Pascal, nothing to install), links with Back and
   Forward, find in page, selection and copy, touch scrolling. Layout follows
   the page's CSS, with light and dark `prefers-color-scheme`.
+* **Gradients and underlines.** Linear and repeating linear backgrounds,
+  with color stops, transparency and rounded corners; solid, dotted,
+  dashed, double and wavy underlines in a separate color.
 * **Markdown.** Every display control accepts `TextFormat := itfMarkdown`;
   the page loads whole `.md` documents with GitHub's rules.
 * **WYSIWYG Markdown editor.** `TInkRichEdit` edits headings, nested lists,
@@ -49,7 +52,8 @@ InkPage1.LoadMarkdown(ReleaseNotes);
 
 A `style` attribute on these inline tags is read too: `color`,
 `background-color`, `font-size` (px, pt, %, em, the keywords, `smaller`
-and `larger`), `font-weight`, `font-style` and `text-decoration`, on a
+and `larger`), `font-weight`, `font-style`, `text-decoration` and its
+`-line`, `-style` and `-color` properties, on a
 `span` or any other inline tag. The rest of CSS belongs to the page and
 the memo, which lay out a document; a label and a list box draw lines.
 

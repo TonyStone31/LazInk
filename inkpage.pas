@@ -256,6 +256,7 @@ type
     procedure Renumber(AFromItem: integer);
     function TreeViewWidth: integer;
     function TreeCanvasBack: TColor;
+    function TreeCanvasStyle: TInkStyle;
     { the page's root element's style, or its body's; nil without a page }
     function PageStyle(ABody: boolean): TInkStyle;
     { a property the root sets, or else the body }
@@ -888,7 +889,7 @@ function InkResolveFace(const AStack: string): string;
 
 implementation
 
-uses Math, StrUtils, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd;
+uses Math, StrUtils, URIParser, LCLType, LCLIntf, LazUTF8, Forms, Clipbrd, InkGradient;
 
 { every LazInk page on every form re-checks its color scheme - see the
   interface declaration }

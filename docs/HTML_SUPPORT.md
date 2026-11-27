@@ -45,7 +45,7 @@ A page's own rules beat the program's stylesheet.
 | `<br>` | a line break |
 | `<wbr>` | a break opportunity inside a long word |
 | `<span style="...">` | whatever the style attribute says |
-| `<abbr title="...">` | its text, underlined, the title as a tooltip |
+| `<abbr title="...">` | its text, with a dotted underline, the title as a tooltip |
 | `title="..."` on anything | the tooltip over it, as a browser shows one: a link's own title first, then the innermost titled element |
 
 **Entities:** `&amp; &lt; &gt; &quot; &nbsp; &copy; &reg; &trade; &euro;
@@ -245,11 +245,49 @@ out from it:
 | **Layout** | normal flow with margin collapsing, `float`/`clear`, `position` (`relative`, `absolute`, `fixed`), `z-index`, flex (wrap, grow, shrink, basis, alignment, `order`, `gap`), grid (`grid-template-*`, named areas, `repeat()`, `minmax()`, `auto-fill`, spans), tables (`border-collapse`, `border-spacing`, `table-layout`, spans, captions) |
 | **Text** | `color`, `background-color`, `font-*`, `text-align`, `text-decoration`, `text-transform`, `white-space`, `line-height`, `vertical-align`, `text-overflow: ellipsis` (with `nowrap` and a clipping `overflow`), `visibility`, `opacity: 0` |
 | **Lists** | `list-style-type`, `list-style-position`, counters in markers |
+| **Gradients** | `linear-gradient()` and `repeating-linear-gradient()` as a block background |
 | **Scrollbar** | `scrollbar-color`, `scrollbar-width` (see the README) |
 
 Still approximate: words do not flow line by line round a float,
 `position: fixed` scrolls with the page, background pictures, masks and
-`box-shadow` are not drawn, and a gradient is its first color.
+`box-shadow` are not drawn.
+
+### Gradients
+
+`TInkPage` and document entries in `TInkMemo` paint linear gradients:
+
+```css
+.header { background: linear-gradient(to right, #17468c, #267b88) }
+.card { background: linear-gradient(135deg, #513a86, #a83f77, #af4720);
+        border-radius: 12px }
+.bands { background: linear-gradient(to right, #164d37 0% 50%, #185572 50% 100%) }
+.stripes { background: repeating-linear-gradient(135deg,
+             #e1edf9 0px 12px, #c4dbf0 12px 24px) }
+```
+
+Directions use `to top`, `to right`, and the other sides and corners, or
+angles in `deg`, `rad`, `grad` and `turn`. Without a direction, colors run
+from top to bottom. Stops accept percentages and CSS lengths; omitted
+positions are distributed between their neighbors. Two positions on one
+color make a band, and adjacent stops at the same position make a hard edge.
+Colors include `currentColor` and transparent colors. Transparency blends
+with the background already painted, including a parent's gradient.
+
+Gradients fill a block's border box and follow its rounded corners. A
+root or propagated body background fills the page canvas. Only the visible
+part is rasterized. This does not yet include inline backgrounds, radial
+or conic gradients, color hints, interpolation color-space options, multiple
+background layers, or background positioning and sizing.
+
+### Underlines
+
+`text-decoration: underline wavy #b13b32` draws a colored wave below the
+text. `solid`, `dotted`, `dashed`, `double` and `wavy` work, as do the
+separate `text-decoration-line`, `text-decoration-style` and
+`text-decoration-color` properties. An underline keeps its style and color
+through child elements and follows wrapped lines and zoom. These properties
+also work in inline `style` attributes in labels and list boxes.
+Strike-through text keeps its existing solid line.
 
 `@media` is judged at the control's width, for `min-width`/`max-width`
 (and the range syntax), `prefers-color-scheme` and the rest, which is enough
@@ -326,9 +364,9 @@ worth it when it should look native.
 * Words do not flow line by line round a float: the float takes its side
   and the text sits beside it.
 * `position: fixed` scrolls with the page.
-* No `letter-spacing`, `word-spacing`, `box-shadow`, `background-image`,
-  masks or `text-shadow`; `opacity` is read only as 0, and a gradient is
-  its first color.
+* No `letter-spacing`, `word-spacing`, `box-shadow`, background pictures,
+  masks or `text-shadow`; `opacity` is read only as 0. Gradients are
+  limited to the linear backgrounds described above.
 * `<table>` has no `<col>`/`<colgroup>` widths.
 * Colors come from the page, but the control's own theme supplies the
   defaults - a page that relies on the browser's light/dark scheme will take

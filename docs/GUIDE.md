@@ -614,8 +614,10 @@ LazInk renders a **subset** of HTML, on purpose. It is not a web browser:
   control's own background) - and laid out as boxes: floats, flex, grid,
   tables, positioning.  What is still approximate: words do not flow line by
   line round a float, `position: fixed` scrolls with the page, background
-  pictures, masks and `box-shadow` are not drawn, and a gradient is its
-  first color.
+  pictures, masks and `box-shadow` are not drawn. Linear and repeating
+  linear gradients paint block backgrounds, with angles, color stops,
+  transparency and rounded corners; other gradient types and multiple
+  background layers are not drawn.
 * Tables have no `<col>`/`<colgroup>` widths.
 * The Markdown is GitHub's, as documents use it, not CommonMark-complete:
   emphasis follows simpler rules than the specification, and a link

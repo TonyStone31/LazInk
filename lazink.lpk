@@ -26,6 +26,7 @@
       <Item><Filename Value="inkdom.pas"/><UnitName Value="InkDOM"/></Item>
       <Item><Filename Value="inkentities.inc"/><Type Value="Include"/></Item>
       <Item><Filename Value="inkstyle.pas"/><UnitName Value="InkStyle"/></Item>
+      <Item><Filename Value="inkgradient.pas"/><UnitName Value="InkGradient"/></Item>
       <Item><Filename Value="inkua.inc"/><Type Value="Include"/></Item>
       <Item><Filename Value="inklayout.pas"/><UnitName Value="InkLayout"/></Item>
       <Item><Filename Value="inkpagetree.inc"/><Type Value="Include"/></Item>

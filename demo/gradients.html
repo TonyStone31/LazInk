@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Gradients and underlines</title>
+<style>
+  body { margin: 24px; background: #ffffff; color: #22262c;
+         font: 15px/1.6 sans-serif }
+  h1 { font-size: 28px; margin-bottom: 4px }
+  h2 { font-size: 20px; margin-top: 28px }
+  code { font-family: monospace }
+  .sample { padding: 18px; margin: 12px 0; border-radius: 12px;
+            color: white; font-weight: bold }
+  .horizontal { background: linear-gradient(to right, #17468c, #267b88) }
+  .diagonal { background: linear-gradient(135deg, #513a86, #a83f77, #af4720) }
+  .stops { background: linear-gradient(to right, #164d37 0% 35%, #185572 35% 65%, #64377b 65% 100%) }
+  .fade { background-color: #214d3c;
+          background-image: linear-gradient(to right, #243f88, transparent) }
+  .stripes { color: #18314f;
+             background: repeating-linear-gradient(135deg, #e1edf9 0px 12px, #c4dbf0 12px 24px) }
+  .underlines { line-height: 2.4 }
+  .solid { text-decoration: underline solid #176bbd }
+  .dotted { text-decoration: underline dotted #176bbd }
+  .dashed { text-decoration: underline dashed #176bbd }
+  .double { text-decoration: underline double #9b3873 }
+  .wavy { text-decoration: underline wavy #b13b32 }
+</style>
+</head>
+<body>
+<h1>Gradients and underlines</h1>
+<p>CSS backgrounds and text decorations drawn on the canvas.
+Resize the window or zoom the page to see them adapt.</p>
+
+<h2>Linear gradients</h2>
+<div class="sample horizontal">Two colors, left to right</div>
+<div class="sample diagonal">Three colors at 135 degrees</div>
+<div class="sample stops">Hard stops at 35% and 65%</div>
+<div class="sample fade">Blue fading into a green background</div>
+<div class="sample stripes">Repeating stripes, 12 pixels per band</div>
+<p>Set <code>background: linear-gradient(to right, #17468c, #267b88)</code>
+on a block. Stops accept percentages and CSS lengths. Rounded corners,
+transparent colors, and <code>currentColor</code> work too.</p>
+
+<h2>Underline styles</h2>
+<p class="underlines"><span class="solid">Solid underline</span><br>
+<span class="dotted">Dotted underline</span><br>
+<span class="dashed">Dashed underline</span><br>
+<span class="double">Double underline</span><br>
+<span class="wavy">Wavy underline</span></p>
+<p>Use <code>text-decoration: underline wavy #b13b32</code>, or set
+<code>text-decoration-line</code>, <code>text-decoration-style</code>,
+and <code>text-decoration-color</code> separately.</p>
+<p>An <abbr title="Application Programming Interface">API</abbr>
+abbreviation gets a dotted underline and a tooltip.</p>
+<p><a href="tour.md">Back to the tour</a></p>
+</body>
+</html>
