@@ -159,12 +159,19 @@ type
     FMenu: TPopupMenu;
     FFindEdit: TInkEdit;
     FFindText: string;
+    FFindValid: boolean;
+    FFindQuery: string;
+    FFindOptions: TInkFindOptions;
+    FFindLength: integer;
+    FFindMatches: array of integer;
     FClicks, FLastClickX, FLastClickY: integer;
     FLastClickTime: QWord;
     FSelectUnit: integer;         // what a drag selects by: 0 chars, 1 words, 2 paragraphs
     FUnitFrom, FUnitTo: integer;
     FDefaultSize: integer;        // points, when neither Font nor the system font has a size
     procedure UnitAt(AIndex: integer; out AFrom, ATo: integer);
+    procedure PrepareFind(const AText: string; AOptions: TInkFindOptions);
+    function FindMatchIndex(AFrom: integer): integer;
     function FindFrom(const AText: string; AOptions: TInkFindOptions; AFrom: integer): integer;
     function FindBarRect: TRect;
     function FindButtonRect(Index: integer): TRect;
@@ -236,6 +243,8 @@ type
     procedure ScrollToCaret;
     function WheelSideways(APixels: integer): boolean;
     function CaretPoint(ACaret: integer): TPoint;   // document space
+    function CaretRect: TRect;
+    function LineAtY(AY: integer): integer;
     function PointToCaret(X, Y: integer): integer;  // client space
     { document }
     procedure DoInsert(const AText: string; const AAttr: TInkAttr);
@@ -278,6 +287,7 @@ type
     { Zoom changed: lay the text out again }
     procedure ZoomChanged; virtual;
     procedure CreateWnd; override;
+    procedure WMPaint(var Message: TLMPaint); message LM_PAINT;
     procedure Paint; override;
     procedure Resize; override;
     procedure FontChanged(Sender: TObject); override;
@@ -2040,6 +2050,38 @@ begin
     Result.X := FLines[L].Left + FCharX[ACaret];
 end;
 
+function TInkRichEdit.CaretRect: TRect;
+var
+  P: TPoint;
+  L: integer;
+begin
+  Result := Rect(0, 0, 0, 0);
+  NeedLayout;
+  if Length(FLines) = 0 then Exit;
+  L := CaretLine(FCaret);
+  P := CaretPoint(FCaret);
+  Dec(P.X, FScrollX);
+  Dec(P.Y, FScrollY);
+  IntersectRect(Result, Rect(P.X, P.Y + 1, P.X + 2, P.Y + FLines[L].Height),
+    Rect(0, 0, ViewWidth, ViewHeight));
+end;
+
+function TInkRichEdit.LineAtY(AY: integer): integer;
+var
+  Lo, Hi, Mid: integer;
+begin
+  Lo := 0;
+  Hi := Length(FLines);
+  while Lo < Hi do
+  begin
+    Mid := Lo + (Hi - Lo) div 2;
+    if FLines[Mid].Top + FLines[Mid].Height <= AY then Lo := Mid + 1
+    else
+      Hi := Mid;
+  end;
+  Result := Lo;
+end;
+
 function TInkRichEdit.PointToCaret(X, Y: integer): integer;
 var
   L, i, DocY, CX, Last: integer;
@@ -2204,6 +2246,34 @@ end;
 
 { ------------------------------------------------------------------ painting }
 
+procedure TInkRichEdit.WMPaint(var Message: TLMPaint);
+var
+  SavedClip: HRGN;
+  ClipStatus: integer;
+begin
+  if (Message.DC = 0) or (Message.PaintStruct = nil) or IsRectEmpty(Message.PaintStruct^.rcPaint) then
+  begin
+    inherited;
+    Exit;
+  end;
+  { Some widgetsets supply a full canvas clip with a smaller paint rectangle. }
+  SavedClip := CreateRectRgn(0, 0, 0, 0);
+  ClipStatus := GetClipRgn(Message.DC, SavedClip);
+  try
+    if ClipStatus >= 0 then
+      with Message.PaintStruct^.rcPaint do
+        IntersectClipRect(Message.DC, Left, Top, Right, Bottom);
+    try
+      inherited;
+    finally
+      if ClipStatus = 1 then SelectClipRgn(Message.DC, SavedClip)
+      else if ClipStatus = 0 then SelectClipRgn(Message.DC, 0);
+    end;
+  finally
+    DeleteObject(SavedClip);
+  end;
+end;
+
 procedure TInkRichEdit.Paint;
 var
   Li, i, RunEnd, SelA, SelB, LineEndIdx, BaseY, RunTop, WordStart, K: integer;
@@ -2217,6 +2287,7 @@ var
   IsTbl: boolean;
   CodePad: integer;
   CodeColors: TInkCodeColors;
+  PaintClip, FindClip: TRect;
 
 { the room in front of an inline code span's first letter }
   function CodeLead(AIndex: integer): integer;
@@ -2241,24 +2312,28 @@ var
   end;
 
 begin
+  PaintClip := Canvas.ClipRect;
+  if IsRectEmpty(PaintClip) then PaintClip := ClientRect;
+  if not IntersectRect(PaintClip, PaintClip, ClientRect) then Exit;
   CodePad := FontEm * 2 div 5;
   { the code colors that read on this background, light or dark }
   CodeColors := InkCodeColors(ColorToRGB(Color));
   Canvas.Brush.Color := Color;
   Canvas.Brush.Style := bsSolid;
-  Canvas.FillRect(ClientRect);
+  Canvas.FillRect(PaintClip);
 
   NeedLayout;
-  for K := 0 to High(FMovingRects) do
-    FMovingRects[K] := Rect(0, 0, 0, 0);
+  { A partial paint must keep the locations of animated images elsewhere. }
+  if (PaintClip.Left = 0) and (PaintClip.Top = 0) and (PaintClip.Right >= ViewWidth) and (PaintClip.Bottom >= ViewHeight) then
+    for K := 0 to High(FMovingRects) do
+      FMovingRects[K] := Rect(0, 0, 0, 0);
   SelA := GetSelStart;
   SelB := SelA + GetSelLength;
 
-  for Li := 0 to High(FLines) do
+  for Li := LineAtY(PaintClip.Top + FScrollY) to High(FLines) do
   begin
     L := FLines[Li];
-    if L.Top + L.Height - FScrollY < 0 then Continue;
-    if L.Top - FScrollY > ClientHeight then Break;
+    if L.Top - FScrollY >= PaintClip.Bottom then Break;
     Dec(L.Left, FScrollX);
 
     BaseY := L.Top - FScrollY + L.Ascent;
@@ -2484,7 +2559,7 @@ begin
       Canvas.Line(X + 1, BaseY + 1, X + 1, BaseY + FLines[Li].Height - 1);
     end;
   end;
-  if FindBarVisible then PaintFindBar;
+  if FindBarVisible and IntersectRect(FindClip, PaintClip, FindBarRect) then PaintFindBar;
 end;
 
 procedure TInkRichEdit.Resize;
@@ -2503,9 +2578,13 @@ begin
 end;
 
 procedure TInkRichEdit.CaretTimerTick(Sender: TObject);
+var
+  R: TRect;
 begin
+  if not Focused or (GetSelLength <> 0) then Exit;
+  R := CaretRect;
   FCaretOn := not FCaretOn;
-  Invalidate;
+  if not IsRectEmpty(R) then LCLIntf.InvalidateRect(Handle, @R, False);
 end;
 
 procedure TInkRichEdit.RestartCaretBlink;
@@ -2703,6 +2782,7 @@ end;
 
 procedure TInkRichEdit.Changed;
 begin
+  FFindValid := False;
   FModified := True;
   FMarkupDirty := True;
   FHasTypingAttr := False;
@@ -3619,13 +3699,12 @@ end;
 
 { ------------------------------------------------------------------ finding }
 
-{ where AText next starts at or after AFrom - at or before it with
-  ifoBackwards - going round the end; -1 when nowhere }
-function TInkRichEdit.FindFrom(const AText: string; AOptions: TInkFindOptions; AFrom: integer): integer;
+{ Match positions belong to the text and query, not to the caret or paint. }
+procedure TInkRichEdit.PrepareFind(const AText: string; AOptions: TInkFindOptions);
 var
   Needle, Hay: array of string;
   P: PChar;
-  N, K, I, Step, Tries: integer;
+  N, K, I, Count: integer;
 
   function Fold(const S: string): string;
   begin
@@ -3647,34 +3726,85 @@ var
   end;
 
 begin
-  Result := -1;
+  AOptions := AOptions * [ifoMatchCase];
+  if FFindValid and (FFindQuery = AText) and (FFindOptions = AOptions) then Exit;
+  FFindValid := False;
+  FFindQuery := AText;
+  FFindOptions := AOptions;
+  FFindMatches := nil;
+  FFindLength := UTF8Length(AText);
+  if (FFindLength = 0) or (FFindLength > CharCount) then
+  begin
+    FFindValid := True;
+    Exit;
+  end;
+  SetLength(Needle, FFindLength);
   N := 0;
   P := PChar(AText);
   while P^ <> #0 do
   begin
     K := UTF8CodepointSize(P);
-    SetLength(Needle, N + 1);
     SetString(Needle[N], P, K);
     Needle[N] := Fold(Needle[N]);
     Inc(N);
     Inc(P, K);
   end;
-  if (N = 0) or (CharCount = 0) then Exit;
+  FFindLength := N;
+  if N = 0 then
+  begin
+    FFindValid := True;
+    Exit;
+  end;
   SetLength(Hay, CharCount);
   for I := 0 to CharCount - 1 do
     Hay[I] := Fold(FChars[I]);
-  if ifoBackwards in AOptions then
-    Step := -1
-  else
-    Step := 1;
-  I := EnsureRange(AFrom, 0, CharCount - 1);
-  for Tries := 1 to CharCount do
+  Count := 0;
+  for I := 0 to CharCount - N do
+    if MatchAt(I) then
+    begin
+      if Count = Length(FFindMatches) then SetLength(FFindMatches, Max(16, Count * 2));
+      FFindMatches[Count] := I;
+      Inc(Count);
+    end;
+  SetLength(FFindMatches, Count);
+  FFindValid := True;
+end;
+
+{ The first match at or after AFrom, or the insertion point past the end. }
+function TInkRichEdit.FindMatchIndex(AFrom: integer): integer;
+var
+  Lo, Hi, Mid: integer;
+begin
+  Lo := 0;
+  Hi := Length(FFindMatches);
+  while Lo < Hi do
   begin
-    if MatchAt(I) then Exit(I);
-    Inc(I, Step);
-    if I >= CharCount then I := 0
-    else if I < 0 then I := CharCount - 1;
+    Mid := Lo + (Hi - Lo) div 2;
+    if FFindMatches[Mid] < AFrom then Lo := Mid + 1
+    else
+      Hi := Mid;
   end;
+  Result := Lo;
+end;
+
+{ where AText next starts at or after AFrom - at or before it with
+  ifoBackwards - going round the end; -1 when nowhere }
+function TInkRichEdit.FindFrom(const AText: string; AOptions: TInkFindOptions; AFrom: integer): integer;
+var
+  I: integer;
+begin
+  PrepareFind(AText, AOptions);
+  if Length(FFindMatches) = 0 then Exit(-1);
+  AFrom := EnsureRange(AFrom, 0, CharCount - 1);
+  I := FindMatchIndex(AFrom);
+  if ifoBackwards in AOptions then
+  begin
+    if (I = Length(FFindMatches)) or (FFindMatches[I] > AFrom) then Dec(I);
+    if I < 0 then I := High(FFindMatches);
+  end
+  else
+  if I = Length(FFindMatches) then I := 0;
+  Result := FFindMatches[I];
 end;
 
 function TInkRichEdit.Find(const AText: string; AOptions: TInkFindOptions): boolean;
@@ -3701,19 +3831,14 @@ end;
 
 function TInkRichEdit.FindCount(const AText: string; AOptions: TInkFindOptions; out Current: integer): integer;
 var
-  First, At: integer;
+  I: integer;
 begin
-  Result := 0;
+  PrepareFind(AText, AOptions);
+  Result := Length(FFindMatches);
   Current := 0;
-  First := FindFrom(AText, AOptions - [ifoBackwards], 0);
-  if First < 0 then Exit;
-  At := First;
-  repeat
-    Inc(Result);
-    if (At = GetSelStart) and (GetSelLength = UTF8Length(AText)) then Current := Result;
-    if At + 1 >= CharCount then Break;
-    At := FindFrom(AText, AOptions - [ifoBackwards], At + 1);
-  until (At <= First);
+  if (Result = 0) or (GetSelLength <> FFindLength) then Exit;
+  I := FindMatchIndex(GetSelStart);
+  if (I < Result) and (FFindMatches[I] = GetSelStart) then Current := I + 1;
 end;
 
 function TInkRichEdit.GetFindBarVisible: boolean;
@@ -4361,6 +4486,7 @@ var
   Paras: array of TInkAttr;
   Breaks: array of integer;
 begin
+  FFindValid := False;
   FSettingMarkup := True;
   try
     FMarkdownSource := '';
