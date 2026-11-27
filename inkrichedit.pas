@@ -99,6 +99,20 @@ type
 
   TInkRichEdit = class(TCustomControl)
   private
+  type
+    TFontMetricEntry = record
+      Face: string;
+      Size, Height, PPI, Orientation: integer;
+      Styles: TFontStyles;
+      CharSet: TFontCharSet;
+      Pitch: TFontPitch;
+      Quality: TFontQuality;
+      Metrics: TLCLTextMetric;
+      Measured: boolean;
+    end;
+  private
+    FFontMetrics: array[0..63] of TFontMetricEntry;
+    FMetricCount, FLastMetric: integer;
     FImageBase: string;
     FImages: TStringList;
     FMoving: TStringList;         // source -> its TInkGIF or TInkWebP, for pictures that move
@@ -224,6 +238,7 @@ type
     procedure Relayout;
     procedure NeedLayout;
     procedure ApplyAttrToCanvas(const A: TInkAttr);
+    function ReadFontMetrics(out Metrics: TLCLTextMetric): boolean;
     function FontPoints: integer;
     procedure CanvasPoints(Sz: integer);
     function Zoomed(V: integer): integer;
@@ -1183,6 +1198,54 @@ begin
     Canvas.Font.Color := Font.Color;
 end;
 
+{ The cache lasts one layout or paint; its device and scale cannot go stale. }
+function TInkRichEdit.ReadFontMetrics(out Metrics: TLCLTextMetric): boolean;
+var
+  F: TFont;
+  I: integer;
+
+  function Matches(const Entry: TFontMetricEntry): boolean;
+  begin
+    Result := (Entry.Height = F.Height) and (Entry.Size = F.Size) and (Entry.Styles = F.Style) and (Entry.PPI = F.PixelsPerInch) and
+      (Entry.Orientation = F.Orientation) and (Entry.CharSet = F.CharSet) and (Entry.Pitch = F.Pitch) and (Entry.Quality = F.Quality) and (Entry.Face = F.Name);
+  end;
+
+begin
+  F := Canvas.Font;
+  I := FLastMetric;
+  if (I >= FMetricCount) or not Matches(FFontMetrics[I]) then
+  begin
+    I := 0;
+    while (I < FMetricCount) and not Matches(FFontMetrics[I]) do Inc(I);
+  end;
+  if I < FMetricCount then
+  begin
+    FLastMetric := I;
+    Metrics := FFontMetrics[I].Metrics;
+    Exit(FFontMetrics[I].Measured);
+  end;
+  FillChar(Metrics, SizeOf(Metrics), 0);
+  Result := Canvas.GetTextMetrics(Metrics);
+  if FMetricCount = Length(FFontMetrics) then Exit;
+  I := FMetricCount;
+  Inc(FMetricCount);
+  FLastMetric := I;
+  with FFontMetrics[I] do
+  begin
+    Face := F.Name;
+    Size := F.Size;
+    Height := F.Height;
+    PPI := F.PixelsPerInch;
+    Orientation := F.Orientation;
+    Styles := F.Style;
+    CharSet := F.CharSet;
+    Pitch := F.Pitch;
+    Quality := F.Quality;
+    Measured := Result;
+  end;
+  FFontMetrics[I].Metrics := Metrics;
+end;
+
 { the paragraph kind at a character; the gap past the end is plain text }
 function TInkRichEdit.ParaKindAt(AIndex: integer): TInkParaKind;
 begin
@@ -1669,13 +1732,15 @@ var
     paragraph still needs a line box, so fall back to the control font. }
   procedure EmitLine(AFirst, ACount: integer);
   var
-    j, H, Asc, MaxH, MaxAsc, Rise: integer;
+    j, H, Asc, MaxH, MaxAsc, Rise, FontH, FontAsc: integer;
     tm: TLCLTextMetric;
     L: TInkVisLine;
     Al: TAlignment;
+    A, Last: TInkAttr;
+    HaveMetrics: boolean;
   begin
     UseControlFont;
-    if Canvas.GetTextMetrics(tm) then
+    if ReadFontMetrics(tm) then
     begin
       MaxH := tm.Height;
       MaxAsc := tm.Ascender;
@@ -1686,20 +1751,30 @@ var
       MaxAsc := MaxH - (MaxH div 5);
     end;
 
+    HaveMetrics := False;
+    Last := DefaultInkAttr;
     for j := AFirst to AFirst + ACount - 1 do
     begin
       if FChars[j] = #10 then Continue;
-      ApplyAttrToCanvas(EffAttr(j));
-      if Canvas.GetTextMetrics(tm) then
+      A := EffAttr(j);
+      if not HaveMetrics or not SameInkAttr(A, Last) then
       begin
-        H := tm.Height;
-        Asc := tm.Ascender;
-      end
-      else
-      begin
-        H := Canvas.TextHeight('Ag');
-        Asc := H - (H div 5);
+        ApplyAttrToCanvas(A);
+        if ReadFontMetrics(tm) then
+        begin
+          FontH := tm.Height;
+          FontAsc := tm.Ascender;
+        end
+        else
+        begin
+          FontH := Canvas.TextHeight('Ag');
+          FontAsc := FontH - (FontH div 5);
+        end;
+        Last := A;
+        HaveMetrics := True;
       end;
+      H := FontH;
+      Asc := FontAsc;
       if FAttrs[j].ImageSource <> '' then
       begin
         H := ImageHeight(j);
@@ -1889,6 +1964,7 @@ var
   end;
 
 begin
+  FMetricCount := 0;
   FLayoutValid := True;
   ReadCodeKinds;
   N := CharCount;
@@ -2315,6 +2391,7 @@ begin
   PaintClip := Canvas.ClipRect;
   if IsRectEmpty(PaintClip) then PaintClip := ClientRect;
   if not IntersectRect(PaintClip, PaintClip, ClientRect) then Exit;
+  FMetricCount := 0;
   CodePad := FontEm * 2 div 5;
   { the code colors that read on this background, light or dark }
   CodeColors := InkCodeColors(ColorToRGB(Color));
@@ -2389,7 +2466,7 @@ begin
           UseControlFont;
           Canvas.Font.Color := Font.Color;
           Canvas.Brush.Style := bsClear;
-          if Canvas.GetTextMetrics(tm) then
+          if ReadFontMetrics(tm) then
             RunAsc := tm.Ascender
           else
             RunAsc := Canvas.TextHeight('Ag') * 4 div 5;
@@ -2472,7 +2549,7 @@ begin
       ApplyAttrToCanvas(EffAttr(i));
       if (CodeKindAt(i) in [ickComment..ickDeleted]) and (EffAttr(i).Color = clDefault) and (EffAttr(i).Link = '') then
         Canvas.Font.Color := InkCodeKindColor(CodeKindAt(i), CodeColors);
-      if Canvas.GetTextMetrics(tm) then
+      if ReadFontMetrics(tm) then
       begin
         RunAsc := tm.Ascender;
         RunH := tm.Height;
